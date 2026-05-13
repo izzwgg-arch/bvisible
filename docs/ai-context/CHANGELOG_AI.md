@@ -5,6 +5,74 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — First real deploy through the queue (foundation app)
+
+**Commit:** `ce7daf17be8174df49a31f659e30f2ebdcdbf58e`
+**Message:** `fix(pnpm): allowBuilds in pnpm-workspace.yaml so prisma/sharp/unrs-resolver run install scripts on the server`
+
+**What changed**
+- Fixed pnpm v11 install on the server: moved the build-script allowlist from
+  `pnpm.onlyBuiltDependencies` (in `package.json`, ignored by pnpm v11 in
+  workspace mode) to `allowBuilds` in `pnpm-workspace.yaml` as a `name: true`
+  map. Without this, `pnpm install --frozen-lockfile` failed with
+  `ERR_PNPM_IGNORED_BUILDS` and the deploy aborted.
+- Added `server-scripts/99c-enqueue-real-deploy.sh` — a helper that writes a
+  job JSON for a given commit SHA, enqueues it via
+  `/opt/bvisible/deploy-queue/enqueue-deploy.sh`, manually triggers the
+  worker (instead of waiting up to 30 s for the systemd timer), and prints
+  the final status + tail of the log.
+- After this commit, the first real deploy through the queue succeeded:
+  - Job `20260513T162706-2d72c3` → `done` in ~83 s.
+  - Release snapshot at
+    `/opt/bvisible/releases/20260513T162707Z-ce7daf17be81`.
+  - `releases/current` symlink points at the new release.
+  - `/opt/bvisible/app` is at HEAD `ce7daf1` with `.next/` build output
+    present at `apps/web/.next/`.
+  - Build steps that all ran cleanly on the server: `pnpm install
+    --frozen-lockfile` (with prisma / sharp / unrs-resolver install scripts
+    actually executed), `prisma generate` (Prisma Client v6.19.3),
+    `next build` (4 routes including `GET /api/health`).
+- App is built but not yet served by a long-running process or fronted by
+  Nginx — that is intentional for the foundation phase. Serving + Nginx
+  upstream + healthcheck.sh come in a subsequent change.
+
+**Files touched**
+- `pnpm-workspace.yaml` — added `allowBuilds` map (prisma, @prisma/client,
+  @prisma/engines, sharp, unrs-resolver → `true`).
+- `package.json` — removed `pnpm.onlyBuiltDependencies` (was being ignored
+  in workspace mode).
+- `server-scripts/99c-enqueue-real-deploy.sh` — NEW helper.
+- `apps/web/tsconfig.json` — Next.js auto-injected `incremental: true` and
+  `allowJs: true` during `next build`; committed verbatim.
+
+**Risks**
+- `allowBuilds` runs install scripts for the listed packages, which is
+  exactly what we want; the allowlist is narrow (only the 5 packages we
+  actually depend on that need scripts).
+- Removing `pnpm.onlyBuiltDependencies` means a downgrade to pnpm v10 in
+  workspace mode would silently re-trigger the ignored-builds problem. We
+  pin to pnpm 11.1.1 via `packageManager` in root `package.json`.
+
+**Verification**
+- Local: `pnpm install --frozen-lockfile` runs `sharp` and `unrs-resolver`
+  install scripts and exits 0. `pnpm run build` builds both `@bvisible/db`
+  (`prisma generate`) and `@bvisible/web` (`next build`) green.
+- Server: deploy job `20260513T162706-2d72c3` ended in `done`, log shows
+  install scripts executed, `prisma generate` produced a client,
+  `next build` printed all 4 routes, deploy-once exited SUCCESS.
+
+**Follow-ups**
+- Move `experimental.typedRoutes` to top-level `typedRoutes` in
+  `apps/web/next.config.mjs` (Next 15 deprecation warning); harmless but
+  noisy.
+- Add a long-running web service (likely systemd unit calling
+  `pnpm --filter @bvisible/web exec next start -p 3000`), an Nginx upstream
+  block, and `healthcheck.sh` so deploys actually validate `GET /api/health`
+  on the live port.
+- Wire Postgres + run `prisma migrate deploy` from `deploy-once.sh`.
+
+---
+
 ## 2026-05-13 — Server foundation scripts checked in
 
 **Commit:** `60978feeadb5a77e6a9c8396292059b75fba3596`
