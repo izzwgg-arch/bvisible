@@ -158,6 +158,80 @@ another workspace package: the standalone tracing missed it. Confirm
 workspace root; rebuild on the server with `NEXT_BUILD_STANDALONE=1
 pnpm run build`; then `bash -lc 'pm2 reload bvisible-web --update-env'`.
 
+### Prisma engine missing from standalone bundle
+
+Symptom (in `pm2 logs bvisible-web --err`):
+
+```
+Error [PrismaClientInitializationError]: Prisma Client could not locate
+the Query Engine for runtime "debian-openssl-3.0.x".
+This is likely caused by a bundler that has not copied
+"libquery_engine-debian-openssl-3.0.x.so.node" next to the resulting
+bundle.
+```
+
+The boot itself succeeds (healthcheck `{"status":"ok"}` passes because
+the route doesn't touch Prisma) but every Prisma call in any handler
+crashes with the unhandled rejection above. Browsers see HTTP 500 on
+the failing route only.
+
+Root cause: Next's static tracer doesn't follow the `dlopen()` Prisma
+uses to load its native engine, so `.next/standalone/.../node_modules/
+.pnpm/@prisma+client@*/node_modules/.prisma/client/` is empty in the
+deployed bundle.
+
+Fix is automated in `deploy-once.sh` (block labelled "Prisma's
+query-engine .so.node binary is dlopen()'d at runtime"). It mirrors the
+live workspace's `.prisma/client` directory into the matching `.pnpm`
+hash path inside the standalone tree. Look for this line in the deploy
+log:
+
+```
+[YYYY-MM-DDTHH:MM:SSZ] Prisma client mirrored into standalone:
+  /opt/bvisible/app/apps/web/.next/standalone/node_modules/.pnpm/
+  @prisma+client@<hash>/node_modules/.prisma/client (engines:
+  libquery_engine-debian-openssl-3.0.x.so.node …)
+```
+
+If it's missing or warns `WARN: could not find source .prisma/client`
+… you've hit it again. Recover with:
+
+```bash
+ssh deploy@bvisible
+cd /opt/bvisible/app
+SRC=$(find node_modules/.pnpm -maxdepth 5 -type d -path "*@prisma+client*/node_modules/.prisma/client" | head -n1)
+DST="apps/web/.next/standalone/${SRC}"
+mkdir -p "$(dirname "$DST")" && rm -rf "$DST" && cp -r "$SRC" "$DST"
+ls "$DST" | grep '\.so\.node$'   # should list the engine
+bash -lc 'pm2 reload bvisible-web --update-env'
+```
+
+Then file-fix `deploy-once.sh` so the next deploy re-mirrors automatically.
+
+### Middleware redirect Location points at `localhost:3000`
+
+Symptom: `curl -ksSI https://vmi…/dashboard` returns
+`Location: https://localhost:3000/login?next=...`. Browsers then
+navigate to localhost (broken) instead of the public host.
+
+Root cause: `req.nextUrl.host` reflects the `Host` header nginx
+forwards. Nginx's default `proxy_pass http://127.0.0.1:3000` sends
+`Host: 127.0.0.1:3000` (or `localhost:3000` with a different proxy_set_header),
+so `NextResponse.redirect(req.nextUrl.clone())` builds the wrong absolute
+URL. Fix lives in `apps/web/middleware.ts`: redirect URL is constructed
+from `x-forwarded-host` + `x-forwarded-proto` headers, which nginx
+*does* set. Trust those headers ONLY because port 3000 binds to
+127.0.0.1 — nginx is the only thing that can reach this Node process.
+
+If you change nginx config and the test below regresses, read the
+middleware comment block at the top of the redirect path and add the
+forwarded headers to nginx's `location /` block.
+
+```bash
+curl -ksSI https://vmi3270817.contaboserver.net/dashboard | grep -i location
+# expected: Location: https://vmi3270817.contaboserver.net/login?next=%2Fdashboard
+```
+
 ## 4c. /api/health
 
 ```bash

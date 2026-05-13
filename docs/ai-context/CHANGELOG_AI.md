@@ -7,8 +7,10 @@ records what changed, the files touched, the risks, and the verification.
 
 ## 2026-05-13 — Auth + tenant foundation (Phase 4)
 
-**Commit:** `<feat-sha>` (filled after push)
-**Message:** `feat: add auth and tenant foundation`
+**Commit:** `56cdd14` (`feat: add auth and tenant foundation`) → followed
+by `0c9ccfc` (`fix(auth): include prisma engine in standalone bundle and
+fix middleware redirect host`). The fix commit is the SHA that actually
+deployed green; see "Follow-up runtime fixes" below.
 
 **Scope**
 
@@ -210,13 +212,76 @@ or change firewall / queue serialization / nginx / PM2 config.
   by re-application, scp'd back, committed alongside the schema
   change. Production DB never touched at this stage.
 
-**Verification performed (server)** — filled after deploy
+**Verification performed (server)**
 
-- Deploy job ID: `<jobId>`
-- Deploy result: `<done|failed>`
-- Postgres status / migration result / db-verify result / healthcheck
-  result / public port safety: see deploy log + the `Risks` block
-  rollback guidance if any of these regress.
+- Deploy job IDs:
+  - `20260513T193505-ac5b38` — first auth deploy at SHA `56cdd14`. Job
+    reached `done`, migration applied, healthcheck OK, but the running
+    process crashed at the FIRST Prisma call with
+    `PrismaClientInitializationError: Prisma Client could not locate
+    the Query Engine for runtime "debian-openssl-3.0.x"`. Login POST
+    returned 500 (no `bv_session` cookie). Middleware was also
+    constructing redirects against `req.nextUrl.host`, which behind
+    nginx is `127.0.0.1:3000`, so /dashboard redirected to
+    `https://localhost:3000/login?next=...` from the browser's
+    perspective.
+  - `20260513T195014-5bd3d9` — fix deploy at SHA `0c9ccfc`. Reached
+    `done`. Standalone Prisma engine mirror succeeded
+    (`libquery_engine-debian-openssl-3.0.x.so.node` +
+    `libquery_engine-linux-musl-openssl-3.0.x.so.node` present in the
+    bundle). Healthcheck OK.
+- E2E auth verification (`server-scripts/db/.verify-auth.sh`, against
+  `https://vmi3270817.contaboserver.net`):
+  1. `/api/health` public both upstream + via nginx — `{"status":"ok"}`
+  2. `/login` reachable as 200
+  3. `/dashboard` without cookie → 307 to
+     `https://vmi3270817.contaboserver.net/login?next=%2Fdashboard`
+     (PUBLIC host, NOT localhost — confirms middleware fix)
+  4. `/admin/users` without cookie → 307 (gated)
+  5. Login via no-JS form POST (forwarding all 4 hidden inputs Next
+     emits for `useActionState`: `$ACTION_REF_1`, `$ACTION_1:0`,
+     `$ACTION_1:1`, `$ACTION_KEY`) → 303, `Set-Cookie: bv_session=…;
+     Path=/; Expires=…; Secure; HttpOnly; SameSite=lax`,
+     `Location: /dashboard`
+  6. `/dashboard` with the cookie → 200, body mentions the admin email
+  7. `/admin/tenants` with the SUPER_ADMIN cookie → 200
+  8. Logout via the argument-less form on `/settings` → 303,
+     `Set-Cookie: bv_session=; Max-Age=0; …`, `Location: /login`. The
+     same cookie value sent to `/dashboard` afterwards → 307 (DB
+     session row revoked).
+  9. `audit_logs` shows ordered `login_success` (×2) and `logout` rows
+     for the SUPER_ADMIN with `ipAddress=127.0.0.1` (loopback because
+     the verify ran from the box itself; real external clients will
+     log their forwarded IP via `request-context.ts`).
+  10. Postgres still bound `127.0.0.1:5432` only.
+
+**Follow-up runtime fixes (commit `0c9ccfc`)**
+
+- `apps/web/middleware.ts` — redirect URL is now built from
+  `x-forwarded-host` + `x-forwarded-proto` headers (with `host` and
+  `req.nextUrl.host` as fallbacks), not from `req.nextUrl`. Behind
+  nginx, `req.nextUrl.host` is `127.0.0.1:3000` (the value nginx
+  forwards as `Host` by default), so absolute redirect Locations were
+  pointing the browser at `localhost`. Trusting `x-forwarded-host` is
+  safe here because port 3000 binds to 127.0.0.1 only — the only
+  thing that can hit this Node process is nginx.
+- `server-scripts/deploy-queue/deploy-once.sh` — after wiring the
+  standalone runtime and copying `.next/static` + `public/`, the
+  script now `find`s the live workspace's
+  `node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/client`
+  directory (populated by `prisma generate` during the build) and
+  copies it to the matching path under
+  `apps/web/.next/standalone/node_modules/.pnpm/@prisma+client@*/node_modules/.prisma/`.
+  Next's static tracer doesn't follow `dlopen()` calls, so the
+  `libquery_engine-*.so.node` binaries are otherwise omitted from the
+  standalone bundle and Prisma crashes the first time any handler
+  runs `prisma.user.findUnique`. The deploy log line to look for is
+  `Prisma client mirrored into standalone: …`. If this line is
+  missing from a future deploy, every Prisma call will throw
+  `PrismaClientInitializationError`. Both the in-repo copy
+  (`server-scripts/deploy-queue/deploy-once.sh`) and the on-disk copy
+  at `/opt/bvisible/deploy-queue/deploy-once.sh` were updated; the
+  worker reads the on-disk one.
 
 **Migration name**
 
