@@ -1,0 +1,34 @@
+---
+description: Enforce git push before any deploy — changes must be committed and pushed to origin first
+alwaysApply: true
+---
+
+# Git Push Before Deploy
+
+**Every change must be committed and pushed to `origin` before any deploy step is run.**
+
+## Required Order
+
+1. Stage and commit all changes
+2. Push to the remote (`git push origin <branch>`)
+3. Only then run the deploy command
+
+## Examples
+
+```bash
+# ✅ CORRECT
+git add .
+git commit -m "your message"
+git push origin main
+# ...then deploy
+
+# ❌ WRONG — never deploy without pushing first
+npm run deploy   # without a prior git push
+vercel           # without a prior git push
+```
+
+## Rules
+
+- Never run a deploy command if there are unpushed commits (`git status` should show "Your branch is up to date").
+- If there are uncommitted changes, commit them before pushing.
+- The remote repository is: https://github.com/izzwgg-arch/bvisible.git

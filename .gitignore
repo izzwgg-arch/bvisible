@@ -1,0 +1,40 @@
+# Environment variables — never commit
+.env
+.env.*
+.env.local
+.env.*.local
+
+# Keys & credentials
+*.pem
+*.key
+id_rsa
+id_rsa*
+id_ed25519
+id_ed25519*
+*.ppk
+known_hosts
+
+# Runtime artifacts (server-side or local)
+uploads/
+logs/
+*.log
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.npm/
+
+# Build output
+.next/
+dist/
+build/
+out/
+coverage/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

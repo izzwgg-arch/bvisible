@@ -1,0 +1,13 @@
+[Unit]
+Description=B Visible deploy worker (one-shot, runs the next queued job)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/opt/bvisible/deploy-queue/deploy-worker.sh
+# Worker exits quickly when no job; flock guarantees serialization
+TimeoutStartSec=0
+Nice=5
