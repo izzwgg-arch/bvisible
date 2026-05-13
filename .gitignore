@@ -30,6 +30,8 @@ dist/
 build/
 out/
 coverage/
+*.tsbuildinfo
+tsconfig.tsbuildinfo
 
 # OS / editor cruft
 .DS_Store

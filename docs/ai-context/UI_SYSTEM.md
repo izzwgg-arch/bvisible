@@ -11,6 +11,22 @@ The look, feel, and behavior of the web app.
 - **Practicality is king, user-friendly is queen.** Don't add a flourish that
   costs the user a click.
 
+## Currently shipped (foundation scaffold)
+
+- Next.js 15 App Router + React 19 + TypeScript + Tailwind 4.
+- App shell at `apps/web/components/app-shell.tsx` — fixed 240px sidebar,
+  topbar with page title + health pill, main content area.
+- Brand mark at `apps/web/components/brand.tsx` — square accent tile + wordmark
+  + "Operations" eyebrow.
+- Design tokens defined in `apps/web/app/globals.css` under `@theme` (CSS
+  custom properties): `--color-bv-bg`, `--color-bv-surface`,
+  `--color-bv-border`, `--color-bv-text`, `--color-bv-muted`,
+  `--color-bv-accent`, `--radius-bv` (12px), `--shadow-bv-card`,
+  `--shadow-bv-elevated`, and `--font-sans` (Inter stack).
+- Utility helper `cn()` at `apps/web/lib/cn.ts` (clsx + tailwind-merge).
+- The placeholder dashboard at `/` is fully static (no DB, no env reads at
+  render) so the production build succeeds without a live database.
+
 ## Layout (web)
 
 ```

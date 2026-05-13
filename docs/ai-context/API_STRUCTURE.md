@@ -26,6 +26,12 @@ HTTP status codes follow the usual rules: 200 ok, 400 validation, 401 not
 authenticated, 403 not authorized (e.g. wrong tenant), 404 not found, 409
 conflict, 422 business-rule violation, 500 server error.
 
+## Currently shipped (foundation)
+
+| Path | Method | Behavior |
+|---|---|---|
+| `/api/health` | `GET` | Returns `{"status":"ok","service":"bvisible-web"}`. Marked `dynamic = 'force-dynamic'` and `runtime = 'nodejs'`. No auth, no DB. Used by deploy healthchecks and uptime monitors. |
+
 ## Resource sketch (target)
 
 | Resource | Routes |

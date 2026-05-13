@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+*.sh         text eol=lf
+*.bash       text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.service    text eol=lf
+*.timer      text eol=lf
+Dockerfile*  text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary

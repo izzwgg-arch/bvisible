@@ -120,6 +120,24 @@ df -h /
 free -h
 ```
 
+## Repo runtime stack (now in tree)
+
+| Component | Where | Notes |
+|---|---|---|
+| pnpm workspace | repo root | `packageManager: pnpm@11.1.1` (matches server) |
+| Web app | `apps/web` | Next.js 15, React 19, Tailwind 4, App Router, TS strict |
+| DB package | `packages/db` | Prisma 6 (postgresql), schema at `packages/db/prisma/schema.prisma` |
+| Health endpoint | `apps/web/app/api/health/route.ts` | `GET /api/health → {"status":"ok","service":"bvisible-web"}` |
+
+Build pipeline used by the deploy queue:
+
+1. `pnpm install --frozen-lockfile` (root)
+2. `pnpm run build` → runs `pnpm --filter @bvisible/db run build` (`prisma
+   generate`) then `pnpm --filter @bvisible/web run build` (`next build`)
+3. No `docker-compose.yml` yet, no service start, no healthcheck script — the
+   deploy currently succeeds at install + build only. Nginx still serves the
+   placeholder until a runtime is wired in.
+
 ## Manual / outstanding steps
 
 1. Real domain + TLS via `certbot --nginx -d <domain>`.
@@ -128,3 +146,9 @@ free -h
    user first).
 4. Add backup automation writing to `/opt/bvisible/backups/`.
 5. (Optional) Add a small swapfile for safety.
+6. Provide `DATABASE_URL` (and the rest of `ENVIRONMENT_VARIABLES.md`) at
+   `/opt/bvisible/shared/env/.env`. `prisma generate` does not need it, so
+   the foundation deploy passes without one — but feature deploys that read
+   from the DB will fail until the `.env` is filled.
+7. Add `docker-compose.yml` (web + db + redis) and a `scripts/healthcheck.sh`
+   when we want the deploy to actually start the app and verify it.

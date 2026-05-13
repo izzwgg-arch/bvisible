@@ -3,6 +3,49 @@
 The Prisma schema lives in `packages/db/prisma/schema.prisma`. This file is the
 human-readable map. Update it whenever the schema changes.
 
+## Currently shipped (foundation)
+
+Tracked since the `chore: scaffold web app and db foundation` commit.
+
+```prisma
+enum Role { SUPER_ADMIN  ADMIN  USER }
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String?              // null for SUPER_ADMIN
+  email        String
+  name         String?
+  role         Role     @default(USER)
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@unique([tenantId, email], name: "tenant_email_unique")
+  @@index([tenantId])
+  @@index([role])
+  @@map("users")
+}
+```
+
+Notes:
+- `User.tenantId` is nullable specifically to allow `SUPER_ADMIN` accounts that
+  do not belong to any tenant. Tenant users have a unique `(tenantId, email)`.
+- No migrations have been generated yet. `prisma migrate dev` / `migrate deploy`
+  will create the first one when a real database is wired in.
+- `passwordHash` is nullable because auth is not yet wired (no UI, no
+  registration flow). Once auth lands, it is required for accounts that log in
+  with a password (Google OAuth users may still leave it null).
+
 ## Core entities (target schema)
 
 ```

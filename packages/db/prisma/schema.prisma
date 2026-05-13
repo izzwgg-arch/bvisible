@@ -1,0 +1,51 @@
+// B Visible — foundation schema.
+// Foundation only: Tenant, User, Role enum.
+// See docs/ai-context/DATA_MODEL.md for the target model set.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  email        String
+  name         String?
+  role         Role     @default(USER)
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // SUPER_ADMIN users have tenantId = null and a globally unique email.
+  // Tenant users have a unique email per tenant.
+  @@unique([tenantId, email], name: "tenant_email_unique")
+  @@index([tenantId])
+  @@index([role])
+  @@map("users")
+}
