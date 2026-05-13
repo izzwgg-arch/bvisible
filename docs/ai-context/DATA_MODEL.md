@@ -3,7 +3,7 @@
 The Prisma schema lives in `packages/db/prisma/schema.prisma`. This file is the
 human-readable map. Update it whenever the schema changes.
 
-## Currently shipped (foundation + auth)
+## Currently shipped (foundation + auth + estimates)
 
 ```prisma
 enum Role { SUPER_ADMIN  ADMIN  USER }
@@ -105,6 +105,92 @@ model AuditLog {
   @@index([action, createdAt])
   @@map("audit_logs")
 }
+
+enum EstimateStatus { DRAFT  SENT  APPROVED  REJECTED }
+enum EstimateLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
+
+model Client {
+  id          String    @id @default(cuid())
+  tenantId    String                                            // never null
+  companyName String
+  contactName String?
+  email       String?
+  phone       String?
+  notes       String?
+  deletedAt   DateTime?                                          // soft delete
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimates Estimate[]
+  @@index([tenantId, companyName])
+  @@index([tenantId, deletedAt])
+  @@map("clients")
+}
+
+model Machine {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  ratePerHourCents Int                                          // integer cents per hour
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines  EstimateLineItem[]
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("machines")
+}
+
+model Estimate {
+  id                String         @id @default(cuid())
+  tenantId          String
+  clientId          String
+  number            String                                      // EST-NNNNNN, per-tenant
+  title             String
+  status            EstimateStatus @default(DRAFT)
+  multiplierMilli   Int            @default(3000)                // 3.000× sell multiplier (R-EST-01)
+  designFlatCents   Int            @default(15000)               // $150 flat, set 0 to waive
+  notes             String?
+  // Cached totals — recomputed by @bvisible/pricing inside save tx.
+  subtotalCostCents Int            @default(0)
+  finalPriceCents   Int            @default(0)
+  createdById       String
+  deletedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client    Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines     EstimateLineItem[]
+  @@unique([tenantId, number])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, clientId])
+  @@index([tenantId, deletedAt])
+  @@map("estimates")
+}
+
+model EstimateLineItem {
+  id                String           @id @default(cuid())
+  tenantId          String
+  estimateId        String
+  sortOrder         Int                                          // explicit, 0-based
+  kind              EstimateLineKind                             // discriminator → engine bucket
+  description       String
+  qtyMilli          Int              @default(1000)              // qty × 1000 (1.5h = 1500)
+  unitCostCents     Int              @default(0)
+  computedCostCents Int              @default(0)                 // cached, refreshed on save
+  machineId         String?                                      // only meaningful for kind=MACHINE
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  machine  Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  @@index([tenantId, estimateId, sortOrder])
+  @@index([estimateId, sortOrder])
+  @@map("estimate_line_items")
+}
 ```
 
 Notes:
@@ -132,6 +218,7 @@ Notes:
 |---|---|---|
 | `20260513180326_init` | 2026-05-13 | `Role` enum, `tenants`, `users`, indexes, `tenantId` FK. |
 | `20260513192157_auth_and_invites` | 2026-05-13 | New columns on `users` (`lastLoginAt`, `disabledAt`, `invitedAt`, `inviteAcceptedAt`); new tables `sessions`, `user_invites`, `password_reset_tokens`, `audit_logs`; partial unique index `users_email_super_admin_key`. Generated against a shadow Postgres on the server (`server-scripts/db/.shadow-migrate.sh`) so the production DB was not touched until the deploy ran `migrate deploy`. |
+| `20260513221527_estimates_clients_machines` | 2026-05-13 | New enums `EstimateStatus`, `EstimateLineKind`; new tables `clients`, `machines`, `estimates`, `estimate_line_items`. All tenant-scoped, all money in integer cents, qty in `qtyMilli`. Indexes for `(tenantId, *)` lookups and `unique(tenantId, number)` on estimates. Generated via the same shadow-Postgres workflow; `.shadow-migrate.sh` was extended with a `--append-superadmin-index` flag (default off) so it no longer hand-appends the SUPER_ADMIN partial unique index for every migration. |
 
 ## Core entities (target schema)
 

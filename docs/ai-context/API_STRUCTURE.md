@@ -49,9 +49,14 @@ integrations and lands later.
 | `completeResetAction` | `app/(auth)/reset/[token]/actions.ts` | public (token-gated) |
 | `acceptInviteAction` | `app/(auth)/invite/[token]/actions.ts` | public (token-gated) |
 | `inviteUserAction` | `app/(app)/admin/users/actions.ts` | ADMIN, SUPER_ADMIN |
-| `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN |
+| `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN — also seeds the per-tenant default `Machine` rows. |
 | `changePasswordAction` | `app/(app)/settings/actions.ts` | any signed-in |
 | `sendTestEmailAction` | `app/(app)/settings/email-test/actions.ts` | SUPER_ADMIN |
+| `createClientAction` | `app/(app)/clients/actions.ts` | tenant user (ADMIN, USER) |
+| `createEstimateAction` | `app/(app)/estimates/actions.ts` | tenant user. Allocates `EST-NNNNNN` per tenant via advisory lock + `nextEstimateNumber` inside the create transaction; verifies the chosen `clientId` belongs to the caller's tenant. |
+| `saveEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | tenant user. Replaces all line items + meta in one transaction; reruns the central pricing engine (`@bvisible/pricing`) so cached `subtotalCostCents` / `finalPriceCents` match the editor's display. Logs `estimate_multiplier_overridden` whenever the multiplier deviates from the row's prior value. |
+| `updateEstimateStatusAction` | `app/(app)/estimates/[id]/actions.ts` | tenant user |
+| `deleteEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | ADMIN, SUPER_ADMIN — soft delete (sets `deletedAt`). |
 
 Each action validates input with a `zod` schema from
 `apps/web/lib/validators.ts`, audits the result via
@@ -70,8 +75,13 @@ client (it always comes from the session).
 | `/dashboard` | protected | Greeting + role/tenant cards. |
 | `/settings` | protected | Account info, change-password, sign-out. |
 | `/admin/users` | protected (ADMIN, SUPER_ADMIN) | List + invite. Sends invite email via SMTP; falls back to inline link on SMTP failure. |
-| `/admin/tenants` | protected (SUPER_ADMIN) | List + create. |
+| `/admin/tenants` | protected (SUPER_ADMIN) | List + create. New tenants get the default `Machine` catalog seeded (Colex, laser, flatbed, roll-to-roll). |
 | `/settings/email-test` | protected (SUPER_ADMIN) | SMTP diagnostics + send-test-email. Runs `verify()` then `sendMail()` from `apps/web/lib/mailer.ts`. Sanitized error display — no credentials leak to UI. |
+| `/clients` | protected (tenant user) | Tenant client list + "New client" CTA. |
+| `/clients/new` | protected (tenant user) | Create-client form (companyName required; contact, email, phone, notes optional). |
+| `/estimates` | protected (tenant user) | Tenant estimate list with cached cost + sell totals + status pills. |
+| `/estimates/new` | protected (tenant user) | Pick client + title; redirects to the editor. |
+| `/estimates/[id]` | protected (tenant user) | Spreadsheet-style line-item editor. Uses the reusable grid keyboard helper at `apps/web/lib/keyboard/grid-nav.ts`. Cmd/Ctrl+S saves; Enter / Shift+Enter move vertically inside the grid; per-row × / ↑ / ↓ buttons. |
 
 ## Resource sketch (target)
 

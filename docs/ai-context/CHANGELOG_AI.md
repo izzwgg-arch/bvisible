@@ -5,6 +5,232 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Estimate foundation (Phase 6)
+
+**Commit:** _to be filled in by the commit step._
+**Migration:** `20260513221527_estimates_clients_machines`.
+
+**Scope**
+
+The first product surface for the platform: clients, estimates, line
+items, a centralized pricing engine, a spreadsheet-style editor with
+keyboard navigation, and an admin-style estimate list. All formulas
+from `ESTIMATE_ENGINE.md` are implemented in a new pure-TypeScript
+package `@bvisible/pricing` and called from both the editor (every
+keystroke) and the save action (server-side, inside the same Prisma
+transaction that writes line items). Tenant isolation is enforced on
+every query. Money is integer cents end-to-end; quantities are
+integer milli-units (`qtyMilli = qty × 1000`); the multiplier is an
+integer milli-multiplier (`multiplierMilli`). The editor never floats.
+
+Did NOT add: purchase orders, vendor email ingestion, channel-letter
+calculator, banner-calculator UI, drag-and-drop reorder, snapshot /
+revision model, accounting exports, approvals/workflows, AI quoting,
+or notifications.
+
+**What changed (repo)**
+
+Schema (`packages/db`):
+
+- `prisma/schema.prisma` — adds enums `EstimateStatus`
+  (`DRAFT/SENT/APPROVED/REJECTED`) and `EstimateLineKind`
+  (`MATERIAL/MACHINE/LABOR/DESIGN/INSTALL/MISC`); adds models
+  `Client`, `Machine`, `Estimate`, `EstimateLineItem`; adds reverse
+  relations on `Tenant` and `User`. Per the Phase 6 spec, every
+  product table carries a non-nullable `tenantId` and a composite
+  index `(tenantId, …)` on every commonly queried column. Money is
+  `Int` cents; quantity is `qtyMilli` `Int`. `Estimate` has a unique
+  `(tenantId, number)` and cached `subtotalCostCents` /
+  `finalPriceCents` columns.
+- `src/index.ts` — re-export the new enums and types
+  (`Client`, `Machine`, `Estimate`, `EstimateLineItem`,
+  `EstimateStatus`, `EstimateLineKind`).
+- `prisma/migrations/20260513221527_estimates_clients_machines/migration.sql`
+  — generated against shadow Postgres on the server with
+  `server-scripts/db/.shadow-migrate.sh`. Pure DDL: 2 enums, 4 tables,
+  10 indexes, 7 foreign keys. No partial-index hand-edits required.
+
+New workspace package (`@bvisible/pricing`):
+
+- `packages/pricing/package.json`, `tsconfig.json`, `src/index.ts` —
+  zero-runtime-deps TypeScript-only package, included via pnpm
+  workspace.
+- `src/types.ts` — `LineKind`, `LineInput`, `EstimateInput`,
+  `EstimateOutput`, `BreakdownByKind`. Pure shapes, no Prisma imports.
+- `src/money.ts` — `roundCents`, `formatMoney`, `parseMoney`. Money is
+  integer cents; the parser accepts `12`, `12.50`, `$12.50`, `1,234.56`.
+- `src/qty.ts` — `qtyToMilli`, `qtyFromMilli`, `formatQty`, `parseQty`.
+- `src/sqft.ts` — R-EST-02 (`sqft = w_in × h_in / 144`).
+- `src/banner.ts` — R-EST-03 (banner pricing with $4/sf base, $3/sf
+  over 200, $0.50/grommet, $45 minimum) returning `{cents, baseCents,
+  overCents, grommetCents, appliedMinimum}` so the calculator UI can
+  show the breakdown.
+- `src/line.ts` — `computeLineCostCents({qtyMilli, unitCostCents}) =
+  round(qty × cost / 1000)`. One formula, used by every kind of line.
+- `src/estimate.ts` — `computeEstimate({multiplierMilli,
+  designFlatCents, lines})` runs once per render in the editor and
+  once per save on the server. Returns `{lineCosts (by id), breakdown
+  (by kind), subtotalCostCents, finalPriceCents}`. R-EST-01 lives
+  here.
+
+Validators + helpers (`apps/web`):
+
+- `lib/validators.ts` — adds `createClientSchema`,
+  `createEstimateSchema`, `estimateLineSchema`, `saveEstimateSchema`,
+  `updateEstimateStatusSchema`. Numeric fields are bounded to keep a
+  fat-fingered keystroke from 100×-multiplying a $50 k subtotal
+  (`multiplierMilli ≤ 10000`, line cost `≤ 100,000,000_00`).
+- `lib/auth/audit.ts` — extends `AuditAction` with
+  `client_created`, `estimate_created`, `estimate_saved`,
+  `estimate_status_changed`, `estimate_multiplier_overridden`,
+  `estimate_deleted`.
+- NEW `lib/estimate/number.ts` — `nextEstimateNumber(tx, tenantId)`
+  allocates `EST-NNNNNN` per tenant under a Postgres advisory lock
+  inside the create transaction so two concurrent creates can never
+  collide on `unique(tenantId, number)`.
+- NEW `lib/estimate/seed-machines.ts` — `ensureDefaultMachines(tenantId)`
+  upserts the four default machine rows (`Colex SCC CNC`,
+  `Laser cutter`, `Flatbed printer`, `Roll-to-roll printer`) at the
+  rates from `ESTIMATE_ENGINE.md`. Idempotent via
+  `createMany({skipDuplicates: true})` against `unique(tenantId, name)`.
+  Called by `createTenantAction`.
+- NEW `lib/estimate/defaults.ts` — `defaultUnitCostCents(kind)` and
+  `defaultDescription(kind)` so newly added rows pre-fill with the
+  shop's standard rates ($50/hr labor, $150/hr install, $150 design).
+- NEW `lib/estimate/format.ts` — re-exports money/qty formatters from
+  `@bvisible/pricing` plus `kindLabel(kind)` and `qtyHint(kind)`.
+- NEW `lib/keyboard/grid-nav.ts` — `makeGridKeyHandler(opts)` returns
+  one `onKeyDown` for an entire grid. Handles Enter (down + auto-append)
+  and Shift+Enter (up); Tab is left to the browser; arrow keys are
+  intentionally NOT hijacked (would break caret nav inside text inputs).
+  Cells opt in by setting `data-cell-row`, `data-cell-col`,
+  `data-cell-grid`. The handler is React-free for unit testing.
+
+Reusable grid primitives:
+
+- NEW `apps/web/components/grid/cell-input.tsx` — exports `<CellInput>`
+  (text) and `<NumericCell>` (money/qty/multiplier). `<NumericCell>`
+  keeps an internal "raw" string so the user can type intermediate
+  invalid states (`1.`); on blur, parse → snap-back-on-garbage →
+  reformat-on-success. `select()` on focus mirrors Excel.
+
+Clients UI:
+
+- NEW `app/(app)/clients/page.tsx`, `actions.ts` (`createClientAction`),
+  `new/page.tsx`, `new/client-form.tsx`. Tenant-scoped via
+  `requireTenantId()`.
+
+Estimates UI:
+
+- NEW `app/(app)/estimates/page.tsx` — list with cached cost + sell
+  totals + status pills. Empty-state CTAs differ depending on whether
+  the tenant has any clients yet.
+- NEW `app/(app)/estimates/actions.ts` — `createEstimateAction`
+  (allocates the per-tenant `EST-NNNNNN` number and verifies the
+  picked client belongs to the caller's tenant).
+- NEW `app/(app)/estimates/new/{page.tsx,new-estimate-form.tsx}`.
+- NEW `app/(app)/estimates/[id]/page.tsx` — RSC bootstrap that loads
+  the estimate, machines, and clients in parallel.
+- NEW `app/(app)/estimates/[id]/editor.tsx` — top-level client
+  component (useReducer over a small action set, dirty tracking via
+  JSON snapshot, Cmd/Ctrl+S to save).
+- NEW `app/(app)/estimates/[id]/line-grid.tsx` — the spreadsheet:
+  one `<table>`, per-cell `data-cell-*` attrs, single `onKeyDown`
+  on the grid root. Per-row × / ↑ / ↓ buttons.
+- NEW `app/(app)/estimates/[id]/totals-panel.tsx` — sticky breakdown
+  + design-flat-fee + multiplier (with override warning) + final
+  sell price + Save / status / soft-delete.
+- NEW `app/(app)/estimates/[id]/actions.ts` — `saveEstimateAction`
+  (replaces all line items + meta in one transaction; reruns
+  `@bvisible/pricing` server-side; cached `subtotalCostCents` /
+  `finalPriceCents` are written in the same tx; logs `estimate_saved`
+  and conditionally `estimate_multiplier_overridden`),
+  `updateEstimateStatusAction`, `deleteEstimateAction` (ADMIN /
+  SUPER_ADMIN only, soft delete).
+
+Wiring:
+
+- `apps/web/components/app-shell.tsx` — adds `Estimates` and `Clients`
+  to `BASE_NAV`. SUPER_ADMIN-without-tenant clicks redirect via
+  `requireTenantId()` to `/dashboard?error=no-tenant`.
+- `apps/web/app/(app)/admin/tenants/actions.ts` — calls
+  `ensureDefaultMachines(tenantId)` after `tenant.create(...)`. Errors
+  during seeding are logged but do not block tenant creation; the
+  admin can re-seed by adding machines manually.
+- `apps/web/package.json` — adds `@bvisible/pricing` workspace dep.
+
+Migration tooling:
+
+- `server-scripts/db/.shadow-migrate.sh` — adds an
+  `--append-superadmin-index` flag (default off). Previously the
+  script unconditionally appended the SUPER_ADMIN partial unique
+  index to every new migration's SQL, which meant any post-Phase-4
+  migration would fail validation with `42P07` ("relation already
+  exists"). The flag is now opt-in and is documented in-script.
+
+Docs:
+
+- `DATA_MODEL.md` — adds the Phase-6 model definitions and migration row.
+- `ESTIMATE_ENGINE.md` — adds the implementation map and notes that
+  multiplier overrides write to `audit_logs` automatically.
+- `API_STRUCTURE.md` — documents the new pages and actions.
+- `UI_SYSTEM.md` — documents the editor, the grid primitives, the
+  keyboard helper, and the new sidebar nav items.
+- `AUTH_AND_PERMISSIONS.md` — adds the new routes and actions to the
+  permissions tables.
+- `KNOWN_RULES.md` — links R-EST-01..03 to their concrete
+  implementation files; clarifies that R-EST-04 finalize gating still
+  ships with the PO module.
+- `DEBUGGING.md` — new § 11c "Estimates / pricing" with `psql`
+  queries to verify cached totals, audit lookups for multiplier
+  overrides, and a one-shot for back-seeding machines on
+  pre-existing tenants.
+
+**Risks**
+
+- **Pricing math drift**: solved by integer-only inputs, integer-only
+  intermediate state, and a single rounding step at line-cost time.
+  The same `computeEstimate(...)` runs in the browser and the server
+  on every save so the cached totals can never diverge from what the
+  editor showed.
+- **Tenant isolation**: every product query passes `tenantId` from
+  `requireTenantId()`. `saveEstimateAction` re-validates ownership of
+  the estimate AND of every referenced `machineId` before writing.
+- **Save-burst races**: a tenant-scoped Postgres advisory lock
+  serializes per-tenant `EST-NNNNNN` allocation. The unique
+  `(tenantId, number)` index is a belt-and-suspenders second line.
+- **Editor scale**: `saveEstimateSchema` caps lines at 500 (the spec
+  expects 10–30). At 500 the delete-all + create-all save strategy is
+  still ~tens of ms; at 5 000 we'd need a diff-based save and probably
+  drag-and-drop.
+- **Machine catalog fragility**: tenants created BEFORE this phase
+  have no machines. The DEBUGGING runbook documents the back-fill
+  one-liner. Future tenants get the seed automatically.
+- **No vitest harness yet**: the engine is small enough that the
+  editor exercises every formula on every keystroke (visual smoke
+  test). Adding `vitest` is a separate test-infrastructure task.
+
+**Local verification**
+
+- `pnpm install --frozen-lockfile` — clean.
+- `pnpm --filter @bvisible/db exec prisma generate` — clean
+  (Prisma 6.19.3, includes new models).
+- `pnpm --filter @bvisible/web run build` — green;
+  bundles `/estimates`, `/estimates/new`, `/estimates/[id]`,
+  `/clients`, `/clients/new` alongside the existing routes; the
+  editor weighs in at `~6.8 KB / 137 KB First Load JS`.
+- Standalone build (`NEXT_BUILD_STANDALONE=1`) runs on the Linux
+  deploy host; locally on Windows it always fails on `EPERM symlink`
+  per the comment in `apps/web/next.config.mjs`.
+- Shadow Postgres on the server validates the new migration cleanly
+  (`--- shadow-migrate: SUCCESS`).
+
+**Server verification (deploy)**
+
+_To be filled in by the commit + deploy step below._
+
+---
+
 ## 2026-05-13 — SMTP mailer foundation (Phase 5)
 
 **Commit:** `9e57aae` (`feat: add SMTP mailer foundation`) → followed

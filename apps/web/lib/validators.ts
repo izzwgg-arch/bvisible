@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Role } from '@bvisible/db';
+import { EstimateLineKind, EstimateStatus, Role } from '@bvisible/db';
 
 // Email rules: lowercase, trimmed, max 254 (RFC 5321), valid shape.
 export const emailSchema = z
@@ -91,6 +91,106 @@ export const testEmailSchema = z.object({
   recipient: emailSchema,
 });
 
+// ---------------------------------------------------------------------
+// Estimate / client foundation
+// ---------------------------------------------------------------------
+
+// Trim, collapse internal whitespace, cap length. Used by client and
+// estimate display fields where a stray newline would break the table.
+const shortText = (max: number) =>
+  z
+    .string()
+    .transform((s) => s.replace(/\s+/g, ' ').trim())
+    .pipe(z.string().min(1, 'Cannot be blank.').max(max, `Too long (max ${max} chars).`));
+
+const longText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Too long (max ${max} chars).`)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null));
+
+const optionalEmail = z
+  .union([z.literal(''), emailSchema])
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : null));
+
+const optionalShort = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null));
+
+export const createClientSchema = z.object({
+  companyName: shortText(160),
+  contactName: optionalShort(120),
+  email: optionalEmail,
+  phone: optionalShort(40),
+  notes: longText(2000),
+});
+
+export const createEstimateSchema = z.object({
+  clientId: z.string().min(1, 'Pick a client.').max(60),
+  title: shortText(160),
+});
+
+// One row in the editor grid as it leaves the client.
+// `qtyMilli` and `unitCostCents` are integers; the client is
+// responsible for parsing user input into these forms (see
+// apps/web/lib/estimate/format.ts and packages/pricing/src/qty.ts).
+export const estimateLineSchema = z.object({
+  // Optional id so the server can keep the same row across saves;
+  // missing means "newly inserted in this batch — assign one".
+  id: z.string().min(1).max(60).optional(),
+  kind: z.nativeEnum(EstimateLineKind),
+  description: z.string().trim().max(240),
+  qtyMilli: z
+    .number()
+    .int()
+    .min(-1_000_000_000, 'Quantity out of range.')
+    .max(1_000_000_000, 'Quantity out of range.'),
+  unitCostCents: z
+    .number()
+    .int()
+    .min(-100_000_000_00, 'Unit cost out of range.')
+    .max(100_000_000_00, 'Unit cost out of range.'),
+  machineId: z
+    .string()
+    .max(60)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null)),
+  notes: optionalShort(500),
+});
+
+// Bulk save — replaces all lines + meta in one transaction.
+// `multiplierMilli` is the sell-multiplier × 1000 (default 3000 = 3×).
+// 0–10× covers every realistic markup; refuse anything wilder so a
+// fat-fingered keystroke can't 100×-multiply a $50k subtotal.
+export const saveEstimateSchema = z.object({
+  estimateId: z.string().min(1).max(60),
+  title: shortText(160),
+  notes: longText(4000),
+  multiplierMilli: z
+    .number()
+    .int()
+    .min(0, 'Multiplier cannot be negative.')
+    .max(10_000, 'Multiplier capped at 10×.'),
+  designFlatCents: z
+    .number()
+    .int()
+    .min(0, 'Design fee cannot be negative.')
+    .max(1_000_000_00, 'Design fee out of range.'),
+  lines: z.array(estimateLineSchema).max(500, 'Too many lines (max 500).'),
+});
+
+export const updateEstimateStatusSchema = z.object({
+  estimateId: z.string().min(1).max(60),
+  status: z.nativeEnum(EstimateStatus),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RequestResetInput = z.infer<typeof requestResetSchema>;
 export type CompleteResetInput = z.infer<typeof completeResetSchema>;
@@ -99,3 +199,8 @@ export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export type TestEmailInput = z.infer<typeof testEmailSchema>;
+export type CreateClientInput = z.infer<typeof createClientSchema>;
+export type CreateEstimateInput = z.infer<typeof createEstimateSchema>;
+export type EstimateLineInput = z.infer<typeof estimateLineSchema>;
+export type SaveEstimateInput = z.infer<typeof saveEstimateSchema>;
+export type UpdateEstimateStatusInput = z.infer<typeof updateEstimateStatusSchema>;

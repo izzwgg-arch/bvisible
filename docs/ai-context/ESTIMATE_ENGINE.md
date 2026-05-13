@@ -1,8 +1,26 @@
 # ESTIMATE_ENGINE — B Visible
 
 The pure pricing rules. Implementation lives in `packages/pricing/`. All
-formulas operate on **integer cents** for money and **inches** for size; only
-the UI converts to dollars/feet.
+formulas operate on **integer cents** for money and **integer milli-units**
+for quantity (`qtyMilli = qty * 1000`); the UI converts to dollars/feet/decimal
+qty for display only.
+
+## Implementation map
+
+| File | Exports | What it computes |
+|---|---|---|
+| `packages/pricing/src/types.ts` | `LineKind`, `LineInput`, `EstimateInput`, `EstimateOutput`, `BreakdownByKind` | Shared shapes. |
+| `packages/pricing/src/money.ts` | `formatMoney`, `parseMoney`, `roundCents` | Display + parse helpers, banker's rounding via `Math.round`. |
+| `packages/pricing/src/qty.ts` | `qtyToMilli`, `qtyFromMilli`, `formatQty`, `parseQty` | Quantity scaling (1.5 → 1500). |
+| `packages/pricing/src/sqft.ts` | `computeSqft(w_in, h_in)` | R-EST-02. |
+| `packages/pricing/src/banner.ts` | `bannerPrice({sqft, grommets})` | R-EST-03 — returns cents + breakdown + minimum-applied flag. |
+| `packages/pricing/src/line.ts` | `computeLineCostCents({qtyMilli, unitCostCents})` | The single per-line formula. |
+| `packages/pricing/src/estimate.ts` | `computeEstimate({multiplierMilli, designFlatCents, lines})` | The single source of truth for subtotal + final sell price. Called by the editor on every keystroke AND by `saveEstimateAction` server-side so cached totals match what the user saw. |
+
+The editor is `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel}.tsx`.
+It hydrates from RSC bootstrap data, runs `computeEstimate(...)` synchronously
+on every render, and on Save submits the entire grid to `saveEstimateAction`
+which re-runs the same engine on the server inside one Prisma transaction.
 
 ## Cost components
 
@@ -23,9 +41,14 @@ Raw cost   = Materials + Machines + Shop labor + Design + Install + Misc
 Final sell price = Raw cost × 3      (default multiplier — R-EST-01)
 ```
 
-The multiplier may be **manually overridden** per estimate. Overrides are
-recorded in the estimate audit log (who, when, old, new). Never silently change
-the multiplier in code.
+The multiplier is stored as `multiplierMilli = multiplier * 1000` (default
+`3000`) on `Estimate`. The multiplier may be **manually overridden** per
+estimate. Whenever `saveEstimateAction` sees a value different from the row's
+prior `multiplierMilli` it writes an `estimate_multiplier_overridden` row to
+`audit_logs` with `{from, to, defaultMultiplierMilli}` so deviations from the
+default 3.000× are easy to audit. Never silently change the multiplier in
+code; never display the multiplier as `markup` in a UI affordance unless that
+matches the value the user sees on the editor.
 
 ## Square footage
 
@@ -63,7 +86,13 @@ function bannerPrice(sqft: number, grommets: number): number {
 | Roll-to-roll printer | **$44.21 / hr** |
 
 Rates are stored in the `Machine` table so they can be edited without a code
-deploy. The defaults above are seeded on first run.
+deploy. The defaults above are seeded on the first save **per tenant** by
+`apps/web/lib/estimate/seed-machines.ts` (`ensureDefaultMachines(tenantId)`).
+The seeder is `createMany({skipDuplicates: true})` keyed by
+`unique(tenantId, name)` so re-seeding never overwrites an admin's custom
+rate. `createTenantAction` calls it after creating a tenant; if it ever fails
+the error is logged but tenant creation still succeeds (the admin can edit
+machines manually later).
 
 ## Channel-letter formula
 

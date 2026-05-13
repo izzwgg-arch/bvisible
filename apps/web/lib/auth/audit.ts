@@ -14,7 +14,13 @@ export type AuditAction =
   | 'user_disabled'
   | 'user_enabled'
   | 'tenant_created'
-  | 'super_admin_bootstrapped';
+  | 'super_admin_bootstrapped'
+  | 'client_created'
+  | 'estimate_created'
+  | 'estimate_saved'
+  | 'estimate_status_changed'
+  | 'estimate_multiplier_overridden'
+  | 'estimate_deleted';
 
 export interface AuditEntry {
   action: AuditAction;

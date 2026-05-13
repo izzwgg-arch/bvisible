@@ -649,6 +649,90 @@ post-build. There is no automation for this today — file an issue
 and add a deploy-once.sh block similar to the Prisma engine mirror
 if it ever happens.
 
+## 11c. Estimates / pricing
+
+### Symptom: list shows wrong subtotal/sell, but the editor shows the right one
+
+Both the editor (browser, every keystroke) and `saveEstimateAction` (server,
+on save) call the same `computeEstimate(...)` from `@bvisible/pricing`. The
+list reads cached `Estimate.subtotalCostCents` / `finalPriceCents` columns.
+A divergence means a save did not run — usually because the browser tab was
+closed before clicking Save. Re-open the estimate, hit Save (or `Cmd/Ctrl+S`),
+and the cached totals snap back into sync.
+
+To verify the cache is correct for a specific estimate:
+
+```bash
+docker compose -p bvisible exec -T -e PGPASSWORD="$PG_PASS" db \
+  psql -At -U "$PG_USER" -d "$PG_DB" -c "
+    SELECT e.number, e.subtotal_cost_cents, e.final_price_cents,
+           COALESCE(SUM(li.computed_cost_cents), 0) AS line_sum
+    FROM estimates e
+    LEFT JOIN estimate_line_items li ON li.estimate_id = e.id
+    WHERE e.id = '<estimateId>'
+    GROUP BY e.id;"
+```
+
+`subtotal_cost_cents` should equal `line_sum + design_flat_cents` (when no
+DESIGN-kind lines are present); `final_price_cents` should equal
+`subtotal_cost_cents * multiplier_milli / 1000` rounded to the nearest cent.
+A mismatch is a save bug — file with the estimate number and the diff.
+
+### Symptom: estimate saves but cells "snap back" on blur
+
+`<NumericCell>` (`apps/web/components/grid/cell-input.tsx`) parses the typed
+string on blur. If `parseMoney` / `parseQty` returns `null` (garbage input,
+e.g. accidental letter), the cell snaps back to the last valid value. There's
+no UI for "you typed nonsense" today — surface as a follow-up if it confuses
+users. Workarounds: types like `1.5`, `1.50`, `$1.50`, `1,234.56` all parse
+fine; `1.5x` and `O.5` don't.
+
+### Symptom: "Estimate not found" on save
+
+Caused by:
+- The estimate id in the URL doesn't belong to the caller's tenant
+  (someone shared a deep link across tenants).
+- The estimate was soft-deleted (`deletedAt` is set).
+- The user lost their tenant context (e.g. SUPER_ADMIN unsetting tenant).
+
+Audit log shows the failed call (no row written; only an `estimate_saved`
+row appears on success).
+
+### Symptom: invite-link / multiplier override audit search
+
+```bash
+PGPASSWORD="$PG_PASS" psql -h 127.0.0.1 -U "$PG_USER" -d "$PG_DB" \
+  -c "SELECT created_at, user_id, target_id, metadata
+      FROM audit_logs
+      WHERE action = 'estimate_multiplier_overridden'
+      ORDER BY created_at DESC LIMIT 20;"
+```
+
+`metadata.from`, `metadata.to`, and `metadata.defaultMultiplierMilli` (= 3000)
+let you spot estimates that diverge from the default 3.000× multiplier.
+
+### Symptom: tenant has no machines in the editor picker
+
+The Machine catalog is seeded per tenant by `createTenantAction`
+(`apps/web/lib/estimate/seed-machines.ts`). For tenants that existed BEFORE
+this seeder shipped, run a one-shot from the server:
+
+```bash
+cd /opt/bvisible/app
+( set -a; . /opt/bvisible/shared/env/.env; set +a; \
+  pnpm --filter @bvisible/db exec node --input-type=module -e "
+import { prisma } from '@bvisible/db';
+import { ensureDefaultMachines } from './apps/web/lib/estimate/seed-machines.ts';
+const t = await prisma.tenant.findMany({ select: { id: true, slug: true } });
+for (const x of t) await ensureDefaultMachines(x.id);
+console.log('seeded', t.length, 'tenants');
+" )
+```
+
+(One-liner uses ts-node-style import from the web app; if it ever proves
+flaky, write the four `prisma.machine.createMany(...)` calls inline against
+the shipped rates in `ESTIMATE_ENGINE.md`.)
+
 ## 12. UI / sidebar / drawer / hydration
 
 - Hydration mismatch warnings in browser console → look for `Date.now()` /

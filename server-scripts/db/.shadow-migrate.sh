@@ -8,17 +8,25 @@
 #
 # Usage on server:
 #   /tmp/.shadow-migrate.sh /tmp/new-schema.prisma auth_and_invites
+#   /tmp/.shadow-migrate.sh /tmp/new-schema.prisma auth_and_invites --append-superadmin-index
 #
 # Outputs the new migration directory path to stdout. Caller scp's it
 # back to the local repo.
+#
+# The third argument controls whether to hand-append the SUPER_ADMIN
+# partial unique index. Pass `--append-superadmin-index` ONLY for the
+# initial auth migration that introduces the constraint; subsequent
+# migrations leave it out (the index already exists in production and
+# re-creating it in another migration's SQL would error).
 
 set -euo pipefail
 
 SCHEMA_SRC="${1:-}"
 MIGRATION_NAME="${2:-}"
+APPEND_SUPERADMIN_INDEX="${3:-}"
 
 if [[ -z "$SCHEMA_SRC" || -z "$MIGRATION_NAME" ]]; then
-  echo "usage: $0 <path-to-new-schema.prisma> <migration-name>" >&2
+  echo "usage: $0 <path-to-new-schema.prisma> <migration-name> [--append-superadmin-index]" >&2
   exit 64
 fi
 
@@ -105,10 +113,13 @@ if [[ -z "$NEW_DIR" || ! -d "$NEW_DIR" ]]; then
 fi
 echo "--- shadow-migrate: new migration at $NEW_DIR" >&2
 
-# 7. Append partial unique index for SUPER_ADMIN emails.
+# 7. (Optional) append partial unique index for SUPER_ADMIN emails.
 #    Composite @@unique([tenantId, email]) doesn't catch NULL tenantIds
-#    because Postgres treats NULLs as distinct.
-cat >> "$NEW_DIR/migration.sql" <<'PSQL'
+#    because Postgres treats NULLs as distinct. Only useful for the
+#    one migration that originally introduced the User table; later
+#    migrations would re-create an existing index and fail with 42P07.
+if [[ "$APPEND_SUPERADMIN_INDEX" == "--append-superadmin-index" ]]; then
+  cat >> "$NEW_DIR/migration.sql" <<'PSQL'
 
 -- Partial unique index: SUPER_ADMIN users have tenantId = NULL. The
 -- composite unique above does not catch them because Postgres treats
@@ -118,8 +129,10 @@ CREATE UNIQUE INDEX "users_email_super_admin_key"
   ON "users"("email")
   WHERE "tenantId" IS NULL;
 PSQL
-
-echo "--- shadow-migrate: appended partial unique index" >&2
+  echo "--- shadow-migrate: appended SUPER_ADMIN partial unique index" >&2
+else
+  echo "--- shadow-migrate: skipping SUPER_ADMIN partial unique index (pass --append-superadmin-index to include)" >&2
+fi
 
 # 8. Apply the new migration to the shadow to validate the SQL.
 echo "--- shadow-migrate: applying new migration to shadow (validation)" >&2

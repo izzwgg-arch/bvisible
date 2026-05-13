@@ -11,7 +11,7 @@ The look, feel, and behavior of the web app.
 - **Practicality is king, user-friendly is queen.** Don't add a flourish that
   costs the user a click.
 
-## Currently shipped (foundation + auth)
+## Currently shipped (foundation + auth + estimates)
 
 - Next.js 15 App Router + React 19 + TypeScript + Tailwind 4.
 - **Route groups**: `app/(auth)/*` for unauthenticated pages (login,
@@ -55,6 +55,34 @@ The look, feel, and behavior of the web app.
 - **Empty states** are inline in their tables (e.g. "No users yet.") —
   the dedicated `<EmptyState>` component lands when the first list view
   needs more than one line.
+- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel}.tsx`:
+  - Two-column desktop layout: line grid on the left, sticky totals
+    panel (320px) on the right. Single-column on narrow widths.
+  - Grid uses `<table>` semantics (one DOM node per cell) and the shared
+    cell primitives at `apps/web/components/grid/cell-input.tsx` —
+    `<CellInput>` for text, `<NumericCell>` for money / qty / multiplier.
+    `<NumericCell>` keeps an internal "raw" string so users can type
+    invalid intermediate states (`"1."`); on blur it parses, snaps back
+    on garbage, and reformats on success.
+  - Per-row controls: × (delete), ↑ / ↓ (reorder).
+  - Add-row buttons at the bottom — one per `EstimateLineKind`
+    (Material / Machine / Labor / Design / Install / Misc). Pressing
+    Enter on the last row also appends a row of the same kind.
+  - Totals panel shows breakdown by kind + raw cost + (editable) design
+    flat fee + (editable) sell multiplier + final sell price. An amber
+    note appears when the multiplier deviates from the default 3.000×.
+  - Save button is the primary CTA in the totals panel, disabled until
+    the editor is dirty. `Cmd/Ctrl+S` anywhere inside the editor saves.
+- **Reusable grid keyboard helper** at
+  `apps/web/lib/keyboard/grid-nav.ts` (`makeGridKeyHandler`). Any grid
+  attaches a single `onKeyDown` to its root and tags cells with
+  `data-cell-row` / `data-cell-col` / `data-cell-grid`. Enter steps
+  down (auto-appends a row when at the bottom); Shift+Enter steps up;
+  Tab is left to the browser default. Arrow keys are intentionally
+  not hijacked — that would break caret navigation inside text inputs.
+- **Sidebar nav** for tenant users now shows
+  `Dashboard / Estimates / Clients` in `BASE_NAV`. ADMIN adds Users;
+  SUPER_ADMIN adds Tenants + Email test.
 
 ## Layout (web)
 

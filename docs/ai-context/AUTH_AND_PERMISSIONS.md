@@ -98,6 +98,8 @@ into Prisma for the user behind the helpers.
 | `/settings` | protected | Any role. Self-service password change + logout. |
 | `/admin/users` | protected | ADMIN or SUPER_ADMIN. |
 | `/admin/tenants` | protected | SUPER_ADMIN only. |
+| `/clients`, `/clients/new` | protected | Tenant user (any role with a `tenantId`). Gated by `requireTenantId()`. |
+| `/estimates`, `/estimates/new`, `/estimates/[id]` | protected | Tenant user. The editor is read-write for both ADMIN and USER (per the Phase 6 spec). Soft-delete (the danger-zone button) is restricted to ADMIN / SUPER_ADMIN — the button is not rendered for USER. |
 
 ## Server actions for auth
 
@@ -112,8 +114,13 @@ enforced by Next). Server actions get CSRF protection for free.
 | `completeResetAction` | `app/(auth)/reset/[token]/actions.ts` | Validate token, set new hash, revoke ALL sessions, auto-login, audit. |
 | `acceptInviteAction` | `app/(auth)/invite/[token]/actions.ts` | Validate invite, create/activate user, set hash, auto-login, audit. |
 | `inviteUserAction` | `app/(app)/admin/users/actions.ts` | Issue invite token (hashed), audit. Inline-displayed link. |
-| `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN creates a tenant. Slug unique. Audit. |
+| `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN creates a tenant. Slug unique. Audit. Seeds the per-tenant default `Machine` rows. |
 | `changePasswordAction` | `app/(app)/settings/actions.ts` | Verify current, set new hash, revoke other sessions, audit. |
+| `createClientAction` | `app/(app)/clients/actions.ts` | Tenant user. `requireTenantId()` enforces tenant scope. Audit `client_created`. |
+| `createEstimateAction` | `app/(app)/estimates/actions.ts` | Tenant user. Verifies the chosen `clientId` belongs to the caller's tenant. Allocates `EST-NNNNNN` per tenant inside the create transaction. Audit `estimate_created`. |
+| `saveEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | Tenant user. Validates ownership of the estimate AND every referenced `machineId`. Reruns `@bvisible/pricing` server-side and writes cached totals atomically. Audits `estimate_saved` and (when the multiplier changed) `estimate_multiplier_overridden`. |
+| `updateEstimateStatusAction` | `app/(app)/estimates/[id]/actions.ts` | Tenant user. Audit `estimate_status_changed`. |
+| `deleteEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | ADMIN or SUPER_ADMIN. Soft delete (`deletedAt`); audit `estimate_deleted`. |
 
 ## Permission model
 

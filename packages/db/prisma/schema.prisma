@@ -1,7 +1,10 @@
-// B Visible — auth + tenant foundation schema.
-// Models: Tenant, User, Role enum, Session, UserInvite, PasswordResetToken,
-// AuditLog. Product models (Estimate, PO, Vendor, ...) land later.
-// See docs/ai-context/DATA_MODEL.md for the target model set.
+// B Visible — auth + tenant foundation + estimate foundation.
+// Foundation models: Tenant, User, Role, Session, UserInvite,
+// PasswordResetToken, AuditLog.
+// Estimate foundation: Client, Machine, Estimate, EstimateLineItem
+// + EstimateStatus / EstimateLineKind enums.
+// See docs/ai-context/DATA_MODEL.md for the target model set and
+// docs/ai-context/ESTIMATE_ENGINE.md for the pricing rules.
 
 generator client {
   provider      = "prisma-client-js"
@@ -19,6 +22,27 @@ enum Role {
   USER
 }
 
+enum EstimateStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+}
+
+// One row per editable line in the spreadsheet-style estimate editor.
+// `kind` discriminates which subtotal bucket the line rolls into.
+// DESIGN/INSTALL exist as kinds (in addition to the per-estimate
+// design flat fee) so estimators can add multiple design or install
+// lines if a job needs them. See packages/pricing/src/estimate.ts.
+enum EstimateLineKind {
+  MATERIAL
+  MACHINE
+  LABOR
+  DESIGN
+  INSTALL
+  MISC
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -26,8 +50,12 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users   User[]
-  invites UserInvite[]
+  users     User[]
+  invites   UserInvite[]
+  clients   Client[]
+  machines  Machine[]
+  estimates Estimate[]
+  lineItems EstimateLineItem[]
 
   @@map("tenants")
 }
@@ -50,10 +78,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant         Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sessions       Session[]
-  resetTokens    PasswordResetToken[]
-  invitesIssued  UserInvite[]         @relation("UserInviteInviter")
+  tenant           Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions         Session[]
+  resetTokens      PasswordResetToken[]
+  invitesIssued    UserInvite[]         @relation("UserInviteInviter")
+  estimatesCreated Estimate[]           @relation("EstimateCreator")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -135,4 +164,123 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+// Tenant-scoped customer record. Estimates link to a Client; richer
+// CRM (contacts, addresses, segmentation) lands in a future phase.
+// `deletedAt` enables soft-delete: list queries filter `deletedAt: null`.
+model Client {
+  id          String    @id @default(cuid())
+  tenantId    String
+  companyName String
+  contactName String?
+  email       String?
+  phone       String?
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimates Estimate[]
+
+  @@index([tenantId, companyName])
+  @@index([tenantId, deletedAt])
+  @@map("clients")
+}
+
+// Tenant-scoped machine catalog. Rates seeded per tenant on first run
+// (see apps/web/lib/estimate/seed-machines.ts and the rate table in
+// docs/ai-context/ESTIMATE_ENGINE.md). Stored as integer cents per hour
+// so estimate math stays integer end-to-end.
+model Machine {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  ratePerHourCents Int
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines  EstimateLineItem[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("machines")
+}
+
+// One Estimate per quote. `number` is human-friendly (e.g. EST-000001),
+// allocated per tenant by apps/web/lib/estimate/number.ts inside the
+// same transaction that creates the row.
+//
+// `multiplierMilli` stores the sell multiplier × 1000 (default 3000 =
+// 3.000×, R-EST-01). `designFlatCents` defaults to 15000 ($150 — the
+// standard flat design fee from ESTIMATE_ENGINE.md); set to 0 to waive.
+//
+// `subtotalCostCents` and `finalPriceCents` are CACHED totals,
+// recomputed inside the same transaction that writes line items by
+// the central pricing engine in packages/pricing. List/dashboard
+// views read them directly without joining EstimateLineItem.
+model Estimate {
+  id                String         @id @default(cuid())
+  tenantId          String
+  clientId          String
+  number            String
+  title             String
+  status            EstimateStatus @default(DRAFT)
+  multiplierMilli   Int            @default(3000)
+  designFlatCents   Int            @default(15000)
+  notes             String?
+  subtotalCostCents Int            @default(0)
+  finalPriceCents   Int            @default(0)
+  createdById       String
+  deletedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client    Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines     EstimateLineItem[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, clientId])
+  @@index([tenantId, deletedAt])
+  @@map("estimates")
+}
+
+// One row per line in the estimate grid. `qtyMilli` is the quantity ×
+// 1000 (e.g. 1.500 hours = 1500), so all math stays integer and never
+// drifts from floating-point. `unitCostCents` is integer cents.
+// `computedCostCents` is the cached line total, refreshed by the
+// pricing engine on every save.
+//
+// `machineId` is optional and only meaningful when `kind = MACHINE`;
+// it lets the editor pre-fill `unitCostCents` from the Machine catalog
+// while still allowing per-line overrides without rewriting the
+// catalog rate.
+model EstimateLineItem {
+  id                String           @id @default(cuid())
+  tenantId          String
+  estimateId        String
+  sortOrder         Int
+  kind              EstimateLineKind
+  description       String
+  qtyMilli          Int              @default(1000)
+  unitCostCents     Int              @default(0)
+  computedCostCents Int              @default(0)
+  machineId         String?
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  machine  Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, estimateId, sortOrder])
+  @@index([estimateId, sortOrder])
+  @@map("estimate_line_items")
 }

@@ -6,12 +6,22 @@ it.
 ## Estimates
 
 - **R-EST-01** Default sell multiplier is **3x raw cost**. Manual override is
-  allowed and must be logged on the estimate. See `ESTIMATE_ENGINE.md`.
+  allowed and must be logged on the estimate. Implemented in
+  `packages/pricing/src/estimate.ts` (`computeEstimate`) and stored as
+  `Estimate.multiplierMilli` (default `3000` = 3.000×). Overrides are written
+  to `audit_logs` as `action = 'estimate_multiplier_overridden'` by
+  `saveEstimateAction`. See `ESTIMATE_ENGINE.md`.
 - **R-EST-02** Square footage uses inches: `sqft = width_in × height_in / 144`.
+  Helper: `packages/pricing/src/sqft.ts`.
 - **R-EST-03** Banners price at $4/sf, drop to $3/sf for the area over 200 sf,
-  $45 minimum, $0.50 per grommet.
+  $45 minimum, $0.50 per grommet. Helper: `packages/pricing/src/banner.ts`.
+  (Editor calculator UI to compose a banner line lands in the next phase;
+  the engine helper is shipped now so other surfaces can use it.)
 - **R-EST-04** An estimate cannot be **finalized** until its linked PO has a
   QuickBooks PO number (`PurchaseOrder.qboPoNumber`). See `PO_SYSTEM.md`.
+  No `finalized` status exists yet — Phase 6 statuses are
+  `DRAFT / SENT / APPROVED / REJECTED`. Finalization gating lands with the
+  PO module.
 
 ## Purchase Orders
 

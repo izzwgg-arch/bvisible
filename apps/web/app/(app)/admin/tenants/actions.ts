@@ -6,6 +6,7 @@ import { createTenantSchema } from '@/lib/validators';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { requireSuperAdmin } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
+import { ensureDefaultMachines } from '@/lib/estimate/seed-machines';
 
 export interface CreateTenantState {
   error: string | null;
@@ -39,6 +40,22 @@ export async function createTenantAction(
       return { error: 'That slug is already taken.' };
     }
     throw err;
+  }
+
+  // Seed the default machine catalog so estimators immediately have
+  // the standard machine rates from ESTIMATE_ENGINE.md available in
+  // the line-item picker. Idempotent — safe even if a future code
+  // path also seeds.
+  try {
+    await ensureDefaultMachines(tenantId);
+  } catch (err) {
+    // Don't block tenant creation if seeding fails; the admin can
+    // re-seed by adding machines manually later. Surface in stderr.
+    // eslint-disable-next-line no-console
+    console.error('seed_default_machines_failed', {
+      tenantId,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 
   await writeAuditLog({

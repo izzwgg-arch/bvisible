@@ -1,5 +1,5 @@
 export { prisma } from './client';
-export { Prisma, Role } from '@prisma/client';
+export { Prisma, Role, EstimateStatus, EstimateLineKind } from '@prisma/client';
 export type {
   PrismaClient,
   Tenant,
@@ -8,4 +8,8 @@ export type {
   UserInvite,
   PasswordResetToken,
   AuditLog,
+  Client,
+  Machine,
+  Estimate,
+  EstimateLineItem,
 } from '@prisma/client';
