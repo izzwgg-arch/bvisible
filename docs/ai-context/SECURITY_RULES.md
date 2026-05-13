@@ -31,10 +31,36 @@
 
 ## Auth posture
 
-- Argon2id for password hashes.
-- Session cookies: `HttpOnly; Secure; SameSite=Lax`.
-- JWT access tokens ≤ 15 min, refresh tokens rotate on use.
-- Failed-login backoff per user + per IP. fail2ban already protects SSH.
+- **Argon2id** for password hashes via `@node-rs/argon2` (memoryCost
+  64 MiB, timeCost 3, parallelism 1). Length-only validation (12-128
+  chars) — no composition theatre. Implemented at
+  `apps/web/lib/auth/password.ts`.
+- **DB-backed sessions.** Opaque 256-bit random token in cookie
+  `bv_session` (`HttpOnly; Secure (prod); SameSite=Lax; Path=/;
+  Max-Age=30d`). The DB stores SHA-256(token); a DB leak does not leak
+  live tokens. Logout sets `Session.revokedAt` and clears the cookie.
+  Implementation: `apps/web/lib/auth/session.ts`.
+- **Session token never leaves the cookie jar.** Never logged, never in
+  URL params, never in `localStorage`.
+- **Invite + reset tokens** (256-bit random, base64url) are stored as
+  SHA-256 hashes too. Reset TTL 30 min, invite TTL 7 days, both
+  one-shot.
+- **Email + password timing protection.** Login flow always runs
+  argon2 (verify against the stored hash, OR a fresh `hashPassword()`
+  of the input when the user is missing/has no hash) so response time
+  doesn't leak whether an email is registered. See
+  `apps/web/app/(auth)/login/actions.ts`.
+- **CSRF** is handled by Next 15's same-origin POST check on server
+  actions. All auth/admin mutations are server actions, not REST.
+- **Failed-login throttling**: 5 `login_failure` audit rows for the
+  same email within 15 min locks the email with a generic "too many
+  attempts". Distributed (per-IP, cross-process) throttling needs
+  Redis and lands later. fail2ban still protects SSH.
+- **Audit log.** Every auth event writes an `AuditLog` row via
+  `apps/web/lib/auth/audit.ts`. The metadata column NEVER holds
+  plaintext passwords, password hashes, or raw token values.
+- **JWT access tokens** for the mobile app (≤ 15 min, rotating refresh)
+  land later — not in this phase.
 
 ## Server posture (already in place)
 

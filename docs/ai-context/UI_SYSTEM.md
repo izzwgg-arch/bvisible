@@ -11,21 +11,44 @@ The look, feel, and behavior of the web app.
 - **Practicality is king, user-friendly is queen.** Don't add a flourish that
   costs the user a click.
 
-## Currently shipped (foundation scaffold)
+## Currently shipped (foundation + auth)
 
 - Next.js 15 App Router + React 19 + TypeScript + Tailwind 4.
-- App shell at `apps/web/components/app-shell.tsx` — fixed 240px sidebar,
-  topbar with page title + health pill, main content area.
-- Brand mark at `apps/web/components/brand.tsx` — square accent tile + wordmark
-  + "Operations" eyebrow.
-- Design tokens defined in `apps/web/app/globals.css` under `@theme` (CSS
-  custom properties): `--color-bv-bg`, `--color-bv-surface`,
+- **Route groups**: `app/(auth)/*` for unauthenticated pages (login,
+  forgot, reset, invite) and `app/(app)/*` for authenticated pages
+  (dashboard, settings, admin/users, admin/tenants). Edge middleware
+  (`apps/web/middleware.ts`) gates the protected paths with a cookie
+  presence check; the page RSC re-validates against the DB via
+  `requireUser()`.
+- **App shell** at `apps/web/components/app-shell.tsx` — fixed 240px
+  sidebar, role-aware nav via `<NavLinks>` (active route highlighted
+  from `usePathname()`), `<UserMenu>` at sidebar bottom (server
+  component) with email/tenant/role label, Settings link, and a
+  no-JS sign-out `<form action={logoutAction}>`. Topbar shows
+  "B Visible" eyebrow + tenant label + healthy pill.
+- **PageHeader** export from `app-shell.tsx` — per-page H1/subtitle/
+  actions slot used inside main content. Pages own their own H1; the
+  shell only renders chrome.
+- **Auth card** at `apps/web/components/auth/auth-card.tsx` — centered
+  420px card layout used by login/forgot/reset/invite, with the brand
+  mark above and an optional footer link below.
+- **Auth forms**: `LoginForm`, `ForgotForm`, `ResetForm`, `InviteForm`,
+  `ChangePasswordForm`, `InviteUserForm`, `CreateTenantForm`. All use
+  `useActionState` for inline error display and disabled-while-pending
+  buttons.
+- **Form helpers**: `<FormError>` (red banner) and `<FormNotice>`
+  (info/success banner) at `apps/web/components/auth/form-error.tsx`.
+- **Brand mark** at `apps/web/components/brand.tsx` — square accent tile
+  + wordmark + "Operations" eyebrow.
+- **Design tokens** defined in `apps/web/app/globals.css` under `@theme`
+  (CSS custom properties): `--color-bv-bg`, `--color-bv-surface`,
   `--color-bv-border`, `--color-bv-text`, `--color-bv-muted`,
   `--color-bv-accent`, `--radius-bv` (12px), `--shadow-bv-card`,
   `--shadow-bv-elevated`, and `--font-sans` (Inter stack).
-- Utility helper `cn()` at `apps/web/lib/cn.ts` (clsx + tailwind-merge).
-- The placeholder dashboard at `/` is fully static (no DB, no env reads at
-  render) so the production build succeeds without a live database.
+- **Utility helper** `cn()` at `apps/web/lib/cn.ts` (clsx + tailwind-merge).
+- **Empty states** are inline in their tables (e.g. "No users yet.") —
+  the dedicated `<EmptyState>` component lands when the first list view
+  needs more than one line.
 
 ## Layout (web)
 

@@ -241,6 +241,28 @@ free -h
   `db-verify.sh` then runs and fails the deploy at `exit 11` if the
   expected tables aren't present.
 
+## First-time SUPER_ADMIN bootstrap
+
+After the auth-and-tenant-foundation deploy lands, the DB has the
+auth tables but no users. The first SUPER_ADMIN is created by the
+CLI at `apps/web/scripts/bootstrap-super-admin.ts`. Run **once**, on
+the deploy server, as `deploy`:
+
+```bash
+cd /opt/bvisible/app
+( set -a; . /opt/bvisible/shared/env/.env; set +a; \
+  BOOTSTRAP_ADMIN_EMAIL='you@example.com' \
+  BOOTSTRAP_ADMIN_PASSWORD='strong-passphrase-here' \
+  BOOTSTRAP_ADMIN_NAME='Your Name' \
+  pnpm --filter @bvisible/web run bootstrap:super-admin )
+```
+
+The script refuses to run if any SUPER_ADMIN already exists (exit 3).
+The password is Argon2id-hashed; plaintext is never logged. After
+sign-in, the SUPER_ADMIN creates a Tenant under **Tenants** in the
+sidebar and invites tenant admins under **Users**. See
+`apps/web/scripts/README.md` and `AUTH_AND_PERMISSIONS.md`.
+
 ## Manual / outstanding steps
 
 1. Real `bvisible.*` domain + cert. Once the A record points at

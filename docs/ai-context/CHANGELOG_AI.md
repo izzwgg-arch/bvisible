@@ -5,6 +5,242 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Auth + tenant foundation (Phase 4)
+
+**Commit:** `<feat-sha>` (filled after push)
+**Message:** `feat: add auth and tenant foundation`
+
+**Scope**
+
+Adds the first real auth surface to B Visible: email/password login
+with Argon2id, DB-backed sessions, role helpers (SUPER_ADMIN/ADMIN/
+USER), Edge middleware + page-RSC `requireUser()`, a CLI bootstrap for
+the first SUPER_ADMIN, an admin invite flow (link displayed inline
+because SMTP is not yet wired), a password reset flow (same stub-link
+display), a per-tenant audit log, and a SaaS-style logged-in shell
+with sidebar nav, user menu, and sign-out. Did NOT add product
+features (estimates, POs, vendors, email ingestion), mobile JWT, OAuth,
+or change firewall / queue serialization / nginx / PM2 config.
+
+**What changed (repo)**
+
+- NEW migration
+  `packages/db/prisma/migrations/20260513192157_auth_and_invites/`.
+  Adds 4 columns on `users` (`lastLoginAt`, `disabledAt`, `invitedAt`,
+  `inviteAcceptedAt`); adds 4 tables (`sessions`, `user_invites`,
+  `password_reset_tokens`, `audit_logs`) with all indexes and FKs;
+  appends a hand-written partial unique index `users_email_super_admin_key`
+  on `users(email) WHERE "tenantId" IS NULL` to close the SUPER_ADMIN
+  email-collision hole that the composite `@@unique([tenantId, email])`
+  leaves open (Postgres treats NULLs as distinct). Generated against a
+  shadow Postgres on the server so production was never touched until
+  the deploy ran `migrate deploy` — see
+  `server-scripts/db/.shadow-migrate.sh`.
+- NEW `server-scripts/db/.shadow-migrate.sh` — bring up a temporary
+  Postgres on `127.0.0.1:5433` (compose project `bvisible-shadow`),
+  apply existing migrations, run `prisma migrate dev --create-only`
+  with a supplied schema, append hand-written SQL, validate, tear
+  down. Reusable for future migrations.
+- `packages/db/prisma/schema.prisma` — extended with new fields and
+  models. Schema-language partial-unique limitation noted in a
+  comment on `User`.
+- `packages/db/src/index.ts` — re-exports `Prisma` (value, for
+  `Prisma.PrismaClientKnownRequestError`) and adds type re-exports
+  for `Session`, `UserInvite`, `PasswordResetToken`, `AuditLog`.
+- `pnpm-workspace.yaml` — added `esbuild: true` to `allowBuilds`
+  because `tsx` (used by the bootstrap CLI) pulls it in and pnpm v11
+  refuses to run install scripts without an entry. (`@node-rs/argon2`
+  needs no entry — it ships prebuilt napi binaries with no postinstall
+  script.)
+- `apps/web/package.json` — added deps `@node-rs/argon2`, `zod`;
+  devDep `tsx`; npm script `bootstrap:super-admin`.
+- NEW `apps/web/middleware.ts` — Edge cookie-presence check;
+  redirects to `/login?next=<safe-relative>` for protected routes.
+  Public routes: `/`, `/login`, `/forgot`, `/reset/*`, `/invite/*`,
+  `/api/health`. Static assets and Next internals skipped via the
+  matcher regex.
+- NEW `apps/web/lib/auth/password.ts` — Argon2id hash/verify
+  (memoryCost 64 MiB, timeCost 3, parallelism 1). Hardcodes
+  `algorithm: 2` because `Algorithm.Argon2id` is an ambient const enum
+  and `isolatedModules` forbids referencing its members.
+- NEW `apps/web/lib/auth/tokens.ts` — 256-bit base64url token
+  generator + SHA-256 hasher.
+- NEW `apps/web/lib/auth/session.ts` — cookie name `bv_session`;
+  TTL 30 d; `HttpOnly; Secure (prod); SameSite=Lax; Path=/`. DB-backed
+  via `Session` table. Logout sets `revokedAt` and clears the cookie.
+- NEW `apps/web/lib/auth/current-user.ts` — `getCurrentUser`
+  (React-`cache`d), `requireUser`, `requireRole`, `requireSuperAdmin`,
+  `requireTenantId`. The ONLY sanctioned way to read the session
+  inside RSC / server actions.
+- NEW `apps/web/lib/auth/audit.ts` — `writeAuditLog()`. 12 allowed
+  actions. Best-effort: a DB error logs to stderr but never breaks
+  the underlying action.
+- NEW `apps/web/lib/auth/rate-limit.ts` — per-email failed-login
+  throttle (5 in 15 min) using `audit_logs` row count.
+- NEW `apps/web/lib/validators.ts` — zod schemas for login, request-
+  reset, complete-reset, accept-invite, change-password, invite-user,
+  create-tenant. Email/password rules in one place.
+- NEW `apps/web/lib/request-context.ts` — extracts
+  `x-forwarded-for` + `user-agent` from `headers()` (truncated for
+  audit safety).
+- NEW `app/(auth)/{login,forgot,reset/[token],invite/[token]}/`
+  pages + actions + client form components. Centered card layout via
+  NEW `apps/web/components/auth/auth-card.tsx`; reusable
+  `<FormError>` / `<FormNotice>` at
+  `apps/web/components/auth/form-error.tsx`. Login form at
+  `apps/web/components/auth/login-form.tsx`.
+- NEW `app/(app)/layout.tsx` — `requireUser()` then renders the
+  `AppShell`.
+- NEW `app/(app)/{dashboard,settings,admin/users,admin/tenants}/`
+  pages + actions + client form components.
+- `apps/web/components/app-shell.tsx` — refactored to take a `user`
+  prop, render role-aware nav via the NEW
+  `apps/web/components/app/nav-links.tsx`, render the NEW
+  `apps/web/components/app/user-menu.tsx` at sidebar bottom, and
+  expose a reusable `<PageHeader>` for per-page titles.
+- `apps/web/app/page.tsx` — root now redirects to `/dashboard` (signed
+  in) or `/login` (anonymous). The previous static welcome page is
+  gone — its content moved into `/dashboard`.
+- NEW `apps/web/scripts/bootstrap-super-admin.ts` + `README.md`. Run
+  via `pnpm --filter @bvisible/web run bootstrap:super-admin` with
+  inline env vars. Refuses if any SUPER_ADMIN exists. Argon2id-hashes
+  password. Writes `super_admin_bootstrapped` audit row.
+
+**What changed (server)**
+
+- New migration applied via the deploy's `prisma migrate deploy` step.
+- First SUPER_ADMIN created via the CLI bootstrap script (post-deploy,
+  one-shot).
+- No nginx, PM2, firewall, certbot, compose, or deploy-queue script
+  changes.
+
+**Files touched**
+
+- `packages/db/prisma/schema.prisma` (modified)
+- `packages/db/prisma/migrations/20260513192157_auth_and_invites/migration.sql` (new)
+- `packages/db/src/index.ts` (modified)
+- `pnpm-workspace.yaml` (modified)
+- `server-scripts/db/.shadow-migrate.sh` (new)
+- `apps/web/package.json` (modified)
+- `apps/web/middleware.ts` (new)
+- `apps/web/lib/auth/password.ts` (new)
+- `apps/web/lib/auth/tokens.ts` (new)
+- `apps/web/lib/auth/session.ts` (new)
+- `apps/web/lib/auth/current-user.ts` (new)
+- `apps/web/lib/auth/audit.ts` (new)
+- `apps/web/lib/auth/rate-limit.ts` (new)
+- `apps/web/lib/validators.ts` (new)
+- `apps/web/lib/request-context.ts` (new)
+- `apps/web/app/page.tsx` (modified)
+- `apps/web/app/(auth)/layout.tsx` (new)
+- `apps/web/app/(auth)/login/{page,actions}.ts(x)` (new)
+- `apps/web/app/(auth)/forgot/{page,actions,forgot-form}.ts(x)` (new)
+- `apps/web/app/(auth)/reset/[token]/{page,actions,reset-form}.ts(x)` (new)
+- `apps/web/app/(auth)/invite/[token]/{page,actions,invite-form}.ts(x)` (new)
+- `apps/web/app/(app)/layout.tsx` (new)
+- `apps/web/app/(app)/dashboard/page.tsx` (new)
+- `apps/web/app/(app)/settings/{page,actions,change-password-form}.ts(x)` (new)
+- `apps/web/app/(app)/admin/users/{page,actions,invite-user-form}.ts(x)` (new)
+- `apps/web/app/(app)/admin/tenants/{page,actions,create-tenant-form}.ts(x)` (new)
+- `apps/web/components/app-shell.tsx` (modified — refactor + PageHeader export)
+- `apps/web/components/auth/auth-card.tsx` (new)
+- `apps/web/components/auth/form-error.tsx` (new)
+- `apps/web/components/auth/login-form.tsx` (new)
+- `apps/web/components/app/nav-links.tsx` (new)
+- `apps/web/components/app/user-menu.tsx` (new)
+- `apps/web/scripts/bootstrap-super-admin.ts` (new)
+- `apps/web/scripts/README.md` (new)
+- `docs/ai-context/AUTH_AND_PERMISSIONS.md` (rewrite)
+- `docs/ai-context/DATA_MODEL.md` (modified)
+- `docs/ai-context/API_STRUCTURE.md` (modified)
+- `docs/ai-context/UI_SYSTEM.md` (modified)
+- `docs/ai-context/SECURITY_RULES.md` (modified)
+- `docs/ai-context/ENVIRONMENT_VARIABLES.md` (modified)
+- `docs/ai-context/DEBUGGING.md` (modified — § 11a auth runbook)
+- `docs/ai-context/DEPLOYMENT.md` (modified — bootstrap step)
+- `docs/ai-context/CHANGELOG_AI.md` (this entry)
+
+**Risks**
+
+- **Lock-out window.** Until the SUPER_ADMIN is bootstrapped, the auth
+  wall has nobody who can sign in. `/login` accepts no creds, no UI
+  path forwards. Mitigated by: (a) `/api/health` stays public so
+  uptime stays green; (b) the bootstrap is a single CLI command
+  documented in `apps/web/scripts/README.md` and `DEPLOYMENT.md`
+  ("First-time SUPER_ADMIN bootstrap"); (c) public routes (`/login`,
+  `/forgot`, `/reset/*`, `/invite/*`) still render so the path back in
+  exists once the SUPER_ADMIN runs the bootstrap.
+- **Migration ordering.** `prisma migrate deploy` runs BEFORE PM2
+  reload. If the migration fails, the new app code never goes live —
+  good. If the migration succeeds but the new app code crashes at
+  boot, the healthcheck catches it and the deploy lands in `failed/`.
+  Rollback: re-enqueue the previous good `commitHash`. The new auth
+  tables remain (additive only — no data loss).
+- **Email stub.** Invite + reset links are NOT emailed; they are
+  displayed inline to the inviting/requesting user. SMTP wiring is a
+  separate task. Documented in AUTH_AND_PERMISSIONS.md and
+  apps/web/scripts/README.md.
+- **Per-process rate limiting.** Failed-login throttle counts
+  audit-log rows (5 in 15 min for an email). Single-process correct;
+  not yet distributed (would need Redis).
+- **Argon2 native binary.** `@node-rs/argon2` ships prebuilds for
+  linux-x64-gnu (server) and win32-x64 (Windows dev). No prebuild for
+  alpine-musl, but PM2 runs on Ubuntu host glibc — irrelevant.
+- **Partial unique index in raw SQL.** Hand-edited migration SQL is a
+  drift risk if a future `migrate diff` is run. The risk is bounded:
+  the index is documented, comment-tagged in the SQL, and re-validated
+  by re-applying to the shadow before commit.
+- **Session cookie does not carry CSRF token.** Server actions use
+  Next 15's same-origin POST check. When we add REST routes that
+  accept cookie-auth (mobile uses Bearer instead, so this is mostly
+  hypothetical), we'll add a CSRF column to `Session` and validate
+  it.
+
+**Verification performed (local)**
+
+- `pnpm install --frozen-lockfile` — clean. New deps: `@node-rs/argon2`,
+  `zod`, `tsx` (with esbuild prebuild downloaded via the new
+  `allowBuilds` entry).
+- `pnpm --filter @bvisible/db exec prisma generate` — Prisma Client
+  v6.19.3 regenerated with the new types.
+- `pnpm --filter @bvisible/web run build` — green. 11 routes
+  including all new pages + middleware (34.3 kB). Static gen 4
+  prerendered, 7 server-rendered on demand.
+- Migration generated against shadow Postgres on the server, validated
+  by re-application, scp'd back, committed alongside the schema
+  change. Production DB never touched at this stage.
+
+**Verification performed (server)** — filled after deploy
+
+- Deploy job ID: `<jobId>`
+- Deploy result: `<done|failed>`
+- Postgres status / migration result / db-verify result / healthcheck
+  result / public port safety: see deploy log + the `Risks` block
+  rollback guidance if any of these regress.
+
+**Migration name**
+
+`20260513192157_auth_and_invites`
+
+**Env vars added**
+
+None in `.env`. The bootstrap CLI reads `BOOTSTRAP_ADMIN_EMAIL`,
+`BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_NAME` inline at
+invocation (NOT from `.env`).
+
+**Bootstrap command**
+
+```bash
+cd /opt/bvisible/app
+( set -a; . /opt/bvisible/shared/env/.env; set +a; \
+  BOOTSTRAP_ADMIN_EMAIL='you@example.com' \
+  BOOTSTRAP_ADMIN_PASSWORD='strong-passphrase-here' \
+  BOOTSTRAP_ADMIN_NAME='Your Name' \
+  pnpm --filter @bvisible/web run bootstrap:super-admin )
+```
+
+---
+
 ## 2026-05-13 — Postgres foundation + Prisma migrate-deploy in deploy queue (Phase 3)
 
 **Commits:** `5fe154bc90d07ef5818e7e0814f75c1ef1afbb0e` (feat) →

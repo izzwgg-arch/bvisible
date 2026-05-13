@@ -365,6 +365,105 @@ The repo has a single `docker-compose.yml` at the root. It pins:
 `docker compose down -v` ALSO removes the volume — never run it without
 a recent `pg_dump`.
 
+## 11a. Auth / sessions / invites
+
+The auth surface lives at `apps/web/lib/auth/*`. All auth events write
+an `AuditLog` row.
+
+### Quick sanity
+
+```bash
+# psql shortcut from § 11:
+PW=$(sudo grep '^POSTGRES_PASSWORD=' /opt/bvisible/shared/env/.env | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+PSQL="docker compose -p bvisible exec -T -e PGPASSWORD=$PW db psql -U bvisible -d bvisible"
+
+# Active sessions (not revoked, not expired):
+$PSQL -c "SELECT u.email, s.\"createdAt\", s.\"lastSeenAt\", s.\"ipAddress\"
+          FROM sessions s JOIN users u ON u.id = s.\"userId\"
+          WHERE s.\"revokedAt\" IS NULL AND s.\"expiresAt\" > now()
+          ORDER BY s.\"lastSeenAt\" DESC;"
+
+# Recent audit log (last 50):
+$PSQL -c "SELECT \"createdAt\", action, \"userId\", \"tenantId\", \"ipAddress\"
+          FROM audit_logs ORDER BY \"createdAt\" DESC LIMIT 50;"
+
+# Failed logins for an email in the last hour (throttle visibility):
+$PSQL -c "SELECT \"createdAt\", \"ipAddress\", metadata
+          FROM audit_logs
+          WHERE action = 'login_failure'
+            AND metadata->>'email' = 'someone@example.com'
+            AND \"createdAt\" > now() - interval '1 hour'
+          ORDER BY \"createdAt\" DESC;"
+
+# Pending invites and reset tokens (expiry visibility):
+$PSQL -c "SELECT email, role, \"expiresAt\", \"acceptedAt\"
+          FROM user_invites WHERE \"acceptedAt\" IS NULL ORDER BY \"createdAt\" DESC;"
+$PSQL -c "SELECT u.email, t.\"expiresAt\", t.\"usedAt\"
+          FROM password_reset_tokens t JOIN users u ON u.id = t.\"userId\"
+          WHERE t.\"usedAt\" IS NULL ORDER BY t.\"createdAt\" DESC;"
+```
+
+### Symptom: "I'm locked out"
+
+If the user has no SUPER_ADMIN at all (fresh install) → see
+`apps/web/scripts/README.md` for the bootstrap command.
+
+If a single user is locked out by failed-login throttling, wait 15
+minutes OR clear their recent failures:
+
+```bash
+$PSQL -c "DELETE FROM audit_logs
+          WHERE action = 'login_failure'
+            AND metadata->>'email' = 'them@example.com'
+            AND \"createdAt\" > now() - interval '15 minutes';"
+```
+
+If a user's password is forgotten and the reset email is stubbed
+(SMTP unwired), have the admin issue an invite OR have someone with
+DB access generate a reset token by clicking "Forgot" on the user's
+behalf and reading the inline link from the same browser session.
+
+To force-revoke ALL sessions for a user (e.g. compromised account):
+
+```bash
+$PSQL -c "UPDATE sessions SET \"revokedAt\" = now()
+          WHERE \"userId\" = (SELECT id FROM users WHERE email = 'them@example.com')
+            AND \"revokedAt\" IS NULL;"
+```
+
+To soft-disable a user (login is rejected; existing sessions also
+rejected on next request because `getCurrentUser()` checks
+`disabledAt`):
+
+```bash
+$PSQL -c "UPDATE users SET \"disabledAt\" = now() WHERE email = 'them@example.com';"
+```
+
+### Symptom: bootstrap script refuses to run
+
+Exit code 3 means a SUPER_ADMIN already exists. List them:
+
+```bash
+$PSQL -c "SELECT id, email, name, \"createdAt\" FROM users WHERE role = 'SUPER_ADMIN';"
+```
+
+If the existing SUPER_ADMIN's password is unrecoverable, generate a
+fresh password reset token directly in the DB (after manually hashing,
+or by deleting the user and rerunning the bootstrap — destructive).
+
+### Symptom: "I get redirected to /login forever"
+
+The middleware is doing only a cookie presence check. If the cookie is
+set but the page still redirects, the page-level `requireUser()` is
+finding the session invalid (expired, revoked, or user disabled). Check:
+
+```bash
+$PSQL -c "SELECT s.id, s.\"expiresAt\", s.\"revokedAt\", u.\"disabledAt\"
+          FROM sessions s JOIN users u ON u.id = s.\"userId\"
+          WHERE u.email = 'them@example.com'
+          ORDER BY s.\"createdAt\" DESC LIMIT 5;"
+```
+
 ## 12. UI / sidebar / drawer / hydration
 
 - Hydration mismatch warnings in browser console → look for `Date.now()` /

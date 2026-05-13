@@ -1,53 +1,218 @@
 # AUTH_AND_PERMISSIONS — B Visible
 
+## Status
+
+Auth + tenant foundation is shipped (Phase 4). Email/password login,
+session cookies, middleware, role helpers, admin user/tenant management,
+invite flow, password reset flow, and audit log are live. Mobile JWT,
+SSO, and granular per-resource permissions land later.
+
 ## Identity
 
-- Email + password (Argon2id hash) for the web.
-- Mobile uses the same accounts via REST + JWT (short-lived access token,
-  rotating refresh token).
-- Optional Google OAuth for staff that already use Google Workspace.
+- **Email + password** for the web. Passwords hashed with Argon2id
+  (`@node-rs/argon2`, memoryCost 64 MiB, timeCost 3, parallelism 1).
+  See `apps/web/lib/auth/password.ts`.
+- **Mobile** will use the same accounts via REST + JWT (short-lived
+  access token, rotating refresh token). Not implemented yet.
+- **No OAuth, no Google login, no magic links** in this phase.
 
-## Session
+## Session model — DB-backed sessions
 
-- Web: encrypted httpOnly cookie holding the session ID.
-- Mobile: JWT in `Authorization: Bearer ...`.
-- Every request resolves `{ userId, tenantId, role }` once at the edge and
-  passes it down via a typed context — never re-derive from the cookie inside
-  feature code.
+- A login creates a `Session` row in Postgres with a SHA-256 hash of an
+  opaque 256-bit random token. The raw token lives **only** in the
+  user's cookie jar.
+- Cookie: name `bv_session`, attributes `HttpOnly; Secure (prod); SameSite=Lax; Path=/; Max-Age=30d`.
+- Logout sets `Session.revokedAt` and clears the cookie. The next
+  request that presents a revoked or missing token is treated as
+  unauthenticated.
+- Password change revokes all sessions EXCEPT the current one.
+- Password reset revokes ALL sessions for the user (including current).
+- `Session.lastSeenAt` is updated opportunistically (at most once per
+  minute per session) so we have a soft "active devices" signal.
+
+The session token never leaves the cookie. We never store it in
+`localStorage`, never put it in URL params, and never log it.
+
+## Auth resolution flow
+
+```
+request → middleware (Edge: cookie present?) → page RSC (Node: requireUser())
+                       │                              │
+                       └─ no cookie → /login          └─ DB lookup → user or 401-redirect
+```
+
+- **Edge middleware** (`apps/web/middleware.ts`) does only a cookie
+  presence check. It can't use Prisma. Public routes (`/`, `/login`,
+  `/forgot`, `/reset/*`, `/invite/*`, `/api/health`) bypass the gate.
+- **Server-side resolution** (`apps/web/lib/auth/current-user.ts`) uses
+  Prisma to look up the session row, validate expiry/revocation, and
+  return `{ id, email, name, role, tenantId, tenant, sessionId }`.
+  Wrapped in React `cache()` so multiple components on the same render
+  share one DB round-trip.
 
 ## Roles
 
-| Role | Can do |
-|---|---|
-| `owner` | Everything in their tenant, including billing + user admin |
-| `admin` | Everything except billing |
-| `estimator` | Create/edit estimates, read POs, read vendors |
-| `purchasing` | Create/edit POs, attach vendor docs, edit vendor prices |
-| `installer` | Read assigned POs, upload receipts/photos via mobile |
-| `viewer` | Read-only |
+| Role | Tenant scope | Can do |
+|---|---|---|
+| `SUPER_ADMIN` | `tenantId = NULL` | Manage tenants, view all users system-wide, invite ADMIN/USER into a tenant when attached to one. |
+| `ADMIN` | required | Manage users in own tenant (invite, list). Tenant-app routes. |
+| `USER` | required | Tenant-app routes only. |
 
-Roles are stored on `User.role` per tenant. A user belongs to exactly one
-tenant — no cross-tenant accounts.
+A user belongs to exactly one tenant — no cross-tenant accounts.
+SUPER_ADMIN is the one exception (`tenantId` nullable). The DB enforces
+a partial unique index on `users(email) WHERE tenantId IS NULL` so two
+SUPER_ADMINs cannot share an email (regular `@@unique([tenantId, email])`
+treats NULLs as distinct in Postgres).
+
+The aspirational 6-role taxonomy from earlier docs (`owner`, `estimator`,
+`purchasing`, `installer`, `viewer`) is deferred until the product
+features that need them land. The 3-role model covers everything in this
+phase and is forward-compatible — splitting `USER` into role specializations
+is a non-destructive migration when the time comes.
+
+## Reusable helpers (`apps/web/lib/auth/current-user.ts`)
+
+| Helper | Throws | Returns |
+|---|---|---|
+| `getCurrentUser()` | never | `CurrentUser \| null` |
+| `requireUser(redirectTo='/login')` | redirect when null | `CurrentUser` |
+| `requireRole(...roles)` | redirect to `/dashboard?error=forbidden` if role mismatch | `CurrentUser` |
+| `requireSuperAdmin()` | as above for SUPER_ADMIN | `CurrentUser` |
+| `requireTenantId()` | redirect to `/dashboard?error=no-tenant` when no tenant | `CurrentUser & { tenantId, tenant }` |
+
+These are the **only** sanctioned ways to read the session inside a page
+RSC or server action. Do not parse the cookie yourself; do not reach
+into Prisma for the user behind the helpers.
+
+## Public vs protected routes
+
+| Path | Public? | Notes |
+|---|---|---|
+| `/api/health` | yes | Used by deploy + uptime. No auth, no DB. |
+| `/login` | yes | Reads `?next=` (same-origin only). |
+| `/forgot` | yes | Always responds OK regardless of email existence. |
+| `/reset/[token]` | yes | Token validity gates form rendering. |
+| `/invite/[token]` | yes | Token validity gates form rendering. |
+| `/` | open page; redirects | RSC redirects to `/dashboard` or `/login` based on session. |
+| `/dashboard` | protected | Any role. |
+| `/settings` | protected | Any role. Self-service password change + logout. |
+| `/admin/users` | protected | ADMIN or SUPER_ADMIN. |
+| `/admin/tenants` | protected | SUPER_ADMIN only. |
+
+## Server actions for auth
+
+All auth mutations are **Next 15 server actions** (POST, same-origin
+enforced by Next). Server actions get CSRF protection for free.
+
+| Action | File | Behavior |
+|---|---|---|
+| `loginAction` | `app/(auth)/login/actions.ts` | Validate, throttle, verify Argon2id, create session, audit. |
+| `logoutAction` | `app/(app)/settings/actions.ts` | Revoke session, clear cookie, audit. Used by sidebar logout button. |
+| `requestResetAction` | `app/(auth)/forgot/actions.ts` | Issue token (hashed), audit. Always responds OK. |
+| `completeResetAction` | `app/(auth)/reset/[token]/actions.ts` | Validate token, set new hash, revoke ALL sessions, auto-login, audit. |
+| `acceptInviteAction` | `app/(auth)/invite/[token]/actions.ts` | Validate invite, create/activate user, set hash, auto-login, audit. |
+| `inviteUserAction` | `app/(app)/admin/users/actions.ts` | Issue invite token (hashed), audit. Inline-displayed link. |
+| `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN creates a tenant. Slug unique. Audit. |
+| `changePasswordAction` | `app/(app)/settings/actions.ts` | Verify current, set new hash, revoke other sessions, audit. |
 
 ## Permission model
 
-- Coarse role check at the route/server-action boundary.
-- Fine-grained ownership check inside the action (e.g. installer can only see
-  POs assigned to them).
-- **Tenant check is not optional and not a permission** — it's a load-time
-  filter applied to every query. See `SECURITY_RULES.md`.
+- Coarse role check at the route boundary via `requireRole(...)`.
+- Tenant scope applied automatically in queries — every SELECT against a
+  tenant-scoped table includes `tenantId` from the session. See
+  `SECURITY_RULES.md`.
+- Fine-grained per-resource ownership checks (e.g. installer sees only
+  POs assigned to them) come with the relevant feature.
+
+## Bootstrap (first SUPER_ADMIN)
+
+Because the DB starts empty, there's no UI-driven way to create the
+first admin. Use the CLI script:
+
+```bash
+cd /opt/bvisible/app
+( set -a; . /opt/bvisible/shared/env/.env; set +a; \
+  BOOTSTRAP_ADMIN_EMAIL='you@example.com' \
+  BOOTSTRAP_ADMIN_PASSWORD='strong-passphrase-here' \
+  BOOTSTRAP_ADMIN_NAME='Your Name' \
+  pnpm --filter @bvisible/web run bootstrap:super-admin )
+```
+
+Rules enforced by the script:
+
+- Refuses to run if any `User.role = SUPER_ADMIN` already exists
+  (exit 3).
+- Validates email + password (12-128 chars) before doing any DB work
+  (exit 2).
+- Argon2id-hashes the password.
+- Writes an `AuditLog` row with `action = 'super_admin_bootstrapped'`
+  containing the new user's id and email — never the password.
+
+See `apps/web/scripts/README.md` for full env-var docs.
+
+## Invite flow (current state)
+
+- `inviteUserAction` creates a `UserInvite` row keyed by SHA-256(token).
+  TTL: 7 days. The raw token is returned to the inviter once and shown
+  inline on `/admin/users?invite=<token>` — it is NEVER stored, logged,
+  or persisted in plaintext.
+- The invitee opens `/invite/<token>`, sets a name + password (12-128
+  chars), and is auto-signed-in. The invite is marked `acceptedAt`.
+- **Email sending is stubbed** until SMTP is wired. The admin copies the
+  link from the inline display and sends it manually.
+- An accepted invite cannot be reused (the `acceptedAt` check in the
+  page query gates this).
+
+## Password reset flow (current state)
+
+- `requestResetAction` always responds OK regardless of whether the
+  email exists, to avoid leaking the user list.
+- A `PasswordResetToken` row is created with SHA-256(token); TTL 30
+  minutes; one-shot (`usedAt` blocks reuse).
+- The link is displayed inline to the requester (same stub-email pattern
+  as invites). When SMTP is wired, this inline display goes away.
+- `completeResetAction` validates the token, sets the new password
+  hash, marks the token used, **revokes all sessions for the user**,
+  and signs the user back in with a fresh session.
+
+## Failed-login throttling
+
+- 5 failed `login_failure` audit rows for the same email within 15
+  minutes locks subsequent attempts with a generic "too many attempts"
+  message.
+- This is a single-process counter (audit-table COUNT). Distributed
+  rate limiting (per-IP, cross-process) needs Redis and lands when the
+  app spans multiple processes.
 
 ## What never authenticates a request
 
 - Headers from the client (`X-Tenant-Id`, etc.) — ignored.
 - URL params for `tenantId` — ignored.
-- Anything not signed by our session/JWT layer.
+- Anything not signed by our session layer.
 
-## Password reset
+## Audit log
 
-- Email a single-use token valid 30 minutes.
-- Tokens stored hashed; never log the plaintext token.
+Every auth-relevant event writes an `AuditLog` row via
+`apps/web/lib/auth/audit.ts`. Allowed actions:
+
+`login_success`, `login_failure`, `logout`, `password_changed`,
+`password_reset_requested`, `password_reset_completed`,
+`invite_created`, `invite_accepted`, `user_disabled`, `user_enabled`,
+`tenant_created`, `super_admin_bootstrapped`.
+
+Rules for what goes in `metadata`:
+
+- Email addresses for login/invite/reset events: OK (already
+  user-identifying for audit).
+- Plaintext passwords or password hashes: NEVER.
+- Raw invite/reset tokens or token hashes: NEVER.
+- IP and user-agent live in dedicated columns (already hashed/truncated
+  to safe lengths in `request-context.ts`).
+
+There is no audit-log UI yet. Query via psql — see `DEBUGGING.md § 14`.
 
 ## Mobile-specific
 
-- See `MOBILE_APP.md` for the device pairing/refresh flow.
+Mobile auth lands separately. The plan: same `User` row + a refresh
+token model, with the access token in `Authorization: Bearer ...` and
+the refresh-token rotation handled server-side. See `MOBILE_APP.md`.

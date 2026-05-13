@@ -26,11 +26,50 @@ HTTP status codes follow the usual rules: 200 ok, 400 validation, 401 not
 authenticated, 403 not authorized (e.g. wrong tenant), 404 not found, 409
 conflict, 422 business-rule violation, 500 server error.
 
-## Currently shipped (foundation)
+## Currently shipped (foundation + auth)
+
+### REST routes
 
 | Path | Method | Behavior |
 |---|---|---|
 | `/api/health` | `GET` | Returns `{"status":"ok","service":"bvisible-web"}`. Marked `dynamic = 'force-dynamic'` and `runtime = 'nodejs'`. No auth, no DB. Used by deploy healthchecks and uptime monitors. |
+
+### Server actions (web only)
+
+Auth and admin mutations are Next 15 server actions, NOT REST routes.
+Server actions get same-origin POST enforcement (CSRF) for free. The
+`/api/v1/*` REST surface is reserved for the mobile app and external
+integrations and lands later.
+
+| Action | Module | Roles |
+|---|---|---|
+| `loginAction` | `app/(auth)/login/actions.ts` | public |
+| `logoutAction` | `app/(app)/settings/actions.ts` | any signed-in |
+| `requestResetAction` | `app/(auth)/forgot/actions.ts` | public |
+| `completeResetAction` | `app/(auth)/reset/[token]/actions.ts` | public (token-gated) |
+| `acceptInviteAction` | `app/(auth)/invite/[token]/actions.ts` | public (token-gated) |
+| `inviteUserAction` | `app/(app)/admin/users/actions.ts` | ADMIN, SUPER_ADMIN |
+| `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN |
+| `changePasswordAction` | `app/(app)/settings/actions.ts` | any signed-in |
+
+Each action validates input with a `zod` schema from
+`apps/web/lib/validators.ts`, audits the result via
+`apps/web/lib/auth/audit.ts`, and never accepts `tenantId` from the
+client (it always comes from the session).
+
+### Pages
+
+| Path | Public? | RSC behavior |
+|---|---|---|
+| `/` | yes | Redirects to `/dashboard` if signed in, else `/login`. |
+| `/login` | yes | Login form. Reads `?next=<safe-relative-path>`. |
+| `/forgot` | yes | Request-reset form; always-OK response. |
+| `/reset/[token]` | yes | Set-new-password (token validity gated). |
+| `/invite/[token]` | yes | Set name + password (token validity gated). |
+| `/dashboard` | protected | Greeting + role/tenant cards. |
+| `/settings` | protected | Account info, change-password, sign-out. |
+| `/admin/users` | protected (ADMIN, SUPER_ADMIN) | List + invite. |
+| `/admin/tenants` | protected (SUPER_ADMIN) | List + create. |
 
 ## Resource sketch (target)
 

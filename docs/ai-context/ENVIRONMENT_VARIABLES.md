@@ -10,8 +10,9 @@ by `deploy-once.sh`. Do not commit it.
 # Core
 NODE_ENV=production
 APP_BASE_URL=https://app.example.com
-NEXTAUTH_SECRET=                      # 32+ random bytes
-SESSION_COOKIE_NAME=bv_session
+# Session cookie name is hardcoded as `bv_session` in
+# apps/web/lib/auth/session.ts (SESSION_COOKIE_NAME constant). Not env-tunable.
+# We do NOT use NextAuth — sessions are DB-backed via the `Session` table.
 
 # Database — Postgres in docker compose, bound to 127.0.0.1:5432 only.
 # The `bvisible-web` PM2 process runs on the host (NOT in compose), so it
@@ -72,6 +73,22 @@ LOG_LEVEL=info
 - TLS private keys (Let's Encrypt manages those under `/etc/letsencrypt/`).
 - Other tenants' credentials — single tenant in this file; per-tenant secrets
   live in the DB encrypted at rest.
+
+## SUPER_ADMIN bootstrap (one-off, never written to `.env`)
+
+The first SUPER_ADMIN is created by
+`apps/web/scripts/bootstrap-super-admin.ts`. It reads three env vars
+**inline at invocation time** (NOT from `.env`) so they exist only in
+the script's process:
+
+| Var | Required | Notes |
+|---|---|---|
+| `BOOTSTRAP_ADMIN_EMAIL` | yes | Lowercased, RFC-shaped. |
+| `BOOTSTRAP_ADMIN_PASSWORD` | yes | 12-128 chars. Argon2id-hashed before storage. |
+| `BOOTSTRAP_ADMIN_NAME` | no | Display name. |
+
+The exact one-shot command lives in `apps/web/scripts/README.md`.
+Do not put `BOOTSTRAP_ADMIN_PASSWORD` in `/opt/bvisible/shared/env/.env`.
 
 ## Postgres bootstrap (one-off, server-side)
 

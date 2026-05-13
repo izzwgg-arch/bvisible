@@ -1,5 +1,6 @@
-// B Visible — foundation schema.
-// Foundation only: Tenant, User, Role enum.
+// B Visible — auth + tenant foundation schema.
+// Models: Tenant, User, Role enum, Session, UserInvite, PasswordResetToken,
+// AuditLog. Product models (Estimate, PO, Vendor, ...) land later.
 // See docs/ai-context/DATA_MODEL.md for the target model set.
 
 generator client {
@@ -25,27 +26,113 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users User[]
+  users   User[]
+  invites UserInvite[]
 
   @@map("tenants")
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   tenantId     String?
   email        String
   name         String?
-  role         Role     @default(USER)
+  role         Role    @default(USER)
   passwordHash String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Auth lifecycle. All nullable so we can model invited-but-not-accepted
+  // and disabled-but-not-deleted accounts without sentinels.
+  lastLoginAt       DateTime?
+  disabledAt        DateTime?
+  invitedAt         DateTime?
+  inviteAcceptedAt  DateTime?
 
-  // SUPER_ADMIN users have tenantId = null and a globally unique email.
-  // Tenant users have a unique email per tenant.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions       Session[]
+  resetTokens    PasswordResetToken[]
+  invitesIssued  UserInvite[]         @relation("UserInviteInviter")
+
+  // SUPER_ADMIN users have tenantId = null. The migration adds a partial
+  // unique index `users_email_super_admin_key` ON users(email) WHERE
+  // "tenantId" IS NULL so two SUPER_ADMINs cannot share an email (the
+  // composite @@unique below treats NULLs as distinct in Postgres).
+  // Tenant users are unique on (tenantId, email).
   @@unique([tenantId, email], name: "tenant_email_unique")
   @@index([tenantId])
   @@index([role])
   @@map("users")
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  ipAddress  String?
+  userAgent  String?
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model UserInvite {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  email       String
+  role        Role
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant    Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("UserInviteInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([expiresAt])
+  @@map("user_invites")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  userId     String?
+  action     String
+  targetType String?
+  targetId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }
