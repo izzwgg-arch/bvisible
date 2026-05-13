@@ -115,29 +115,48 @@ that nginx is up (`systemctl status nginx`), then re-run with
 
 ## 4b. PM2 (production runtime)
 
-```bash
-# ALWAYS use `su - deploy -c '...'` for PM2 commands. `sudo -u deploy`
-# and `runuser -u deploy` both fail with `spawn /usr/bin/node EACCES`
-# under Ubuntu 24.04.
-su - deploy -c 'pm2 list'
-su - deploy -c 'pm2 status bvisible-web'
-su - deploy -c 'pm2 logs bvisible-web --lines 100'
-su - deploy -c 'pm2 reload bvisible-web --update-env'
-su - deploy -c 'pm2 restart bvisible-web --update-env'  # if reload misbehaves
-su - deploy -c 'pm2 save'                               # snapshot for resurrect
+PM2 daemon spawn is broken under `sudo -u` and `runuser -u` on Ubuntu
+24.04 (`spawn /usr/bin/node EACCES`). Always use a login shell:
 
-sudo systemctl status pm2-deploy.service --no-pager     # systemd wrapper
-sudo systemctl restart pm2-deploy.service               # cold-restart all PM2 apps
+| You are… | Use this |
+|---|---|
+| **root** | `su - deploy -c 'pm2 ...'` |
+| **deploy** (e.g. inside `deploy-once.sh` running under systemd) | `bash -lc 'pm2 ...'` |
+| anywhere | NOT `sudo -u deploy pm2 ...` and NOT `runuser -u deploy pm2 ...` |
+
+Common commands (assumes you SSH'd in as `deploy`):
+
+```bash
+bash -lc 'pm2 list'
+bash -lc 'pm2 status bvisible-web'
+bash -lc 'pm2 logs bvisible-web --lines 100'
+bash -lc 'pm2 reload bvisible-web --update-env'
+bash -lc 'pm2 restart bvisible-web --update-env'  # if reload misbehaves
+bash -lc 'pm2 save'                               # snapshot for resurrect
+
+# Raw log files (survive release swaps; live under shared/):
+tail -f /opt/bvisible/shared/logs/pm2/bvisible-web.out.log
+tail -f /opt/bvisible/shared/logs/pm2/bvisible-web.err.log
+
+# systemd wrapper (resurrect-on-boot)
+sudo systemctl status pm2-deploy.service --no-pager
+sudo systemctl restart pm2-deploy.service        # cold-restart all PM2 apps
 journalctl -u pm2-deploy.service --since '1 hour ago' --no-pager
 ```
 
 If a PM2 process is stuck in `errored`:
 
 ```bash
-su - deploy -c 'pm2 describe bvisible-web'              # inspect last error
-su - deploy -c 'pm2 logs bvisible-web --err --lines 200'
-su - deploy -c 'pm2 delete bvisible-web && pm2 startOrReload /opt/bvisible/app/ecosystem.config.cjs --update-env && pm2 save'
+bash -lc 'pm2 describe bvisible-web'
+bash -lc 'pm2 logs bvisible-web --err --lines 200'
+bash -lc 'pm2 delete bvisible-web && pm2 startOrReload /opt/bvisible/app/ecosystem.config.cjs --update-env && pm2 save'
 ```
+
+If standalone server fails at boot complaining about `@bvisible/db` or
+another workspace package: the standalone tracing missed it. Confirm
+`outputFileTracingRoot` in `apps/web/next.config.mjs` points at the
+workspace root; rebuild on the server with `NEXT_BUILD_STANDALONE=1
+pnpm run build`; then `bash -lc 'pm2 reload bvisible-web --update-env'`.
 
 ## 4c. /api/health
 
@@ -172,15 +191,35 @@ backed up.
 
 ## 7. Healthcheck failures
 
-If `apps/web/scripts/healthcheck.sh` (when it exists) returns non-zero, the
-deploy is marked failed but the previous release stays live (release symlink
-not flipped). To investigate:
+`/opt/bvisible/deploy-queue/healthcheck.sh` is the gate that decides
+whether a deploy succeeded. Non-zero exit → `deploy-once.sh` exits 9 →
+the job lands in `failed/`. The script's failure output already includes
+`pm2 list`, `pm2 jlist`, last 50 lines of stdout/stderr, and `:3000`
+listeners — read the deploy log first:
 
 ```bash
-cd /opt/bvisible/app && bash scripts/healthcheck.sh
-docker logs --tail 100 bvisible-web-1
-curl -fsS http://127.0.0.1:3000/api/v1/health
+JOB=$(ls -t /opt/bvisible/deploy-queue/failed/ | head -1 | sed 's/\.json$//')
+tail -n 200 /opt/bvisible/deploy-queue/logs/${JOB}.log
+
+# Re-run the healthcheck manually (after fixing the runtime):
+/opt/bvisible/deploy-queue/healthcheck.sh
+
+# Try the upstream directly to bypass nginx:
+curl -fsS http://127.0.0.1:3000/api/health
+# And via the public hostname through nginx:
+curl -fsS https://vmi3270817.contaboserver.net/api/health
 ```
+
+Common causes:
+
+- PM2 process never bound `:3000` → check `bash -lc 'pm2 describe bvisible-web'`
+  and the `.err.log` for a crash on boot.
+- App is listening on `0.0.0.0` instead of `127.0.0.1` → wrong `HOSTNAME`
+  in `ecosystem.config.cjs`.
+- Standalone bundle missing a workspace package → see § 4b last paragraph.
+- Healthcheck timed out → `/api/health` is returning HTTP 200 but a body
+  that doesn't have `{"status":"ok","service":"bvisible-web"}`. Check the
+  route handler.
 
 ## 8. Disk / memory / CPU
 

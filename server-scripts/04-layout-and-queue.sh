@@ -16,6 +16,7 @@ install -d -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" -m 755 \
   "$ROOT/shared/env" \
   "$ROOT/shared/uploads" \
   "$ROOT/shared/logs" \
+  "$ROOT/shared/logs/pm2" \
   "$ROOT/backups" \
   "$QUEUE" \
   "$QUEUE/jobs" \
@@ -28,7 +29,7 @@ install -d -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" -m 755 \
 chmod 750 "$ROOT/shared/env"
 
 echo "===== Installing deploy-queue scripts ====="
-for f in deploy-once.sh enqueue-deploy.sh deploy-worker.sh status.sh; do
+for f in deploy-once.sh enqueue-deploy.sh deploy-worker.sh status.sh healthcheck.sh; do
   cp "/root/deploy-queue/$f" "$QUEUE/$f"
   sed -i 's/\r$//' "$QUEUE/$f"
   chmod 755 "$QUEUE/$f"

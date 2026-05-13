@@ -15,7 +15,8 @@
    IMAP poller, and the Node web app (`127.0.0.1:3000`) are not reachable
    from the internet. UFW only allows ports 22, 80, 443. All public traffic
    to the web app is terminated by Nginx and proxied to the localhost-only
-   upstream.
+   upstream. The `bvisible-web` PM2 process binds `HOSTNAME=127.0.0.1` per
+   `ecosystem.config.cjs` — never change it to `0.0.0.0`.
 4. **Secrets live in `/opt/bvisible/shared/env/.env`** on the server, mode 640,
    owned by `deploy:deploy`. Never commit `.env` to Git.
 5. **Uploads are sanitized.** No execution permission, no path traversal in

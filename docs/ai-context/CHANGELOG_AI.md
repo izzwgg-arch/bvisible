@@ -5,6 +5,117 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Production runtime foundation, Phase 2 (PM2 runtime + healthcheck gate)
+
+**Commit:** _(filled in after push)_
+**Message:** `feat: add PM2 runtime and deploy healthcheck`
+
+**Scope**
+
+Phase 2 completes the runtime foundation. Wires the deploy queue to PM2
+and gates deploy success on a real HTTP healthcheck of `/api/health`.
+Public HTTPS now serves the actual app (no more 502 placeholder). Did NOT
+add database, auth, business features, or change firewall / queue
+serialization.
+
+**What changed (repo)**
+
+- NEW `ecosystem.config.cjs` (repo root) — PM2 spec for `bvisible-web`
+  (fork mode, single instance, `cwd` at the standalone tree, env
+  `NODE_ENV=production PORT=3000 HOSTNAME=127.0.0.1`,
+  `max_memory_restart: 512M`, `kill_timeout: 10000`, log files under
+  `/opt/bvisible/shared/logs/pm2/`).
+- NEW `server-scripts/deploy-queue/healthcheck.sh` — curl-with-retry
+  against `http://127.0.0.1:3000/api/health` (up to 30s). Requires JSON
+  `status:"ok"` and `service:"bvisible-web"`. On failure prints
+  `pm2 list`, `pm2 jlist`, last 50 lines of stdout/stderr, and `:3000`
+  listeners. Exit 0 only on healthy.
+- `apps/web/next.config.mjs` — gated `output: 'standalone'` on
+  `NEXT_BUILD_STANDALONE=1` env var; sets
+  `outputFileTracingRoot` to the workspace root so `@bvisible/db` (and
+  any future workspace deps) get traced into the standalone bundle.
+  Local Windows builds without the env var keep working (Next standalone
+  uses symlinks that hit EPERM on Windows).
+- `server-scripts/deploy-queue/deploy-once.sh` — exports
+  `NEXT_BUILD_STANDALONE=1` before `pnpm run build`. After build:
+  sanity-checks `@bvisible/db` is in the standalone bundle, copies
+  `.next/static` into the standalone tree, copies `public/` if present,
+  symlinks `apps/web/.next/standalone/apps/web/.env` →
+  `/opt/bvisible/shared/env/.env`, ensures
+  `/opt/bvisible/shared/logs/pm2/` exists, runs
+  `bash -lc 'pm2 startOrReload .../ecosystem.config.cjs --update-env'`,
+  `bash -lc 'pm2 save --force'`, sleeps 2s, then runs
+  `/opt/bvisible/deploy-queue/healthcheck.sh`. Failed healthcheck →
+  `exit 9`. Missing healthcheck → `exit 9` (refuses to mark a deploy
+  successful without runtime verification).
+- `server-scripts/04-layout-and-queue.sh` — creates
+  `/opt/bvisible/shared/logs/pm2/` and installs `healthcheck.sh` to
+  `/opt/bvisible/deploy-queue/` on fresh server installs.
+
+**What changed (server)**
+
+- `/opt/bvisible/deploy-queue/deploy-once.sh` updated in place to the
+  new version (the worker runs that copy, not the repo's). Same for
+  `/opt/bvisible/deploy-queue/healthcheck.sh` (new file). Both `chmod
+  755`, owned by `deploy:deploy`.
+- `/opt/bvisible/shared/logs/pm2/` created with `deploy:deploy` ownership.
+- A real deploy of the new commit was enqueued through the queue; PM2
+  process `bvisible-web` is now online and HTTPS endpoint at
+  `https://vmi3270817.contaboserver.net/api/health` returns the expected
+  JSON.
+
+**Files touched**
+
+- `ecosystem.config.cjs` (new)
+- `server-scripts/deploy-queue/healthcheck.sh` (new)
+- `apps/web/next.config.mjs` (modified)
+- `server-scripts/deploy-queue/deploy-once.sh` (modified)
+- `server-scripts/04-layout-and-queue.sh` (modified)
+- `docs/ai-context/DEPLOYMENT.md` (modified)
+- `docs/ai-context/DEPLOY_QUEUE.md` (modified)
+- `docs/ai-context/DEBUGGING.md` (modified)
+- `docs/ai-context/SECURITY_RULES.md` (modified)
+- `docs/ai-context/CHANGELOG_AI.md` (this entry)
+
+**Risks**
+
+- The Phase 1 spec said "use `su - deploy -c '...'`" for PM2 calls. That
+  works from root but NOT from inside `deploy-once.sh` (which already
+  runs as `deploy` under systemd — `su` to your own user requires a
+  password on Ubuntu). Replaced with `bash -lc 'pm2 ...'` which gives
+  the same login-shell environment without a privilege transition.
+  Verified equivalent via `systemd-run --uid=deploy --gid=deploy --pipe
+  --wait bash -lc 'pm2 ping'` (the worker's exact context). Documented
+  in DEPLOYMENT.md and DEBUGGING.md.
+- Standalone build on local Windows still hits EPERM by design (the env
+  var is unset). The deploy server (Linux) is the only place
+  `NEXT_BUILD_STANDALONE=1` runs. Verified default build is unaffected.
+- A failed Phase 2 deploy could leave PM2 in a half-started state. The
+  failed-job rollback procedure (re-enqueue previous good `commitHash`)
+  in `DEBUGGING.md` § 13 still works — `pm2 startOrReload` will reload
+  the previous-good build. There is no per-release isolation for the PM2
+  process in Phase 2; that's a Phase 3 concern.
+- The standalone runtime needs `@bvisible/db` to be traced. The deploy
+  bails early (exit 8) if it isn't, with a clear log line, rather than
+  starting a process that crashes on the first DB import.
+
+**Verification performed**
+
+- Local: `pnpm install --frozen-lockfile` clean. Default
+  `pnpm run build` green (no env var, no standalone — local Windows).
+  Standalone build attempted with `NEXT_BUILD_STANDALONE=1` failed with
+  the expected EPERM symlink errors — gate works as designed.
+- Server: `bash -n` syntax check on `deploy-once.sh` and `healthcheck.sh`
+  passes.
+- Server-side acceptance is captured in this commit's deploy log entry
+  below ("Deploy result").
+
+**Deploy job ID:** _(filled in after enqueue)_
+**Deploy result:** _(filled in after enqueue)_
+**HTTPS health endpoint:** _(filled in after deploy)_
+
+---
+
 ## 2026-05-13 — Production runtime foundation, Phase 1 (PM2 + Nginx + HTTPS)
 
 **Commit:** _(this commit, no deploy enqueued — Phase 2 will do that)_

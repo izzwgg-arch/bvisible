@@ -125,13 +125,46 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
 - PM2 systemd unit at `/etc/systemd/system/pm2-deploy.service` runs as
   `deploy`, `Type=forking`, `ExecStart=… pm2 resurrect`. Enabled — survives
   reboot.
-- IMPORTANT: invoke PM2 via `su - deploy -c '...'`, not `sudo -u deploy`.
-  On Ubuntu 24.04, `sudo -u` and `runuser` both hit
-  `spawn /usr/bin/node EACCES` when the PM2 daemon tries to fork; a login
-  shell via `su -` does not. See `DEBUGGING.md`.
-- Phase 1 leaves PM2 active=inactive because no app processes are
-  registered yet. Phase 2 adds `ecosystem.config.cjs` and wires
-  `pm2 startOrReload` into `deploy-once.sh`.
+- App spec lives in `ecosystem.config.cjs` at the repo root. Process name
+  `bvisible-web`, fork mode, single instance, `cwd` is the standalone tree
+  at `/opt/bvisible/app/apps/web/.next/standalone/apps/web`,
+  `script: server.js`, env `NODE_ENV=production PORT=3000 HOSTNAME=127.0.0.1`,
+  `max_memory_restart: 512M`, `kill_timeout: 10000`, separate stdout/stderr
+  log files under `/opt/bvisible/shared/logs/pm2/`.
+- IMPORTANT: invocation rules for PM2 (Ubuntu 24.04 has a daemon-spawn
+  EACCES under sudo / runuser without a login shell):
+  - From **root**: `su - deploy -c 'pm2 ...'` (login shell).
+  - From **deploy** (e.g. inside `deploy-once.sh`, which runs as `deploy`
+    under systemd): `bash -lc 'pm2 ...'`. Do NOT use `su - deploy -c` from
+    deploy itself — that prompts for a password.
+  - Never `sudo -u deploy pm2 ...` or `runuser -u deploy pm2 ...`.
+
+## Build pipeline (now in deploy-once.sh)
+
+1. Fetch origin; verify the requested `commitHash` exists.
+2. Reject a dirty tracked working tree.
+3. Detached checkout of the exact commit.
+4. Snapshot release into `releases/<ts>-<sha12>/` and flip
+   `releases/current` symlink.
+5. Symlink `shared/env/.env` and `shared/uploads` into the working tree.
+6. `pnpm install --frozen-lockfile`.
+7. `NEXT_BUILD_STANDALONE=1 pnpm run build` (root build runs `prisma generate`
+   then `next build`; the env var triggers Next standalone output gated in
+   `apps/web/next.config.mjs`).
+8. **Wire standalone runtime:**
+   - sanity-check `@bvisible/db` is in `.next/standalone/node_modules`,
+   - copy `apps/web/.next/static` next to the standalone server,
+   - copy `apps/web/public` if present,
+   - symlink `apps/web/.next/standalone/apps/web/.env` →
+     `/opt/bvisible/shared/env/.env`,
+   - ensure `/opt/bvisible/shared/logs/pm2/` exists owned by `deploy`.
+9. `bash -lc 'pm2 startOrReload /opt/bvisible/app/ecosystem.config.cjs --update-env'`.
+10. `bash -lc 'pm2 save --force'`.
+11. `sleep 2`.
+12. `/opt/bvisible/deploy-queue/healthcheck.sh` — if non-zero, deploy
+    fails (exit 9). If the healthcheck script is missing or non-executable,
+    the deploy ALSO fails (we refuse to mark a deploy successful without
+    runtime verification).
 
 ## Secrets / `.env`
 
@@ -166,22 +199,13 @@ free -h
 | Web app | `apps/web` | Next.js 15, React 19, Tailwind 4, App Router, TS strict |
 | DB package | `packages/db` | Prisma 6 (postgresql), schema at `packages/db/prisma/schema.prisma` |
 | Health endpoint | `apps/web/app/api/health/route.ts` | `GET /api/health → {"status":"ok","service":"bvisible-web"}` |
-
-Build pipeline used by the deploy queue:
-
-1. `pnpm install --frozen-lockfile` (root)
-2. `pnpm run build` → runs `pnpm --filter @bvisible/db run build` (`prisma
-   generate`) then `pnpm --filter @bvisible/web run build` (`next build`)
-3. No `docker-compose.yml` yet, no service start, no healthcheck script — the
-   deploy currently succeeds at install + build only. Nginx still serves the
-   placeholder until a runtime is wired in.
+| PM2 ecosystem | `ecosystem.config.cjs` (repo root) | One app `bvisible-web`, fork mode, env `PORT=3000 HOSTNAME=127.0.0.1`. |
+| Healthcheck   | `server-scripts/deploy-queue/healthcheck.sh` | Curl-with-retry against `/api/health`. Required by `deploy-once.sh`. |
+| Nginx baseline | `server-scripts/nginx/bvisible.conf` | HTTP-only baseline; certbot mutates the on-server copy in place to add `:443`. |
 
 ## Manual / outstanding steps
 
-1. Phase 2 of the runtime foundation: `output: 'standalone'` for Next,
-   `ecosystem.config.cjs`, `server-scripts/deploy-queue/healthcheck.sh`,
-   and updated `deploy-once.sh` (PM2 reload + healthcheck gate).
-2. Real `bvisible.*` domain + cert. Once the A record points at
+1. Real `bvisible.*` domain + cert. Once the A record points at
    `212.56.32.136`, run
    `certbot --nginx -d <new-domain> --redirect`. The current Contabo-hostname
    cert keeps working until then.

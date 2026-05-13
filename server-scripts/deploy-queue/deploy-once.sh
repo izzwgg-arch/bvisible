@@ -105,8 +105,10 @@ if [ -f "$APP_DIR/package.json" ]; then
   fi
 
   if [ "$INSTALL_OK" = "true" ] && jq -e '.scripts.build' "$APP_DIR/package.json" >/dev/null 2>&1; then
-    log "Building..."
-    if pnpm run build 2>&1 | tee -a "$LOG_FILE"; then
+    log "Building (NEXT_BUILD_STANDALONE=1 so apps/web emits .next/standalone)..."
+    # Standalone output is gated on this env var so local Windows dev builds
+    # keep working (symlink EPERM). See apps/web/next.config.mjs.
+    if NEXT_BUILD_STANDALONE=1 pnpm run build 2>&1 | tee -a "$LOG_FILE"; then
       log "Build OK"
     else
       log "Build failed"
@@ -129,12 +131,90 @@ if [ -n "$SERVICES" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
   ( cd "$APP_DIR" && docker compose up -d --no-deps "${SVC_ARR[@]}" ) 2>&1 | tee -a "$LOG_FILE"
 fi
 
-# Health check (optional; non-blocking placeholder until app exists)
-if [ -x "$APP_DIR/scripts/healthcheck.sh" ]; then
-  log "Running healthcheck.sh"
-  "$APP_DIR/scripts/healthcheck.sh" 2>&1 | tee -a "$LOG_FILE" || { log "Healthcheck failed"; exit 7; }
+# ============================================================================
+# PM2 + healthcheck — wires the bvisible-web runtime
+# ============================================================================
+STANDALONE_DIR="$APP_DIR/apps/web/.next/standalone/apps/web"
+if [ -f "$STANDALONE_DIR/server.js" ] && [ -f "$APP_DIR/ecosystem.config.cjs" ]; then
+  log "Wiring standalone runtime at $STANDALONE_DIR"
+
+  # Sanity: workspace package must be traced into the standalone bundle,
+  # otherwise the runtime crashes at boot resolving @bvisible/db.
+  if [ ! -d "$APP_DIR/apps/web/.next/standalone/node_modules/@bvisible/db" ] \
+     && [ ! -d "$STANDALONE_DIR/node_modules/@bvisible/db" ]; then
+    log "FATAL: @bvisible/db not found in standalone node_modules. Check outputFileTracingRoot in apps/web/next.config.mjs."
+    ls "$APP_DIR/apps/web/.next/standalone/node_modules" 2>&1 | tee -a "$LOG_FILE" | head -n 30 || true
+    exit 8
+  fi
+
+  # Next standalone does NOT include compiled static assets or the public
+  # directory — copy them next to the standalone server so /static and /public
+  # serve correctly. Replace existing dirs to keep them in sync per release.
+  if [ -d "$APP_DIR/apps/web/.next/static" ]; then
+    rm -rf "$STANDALONE_DIR/.next/static"
+    mkdir -p "$STANDALONE_DIR/.next"
+    cp -r "$APP_DIR/apps/web/.next/static" "$STANDALONE_DIR/.next/static"
+  fi
+  if [ -d "$APP_DIR/apps/web/public" ]; then
+    rm -rf "$STANDALONE_DIR/public"
+    cp -r "$APP_DIR/apps/web/public" "$STANDALONE_DIR/public"
+  fi
+
+  # Standalone Next reads .env from process.cwd at boot. Symlink the shared
+  # env into the standalone cwd so the runtime sees the same secrets the
+  # build environment did.
+  rm -f "$STANDALONE_DIR/.env"
+  if [ -f "$SHARED_DIR/env/.env" ]; then
+    ln -s "$SHARED_DIR/env/.env" "$STANDALONE_DIR/.env"
+  fi
+
+  # PM2 logs live in the shared tree so they survive release swaps.
+  install -d -o deploy -g deploy -m 755 "$SHARED_DIR/logs" "$SHARED_DIR/logs/pm2"
+
+  # IMPORTANT: invoke pm2 inside a login shell. We're already running as
+  # `deploy` (the worker's systemd User), so `su - deploy -c` would prompt
+  # for a password. `bash -lc` gets the same login-shell environment that
+  # PM2 needs without a privilege transition. (`sudo -u` and bare `runuser`
+  # both fail on Ubuntu 24.04 with `spawn /usr/bin/node EACCES` — the daemon
+  # spawn is blocked. See DEBUGGING.md.)
+  log "Reloading PM2 (startOrReload bvisible-web)"
+  if bash -lc "pm2 startOrReload $APP_DIR/ecosystem.config.cjs --update-env" 2>&1 | tee -a "$LOG_FILE"; then
+    log "PM2 reload OK"
+  else
+    log "FATAL: pm2 startOrReload failed"
+    exit 8
+  fi
+
+  # Persist the process list so pm2-deploy.service resurrects it on reboot.
+  if bash -lc 'pm2 save --force' 2>&1 | tee -a "$LOG_FILE"; then
+    log "PM2 save OK"
+  else
+    log "WARN: pm2 save failed (non-fatal — runtime is up; reboot resurrect may miss)"
+  fi
+
+  # Brief settle so a freshly-started process has a chance to bind :3000.
+  sleep 2
+
+  # Healthcheck: the gate that decides whether this deploy succeeded.
+  HC_SCRIPT="/opt/bvisible/deploy-queue/healthcheck.sh"
+  if [ -x "$HC_SCRIPT" ]; then
+    log "Running $HC_SCRIPT"
+    if "$HC_SCRIPT" 2>&1 | tee -a "$LOG_FILE"; then
+      log "Healthcheck OK"
+    else
+      log "FATAL: healthcheck failed; deploy marked failed"
+      exit 9
+    fi
+  else
+    log "FATAL: $HC_SCRIPT missing or not executable; refusing to mark deploy successful without runtime verification"
+    exit 9
+  fi
 else
-  log "No healthcheck.sh — skipping (foundation phase)"
+  if [ ! -f "$APP_DIR/ecosystem.config.cjs" ]; then
+    log "No ecosystem.config.cjs at $APP_DIR — skipping PM2 wiring (foundation-only deploy)"
+  else
+    log "No standalone server.js at $STANDALONE_DIR — skipping PM2 wiring (build did not produce standalone output)"
+  fi
 fi
 
 log "==== deploy-once SUCCESS ===="
