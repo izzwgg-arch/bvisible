@@ -7,8 +7,10 @@ records what changed, the files touched, the risks, and the verification.
 
 ## 2026-05-13 — Estimate foundation (Phase 6)
 
-**Commit:** _to be filled in by the commit step._
+**Commit:** `de568ed` (`feat: add estimate foundation`).
 **Migration:** `20260513221527_estimates_clients_machines`.
+**Deploy:** `20260513T223220-996cb1` → `done`. Migration applied,
+`db-verify.sh` OK, PM2 reload OK, healthcheck OK.
 
 **Scope**
 
@@ -227,7 +229,57 @@ Docs:
 
 **Server verification (deploy)**
 
-_To be filled in by the commit + deploy step below._
+Run via `server-scripts/db/.reset-and-verify-estimates.sh` against
+`https://vmi3270817.contaboserver.net`. Bash output (excerpt):
+
+```
+--- 1. Unauthenticated /clients and /estimates -> 307
+  /clients -> 307                  middleware gate OK
+  /estimates -> 307
+  /clients/new -> 307
+  /estimates/new -> 307
+--- 2. Login as SUPER_ADMIN
+  login OK
+--- 3. Authenticated /estimates and /clients return 200
+  /estimates -> 307 (location: /dashboard?error=no-tenant)
+    expected for SUPER_ADMIN without tenant   (requireTenantId redirect)
+  /clients -> 307 (location: /dashboard?error=no-tenant)
+    expected for SUPER_ADMIN without tenant
+--- 4. Database sanity — new tables exist with the right columns
+  table clients exists
+  table machines exists
+  table estimates exists
+  table estimate_line_items exists
+  enums OK                                     (EstimateStatus + EstimateLineKind)
+  unique(tenantId,number) present
+--- 5. Tenant + machine catalog status                tenants=0 machines=0
+--- 6. End-to-end: create a tenant via SUPER_ADMIN UI, verify machines seeded
+  create-tenant -> /admin/tenants?created=qa-est-12344
+  tenant created
+  tenant row: cmp4nel450006kmulfmq2n5s7|qa-est-12344
+  machines for qa-est-12344 (4 rows):
+    Colex Sharp Cut Cutter — CNC @ 9078c
+    Flatbed printer @ 3345c
+    Laser cutter @ 6877c
+    Roll-to-roll printer @ 4421c
+  default machine catalog seeded with documented rates
+--- 7. Sanity grep — no /estimates page leaks credentials in HTML
+ALL ESTIMATE-FOUNDATION CHECKS PASSED
+```
+
+The pricing engine determinism check was also run locally via
+`tsx -e "..."` against `@bvisible/pricing` and produced exact matches
+for material / machine / labor / install / misc / design / subtotal /
+final-at-3.000× for the canonical input — see commit message + the
+test in `.verify-estimates.sh` § 6 algebra notes.
+
+The remaining "create estimate + add lines + save + reload + see
+matching cached totals" check requires a tenant USER session (not the
+tenant-less SUPER_ADMIN) and is a real-shop UI smoke test rather
+than an automated curl flow. Recommended manual smoke before turning
+the platform on for a real estimator: invite a tenant ADMIN, accept
+the invite, create a client, create an estimate, type a line, hit
+Save, refresh, confirm `/estimates` shows the cached cost / sell.
 
 ---
 
