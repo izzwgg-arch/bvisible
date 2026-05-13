@@ -222,6 +222,30 @@ if [ -f "$STANDALONE_DIR/server.js" ] && [ -f "$APP_DIR/ecosystem.config.cjs" ];
     cp -r "$APP_DIR/apps/web/public" "$STANDALONE_DIR/public"
   fi
 
+  # Prisma's query-engine .so.node binary is dlopen()'d at runtime, so
+  # Next's static tracer doesn't include it in the standalone bundle.
+  # Result: every Prisma call in the runtime crashes with
+  # "Prisma Client could not locate the Query Engine for runtime
+  # debian-openssl-3.0.x". Mirror the live workspace's .prisma/client
+  # directory (which `prisma generate` populated during build) into the
+  # exact .pnpm hash path Next traced @prisma/client to.
+  STANDALONE_ROOT="$APP_DIR/apps/web/.next/standalone"
+  PRISMA_SRC=$(find "$APP_DIR/node_modules/.pnpm" -maxdepth 5 -type d -path "*@prisma+client*/node_modules/.prisma/client" 2>/dev/null | head -n1 || true)
+  if [ -n "$PRISMA_SRC" ] && [ -d "$PRISMA_SRC" ]; then
+    # Source path looks like:
+    #   /opt/bvisible/app/node_modules/.pnpm/@prisma+client@<hash>/node_modules/.prisma/client
+    # Rebuild the same suffix under the standalone tree.
+    REL=$(echo "$PRISMA_SRC" | sed "s|^$APP_DIR/||")
+    PRISMA_DST="$STANDALONE_ROOT/$REL"
+    mkdir -p "$(dirname "$PRISMA_DST")"
+    rm -rf "$PRISMA_DST"
+    cp -r "$PRISMA_SRC" "$PRISMA_DST"
+    ENGINES=$(ls "$PRISMA_DST" 2>/dev/null | grep -E '\.so\.node$|\.dll$' | tr '\n' ' ')
+    log "Prisma client mirrored into standalone: $PRISMA_DST (engines: $ENGINES)"
+  else
+    log "WARN: could not find source .prisma/client to mirror into standalone bundle (Prisma runtime will fail)"
+  fi
+
   # Standalone Next reads .env from process.cwd at boot. Symlink the shared
   # env into the standalone cwd so the runtime sees the same secrets the
   # build environment did.

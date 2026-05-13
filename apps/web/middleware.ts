@@ -40,13 +40,20 @@ export function middleware(req: NextRequest): NextResponse {
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
   if (hasSession) return NextResponse.next();
 
-  const loginUrl = req.nextUrl.clone();
-  loginUrl.pathname = '/login';
-  loginUrl.search = ''; // build cleanly
+  // Build the redirect from the FORWARDED host/proto, not from
+  // req.nextUrl. Behind nginx, req.nextUrl.host is whatever Host header
+  // nginx forwards (defaults to 127.0.0.1:3000), which produces a
+  // broken absolute Location like https://localhost:3000/login. We
+  // trust x-forwarded-host because nginx is the only thing reaching
+  // this process — port 3000 binds to 127.0.0.1 only.
+  const forwardedHost = req.headers.get('x-forwarded-host');
+  const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const host = forwardedHost ?? req.headers.get('host') ?? req.nextUrl.host;
+  const proto = forwardedProto ?? (host.endsWith(':3000') ? 'http' : 'https');
+
+  const loginUrl = new URL(`${proto}://${host}/login`);
   // Preserve the original destination so successful login can return.
-  // Strip only the leading slash; keep query for deep-link drawers.
-  const next = `${pathname}${search}`;
-  loginUrl.searchParams.set('next', next);
+  loginUrl.searchParams.set('next', `${pathname}${search}`);
   return NextResponse.redirect(loginUrl);
 }
 
