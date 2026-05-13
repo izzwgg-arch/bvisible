@@ -7,8 +7,11 @@ records what changed, the files touched, the risks, and the verification.
 
 ## 2026-05-13 — SMTP mailer foundation (Phase 5)
 
-**Commit:** `<feat-sha>` (filled after push)
-**Message:** `feat: add SMTP mailer foundation`
+**Commit:** `9e57aae` (`feat: add SMTP mailer foundation`) → followed
+by `904e20d` (`fix(mailer): log when smtp_verify is skipped due to
+missing config; save phase5 verify scripts`). The fix-up is
+queued for the next deploy along with whenever SMTP credentials get
+filled in. The deployed-and-verified code is at `9e57aae`.
 
 **Scope**
 
@@ -139,16 +142,56 @@ None. The `mailDelivery` flag lives in `audit_logs.metadata` JSONB.
   `/settings/email-test 1.74 kB / 116 kB`. Middleware unchanged at
   34.3 kB. No new lints.
 
-**Verification performed (server)** — filled after deploy
+**Verification performed (server)**
 
-- Deploy job ID: `<jobId>`
-- Deploy result: `<done|failed>`
-- SMTP keys appended to `/opt/bvisible/shared/env/.env`.
-- Test email via `/settings/email-test` — verify() OK + sendMail()
-  returns `messageId`.
-- Invite flow → `audit_logs.metadata.mailDelivery = 'sent'`.
-- Forgot flow → audit row with `mailDelivery = 'sent'`.
-- `/api/health` still 200, login + cookie still work.
+- Deploy job ID: `20260513T205934-f21fde` at SHA `9e57aae`. Reached
+  `done`. Deploy log shows: build OK (11 routes including new
+  `/settings/email-test 1.74 kB / 116 kB`), `prisma migrate deploy`
+  no-op (no schema change), `db-verify` OK, Prisma engine mirror
+  succeeded (`libquery_engine-debian-openssl-3.0.x.so.node`,
+  `libquery_engine-linux-musl-openssl-3.0.x.so.node`), PM2 reload OK,
+  healthcheck OK.
+- E2E auth regression run (`server-scripts/db/.verify-auth.sh`):
+  all 10 checks PASS — login still sets `bv_session` (HttpOnly,
+  Secure, SameSite=lax), `/dashboard` reachable with cookie, logout
+  revokes session, audit log records `login_success` + `logout`,
+  Postgres still 127.0.0.1-only.
+- E2E mailer foundation run (`server-scripts/db/.verify-mailer.sh`):
+  all 7 checks PASS:
+  1. `/settings/email-test` without cookie → 307 (middleware-gated)
+  2. SUPER_ADMIN login OK
+  3. `/settings/email-test` with cookie → 200
+  4. Page renders the "SMTP is not configured" amber panel (expected
+     halfway state — env keys are placeholders pending credentials)
+  5. No credential-shaped value in page body (no argon2 hashes, no
+     leaked password values)
+  6. POST the test-email form → 200 (no 500, no Set-Cookie, no
+     redirect — action ran cleanly and returned the typed config
+     error, page re-rendered with the error block)
+  7. `/admin/users` still 200 with the SUPER_ADMIN cookie (no
+     regression in the existing surface)
+- `pm2 logs bvisible-web --err`: no Prisma errors, no mailer
+  exceptions, no unhandled rejections. The mailer module imported
+  cleanly at boot (no nodemailer bundling issue in the standalone
+  tree).
+
+**Deferred until SMTP credentials are filled in**
+
+The user opted to populate `SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM`
+themselves in `/opt/bvisible/shared/env/.env` (mode 640,
+`deploy:deploy`). When that happens, redeploy (or `bash -lc 'pm2
+reload bvisible-web --update-env'` to flush the cached transport)
+and run the actual round-trip checks via the in-app diagnostic page
+at **Settings → Email test**. The page runs SMTP `verify()` first,
+then sends a branded test message; sanitized errors print without
+leaking credentials. Once green, the invite + reset flows
+automatically use SMTP — no further code change required.
+
+The `SMTP_HOST=smtp.gmail.com` and `SMTP_PORT=465` defaults are
+already in `.env`. For Gmail / Workspace, `SMTP_PASSWORD` MUST be a
+16-character App Password
+(<https://myaccount.google.com/apppasswords>) — the regular account
+password will not work with SMTP if 2FA is on.
 
 ---
 
