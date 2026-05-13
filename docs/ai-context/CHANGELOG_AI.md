@@ -7,7 +7,7 @@ records what changed, the files touched, the risks, and the verification.
 
 ## 2026-05-13 — Production runtime foundation, Phase 2 (PM2 runtime + healthcheck gate)
 
-**Commit:** _(filled in after push)_
+**Commits:** `dc01a8099e221b539db3ef5266bb6217532fa593` (feat) → `db8d8a9044310ff38baf8e664df46dd23cbe86a1` (sanity-check fix; this is the SHA that actually deployed green)
 **Message:** `feat: add PM2 runtime and deploy healthcheck`
 
 **Scope**
@@ -118,9 +118,25 @@ serialization.
 - Server-side acceptance is captured in this commit's deploy log entry
   below ("Deploy result").
 
-**Deploy job ID:** _(filled in after enqueue)_
-**Deploy result:** _(filled in after enqueue)_
-**HTTPS health endpoint:** _(filled in after deploy)_
+**Deploy job ID:** `20260513T173024-0df396` (the prior job
+`20260513T172640-904a40` failed at exit 8 due to the over-aggressive
+`@bvisible/db` sanity check — see "Risks" — which led to the fix in
+commit `db8d8a9`).
+**Deploy result:** `done` in ~98 s. Release snapshot at
+`/opt/bvisible/releases/20260513T173024Z-db8d8a904431`.
+**PM2:** `bvisible-web` online (fork mode, pid 15871, ~97 MB), saved to
+`/home/deploy/.pm2/dump.pm2`.
+**Healthcheck:** OK after 1 attempt
+(`{"status":"ok","service":"bvisible-web"}`).
+**HTTPS health endpoint:** `GET https://vmi3270817.contaboserver.net/api/health`
+returns `200 OK` with body `{"status":"ok","service":"bvisible-web"}`.
+Public root `/` returns `200 OK` (Next.js home page) with security
+headers from Nginx.
+**Port 3000:** bound to `127.0.0.1:3000` only by `next-server` (pid 15871) —
+not publicly reachable.
+**Firewall:** UFW unchanged (22/80/443 only).
+**Queue serialization:** unchanged (`bvisible-deploy-worker.timer` active,
+flock on `deploy.lock` still in force).
 
 ---
 
