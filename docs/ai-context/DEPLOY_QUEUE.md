@@ -2,7 +2,8 @@
 
 Serialized, file-based deploy queue protecting production from concurrent
 deploys. Implementation is on disk at `/opt/bvisible/deploy-queue/` and in
-this repo at `server-scripts/deploy-queue/`.
+this repo at `server-scripts/deploy-queue/` (tracked since commit
+`60978fe` — `chore: add server foundation scripts and gitignore`).
 
 ## Why it exists
 

@@ -5,6 +5,73 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Server foundation scripts checked in
+
+**Commit:** `60978feeadb5a77e6a9c8396292059b75fba3596`
+**Message:** `chore: add server foundation scripts and gitignore`
+
+**What changed**
+- Brought the previously-untracked server foundation artifacts into version
+  control so the repo state matches the deployed server and the AI-context
+  docs that already reference these paths.
+- Extended `.gitignore` to cover the full required protection set
+  (`.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa*`, `uploads/`, `logs/`,
+  `node_modules/`, `.next/`, `dist/`, `build/`) plus common editor / OS
+  cruft.
+- No server change. No deploy queue behavior change. No app code added.
+
+**Files touched (all NEW)**
+- `.gitignore` (extended pattern set)
+- `.cursor/rules/git-push-before-deploy.mdc` (always-apply rule)
+- `server-scripts/01-recon.sh`
+- `server-scripts/02-create-deploy-user.sh`
+- `server-scripts/03-base-and-runtime.sh`
+- `server-scripts/03b-fix-node22.sh`
+- `server-scripts/04-layout-and-queue.sh`
+- `server-scripts/05-nginx-fail2ban-ufw.sh`
+- `server-scripts/05b-enable-ufw.sh`
+- `server-scripts/99-acceptance.sh`
+- `server-scripts/99b-debug-enqueue.sh`
+- `server-scripts/verify-docs.js`
+- `server-scripts/deploy-queue/bvisible-deploy-worker.service`
+- `server-scripts/deploy-queue/bvisible-deploy-worker.timer`
+- `server-scripts/deploy-queue/deploy-once.sh`
+- `server-scripts/deploy-queue/deploy-worker.sh`
+- `server-scripts/deploy-queue/enqueue-deploy.sh`
+- `server-scripts/deploy-queue/status.sh`
+- `docs/ai-context/DEPLOY_QUEUE.md` (one-line cross-reference to this commit)
+
+**Files intentionally excluded**
+- `.env` (local development convenience file at repo root) — confirmed
+  ignored by `.gitignore` line 2 via `git check-ignore -v .env`.
+
+**Risks**
+- Low. Pure file staging plus a `.gitignore` extension. The 17 staged
+  scripts/units already exist on the server and have not been changed by
+  this commit.
+
+**Verification**
+- Manual read of every staged file — no secrets, no tokens, no real DB URLs,
+  no SSH key material, no app passwords. Only the public IP `212.56.32.136`
+  and the public GitHub repo URL appear, both already published in the
+  AI-context docs.
+- Regex secret scan across the staging set returned **0 matches** for
+  `PRIVATE KEY`, `BEGIN OPENSSH`, `DATABASE_URL=`, `APP_PASSWORD`, `TOKEN=`,
+  `PASSWORD=`, `SECRET=`, `BEGIN RSA`, `BEGIN EC`, `api[_-]?key`,
+  `aws_access_key`, `aws_secret`, `sk_live_`, `sk_test_`, `ghp_`, `ghs_`,
+  `gho_`, `github_pat_`, and high-entropy 40+ char base64/hex literals.
+- `git check-ignore -v` confirmed `.gitignore` matches every required
+  pattern: `.env`, `.env.production`, `*.pem`, `*.key`, `id_rsa`,
+  `uploads/x`, `logs/x`, `node_modules/x`, `.next/x`, `dist/x`, `build/x`.
+- Script and unit names cross-checked against `DEPLOY_QUEUE.md` and
+  `DEPLOYMENT.md` — `enqueue-deploy.sh`, `deploy-worker.sh`,
+  `deploy-once.sh`, `status.sh`, `bvisible-deploy-worker.{service,timer}`
+  all match the docs exactly.
+- `git push origin main` succeeded; remote `origin/main` is at
+  `60978feeadb5a77e6a9c8396292059b75fba3596`.
+
+---
+
 ## 2026-05-13 — AI context foundation
 
 **What changed**
