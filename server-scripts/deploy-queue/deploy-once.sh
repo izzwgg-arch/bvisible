@@ -138,14 +138,12 @@ STANDALONE_DIR="$APP_DIR/apps/web/.next/standalone/apps/web"
 if [ -f "$STANDALONE_DIR/server.js" ] && [ -f "$APP_DIR/ecosystem.config.cjs" ]; then
   log "Wiring standalone runtime at $STANDALONE_DIR"
 
-  # Sanity: workspace package must be traced into the standalone bundle,
-  # otherwise the runtime crashes at boot resolving @bvisible/db.
-  if [ ! -d "$APP_DIR/apps/web/.next/standalone/node_modules/@bvisible/db" ] \
-     && [ ! -d "$STANDALONE_DIR/node_modules/@bvisible/db" ]; then
-    log "FATAL: @bvisible/db not found in standalone node_modules. Check outputFileTracingRoot in apps/web/next.config.mjs."
-    ls "$APP_DIR/apps/web/.next/standalone/node_modules" 2>&1 | tee -a "$LOG_FILE" | head -n 30 || true
-    exit 8
-  fi
+  # Note: Next traces only what is actually imported. Workspace packages
+  # like @bvisible/db are bundled into .next/standalone/node_modules ONLY
+  # when something under apps/web imports them. We do NOT pre-validate
+  # specific packages here — the healthcheck below is the real gate. If
+  # the runtime crashes at boot resolving a missing dep, healthcheck fails
+  # and the deploy is marked failed.
 
   # Next standalone does NOT include compiled static assets or the public
   # directory — copy them next to the standalone server so /static and /public

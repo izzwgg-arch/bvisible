@@ -95,9 +95,17 @@ serialization.
   in `DEBUGGING.md` § 13 still works — `pm2 startOrReload` will reload
   the previous-good build. There is no per-release isolation for the PM2
   process in Phase 2; that's a Phase 3 concern.
-- The standalone runtime needs `@bvisible/db` to be traced. The deploy
-  bails early (exit 8) if it isn't, with a clear log line, rather than
-  starting a process that crashes on the first DB import.
+- The standalone runtime relies on Next's output tracing to include
+  required workspace packages. Tracing only includes what is actually
+  imported, so the foundation app (which doesn't import `@bvisible/db`
+  yet) won't have it in the bundle — that's correct. We do NOT
+  pre-validate specific packages; the healthcheck is the canonical gate.
+  An earlier draft of `deploy-once.sh` had an over-aggressive
+  pre-runtime sanity check that would fail the deploy if `@bvisible/db`
+  was missing; that check was removed because it false-positives on
+  early-phase apps that don't yet import it. (Real deploy
+  `20260513T172640-904a40` failed for exactly this reason and led to the
+  removal.)
 
 **Verification performed**
 

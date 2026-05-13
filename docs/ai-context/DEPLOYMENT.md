@@ -152,7 +152,6 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
    then `next build`; the env var triggers Next standalone output gated in
    `apps/web/next.config.mjs`).
 8. **Wire standalone runtime:**
-   - sanity-check `@bvisible/db` is in `.next/standalone/node_modules`,
    - copy `apps/web/.next/static` next to the standalone server,
    - copy `apps/web/public` if present,
    - symlink `apps/web/.next/standalone/apps/web/.env` →

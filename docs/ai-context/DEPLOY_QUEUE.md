@@ -129,9 +129,14 @@ checkout → install → build (NEXT_BUILD_STANDALONE=1)
 
 Exit codes added in Phase 2:
 
-- `8` — PM2 wiring failed (sanity check on `@bvisible/db` in standalone
-  bundle, or `pm2 startOrReload` non-zero).
+- `8` — PM2 wiring failed (`pm2 startOrReload` non-zero).
 - `9` — healthcheck failed (or healthcheck script missing/non-executable).
+
+Note: there is no pre-runtime sanity check on which workspace packages
+ended up in `.next/standalone/node_modules`. Next's tracing only includes
+packages that are actually imported, so a foundation app that doesn't yet
+use `@bvisible/db` will (correctly) not have it in the bundle. The
+healthcheck is the canonical gate.
 
 A failed deploy at exit 8/9 leaves PM2 in whatever state it reached. The
 previous-good process may still be serving (PM2 reload swaps the
