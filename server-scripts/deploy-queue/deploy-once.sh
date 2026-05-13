@@ -124,12 +124,10 @@ if [ "$INSTALL_OK" != "true" ] || [ "$BUILD_OK" != "true" ]; then
   exit 6
 fi
 
-# Restart only requested services (no-op on foundation, app provides compose later)
-if [ -n "$SERVICES" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
-  log "Restarting compose services: $SERVICES"
-  IFS=',' read -ra SVC_ARR <<< "$SERVICES"
-  ( cd "$APP_DIR" && docker compose up -d --no-deps "${SVC_ARR[@]}" ) 2>&1 | tee -a "$LOG_FILE"
-fi
+# Note: the previous "Restart only requested services" block was removed
+# in Phase 3. The web app runs under PM2 (not in compose) and the only
+# compose service today (`db`) is brought up explicitly below. The
+# `services` array in the job JSON is now informational only.
 
 # ============================================================================
 # Database — Postgres in Docker, then prisma migrate deploy
