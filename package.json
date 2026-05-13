@@ -12,14 +12,5 @@
     "typecheck": "pnpm -r --parallel run typecheck",
     "lint": "pnpm --filter @bvisible/web run lint",
     "dev": "pnpm --filter @bvisible/web run dev"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma",
-      "sharp",
-      "unrs-resolver"
-    ]
   }
 }

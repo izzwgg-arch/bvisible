@@ -1,9 +1,14 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Allow these packages to run install scripts. Prisma needs to fetch engines,
+# sharp compiles native code, unrs-resolver compiles a Rust binding. Without
+# this, pnpm v11 refuses to run their install scripts and exits non-zero.
+# Field name confirmed by `pnpm approve-builds --all` writing here.
 allowBuilds:
-  '@prisma/client': set this to true or false
-  '@prisma/engines': set this to true or false
-  prisma: set this to true or false
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
