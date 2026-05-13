@@ -7,8 +7,16 @@ records what changed, the files touched, the risks, and the verification.
 
 ## 2026-05-13 — Postgres foundation + Prisma migrate-deploy in deploy queue (Phase 3)
 
-**Commit:** _filled in after push_
+**Commits:** `5fe154bc90d07ef5818e7e0814f75c1ef1afbb0e` (feat) →
+`b8fbfec303e31c56d69f363d11d68fcd3717605f` (fix; this is the SHA that actually
+deployed green).
 **Message:** `feat: add Postgres and Prisma migration deploy`
+**Follow-up:** `fix(deploy): remove legacy compose-services restart block (Phase 3)`
+— a stale block in `deploy-once.sh` was running `docker compose up -d --no-deps web`
+based on the job's `services` array. With the Phase 3 compose file only defining
+the `db` service (web runs under PM2), that block hard-failed (`no such service:
+web`) and aborted the first deploy attempt (`20260513T181731-3f5f97`). Removed the
+dead block; PM2 reload + healthcheck already covered what it was meant to do.
 
 **Scope**
 
@@ -174,16 +182,43 @@ expose ports publicly, or modify queue serialization.
 `20260513180326_init` — first migration; creates `Role` enum and
 `tenants` / `users` tables with all indexes and the `tenantId` FK.
 
-**Deploy job ID:** _filled in after enqueue_
-**Deploy result:** _filled in after run_
-**Postgres status:** running (`bvisible-db`, healthy, 127.0.0.1:5432).
-**Migration result:** `migrate deploy` will be a no-op on the next
-deploy (already applied during bootstrap). On the deploy job log it
-will say "No pending migrations to apply" — that's expected.
-**Healthcheck result:** _filled in after deploy_
+**Deploy job IDs:**
+- `20260513T181731-3f5f97` — failed (rc=1) at the legacy "Restart only
+  requested services: web" block (no `web` service in compose). Failed
+  job preserved in `/opt/bvisible/deploy-queue/failed/`.
+- `20260513T182043-c362ac` — **done** in ~108 s after the follow-up fix.
+  Release at `/opt/bvisible/releases/20260513T182044Z-b8fbfec303e3`.
+
+**Deploy result (final):** `done`. End-to-end log:
+- Build OK (Next.js standalone bundle).
+- `docker compose up -d db` recreated the container (compose file
+  changed in working tree — host config drift was reconciled). Healthy
+  in <2s.
+- `prisma migrate deploy`: "1 migration found in prisma/migrations / No
+  pending migrations to apply" (expected — already applied during
+  bootstrap).
+- `db-verify.sh`: container running, connection OK,
+  `_prisma_migrations` OK, `tenants`/`users` OK, applied migrations: 1
+  (latest `20260513180326_init`).
+- PM2 reload: `bvisible-web` online (pid 24100).
+- PM2 save OK.
+- Healthcheck: OK after 1 attempt.
+
+**Postgres status:** `bvisible-db` running, healthy, port-published
+`127.0.0.1:5432:5432` only (recreated at deploy time, named volume
+`bvisible_pgdata` survived).
+**Migration result:** idempotent no-op (`No pending migrations to apply`).
+**Healthcheck result:** OK after 1 attempt
+(`{"status":"ok","service":"bvisible-web"}`).
+**HTTPS health endpoint:** `GET https://vmi3270817.contaboserver.net/api/health`
+returns `200 OK` with body `{"status":"ok","service":"bvisible-web"}`,
+70 ms over TLS.
 **Public port safety:** `ss -tln src 0.0.0.0:5432` empty;
 `ss -tlnp | grep ':5432'` shows ONLY `127.0.0.1:5432` (docker-proxy on
-lo); UFW unchanged (22/80/443).
+lo); UFW unchanged (22/80/443 only); no UFW rule for 5432 (none needed
+because nothing external can reach it).
+**Queue end state:** `bvisible-status` shows last 5 done includes
+`20260513T182043-c362ac`; queue empty; serialization unchanged.
 
 ---
 
