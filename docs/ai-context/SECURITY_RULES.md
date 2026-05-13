@@ -11,9 +11,11 @@
    - JWTs and session cookies
    - The full body of an inbound email (it may contain credentials)
    - `.env` contents
-3. **Public surface is HTTP/HTTPS only.** Postgres, Redis, the workers, and the
-   IMAP poller are not reachable from the internet. UFW only allows ports 22,
-   80, 443.
+3. **Public surface is HTTP/HTTPS only.** Postgres, Redis, the workers, the
+   IMAP poller, and the Node web app (`127.0.0.1:3000`) are not reachable
+   from the internet. UFW only allows ports 22, 80, 443. All public traffic
+   to the web app is terminated by Nginx and proxied to the localhost-only
+   upstream.
 4. **Secrets live in `/opt/bvisible/shared/env/.env`** on the server, mode 640,
    owned by `deploy:deploy`. Never commit `.env` to Git.
 5. **Uploads are sanitized.** No execution permission, no path traversal in
@@ -36,6 +38,13 @@
 - `deploy` user has passwordless sudo; SSH key copied from root.
 - `fail2ban` `[sshd]` jail enabled.
 - UFW `active` with rules: `OpenSSH`, `22/tcp`, `80/tcp`, `443/tcp`.
+- Public TLS via Let's Encrypt for `vmi3270817.contaboserver.net`. Auto-renews
+  via the system `certbot.timer`.
+- HTTP→HTTPS 301 redirect active at the Nginx layer.
+- HSTS (`Strict-Transport-Security`) intentionally NOT set yet — enable
+  after the runtime has been stable on HTTPS for at least a week (HSTS is
+  a one-way commitment that breaks the site if HTTPS later regresses).
+- Web app upstream is `127.0.0.1:3000` only; never bind Node to `0.0.0.0`.
 
 ## Data classification
 

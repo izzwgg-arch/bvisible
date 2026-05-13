@@ -5,6 +5,109 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Production runtime foundation, Phase 1 (PM2 + Nginx + HTTPS)
+
+**Commit:** _(this commit, no deploy enqueued — Phase 2 will do that)_
+**Message:** `feat: production runtime foundation phase 1 (pm2 + nginx + https)`
+
+**Scope**
+
+Phase 1 of the runtime foundation. Server-side bootstrap only. Did NOT touch
+app code, Prisma, deploy-once.sh, or the deploy queue's behavior. Phase 2 will
+add `output: 'standalone'`, `ecosystem.config.cjs`, `healthcheck.sh`, and the
+PM2 + healthcheck integration into `deploy-once.sh`.
+
+**What changed (server)**
+
+- Installed PM2 v7.0.1 globally via `npm i -g pm2`.
+- Installed and enabled the PM2 systemd unit for the `deploy` user
+  (`/etc/systemd/system/pm2-deploy.service`). PM2 will resurrect saved
+  processes on reboot.
+- Replaced `/etc/nginx/sites-enabled/bvisible.placeholder` with a real
+  reverse-proxy site at `/etc/nginx/sites-available/bvisible` (proxy to
+  `127.0.0.1:3000`, gzip, security headers, WS upgrade, forwarded headers,
+  `client_max_body_size 25m`, separate access/error logs).
+- Issued a Let's Encrypt cert for `vmi3270817.contaboserver.net` via
+  `certbot --nginx --redirect`. Public DNS for that hostname resolves to
+  `212.56.32.136` (verified before issuance). Cert valid until 2026-08-11.
+- HTTP → HTTPS 301 redirect now active. HSTS intentionally NOT set yet
+  (HSTS is a one-way commitment; enable once the runtime is proven stable).
+- Created an empty `/opt/bvisible/shared/env/.env` (mode 640, deploy:deploy)
+  so the deploy-once.sh symlink-into-app step has something to point at.
+- UFW rules unchanged. SSH port unchanged. Port 3000 stays
+  localhost-only — verified `ss -tlnp` shows nothing on `:3000`.
+
+**What changed (repo, this commit)**
+
+- NEW `server-scripts/nginx/bvisible.conf` — the reverse-proxy config; the
+  on-server `/etc/nginx/sites-available/bvisible` is this file plus
+  certbot-managed HTTPS additions.
+- NEW `server-scripts/setup-pm2-and-nginx.sh` — idempotent Phase 1
+  bootstrap. Run once via SSH; safe to re-run.
+
+**Files touched**
+
+- `server-scripts/nginx/bvisible.conf` (new)
+- `server-scripts/setup-pm2-and-nginx.sh` (new)
+- `docs/ai-context/DEPLOYMENT.md` (runtime stack updated)
+- `docs/ai-context/DEPLOY_QUEUE.md` (Phase 2 healthcheck integration noted)
+- `docs/ai-context/SECURITY_RULES.md` (HTTPS posture; HSTS still off)
+- `docs/ai-context/DEBUGGING.md` (PM2 + nginx + cert renewal commands)
+- `docs/ai-context/CHANGELOG_AI.md` (this entry)
+
+**Risks**
+
+- The on-server `bvisible` site file now contains certbot-managed lines
+  (the `:443` server block, ssl paths, the 301 redirect). Re-applying the
+  repo file via `setup-pm2-and-nginx.sh` would strip those — the script
+  detects the existing cert and re-runs certbot to re-deploy it, but if
+  Let's Encrypt is rate-limiting it would fall back to HTTP-only with a
+  warning. Mitigation: the script checks `/etc/letsencrypt/live/...` before
+  issuance and skips if the cert exists.
+- PM2 ran via `sudo -u deploy` failed with `spawn /usr/bin/node EACCES` on
+  Ubuntu 24.04 (PM2 daemon spawn under sudo is blocked). The script uses
+  `su - deploy -c '...'` instead, which works. Documented in DEBUGGING.md.
+- Cert is for the Contabo PTR hostname (`vmi3270817.contaboserver.net`),
+  not a real bvisible.* domain. When a real domain is purchased, point its
+  A record at `212.56.32.136` and run
+  `certbot --nginx -d <new-domain> --redirect`. The current cert keeps
+  working until then.
+
+**Verification performed**
+
+- `https://vmi3270817.contaboserver.net/` returns HTTP/1.1 502 (no PM2
+  process yet — expected for Phase 1) over a valid TLS handshake, with
+  all security headers present.
+- `http://vmi3270817.contaboserver.net/` returns 301 → the https URL.
+- `ss -tlnp | grep :3000` → nothing listening (correct, no app yet).
+- `ufw status` → still 22/80/443 only.
+- `systemctl is-enabled pm2-deploy.service` → `enabled` (active is
+  `inactive` because there are no resurrected processes; correct).
+- `systemctl list-timers | grep certbot` → `certbot.timer` scheduled for
+  next run; auto-renewal in place.
+- `/opt/bvisible/shared/env/.env` exists, mode 640, owner deploy:deploy,
+  size 0 bytes.
+- `nginx -t` passes both before and after certbot edits.
+- `setup-pm2-and-nginx.sh` is idempotent: re-running it on the now-set-up
+  server reports "PM2 already installed", "pm2-deploy.service already
+  installed", "${ENV_FILE} already exists — leaving contents alone",
+  "${NGINX_AVAILABLE} already current".
+
+**Next step (Phase 2 — separate commit, NOT done in this entry)**
+
+- Add `output: 'standalone'` to `apps/web/next.config.mjs` (gated on env
+  var so Windows builds keep working).
+- Add `ecosystem.config.cjs` at repo root.
+- Add `server-scripts/deploy-queue/healthcheck.sh`.
+- Update `server-scripts/deploy-queue/deploy-once.sh` to: copy
+  `.next/static` into the standalone tree, symlink `.env` into standalone
+  cwd, `pm2 startOrReload --update-env`, `pm2 save`, then run the
+  healthcheck. Failed healthcheck → failed deploy.
+- Push, then enqueue real deploy and verify `https://vmi3270817...` /
+  api/health returns `{ "status": "ok", "service": "bvisible-web" }`.
+
+---
+
 ## 2026-05-13 — First real deploy through the queue (foundation app)
 
 **Commit:** `ce7daf17be8174df49a31f659e30f2ebdcdbf58e`

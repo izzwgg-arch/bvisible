@@ -112,6 +112,26 @@ ls /opt/bvisible/deploy-queue/failed/
 - 23/23 PASS, recorded during the foundation task.
 - Includes the parallel-worker test that proves only one job runs at a time.
 
+## Runtime integration (status as of Phase 1)
+
+`deploy-once.sh` currently stops at "build OK" and skips the healthcheck
+because `apps/web/scripts/healthcheck.sh` does not exist. Phase 1 of the
+runtime foundation has installed PM2 + the production Nginx site +
+HTTPS — see `DEPLOYMENT.md`. Phase 2 will add:
+
+1. `ecosystem.config.cjs` at the repo root.
+2. `server-scripts/deploy-queue/healthcheck.sh` (curls `/api/health` with
+   retry).
+3. Standalone Next.js output (`output: 'standalone'`).
+4. Updated `deploy-once.sh` flow:
+   `checkout → install → build → pm2 startOrReload → sleep 2s →
+   healthcheck.sh → success/failure`. Failed healthcheck makes the deploy
+   fail.
+
+Until Phase 2 lands, no deploy will start a runtime process; the build
+succeeds and Nginx still returns 502 to the public hostname because there
+is no upstream on `:3000`.
+
 ## Things to remember
 
 - **Push first, deploy second.** This is enforced by the project rule

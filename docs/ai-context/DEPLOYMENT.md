@@ -89,11 +89,49 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
 
 ## Nginx
 
-- One placeholder site at `/etc/nginx/sites-available/bvisible.placeholder`
-  serving plain text on `:80`.
-- Real proxy config will replace it once app upstream ports are known.
-- ACME challenge dir: `/var/www/html/.well-known/acme-challenge/`.
-- TLS via certbot (not yet issued — needs a real domain).
+- Real reverse-proxy site at `/etc/nginx/sites-available/bvisible`, enabled
+  via `/etc/nginx/sites-enabled/bvisible`. Source of truth for the HTTP
+  baseline lives in the repo at `server-scripts/nginx/bvisible.conf`. The
+  on-server file additionally contains certbot-managed lines (`:443`
+  server block, `ssl_certificate` paths, the HTTP→HTTPS 301 redirect).
+- Upstream: `127.0.0.1:3000` (Node app, localhost-only — never exposed
+  publicly; UFW also blocks `:3000` from the outside).
+- gzip on for text-ish responses, security headers in place
+  (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Permissions-Policy`). HSTS intentionally NOT set yet.
+- `client_max_body_size 25m`. Bump per-feature.
+- WebSocket upgrade headers wired through.
+- ACME challenge dir: `/var/www/html/.well-known/acme-challenge/` (kept
+  reachable on `:80` so renewals succeed).
+- The old placeholder file is preserved at
+  `/etc/nginx/sites-available/bvisible.placeholder` for emergency
+  rollback; it is disabled (no symlink in `sites-enabled/`).
+
+## TLS / certbot
+
+- Cert issued for `vmi3270817.contaboserver.net` (Contabo's PTR record for
+  this VPS) on 2026-05-13, valid until 2026-08-11.
+- Cert files at `/etc/letsencrypt/live/vmi3270817.contaboserver.net/`.
+- `certbot.timer` (system-wide) runs auto-renewal twice daily.
+- HTTP→HTTPS 301 redirect active.
+- When a real `bvisible.*` domain exists: point its A record at
+  `212.56.32.136`, then run
+  `certbot --nginx -d <new-domain> --redirect --agree-tos --register-unsafely-without-email --no-eff-email`.
+  The Contabo-hostname cert keeps working until then.
+
+## Runtime — PM2
+
+- PM2 v7.0.1 installed globally (`/usr/bin/pm2 → /usr/lib/node_modules/pm2/bin/pm2`).
+- PM2 systemd unit at `/etc/systemd/system/pm2-deploy.service` runs as
+  `deploy`, `Type=forking`, `ExecStart=… pm2 resurrect`. Enabled — survives
+  reboot.
+- IMPORTANT: invoke PM2 via `su - deploy -c '...'`, not `sudo -u deploy`.
+  On Ubuntu 24.04, `sudo -u` and `runuser` both hit
+  `spawn /usr/bin/node EACCES` when the PM2 daemon tries to fork; a login
+  shell via `su -` does not. See `DEBUGGING.md`.
+- Phase 1 leaves PM2 active=inactive because no app processes are
+  registered yet. Phase 2 adds `ecosystem.config.cjs` and wires
+  `pm2 startOrReload` into `deploy-once.sh`.
 
 ## Secrets / `.env`
 
@@ -140,8 +178,13 @@ Build pipeline used by the deploy queue:
 
 ## Manual / outstanding steps
 
-1. Real domain + TLS via `certbot --nginx -d <domain>`.
-2. Real nginx proxy config when app ports are known.
+1. Phase 2 of the runtime foundation: `output: 'standalone'` for Next,
+   `ecosystem.config.cjs`, `server-scripts/deploy-queue/healthcheck.sh`,
+   and updated `deploy-once.sh` (PM2 reload + healthcheck gate).
+2. Real `bvisible.*` domain + cert. Once the A record points at
+   `212.56.32.136`, run
+   `certbot --nginx -d <new-domain> --redirect`. The current Contabo-hostname
+   cert keeps working until then.
 3. Tighten `PermitRootLogin no` once `deploy` is fully proven (test deploy
    user first).
 4. Add backup automation writing to `/opt/bvisible/backups/`.
@@ -150,5 +193,7 @@ Build pipeline used by the deploy queue:
    `/opt/bvisible/shared/env/.env`. `prisma generate` does not need it, so
    the foundation deploy passes without one — but feature deploys that read
    from the DB will fail until the `.env` is filled.
-7. Add `docker-compose.yml` (web + db + redis) and a `scripts/healthcheck.sh`
-   when we want the deploy to actually start the app and verify it.
+7. Add HSTS header (`Strict-Transport-Security`) to the Nginx config once
+   the runtime has been stable on HTTPS for at least a week.
+8. (Later) Add `docker-compose.yml` (db + redis) and any worker services.
+   The web app itself runs under PM2, NOT Docker.

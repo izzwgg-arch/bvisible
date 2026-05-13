@@ -84,10 +84,69 @@ sudo nginx -t                                  # config sanity
 sudo systemctl reload nginx                    # apply
 sudo tail -n 200 /var/log/nginx/error.log
 sudo tail -n 200 /var/log/nginx/access.log
-sudo tail -n 200 /var/log/nginx/bvisible.placeholder.error.log
+sudo tail -n 200 /var/log/nginx/bvisible.error.log
+sudo tail -n 200 /var/log/nginx/bvisible.access.log
 ```
 
 If nginx won't start, `nginx -t` prints the offending file:line.
+
+**Re-applying the repo nginx config without losing HTTPS:**
+
+The on-server `/etc/nginx/sites-available/bvisible` contains certbot-managed
+lines (`:443` block, `ssl_certificate`, the 301 redirect). Re-running
+`server-scripts/setup-pm2-and-nginx.sh` re-applies the HTTP-only baseline
+from the repo and then re-runs certbot, which re-deploys the cert into the
+file. If LE is rate-limiting, the bootstrap script falls back to HTTP-only
+with a warning rather than leaving the site broken.
+
+## 4a. TLS / certbot
+
+```bash
+sudo certbot certificates                                  # list issued certs
+sudo systemctl status certbot.timer --no-pager             # auto-renewal
+sudo certbot renew --dry-run                               # smoke-test renewal
+ls -la /etc/letsencrypt/live/vmi3270817.contaboserver.net/ # cert files
+```
+
+If `certbot --nginx` ever fails: check that the A record for the hostname
+still resolves to `212.56.32.136` (`dig +short A <host> @1.1.1.1`), then
+that nginx is up (`systemctl status nginx`), then re-run with
+`--debug-challenges`.
+
+## 4b. PM2 (production runtime)
+
+```bash
+# ALWAYS use `su - deploy -c '...'` for PM2 commands. `sudo -u deploy`
+# and `runuser -u deploy` both fail with `spawn /usr/bin/node EACCES`
+# under Ubuntu 24.04.
+su - deploy -c 'pm2 list'
+su - deploy -c 'pm2 status bvisible-web'
+su - deploy -c 'pm2 logs bvisible-web --lines 100'
+su - deploy -c 'pm2 reload bvisible-web --update-env'
+su - deploy -c 'pm2 restart bvisible-web --update-env'  # if reload misbehaves
+su - deploy -c 'pm2 save'                               # snapshot for resurrect
+
+sudo systemctl status pm2-deploy.service --no-pager     # systemd wrapper
+sudo systemctl restart pm2-deploy.service               # cold-restart all PM2 apps
+journalctl -u pm2-deploy.service --since '1 hour ago' --no-pager
+```
+
+If a PM2 process is stuck in `errored`:
+
+```bash
+su - deploy -c 'pm2 describe bvisible-web'              # inspect last error
+su - deploy -c 'pm2 logs bvisible-web --err --lines 200'
+su - deploy -c 'pm2 delete bvisible-web && pm2 startOrReload /opt/bvisible/app/ecosystem.config.cjs --update-env && pm2 save'
+```
+
+## 4c. /api/health
+
+```bash
+curl -fsS http://127.0.0.1:3000/api/health      # direct to Node (deploy box)
+curl -fsS https://vmi3270817.contaboserver.net/api/health   # public via Nginx
+```
+
+Expected body: `{"status":"ok","service":"bvisible-web"}`.
 
 ## 5. Docker
 
