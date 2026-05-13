@@ -270,19 +270,100 @@ docker exec -it bvisible-db-1 psql -U bv -d bvisible \
 Find the offending query — most likely a missing `tenantId` in a `where`.
 Add a regression test (see `TESTING.md` § "tenant isolation").
 
-## 11. Prisma / DB issues
+## 11. Postgres / Prisma / DB issues
+
+The web app runs under PM2 on the host (NOT in compose). Postgres runs
+in compose as the `db` service of project `bvisible`, container
+`bvisible-db`, port-published `127.0.0.1:5432:5432` only.
+
+### Quick checks
 
 ```bash
-docker exec -it bvisible-web-1 pnpm prisma migrate status
-docker exec -it bvisible-web-1 pnpm prisma migrate deploy   # apply pending
-docker exec -it bvisible-db-1 psql -U bv -d bvisible
+# Container state and health (run as root or any user in docker group)
+docker compose -p bvisible ps
+docker compose -p bvisible logs --tail 100 db
+
+# Is anything publicly listening on 5432? (Should be ONLY 127.0.0.1.)
+ss -tlnp | grep ':5432'
+ss -tln src 0.0.0.0:5432   # MUST be empty
+
+# Smoke the live DB end-to-end:
+sudo /opt/bvisible/deploy-queue/db-verify.sh
 ```
+
+### Talk to the DB
+
+```bash
+# psql as the app user, sourcing the password from the live env file:
+PW=$(sudo grep '^POSTGRES_PASSWORD=' /opt/bvisible/shared/env/.env | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+docker compose -p bvisible exec -T -e PGPASSWORD="$PW" db psql -U bvisible -d bvisible
+```
+
+Useful one-liners:
+
+```sql
+\dt                                                -- list tables in public
+SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY started_at;
+SELECT count(*) FROM tenants;
+SELECT count(*) FROM users;
+```
+
+### Prisma migrations
+
+```bash
+# From the deploy box, as deploy:
+( set -a && . /opt/bvisible/shared/env/.env && set +a && \
+  cd /opt/bvisible/app && pnpm --filter @bvisible/db exec prisma migrate status )
+
+# Apply pending (this is what deploy-once.sh does):
+( set -a && . /opt/bvisible/shared/env/.env && set +a && \
+  cd /opt/bvisible/app && pnpm --filter @bvisible/db exec prisma migrate deploy )
+```
+
+NEVER run `prisma migrate dev` or `prisma db push` against the
+production DB — they can destroy data. Generate migrations against a
+local Postgres (or a disposable scratch DB), commit the files, push,
+deploy.
 
 Stuck migration:
 
 - `prisma migrate resolve --applied <migration>` if you've manually fixed it.
+- `prisma migrate resolve --rolled-back <migration>` to mark a failed migration
+  as rolled back (only after you have manually undone the partial SQL).
 - Restore from a known-good `pg_dump` in `/opt/bvisible/backups/` if data was
   damaged.
+
+### `.env` quoting gotcha (deploy-once exit 10)
+
+`DATABASE_URL` contains an unquoted `&` (the connection-string query
+separator). Bash sourcing of an unquoted `.env` line treats `&` as the
+background operator and silently fails to set the variable. The deploy
+will then fail at `prisma migrate deploy` with `Environment variable not
+found: DATABASE_URL`.
+
+Fix: ensure the line in `/opt/bvisible/shared/env/.env` is double-quoted:
+
+```dotenv
+DATABASE_URL="postgresql://bvisible:...@127.0.0.1:5432/bvisible?schema=public&connection_limit=20"
+```
+
+The bootstrap script (`server-scripts/db/.bootstrap-write-env.sh`)
+writes it quoted. If you ever hand-edit `.env`, keep the quotes.
+
+### Compose / docker-compose.yml drift
+
+The repo has a single `docker-compose.yml` at the root. It pins:
+
+- project `name: bvisible` (top-level), so `docker compose ps` from any
+  cwd hits the same containers;
+- `services.db.ports: ["127.0.0.1:5432:5432"]` — the `127.0.0.1:` prefix
+  is mandatory, never delete it;
+- named volume `bvisible_pgdata` with explicit `name:` so the volume
+  survives `docker compose down`.
+
+`docker compose down` removes the container but keeps the volume.
+`docker compose down -v` ALSO removes the volume — never run it without
+a recent `pg_dump`.
 
 ## 12. UI / sidebar / drawer / hydration
 

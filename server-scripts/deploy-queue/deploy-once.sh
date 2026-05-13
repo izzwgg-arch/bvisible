@@ -132,6 +132,72 @@ if [ -n "$SERVICES" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
 fi
 
 # ============================================================================
+# Database — Postgres in Docker, then prisma migrate deploy
+# ============================================================================
+if [ -f "$APP_DIR/docker-compose.yml" ] && [ -f "$APP_DIR/packages/db/prisma/schema.prisma" ]; then
+  # Read POSTGRES_USER from the live env so pg_isready can target the
+  # right user. Failure to read is non-fatal; pg_isready still works
+  # without -U (it just won't be tied to a real role).
+  PG_USER="$(grep -E '^POSTGRES_USER=' "$SHARED_DIR/env/.env" 2>/dev/null \
+              | tail -n 1 \
+              | sed -E 's/^POSTGRES_USER=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')"
+
+  log "Bringing up Postgres (docker compose up -d db, project=bvisible)"
+  if ! ( cd "$APP_DIR" && docker compose up -d db ) 2>&1 | tee -a "$LOG_FILE"; then
+    log "FATAL: docker compose up -d db failed"
+    exit 10
+  fi
+
+  log "Waiting for Postgres to be ready (up to 60s)"
+  PG_READY=false
+  for _ in $(seq 1 30); do
+    if ( cd "$APP_DIR" && docker compose exec -T db pg_isready ${PG_USER:+-U "$PG_USER"} >/dev/null 2>&1 ); then
+      PG_READY=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$PG_READY" != "true" ]; then
+    log "FATAL: Postgres did not become ready within 60s"
+    ( cd "$APP_DIR" && docker compose logs --tail=80 db ) | tee -a "$LOG_FILE"
+    exit 10
+  fi
+  log "Postgres ready"
+
+  # `pnpm --filter @bvisible/db exec` runs the package's local prisma
+  # binary in packages/db's cwd. Prisma's auto .env discovery does NOT
+  # walk all the way up to $APP_DIR/.env from packages/db/, so we source
+  # the shared env in a subshell and let it inherit. Subshell prevents
+  # leaking other secrets into the rest of deploy-once.sh.
+  #
+  # NOTE: DATABASE_URL in .env MUST be double-quoted because the value
+  # contains an unquoted `&` (query string) which bash sourcing would
+  # otherwise treat as the background operator. The bootstrap script
+  # writes it quoted; see DEBUGGING.md.
+  log "Running prisma migrate deploy"
+  if ! ( set -a && . "$SHARED_DIR/env/.env" && set +a && cd "$APP_DIR" && pnpm --filter @bvisible/db exec prisma migrate deploy ) 2>&1 | tee -a "$LOG_FILE"; then
+    log "FATAL: prisma migrate deploy failed"
+    exit 10
+  fi
+  log "Migrations applied"
+
+  # db-verify is the post-migration sanity gate. If the migration
+  # silently produced an empty schema or a missing table, this catches
+  # it before we flip PM2 onto a runtime that would crash.
+  if [ -x "/opt/bvisible/deploy-queue/db-verify.sh" ]; then
+    log "Running /opt/bvisible/deploy-queue/db-verify.sh"
+    if ! /opt/bvisible/deploy-queue/db-verify.sh 2>&1 | tee -a "$LOG_FILE"; then
+      log "FATAL: db-verify failed"
+      exit 11
+    fi
+  else
+    log "WARN: /opt/bvisible/deploy-queue/db-verify.sh missing or not executable; skipping post-migration verification"
+  fi
+else
+  log "No docker-compose.yml or no Prisma schema in working tree — skipping DB phase"
+fi
+
+# ============================================================================
 # PM2 + healthcheck — wires the bvisible-web runtime
 # ============================================================================
 STANDALONE_DIR="$APP_DIR/apps/web/.next/standalone/apps/web"

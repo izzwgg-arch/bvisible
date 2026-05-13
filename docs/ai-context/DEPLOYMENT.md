@@ -151,16 +151,26 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
 7. `NEXT_BUILD_STANDALONE=1 pnpm run build` (root build runs `prisma generate`
    then `next build`; the env var triggers Next standalone output gated in
    `apps/web/next.config.mjs`).
-8. **Wire standalone runtime:**
+8. **Database phase** (skipped if `docker-compose.yml` or
+   `packages/db/prisma/schema.prisma` is missing in the working tree):
+   - `docker compose up -d db` from `$APP_DIR` (project name `bvisible`,
+     idempotent — no-op if already running).
+   - Wait for `pg_isready` (up to 60 s).
+   - Source `/opt/bvisible/shared/env/.env` in a subshell (so prisma sees
+     `DATABASE_URL`), then
+     `pnpm --filter @bvisible/db exec prisma migrate deploy`. Migration
+     failure → `exit 10`.
+   - Run `/opt/bvisible/deploy-queue/db-verify.sh`. Failure → `exit 11`.
+9. **Wire standalone runtime:**
    - copy `apps/web/.next/static` next to the standalone server,
    - copy `apps/web/public` if present,
    - symlink `apps/web/.next/standalone/apps/web/.env` →
      `/opt/bvisible/shared/env/.env`,
    - ensure `/opt/bvisible/shared/logs/pm2/` exists owned by `deploy`.
-9. `bash -lc 'pm2 startOrReload /opt/bvisible/app/ecosystem.config.cjs --update-env'`.
-10. `bash -lc 'pm2 save --force'`.
-11. `sleep 2`.
-12. `/opt/bvisible/deploy-queue/healthcheck.sh` — if non-zero, deploy
+10. `bash -lc 'pm2 startOrReload /opt/bvisible/app/ecosystem.config.cjs --update-env'`.
+11. `bash -lc 'pm2 save --force'`.
+12. `sleep 2`.
+13. `/opt/bvisible/deploy-queue/healthcheck.sh` — if non-zero, deploy
     fails (exit 9). If the healthcheck script is missing or non-executable,
     the deploy ALSO fails (we refuse to mark a deploy successful without
     runtime verification).
@@ -196,11 +206,40 @@ free -h
 |---|---|---|
 | pnpm workspace | repo root | `packageManager: pnpm@11.1.1` (matches server) |
 | Web app | `apps/web` | Next.js 15, React 19, Tailwind 4, App Router, TS strict |
-| DB package | `packages/db` | Prisma 6 (postgresql), schema at `packages/db/prisma/schema.prisma` |
+| DB package | `packages/db` | Prisma 6 (postgresql), schema at `packages/db/prisma/schema.prisma`, first migration `20260513180326_init` |
 | Health endpoint | `apps/web/app/api/health/route.ts` | `GET /api/health → {"status":"ok","service":"bvisible-web"}` |
 | PM2 ecosystem | `ecosystem.config.cjs` (repo root) | One app `bvisible-web`, fork mode, env `PORT=3000 HOSTNAME=127.0.0.1`. |
 | Healthcheck   | `server-scripts/deploy-queue/healthcheck.sh` | Curl-with-retry against `/api/health`. Required by `deploy-once.sh`. |
 | Nginx baseline | `server-scripts/nginx/bvisible.conf` | HTTP-only baseline; certbot mutates the on-server copy in place to add `:443`. |
+| Compose | `docker-compose.yml` (repo root) | Project name `bvisible`. Service `db` = `postgres:16-alpine`, port published `127.0.0.1:5432:5432` ONLY, named volume `bvisible_pgdata`, init scripts mounted from `server-scripts/db/init/`. The web app does NOT run in compose. |
+| DB verify | `server-scripts/db/db-verify.sh` | Confirms postgres reachable, `_prisma_migrations` table present, and `tenants`/`users` tables exist. Run by `deploy-once.sh` after `prisma migrate deploy`. |
+
+## Database (Postgres in Docker Compose)
+
+- Single service in `docker-compose.yml`: `db` = `postgres:16-alpine`,
+  container `bvisible-db`, project `bvisible`, named volume `bvisible_pgdata`.
+- Port binding is hard-coded to `127.0.0.1:5432:5432`. Docker would
+  otherwise default to `0.0.0.0:5432` and bypass UFW — never write
+  `"5432:5432"` here. Verified via `ss -tlnp | grep 5432` (only
+  `127.0.0.1:5432` LISTEN; `ss -tln src 0.0.0.0:5432` empty).
+- Persistent data lives in the named docker volume
+  `bvisible_pgdata` (`/var/lib/docker/volumes/bvisible_pgdata/_data`).
+- Init scripts in `server-scripts/db/init/` are mounted read-only into
+  `/docker-entrypoint-initdb.d/` and run only on a fresh data volume.
+  Today: `01-extensions.sql` enables `pgcrypto`.
+- Compose reads env from `/opt/bvisible/app/.env` (the deploy-managed
+  symlink → `/opt/bvisible/shared/env/.env`). Required keys:
+  `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. The matching
+  `DATABASE_URL` is consumed by Prisma at app/runtime time.
+- The PM2 web app runs on the host and connects via
+  `127.0.0.1:5432`, NOT via a docker network DNS name. This is
+  deliberate: keeping PM2 outside Docker keeps reload/restart fast and
+  avoids dragging the compose lifecycle into runtime.
+- Migrations are applied by `prisma migrate deploy`, invoked from
+  `deploy-once.sh` BEFORE PM2 reload. A failed migration fails the
+  deploy (`exit 10`); the previous-good PM2 process keeps serving.
+  `db-verify.sh` then runs and fails the deploy at `exit 11` if the
+  expected tables aren't present.
 
 ## Manual / outstanding steps
 
@@ -208,15 +247,13 @@ free -h
    `212.56.32.136`, run
    `certbot --nginx -d <new-domain> --redirect`. The current Contabo-hostname
    cert keeps working until then.
-3. Tighten `PermitRootLogin no` once `deploy` is fully proven (test deploy
+2. Tighten `PermitRootLogin no` once `deploy` is fully proven (test deploy
    user first).
-4. Add backup automation writing to `/opt/bvisible/backups/`.
-5. (Optional) Add a small swapfile for safety.
-6. Provide `DATABASE_URL` (and the rest of `ENVIRONMENT_VARIABLES.md`) at
-   `/opt/bvisible/shared/env/.env`. `prisma generate` does not need it, so
-   the foundation deploy passes without one — but feature deploys that read
-   from the DB will fail until the `.env` is filled.
-7. Add HSTS header (`Strict-Transport-Security`) to the Nginx config once
+3. Add backup automation writing to `/opt/bvisible/backups/`. For Postgres
+   specifically, a daily `pg_dump bvisible | gzip > backups/db-<ts>.sql.gz`
+   from inside `bvisible-db` is the obvious next step.
+4. (Optional) Add a small swapfile for safety.
+5. Add HSTS header (`Strict-Transport-Security`) to the Nginx config once
    the runtime has been stable on HTTPS for at least a week.
-8. (Later) Add `docker-compose.yml` (db + redis) and any worker services.
-   The web app itself runs under PM2, NOT Docker.
+6. (Later) Add Redis + any worker services to `docker-compose.yml`. The
+   web app itself stays under PM2, NOT Docker.

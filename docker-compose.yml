@@ -1,0 +1,57 @@
+# B Visible — production services managed by docker compose.
+#
+# Conventions:
+#   - The web app (bvisible-web) runs UNDER PM2 on the host, NOT in Docker.
+#     Docker here is only for stateful supporting services (Postgres today;
+#     Redis later when a queue/cache is added).
+#   - Postgres binds to 127.0.0.1:5432 ONLY. PM2 reaches it via localhost;
+#     the public internet cannot. UFW additionally blocks :5432.
+#   - Project name is fixed via top-level `name:` so every `docker compose`
+#     invocation from any cwd targets the same containers/volumes.
+#   - Env comes from /opt/bvisible/app/.env (which deploy-once.sh symlinks
+#     to /opt/bvisible/shared/env/.env). Compose reads the .env adjacent
+#     to docker-compose.yml automatically.
+
+name: bvisible
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bvisible-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    ports:
+      # 127.0.0.1 prefix is mandatory. Docker will silently bind to
+      # 0.0.0.0 if you write "5432:5432" — never do that here.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Init scripts run only on a fresh data volume (Postgres skips
+      # docker-entrypoint-initdb.d if PGDATA already has files).
+      - ./server-scripts/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Double-$ so docker compose hands the literal $POSTGRES_USER to
+      # the shell inside the container, not to compose's variable
+      # interpolation.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # Keep the container off Docker's default bridge so it doesn't share
+    # a network namespace with anything else we add later by accident.
+    networks:
+      - bvisible_internal
+
+networks:
+  bvisible_internal:
+    name: bvisible_internal
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: bvisible_pgdata

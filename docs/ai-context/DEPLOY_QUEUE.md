@@ -32,8 +32,9 @@ Owner everywhere: `deploy:deploy`.
 |---|---|
 | `enqueue-deploy.sh <job.json|->` | Validates JSON, requires `repoUrl/branch/commitHash`, stamps `createdAt`, writes job into `jobs/`. Outputs `JOB_ID` on the last line. |
 | `deploy-worker.sh` | Acquires non-blocking `flock`, picks oldest queued job, moves it to `running/`, calls `deploy-once.sh`, routes result to `done/` or `failed/`, releases lock. Safe to invoke twice in parallel — second invocation exits cleanly with "another deploy is in progress". |
-| `deploy-once.sh <jobJson> <log>` | Fetches origin, fails if `commitHash` missing, fails if working tree dirty, checks out detached commit, snapshots release, links `shared/env/.env` and `shared/uploads`, runs `pnpm install --frozen-lockfile` + `NEXT_BUILD_STANDALONE=1 pnpm run build`. After build: copies `.next/static` into the standalone tree, symlinks `.env` into standalone cwd, ensures `/opt/bvisible/shared/logs/pm2/` exists, runs `bash -lc 'pm2 startOrReload .../ecosystem.config.cjs --update-env'`, `bash -lc 'pm2 save --force'`, sleeps 2s, then runs `/opt/bvisible/deploy-queue/healthcheck.sh`. Failed healthcheck → `exit 9`. Missing healthcheck → `exit 9` (refuses to mark a deploy successful without runtime verification). |
+| `deploy-once.sh <jobJson> <log>` | Fetches origin, fails if `commitHash` missing, fails if working tree dirty, checks out detached commit, snapshots release, links `shared/env/.env` and `shared/uploads`, runs `pnpm install --frozen-lockfile` + `NEXT_BUILD_STANDALONE=1 pnpm run build`. **DB phase:** `docker compose up -d db` from `$APP_DIR`, waits for `pg_isready` (≤60s), `pnpm --filter @bvisible/db exec prisma migrate deploy` (with `.env` sourced in a subshell so prisma sees `DATABASE_URL`), then `db-verify.sh`. After build/DB: copies `.next/static` into the standalone tree, symlinks `.env` into standalone cwd, ensures `/opt/bvisible/shared/logs/pm2/` exists, runs `bash -lc 'pm2 startOrReload .../ecosystem.config.cjs --update-env'`, `bash -lc 'pm2 save --force'`, sleeps 2s, then runs `/opt/bvisible/deploy-queue/healthcheck.sh`. Migration failure → `exit 10`. db-verify failure → `exit 11`. Failed healthcheck → `exit 9`. Missing healthcheck → `exit 9`. |
 | `healthcheck.sh` | Curl-with-retry against `http://127.0.0.1:3000/api/health` for up to 30s. Requires JSON `status:"ok"` and `service:"bvisible-web"`. On failure prints `pm2 list`, `pm2 jlist`, last 50 lines of PM2 stdout/stderr, and `ss -tlnp` for `:3000`. Exit 0 only on healthy. |
+| `db-verify.sh` | Connects to `bvisible-db` via `docker compose exec`, confirms the `_prisma_migrations` table and the foundation tables (`tenants`, `users`) exist, prints applied migration count + latest migration name. Exit 0 only on healthy. |
 | `status.sh` | Prints running, queued, last 5 done, last 5 failed, latest log path. |
 
 Convenience symlinks installed in `/usr/local/bin`:
@@ -113,12 +114,16 @@ ls /opt/bvisible/deploy-queue/failed/
 - 23/23 PASS, recorded during the foundation task.
 - Includes the parallel-worker test that proves only one job runs at a time.
 
-## Runtime integration (live as of Phase 2)
+## Runtime integration (live as of Phase 3)
 
 `deploy-once.sh` now performs the full deploy flow:
 
 ```
 checkout → install → build (NEXT_BUILD_STANDALONE=1)
+  → docker compose up -d db (project=bvisible)
+  → wait pg_isready (≤60s)
+  → ( source shared/env/.env ; pnpm --filter @bvisible/db exec prisma migrate deploy )
+  → /opt/bvisible/deploy-queue/db-verify.sh
   → wire .next/static + .env into standalone tree
   → bash -lc 'pm2 startOrReload .../ecosystem.config.cjs --update-env'
   → bash -lc 'pm2 save --force'
@@ -127,21 +132,40 @@ checkout → install → build (NEXT_BUILD_STANDALONE=1)
   → success / fail
 ```
 
-Exit codes added in Phase 2:
+Exit codes (cumulative):
 
+- `2` — `jq` not installed.
+- `3` — required job field missing.
+- `4` — working tree dirty.
+- `5` — `commitHash` not on origin.
+- `6` — install or build failed.
 - `8` — PM2 wiring failed (`pm2 startOrReload` non-zero).
 - `9` — healthcheck failed (or healthcheck script missing/non-executable).
+- `10` — DB phase failed (compose-up, pg_isready timeout, or `prisma migrate deploy` non-zero). Added in Phase 3.
+- `11` — `db-verify.sh` non-zero. Added in Phase 3.
+
+Migration ordering matters: `prisma migrate deploy` runs BEFORE PM2
+reload, so a broken migration aborts the deploy without the new app
+process ever starting. The previous-good PM2 process keeps serving
+during this window. If the migration succeeds but `db-verify` fails
+(e.g. expected table missing), we still abort BEFORE PM2 swap — the
+data layer is corrupt or surprising and we don't want the new code
+running against it.
+
+`docker compose up -d db` is idempotent — Compose detects the running
+container and returns success in <1s on every deploy after the first.
+`prisma migrate deploy` is idempotent — already-applied migrations are
+no-ops.
 
 Note: there is no pre-runtime sanity check on which workspace packages
 ended up in `.next/standalone/node_modules`. Next's tracing only includes
-packages that are actually imported, so a foundation app that doesn't yet
-use `@bvisible/db` will (correctly) not have it in the bundle. The
-healthcheck is the canonical gate.
+packages that are actually imported. The healthcheck is the canonical gate.
 
-A failed deploy at exit 8/9 leaves PM2 in whatever state it reached. The
-previous-good process may still be serving (PM2 reload swaps the
-process); the failed job lands in `failed/` and operators can re-enqueue
-the previous good `commitHash` (see `DEBUGGING.md` "13. Recovery posture").
+A failed deploy at exit 8/9/10/11 leaves PM2 in whatever state it
+reached. The previous-good process may still be serving (PM2 reload
+swaps the process); the failed job lands in `failed/` and operators can
+re-enqueue the previous good `commitHash` (see `DEBUGGING.md`
+"13. Recovery posture").
 
 Queue serialization (`flock` on `deploy.lock`) is unchanged.
 

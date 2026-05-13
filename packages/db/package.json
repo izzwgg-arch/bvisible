@@ -11,6 +11,9 @@
   "scripts": {
     "generate": "prisma generate",
     "build": "prisma generate",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:status": "prisma migrate status",
     "typecheck": "tsc --noEmit",
     "format": "prisma format",
     "studio": "prisma studio"

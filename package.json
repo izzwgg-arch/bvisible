@@ -8,6 +8,11 @@
   },
   "scripts": {
     "prisma:generate": "pnpm --filter @bvisible/db run generate",
+    "prisma:migrate-deploy": "pnpm --filter @bvisible/db run migrate:deploy",
+    "prisma:migrate-status": "pnpm --filter @bvisible/db run migrate:status",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose stop db",
+    "db:logs": "docker compose logs -f db",
     "build": "pnpm --filter @bvisible/db run build && pnpm --filter @bvisible/web run build",
     "typecheck": "pnpm -r --parallel run typecheck",
     "lint": "pnpm --filter @bvisible/web run lint",
