@@ -6,18 +6,16 @@ import { requestResetSchema } from '@/lib/validators';
 import { generateToken, hashToken } from '@/lib/auth/tokens';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { readRequestContext } from '@/lib/request-context';
+import { sendMail, MailerConfigError } from '@/lib/mailer';
+import { renderResetEmail } from '@/lib/emails/reset';
 
 export interface RequestResetState {
   error: string | null;
   ok: boolean;
-  // Until SMTP is wired, we surface the reset link to the requester
-  // inline so they can complete the flow. It's bounded to the same
-  // session that submitted the form (no cross-user leak — the only way
-  // to see it is to have submitted the form yourself).
-  devLink: string | null;
 }
 
 const RESET_TTL_MS = 30 * 60 * 1000;
+const RESET_TTL_MIN = Math.round(RESET_TTL_MS / 60_000);
 
 export async function requestResetAction(
   _prev: RequestResetState,
@@ -30,7 +28,6 @@ export async function requestResetAction(
     return {
       error: parsed.error.issues[0]?.message ?? 'Enter a valid email.',
       ok: false,
-      devLink: null,
     };
   }
   const { email } = parsed.data;
@@ -41,42 +38,63 @@ export async function requestResetAction(
     select: { id: true, tenantId: true },
   });
 
-  let devLink: string | null = null;
+  // Always respond with the same generic OK regardless of whether the
+  // email exists OR whether SMTP delivery succeeds. Deliberate: the
+  // public form must not let an attacker enumerate accounts and must
+  // not leak that mail is misconfigured. SMTP failures are surfaced
+  // instead via:
+  //   - `audit_logs.metadata.mailDelivery` (operator query)
+  //   - the SUPER_ADMIN /settings/email-test page (manual probe)
 
-  if (user) {
-    const token = generateToken();
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashToken(token),
-        expiresAt: new Date(Date.now() + RESET_TTL_MS),
-      },
-    });
-    await writeAuditLog({
-      action: 'password_reset_requested',
-      userId: user.id,
-      tenantId: user.tenantId,
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      // NOTE: do NOT log the token. metadata stores the email which is
-      // already user-identifying for audit purposes.
-      metadata: { email },
-    });
-    devLink = await buildResetLink(token);
-  } else {
-    // Same shape, same response time class. Don't leak that the email
-    // is unknown.
+  if (!user) {
     await writeAuditLog({
       action: 'password_reset_requested',
       userId: null,
       tenantId: null,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
-      metadata: { email, reason: 'unknown_email' },
+      metadata: { email, reason: 'unknown_email', mailDelivery: 'skipped_no_user' },
     });
+    return { error: null, ok: true };
   }
 
-  return { error: null, ok: true, devLink };
+  const token = generateToken();
+  await prisma.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + RESET_TTL_MS),
+    },
+  });
+
+  const resetLink = await buildResetLink(token);
+  const mail = renderResetEmail({ resetLink, expiresInMinutes: RESET_TTL_MIN });
+  const send = await sendMail({
+    to: email,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+  });
+
+  // Audit metadata: NEVER includes the token or the link. Just the
+  // delivery outcome and (on failure) a typed error kind so an operator
+  // can correlate the failure with the mailer logs without grepping.
+  const mailDelivery = send.ok
+    ? ('sent' as const)
+    : send.error instanceof MailerConfigError
+      ? ('failed_no_config' as const)
+      : (`failed_${send.error.kind}` as const);
+
+  await writeAuditLog({
+    action: 'password_reset_requested',
+    userId: user.id,
+    tenantId: user.tenantId,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { email, mailDelivery },
+  });
+
+  return { error: null, ok: true };
 }
 
 async function buildResetLink(token: string): Promise<string> {

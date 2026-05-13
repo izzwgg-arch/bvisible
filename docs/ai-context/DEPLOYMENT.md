@@ -180,7 +180,12 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
 - Single file: `/opt/bvisible/shared/env/.env` (mode 640, `deploy:deploy`).
 - Symlinked into `app/.env` by `deploy-once.sh`.
 - Never commit `.env`. Never log its contents.
-- See `ENVIRONMENT_VARIABLES.md` for required keys.
+- See `ENVIRONMENT_VARIABLES.md` for required keys. Phase 5 added
+  `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
+  (and optional `SMTP_SECURE`, `SMTP_REPLY_TO`) which the mailer reads
+  at runtime via `apps/web/lib/mailer.ts`. The keys may be edited
+  on the server in place; the next PM2 reload (which `deploy-once.sh`
+  always does) flushes the cached transport and picks up new values.
 
 ## systemd
 

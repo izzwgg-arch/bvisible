@@ -62,6 +62,42 @@
 - **JWT access tokens** for the mobile app (≤ 15 min, rotating refresh)
   land later — not in this phase.
 
+## Mailer posture
+
+- **Provider-agnostic SMTP** via Nodemailer in `apps/web/lib/mailer.ts`.
+  No provider SDK is hard-wired; swapping to Postmark/Resend/SES later
+  means rewriting only that one file.
+- **`SMTP_PASSWORD` (or legacy `SMTP_APP_PASSWORD`) is NEVER logged**
+  and NEVER displayed in the UI. The SUPER_ADMIN `/settings/email-test`
+  page renders host/port/secure/maskedUser/from/replyTo only.
+  `maskUser('alice@host.com') === 'a***e@host.com'`.
+- **Allowed log fields** on every mailer line: `mailer: true`, `host`,
+  `port`, `secure`, `maskedUser`, `from`, plus per-event fields
+  (`messageId`, `acceptedCount`/`rejectedCount` on success;
+  `kind`, `code`, `responseCode`, `message` on failure where `message`
+  is run through a `sanitize()` regex that scrubs `pass(word)?[=:]\S+`
+  and `\bauth\s+\S+`).
+- **Forbidden log fields**: the password, the full nodemailer transporter
+  object, raw invite/reset URLs (they grant account control), the
+  recipient's plaintext password (impossible — the mailer only sends
+  branded text), or any token hash.
+- **Error sanitization for the UI**: every error message that reaches
+  the browser comes from a typed `MailerSendError` with `kind ∈
+  {connect, auth, timeout, recipient, sender, unknown}` or
+  `MailerConfigError`. The action layer maps these to short,
+  user-readable strings; raw `err.message` is never rendered.
+- **CSRF** for the test-email action is the same as every other auth
+  action: Next 15 server-action same-origin POST + `requireSuperAdmin()`
+  inside the action body.
+- **Bounded latency**: nodemailer transport is configured with
+  `connectionTimeout`/`greetingTimeout`/`socketTimeout` of 10 s each.
+  Worst case a server-action handler waits 10 s on a dead SMTP server,
+  not indefinitely.
+- **Audit trail**: invite + password-reset audit rows include
+  `metadata.mailDelivery` (`sent` | `failed_<kind>` | `failed_no_config`
+  | `skipped_no_user`) so an operator can correlate UI reports with
+  the actual delivery outcome without grepping process logs.
+
 ## Server posture (already in place)
 
 - Root SSH allowed for now via key only — see `DEPLOYMENT.md` "remaining

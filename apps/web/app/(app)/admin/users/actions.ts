@@ -1,5 +1,6 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma, Role } from '@bvisible/db';
 import { inviteUserSchema } from '@/lib/validators';
@@ -7,6 +8,8 @@ import { generateToken, hashToken } from '@/lib/auth/tokens';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { requireRole } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
+import { sendMail, MailerConfigError } from '@/lib/mailer';
+import { renderInviteEmail } from '@/lib/emails/invite';
 
 export interface InviteUserState {
   error: string | null;
@@ -29,10 +32,6 @@ export async function inviteUserAction(
   }
   const { email, role } = parsed.data;
 
-  // Tenant scope: ADMIN invites into their own tenant. SUPER_ADMIN can
-  // invite into any tenant — for now, only their own (if they have
-  // one); cross-tenant invites land when /admin/tenants gets a "set
-  // active tenant" affordance.
   const targetTenantId = me.tenantId;
   if (!targetTenantId) {
     return {
@@ -65,6 +64,31 @@ export async function inviteUserAction(
     },
   });
 
+  // Send the invite email. SMTP failures are caught and surfaced to
+  // the admin (not the invitee — they have no UI yet) so the flow is
+  // never blocked: we fall back to displaying the link inline so the
+  // admin can manually deliver it. This keeps the team unblocked when
+  // the SMTP provider hiccups.
+  const inviteLink = await buildInviteLink(token);
+  const mail = renderInviteEmail({
+    inviteLink,
+    role,
+    tenantName: me.tenant?.name ?? 'B Visible',
+    invitedByEmail: me.email,
+  });
+  const send = await sendMail({
+    to: email,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+  });
+
+  const mailDelivery = send.ok
+    ? ('sent' as const)
+    : send.error instanceof MailerConfigError
+      ? ('failed_no_config' as const)
+      : (`failed_${send.error.kind}` as const);
+
   await writeAuditLog({
     action: 'invite_created',
     userId: me.id,
@@ -73,10 +97,27 @@ export async function inviteUserAction(
     targetId: email,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
-    metadata: { email, role },
+    metadata: { email, role, mailDelivery },
   });
 
-  // Show the invite link inline — the page reads `?invite=<token>` and
-  // displays it once. Email sending is stubbed until SMTP is wired.
-  redirect(`/admin/users?invite=${encodeURIComponent(token)}&invitedEmail=${encodeURIComponent(email)}`);
+  if (send.ok) {
+    redirect(`/admin/users?sent=${encodeURIComponent(email)}`);
+  }
+
+  // SMTP failed: show the invite link inline so the admin can deliver
+  // it manually. The token is single-use so this is no worse than the
+  // pre-mailer state.
+  const failureKind = send.error instanceof MailerConfigError ? 'no_config' : send.error.kind;
+  redirect(
+    `/admin/users?invite=${encodeURIComponent(token)}` +
+      `&invitedEmail=${encodeURIComponent(email)}` +
+      `&mailErr=${encodeURIComponent(failureKind)}`
+  );
+}
+
+async function buildInviteLink(token: string): Promise<string> {
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost';
+  const proto = (h.get('x-forwarded-proto') ?? 'http').split(',')[0]?.trim() ?? 'http';
+  return `${proto}://${host}/invite/${encodeURIComponent(token)}`;
 }

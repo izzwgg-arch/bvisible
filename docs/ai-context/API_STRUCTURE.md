@@ -51,6 +51,7 @@ integrations and lands later.
 | `inviteUserAction` | `app/(app)/admin/users/actions.ts` | ADMIN, SUPER_ADMIN |
 | `createTenantAction` | `app/(app)/admin/tenants/actions.ts` | SUPER_ADMIN |
 | `changePasswordAction` | `app/(app)/settings/actions.ts` | any signed-in |
+| `sendTestEmailAction` | `app/(app)/settings/email-test/actions.ts` | SUPER_ADMIN |
 
 Each action validates input with a `zod` schema from
 `apps/web/lib/validators.ts`, audits the result via
@@ -68,8 +69,9 @@ client (it always comes from the session).
 | `/invite/[token]` | yes | Set name + password (token validity gated). |
 | `/dashboard` | protected | Greeting + role/tenant cards. |
 | `/settings` | protected | Account info, change-password, sign-out. |
-| `/admin/users` | protected (ADMIN, SUPER_ADMIN) | List + invite. |
+| `/admin/users` | protected (ADMIN, SUPER_ADMIN) | List + invite. Sends invite email via SMTP; falls back to inline link on SMTP failure. |
 | `/admin/tenants` | protected (SUPER_ADMIN) | List + create. |
+| `/settings/email-test` | protected (SUPER_ADMIN) | SMTP diagnostics + send-test-email. Runs `verify()` then `sendMail()` from `apps/web/lib/mailer.ts`. Sanitized error display — no credentials leak to UI. |
 
 ## Resource sketch (target)
 

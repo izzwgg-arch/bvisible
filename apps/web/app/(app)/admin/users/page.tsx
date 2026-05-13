@@ -10,7 +10,19 @@ export const dynamic = 'force-dynamic';
 interface SearchParams {
   invite?: string;
   invitedEmail?: string;
+  sent?: string;
+  mailErr?: string;
 }
+
+const MAIL_ERR_LABELS: Record<string, string> = {
+  no_config: 'SMTP is not configured. Set SMTP_HOST/PORT/USER/PASSWORD/FROM in /opt/bvisible/shared/env/.env, then redeploy.',
+  connect: 'Could not reach the SMTP server. Check SMTP_HOST and SMTP_PORT.',
+  auth: 'SMTP rejected our credentials. Check SMTP_USER and SMTP_PASSWORD.',
+  timeout: 'SMTP server did not respond in time.',
+  recipient: 'The SMTP server rejected the recipient address.',
+  sender: 'The SMTP server rejected the sender address (likely SPF or DKIM).',
+  unknown: 'SMTP delivery failed. See the email-test page in Settings for details.',
+};
 
 export default async function AdminUsersPage({
   searchParams,
@@ -59,6 +71,7 @@ export default async function AdminUsersPage({
   ]);
 
   const inviteLink = sp.invite ? await buildInviteLink(sp.invite) : null;
+  const mailErrMessage = sp.mailErr ? MAIL_ERR_LABELS[sp.mailErr] ?? MAIL_ERR_LABELS.unknown : null;
 
   return (
     <>
@@ -159,12 +172,20 @@ export default async function AdminUsersPage({
           <div className="mt-4">
             <InviteUserForm canChooseAdmin={me.role === Role.SUPER_ADMIN || me.role === Role.ADMIN} />
           </div>
-          {sp.invite && inviteLink ? (
-            <div className="mt-5 flex flex-col gap-2 rounded-[8px] border border-emerald-200 bg-emerald-50 p-3">
+          {sp.sent && !sp.mailErr ? (
+            <div className="mt-5 rounded-[8px] border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-[12.5px] font-medium text-emerald-900">
-                Invite link for {sp.invitedEmail ?? 'the new user'} (email is not yet wired — copy and send manually):
+                Invite email sent to {sp.sent}. Link expires in 7 days.
               </p>
-              <code className="break-all rounded-md border border-emerald-300 bg-white px-2 py-1 font-mono text-[11.5px] text-emerald-900">
+            </div>
+          ) : null}
+          {sp.invite && inviteLink && mailErrMessage ? (
+            <div className="mt-5 flex flex-col gap-2 rounded-[8px] border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[12.5px] font-medium text-amber-900">
+                Email delivery failed for {sp.invitedEmail ?? 'the new user'}. Copy this invite link and deliver it manually.
+              </p>
+              <p className="text-[12px] text-amber-800">{mailErrMessage}</p>
+              <code className="break-all rounded-md border border-amber-300 bg-white px-2 py-1 font-mono text-[11.5px] text-amber-900">
                 {inviteLink}
               </code>
             </div>

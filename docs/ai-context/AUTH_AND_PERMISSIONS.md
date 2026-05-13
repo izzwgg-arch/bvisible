@@ -153,24 +153,39 @@ See `apps/web/scripts/README.md` for full env-var docs.
 ## Invite flow (current state)
 
 - `inviteUserAction` creates a `UserInvite` row keyed by SHA-256(token).
-  TTL: 7 days. The raw token is returned to the inviter once and shown
-  inline on `/admin/users?invite=<token>` — it is NEVER stored, logged,
-  or persisted in plaintext.
+  TTL: 7 days. The raw token is generated once and used immediately to
+  assemble the invite link — it is NEVER stored, logged, or persisted
+  in plaintext.
+- The invite link is **emailed to the invitee** via the SMTP mailer
+  (`apps/web/lib/mailer.ts`, branded template at
+  `apps/web/lib/emails/invite.ts`). The admin sees a green
+  "Invite email sent to X" toast at `/admin/users?sent=<email>`.
+- **SMTP failure fallback:** if the mailer returns an error, the page
+  switches to an amber panel with a copy-pastable invite link
+  (`/admin/users?invite=<token>&mailErr=<kind>`) so the admin is never
+  blocked by a transient SMTP outage. The token is single-use and the
+  fallback path keeps the same security envelope as the pre-SMTP
+  state. The audit log captures the delivery result via
+  `metadata.mailDelivery` (`sent` | `failed_<kind>` | `failed_no_config`).
 - The invitee opens `/invite/<token>`, sets a name + password (12-128
   chars), and is auto-signed-in. The invite is marked `acceptedAt`.
-- **Email sending is stubbed** until SMTP is wired. The admin copies the
-  link from the inline display and sends it manually.
 - An accepted invite cannot be reused (the `acceptedAt` check in the
   page query gates this).
 
 ## Password reset flow (current state)
 
 - `requestResetAction` always responds OK regardless of whether the
-  email exists, to avoid leaking the user list.
+  email exists OR whether SMTP delivery succeeds. Deliberate: the
+  public form must not let an attacker enumerate accounts and must
+  not leak that mail is misconfigured. SMTP failures are visible via
+  `audit_logs.metadata.mailDelivery` and via the SUPER_ADMIN
+  `/settings/email-test` page, never via the public form.
 - A `PasswordResetToken` row is created with SHA-256(token); TTL 30
   minutes; one-shot (`usedAt` blocks reuse).
-- The link is displayed inline to the requester (same stub-email pattern
-  as invites). When SMTP is wired, this inline display goes away.
+- When the email exists, the reset link is **emailed via the SMTP
+  mailer** (template at `apps/web/lib/emails/reset.ts`). No inline
+  link surface — the public form returns the same generic OK message
+  in every code path.
 - `completeResetAction` validates the token, sets the new password
   hash, marks the token used, **revokes all sessions for the user**,
   and signs the user back in with a fresh session.

@@ -33,9 +33,15 @@ The look, feel, and behavior of the web app.
   420px card layout used by login/forgot/reset/invite, with the brand
   mark above and an optional footer link below.
 - **Auth forms**: `LoginForm`, `ForgotForm`, `ResetForm`, `InviteForm`,
-  `ChangePasswordForm`, `InviteUserForm`, `CreateTenantForm`. All use
-  `useActionState` for inline error display and disabled-while-pending
-  buttons.
+  `ChangePasswordForm`, `InviteUserForm`, `CreateTenantForm`,
+  `TestEmailForm`. All use `useActionState` for inline error display
+  and disabled-while-pending buttons.
+- **Sidebar (SUPER_ADMIN)** also includes **Email test** under
+  `/settings/email-test` — SMTP diagnostics + send-test-email. The
+  page reads `loadSmtpConfig()` and renders host/port/secure/maskedUser
+  /from/replyTo as read-only fields (passwords are NEVER displayed),
+  plus a single-input form. Errors render with sanitized SMTP error
+  codes; success shows the SMTP message ID.
 - **Form helpers**: `<FormError>` (red banner) and `<FormNotice>`
   (info/success banner) at `apps/web/components/auth/form-error.tsx`.
 - **Brand mark** at `apps/web/components/brand.tsx` — square accent tile

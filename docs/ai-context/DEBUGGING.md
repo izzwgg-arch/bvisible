@@ -538,6 +538,117 @@ $PSQL -c "SELECT s.id, s.\"expiresAt\", s.\"revokedAt\", u.\"disabledAt\"
           ORDER BY s.\"createdAt\" DESC LIMIT 5;"
 ```
 
+## 11b. SMTP / mailer
+
+Mailer code lives at `apps/web/lib/mailer.ts`. Templates live at
+`apps/web/lib/emails/{render,invite,reset,test}.ts`. Auth flows that
+actually send mail: `inviteUserAction`, `requestResetAction`, and
+`sendTestEmailAction` (SUPER_ADMIN-only).
+
+### Quick verification
+
+The fastest probe is the in-app diagnostic page. Sign in as a
+SUPER_ADMIN, open **Settings → Email test**. The page renders host /
+port / secure / maskedUser / from / replyTo (passwords are NEVER
+displayed) and a single-input form. Submitting the form runs SMTP
+`verify()` first, then sends a branded test email. Errors come back
+sanitized with the SMTP error code/responseCode visible.
+
+### Required env keys (set in `/opt/bvisible/shared/env/.env`)
+
+| Var | Required | Notes |
+|---|---|---|
+| `SMTP_HOST` | yes | hostname |
+| `SMTP_PORT` | yes | 465 (TLS-on-connect) or 587 (STARTTLS) |
+| `SMTP_USER` | yes | auth user |
+| `SMTP_PASSWORD` | yes | auth password / app password. Legacy `SMTP_APP_PASSWORD` is honored as a fallback. |
+| `SMTP_FROM` | yes | `From:` header |
+| `SMTP_SECURE` | no | `"true"` / `"false"` to override; blank → inferred from port |
+| `SMTP_REPLY_TO` | no | optional `Reply-To:` |
+
+After editing `.env`, the next deploy (or PM2 reload) picks up the
+new values — the transport is cached for the process lifetime, so a
+stale config will only flush on PM2 reload.
+
+### What the logs look like
+
+Every mailer event emits one JSON line on stdout/stderr with a
+`mailer: true` field. Allowed fields: `host, port, secure, maskedUser,
+from, kind, code, responseCode, messageId, acceptedCount, rejectedCount,
+message`. Tail with:
+
+```bash
+ssh deploy@212.56.32.136 \
+  "tail -f /opt/bvisible/shared/logs/pm2/bvisible-web.out.log /opt/bvisible/shared/logs/pm2/bvisible-web.err.log | grep --line-buffered '\"mailer\":true'"
+```
+
+Common patterns:
+
+| Log message | Meaning | Fix |
+|---|---|---|
+| `smtp_send_skipped_no_config` | env keys missing | Set `SMTP_HOST/PORT/USER/PASSWORD/FROM`, redeploy |
+| `kind:"connect" code:"ECONNREFUSED"` | server not reachable | Check `SMTP_HOST`/`SMTP_PORT`; egress firewall on 465/587 |
+| `kind:"auth" responseCode:535` | bad credentials | Rotate `SMTP_PASSWORD` (Gmail: regenerate app password) |
+| `kind:"timeout" code:"ETIMEDOUT"` | server hung | Server-side issue; bounded to 10 s |
+| `kind:"sender" command:"MAIL FROM"` | sender rejected | SPF/DKIM not aligned with `SMTP_FROM` |
+| `kind:"recipient" responseCode:550-559` | recipient rejected | Bad address or relay refused |
+
+### Audit trail
+
+Every invite + password-reset row records the delivery outcome in
+`audit_logs.metadata.mailDelivery`. Useful queries:
+
+```bash
+PW=$(sudo grep '^POSTGRES_PASSWORD=' /opt/bvisible/shared/env/.env | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+PSQL="docker compose -p bvisible exec -T -e PGPASSWORD=$PW db psql -U bvisible -d bvisible"
+
+# Outcome of last 20 invite + reset attempts:
+$PSQL -c "SELECT \"createdAt\", action, metadata->>'email' AS email,
+                 metadata->>'mailDelivery' AS mail
+          FROM audit_logs
+          WHERE action IN ('invite_created','password_reset_requested')
+          ORDER BY \"createdAt\" DESC LIMIT 20;"
+
+# Find every SMTP failure today:
+$PSQL -c "SELECT \"createdAt\", action, metadata->>'mailDelivery' AS mail,
+                 metadata->>'email' AS email
+          FROM audit_logs
+          WHERE metadata->>'mailDelivery' LIKE 'failed_%'
+            AND \"createdAt\" > now() - interval '1 day'
+          ORDER BY \"createdAt\" DESC;"
+```
+
+### Symptom: "test email never arrives"
+
+1. Check the diagnostic page first. If `verify()` failed the page tells
+   you exactly which kind of error.
+2. If `verify()` passed but `sendMail()` failed, check the recipient
+   inbox's spam folder, then check `audit_logs.mailDelivery` for the
+   exact `failed_*` kind.
+3. If `verify()` passed AND `sendMail()` returned `ok` but the message
+   never arrives, the SMTP server accepted the message but a downstream
+   filter (Gmail's spam, recipient's MX) dropped it. The `messageId`
+   shown on the page is the right thing to grep your SMTP provider's
+   delivery log for.
+
+### Symptom: "invite UI shows the amber link panel instead of the green toast"
+
+The mailer returned an error. The amber panel includes a one-line
+description of which `kind` of failure. The invite token is single-use
+either way — copying the link from the amber panel and delivering it
+manually is fine; it's the same guarantee the pre-mailer state had.
+
+### Symptom: Prisma is fine but `/settings/email-test` 500s on import
+
+Nodemailer is plain JS with no native deps; standalone bundling
+should work without intervention. If a future Next minor regresses
+this, the symptom is `Cannot find module 'nodemailer'` in the PM2 err
+log. Workaround is the same one we use for Prisma: copy the missing
+package's `node_modules/.pnpm/nodemailer@*` into the standalone tree
+post-build. There is no automation for this today — file an issue
+and add a deploy-once.sh block similar to the Prisma engine mirror
+if it ever happens.
+
 ## 12. UI / sidebar / drawer / hydration
 
 - Hydration mismatch warnings in browser console → look for `Date.now()` /

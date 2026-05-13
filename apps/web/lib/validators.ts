@@ -86,6 +86,11 @@ export const createTenantSchema = z.object({
   slug: tenantSlugSchema,
 });
 
+// SUPER_ADMIN: send a test email to verify SMTP works.
+export const testEmailSchema = z.object({
+  recipient: emailSchema,
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RequestResetInput = z.infer<typeof requestResetSchema>;
 export type CompleteResetInput = z.infer<typeof completeResetSchema>;
@@ -93,3 +98,4 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
+export type TestEmailInput = z.infer<typeof testEmailSchema>;

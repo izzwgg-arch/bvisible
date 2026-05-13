@@ -4,28 +4,16 @@ import { useActionState } from 'react';
 import { requestResetAction, type RequestResetState } from './actions';
 import { FormError, FormNotice } from '@/components/auth/form-error';
 
-const INITIAL: RequestResetState = { error: null, ok: false, devLink: null };
+const INITIAL: RequestResetState = { error: null, ok: false };
 
 export function ForgotForm() {
   const [state, formAction, pending] = useActionState(requestResetAction, INITIAL);
 
   if (state.ok) {
     return (
-      <div className="flex flex-col gap-4">
-        <FormNotice tone="success">
-          If that email is on file, a reset link has been issued. The link expires in 30 minutes.
-        </FormNotice>
-        {state.devLink ? (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-[var(--color-bv-muted)]">
-              Reset link (email is not yet wired — copy it manually):
-            </span>
-            <code className="break-all rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 font-mono text-[12px] text-[var(--color-bv-text)]">
-              {state.devLink}
-            </code>
-          </div>
-        ) : null}
-      </div>
+      <FormNotice tone="success">
+        If that email is on file, a reset link has been sent. The link expires in 30 minutes.
+      </FormNotice>
     );
   }
 

@@ -5,6 +5,153 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — SMTP mailer foundation (Phase 5)
+
+**Commit:** `<feat-sha>` (filled after push)
+**Message:** `feat: add SMTP mailer foundation`
+
+**Scope**
+
+Adds the outbound mailer surface so invite + password-reset flows
+deliver real email instead of surfacing tokenized links inline. New
+provider-agnostic SMTP wrapper around Nodemailer (no provider SDK
+hard-wired), three branded email templates, a SUPER_ADMIN-only
+diagnostic page (`/settings/email-test`) that runs `verify()` then
+sends a test message, and audit-log enrichment that records the
+delivery outcome on every invite/reset row. Did NOT add email
+ingestion, vendor parsing, queues/workers, a notification center, or
+provider SDK lock-in; SMTP send is inline in the server action with a
+10 s socket-timeout cap so the worst case is bounded.
+
+**What changed (repo)**
+
+- NEW `apps/web/lib/mailer.ts` — provider-agnostic façade. Exports:
+  `loadSmtpConfig()` (zod-validated, cached), `verifyTransport()`,
+  `sendMail({to,subject,html,text})`, `diagnosticsFor()`, `maskUser()`,
+  typed errors (`MailerConfigError`, `MailerSendError` with `kind ∈
+  {connect,auth,timeout,recipient,sender,unknown}`). Honors legacy
+  `SMTP_APP_PASSWORD` as a fallback for `SMTP_PASSWORD`. Cached pooled
+  transport (max 2 connections, max 50 messages per process). All
+  `connection`/`greeting`/`socket` timeouts pinned at 10 s. Error
+  messages are run through a `sanitize()` that scrubs
+  `pass(word)?[=:]\S+` and `\bauth\s+\S+`. Logging discipline: every
+  line carries `{mailer:true, host, port, secure, maskedUser, ...}`,
+  NEVER the password.
+- NEW `apps/web/lib/emails/render.ts` — shared `wrapBranded()` returning
+  `{html, text}`. Plain HTML, inline styles, no MJML. Brand mark + slate
+  accent + plaintext fallback. ~3 KB per email.
+- NEW `apps/web/lib/emails/invite.ts` — `renderInviteEmail({inviteLink,
+  role, tenantName, invitedByEmail})`.
+- NEW `apps/web/lib/emails/reset.ts` — `renderResetEmail({resetLink,
+  expiresInMinutes})`.
+- NEW `apps/web/lib/emails/test.ts` — `renderTestEmail({recipientEmail,
+  sentByEmail})` for the diagnostic page.
+- NEW `apps/web/app/(app)/settings/email-test/page.tsx` — SUPER_ADMIN
+  only via `requireSuperAdmin()`. Renders host/port/secure/maskedUser/
+  from/replyTo (passwords NEVER displayed) and a single-input form.
+  Shows a clear amber panel when SMTP isn't configured.
+- NEW `apps/web/app/(app)/settings/email-test/actions.ts` —
+  `sendTestEmailAction`. Re-checks `requireSuperAdmin()` inside the
+  action body, validates input with `testEmailSchema`, runs SMTP
+  `verify()` first, then `sendMail()`. Returns sanitized
+  `{ok, error, diagnostics, detail:{code,responseCode}, messageId}`.
+- NEW `apps/web/app/(app)/settings/email-test/test-email-form.tsx` —
+  client form with `useActionState`. Renders FormError/FormNotice and
+  the SMTP error code/responseCode block on failure.
+- `apps/web/app/(auth)/forgot/actions.ts` — drops the `devLink` from
+  `RequestResetState`. After creating the `PasswordResetToken`, calls
+  `sendMail` with `renderResetEmail`. Audit metadata gains
+  `mailDelivery: 'sent' | 'failed_<kind>' | 'failed_no_config' |
+  'skipped_no_user'`. The action ALWAYS returns the same generic OK
+  regardless of email existence or mail success — public form must not
+  enumerate accounts or leak SMTP misconfiguration.
+- `apps/web/app/(auth)/forgot/forgot-form.tsx` — removes the
+  copy-the-link block. Just renders the success notice.
+- `apps/web/app/(app)/admin/users/actions.ts` — after `userInvite.create`,
+  calls `sendMail` with `renderInviteEmail`. On success, redirects to
+  `?sent=<email>` (green toast). On failure, redirects to
+  `?invite=<token>&invitedEmail=<email>&mailErr=<kind>` so the admin
+  can deliver the link manually (single-use token, same security
+  envelope as pre-mailer state). Audit `invite_created` gains
+  `mailDelivery`.
+- `apps/web/app/(app)/admin/users/page.tsx` — replaces the pre-mailer
+  green "copy this link manually" panel with: green "Invite email sent
+  to X" toast on success; amber panel with sanitized error label +
+  fallback link on `mailErr`. New `MAIL_ERR_LABELS` lookup maps
+  `kind → user-readable string`.
+- `apps/web/lib/validators.ts` — adds `testEmailSchema` + `TestEmailInput`.
+- `apps/web/components/app-shell.tsx` — adds `{href:'/settings/email-test',
+  label:'Email test', hint:'smtp'}` to `SUPER_ADMIN_NAV`.
+- `apps/web/package.json` — adds `nodemailer ^8.0.7` (dep) and
+  `@types/nodemailer ^8.0.0` (devDep). Nodemailer is plain JS — no
+  `allowBuilds` entry needed, no native binaries to mirror into the
+  standalone tree.
+
+**Migration name**
+
+None. The `mailDelivery` flag lives in `audit_logs.metadata` JSONB.
+
+**Env vars added (in `/opt/bvisible/shared/env/.env`)**
+
+| Var | Required |
+|---|---|
+| `SMTP_HOST` | yes |
+| `SMTP_PORT` | yes |
+| `SMTP_USER` | yes |
+| `SMTP_PASSWORD` | yes (legacy `SMTP_APP_PASSWORD` honored as fallback) |
+| `SMTP_FROM` | yes |
+| `SMTP_SECURE` | no (auto-inferred from port: 465 → true) |
+| `SMTP_REPLY_TO` | no |
+
+**Risks**
+
+- **Nodemailer not bundled into standalone.** Plain JS with no
+  `dlopen`, so Next's tracer should pick it up automatically — but if a
+  future Next minor regresses tracing, the symptom is `Cannot find
+  module 'nodemailer'` in PM2 err log. Recovery is the same pattern as
+  the Prisma engine mirror in `deploy-once.sh`. DEBUGGING § 11b
+  documents the fix.
+- **Inline SMTP send blocks the server-action handler.** Bounded by
+  three 10 s timeouts in the transport, so worst case the user sees a
+  ≤ 10 s "Sending..." button. If SMTP latency becomes a problem we
+  move sends to a background queue — out of scope here.
+- **Failure surface for invites is amber, not red.** The admin still
+  gets a working invite link in the amber panel, so the action never
+  hard-fails in a way that blocks team operations. Audit log captures
+  the failure for ops correlation.
+- **Public forgot form never reveals SMTP failures.** Deliberate (no
+  account enumeration, no infra fingerprinting) but means a misconfigured
+  SMTP for password reset is invisible from the public side. Detection
+  paths: the diagnostic page, audit log, mailer log lines.
+- **Gmail with 2FA needs an app password, not the account password.**
+  `SMTP_PASSWORD` should be the 16-char app password. `SECURITY_RULES.md`
+  lists this; ops doc covers it in DEBUGGING § 11b.
+- **Brand templates are hand-written inline-style HTML.** No MJML
+  toolchain; if templates need to evolve substantially we revisit. The
+  three currently-shipped templates are short enough that a hand-edit
+  is faster than any DSL.
+
+**Local verification**
+
+- `pnpm --filter @bvisible/web add nodemailer` + `add -D @types/nodemailer`
+  — clean, no `allowBuilds` warnings.
+- `pnpm --filter @bvisible/web run build` — green. Routes:
+  `/settings/email-test 1.74 kB / 116 kB`. Middleware unchanged at
+  34.3 kB. No new lints.
+
+**Verification performed (server)** — filled after deploy
+
+- Deploy job ID: `<jobId>`
+- Deploy result: `<done|failed>`
+- SMTP keys appended to `/opt/bvisible/shared/env/.env`.
+- Test email via `/settings/email-test` — verify() OK + sendMail()
+  returns `messageId`.
+- Invite flow → `audit_logs.metadata.mailDelivery = 'sent'`.
+- Forgot flow → audit row with `mailDelivery = 'sent'`.
+- `/api/health` still 200, login + cookie still work.
+
+---
+
 ## 2026-05-13 — Auth + tenant foundation (Phase 4)
 
 **Commit:** `56cdd14` (`feat: add auth and tenant foundation`) → followed
