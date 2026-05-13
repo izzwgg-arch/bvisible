@@ -204,6 +204,7 @@ export interface VerifyResult {
 export async function verifyTransport(): Promise<VerifyResult> {
   const config = loadSmtpConfig();
   if (config instanceof MailerConfigError) {
+    logSafe('warn', 'smtp_verify_skipped_no_config', { message: config.message });
     return {
       ok: false,
       diagnostics: emptyDiagnostics(),
