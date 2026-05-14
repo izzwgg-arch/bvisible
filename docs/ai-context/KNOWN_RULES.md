@@ -3,6 +3,15 @@
 The non-obvious business rules. Each rule has a stable ID so PRs can reference
 it.
 
+## Company scope (`tenantId`)
+
+- **R-COMP-01** The product is **single-company** (user-facing **Company**). The
+  schema keeps **`tenantId`** + Prisma model **`Tenant`** as the internal workspace
+  boundary. Canonical company slug is **`bvisible`** (display name **B Visible**),
+  enforced idempotently by `ensureDefaultCompany()` (`apps/web/lib/company/default-company.ts`).
+  Multiple `tenants` rows without that slug are an **operator ambiguity** — resolve manually;
+  runtime surfaces `/dashboard?error=multi-company` rather than guessing.
+
 ## Estimates
 
 - **R-EST-01** Default sell multiplier is **3x raw cost**. Manual override is

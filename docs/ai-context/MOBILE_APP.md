@@ -19,9 +19,8 @@ Expo / React Native client in `apps/mobile/`. This doc reflects what is
 - `POST /api/v1/auth/refresh` rotates refresh; old refresh is rejected.
 - `POST /api/v1/auth/logout` with `Authorization: Bearer <access>` revokes
   the session row → subsequent API calls fail even before JWT expiry.
-- `SUPER_ADMIN` (no `tenantId`) cannot use mobile login.
-
-### Data
+- `SUPER_ADMIN` can sign in; JWT **`tid`** uses the canonical company id (`bvisible` tenant row).
+  Refresh validates session scope against `ensureDefaultCompany()` for super admins.
 
 - `GET /api/v1/purchase-orders` — list POs for the JWT tenant.
 - `GET /api/v1/purchase-orders/:id` — detail + attachments + recent timeline.

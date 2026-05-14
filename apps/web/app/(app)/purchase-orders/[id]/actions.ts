@@ -24,7 +24,7 @@ import {
   type UpdatePoStatusInput,
 } from '@/lib/validators';
 import { writeAuditLog } from '@/lib/auth/audit';
-import { requireRole, requireTenantId } from '@/lib/auth/current-user';
+import { requireRole, requireRoleWithEffectiveCompany, requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import {
   ALLOWED_MIMES,
@@ -542,10 +542,7 @@ export async function deletePoAttachmentAction(
 export async function deletePurchaseOrderAction(
   purchaseOrderId: string
 ): Promise<void> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    redirect('/dashboard?error=no-tenant');
-  }
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const ctx = await readRequestContext();
 
   const existing = await prisma.purchaseOrder.findFirst({

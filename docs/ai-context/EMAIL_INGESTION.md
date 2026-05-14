@@ -311,7 +311,7 @@ paired with sender PII, and any serialized `imapflow` auth object.
   `VendorCatalogItem`, `VendorItemAlias`, `VendorPriceHistory`, and
   `VendorPriceNotification`
   carries `tenantId` from the resolved inbox row (or, in the operator
-  UI, from `requireRole(ADMIN, SUPER_ADMIN).tenantId`).
+  UI, from `requireRoleWithEffectiveCompany(...).tenantId` / effective company resolution).
 - **No public attachment serving.** The download route
   (`/api/email-ingest/[id]/attachments/[attachmentId]`) re-detects
   MIME from disk, refuses anything outside the allowlist, and is

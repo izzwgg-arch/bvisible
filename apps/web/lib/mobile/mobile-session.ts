@@ -2,6 +2,7 @@ import { prisma, Role, type Role as RoleT } from '@bvisible/db';
 import { generateToken, hashToken } from '@/lib/auth/tokens';
 import { signMobileAccessToken } from './jwt';
 import { MOBILE_REFRESH_TTL_MS } from './constants';
+import { ensureDefaultCompanyUncached } from '@/lib/company/default-company';
 
 export async function createMobileSessionAndTokens(params: {
   tenantId: string;
@@ -79,13 +80,17 @@ export async function rotateMobileRefreshToken(params: {
     },
   });
 
-  if (
-    !row ||
-    row.user.tenantId !== row.tenantId ||
-    !row.user.tenantId ||
-    row.user.disabledAt ||
+  if (!row || row.user.disabledAt) {
+    throw new Error('invalid_refresh');
+  }
+
+  const defaultCompany = await ensureDefaultCompanyUncached();
+  const expectedTenantId =
     row.user.role === Role.SUPER_ADMIN
-  ) {
+      ? defaultCompany.id
+      : (row.user.tenantId ?? defaultCompany.id);
+
+  if (row.tenantId !== expectedTenantId) {
     throw new Error('invalid_refresh');
   }
 

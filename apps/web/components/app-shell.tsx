@@ -20,7 +20,7 @@ const ADMIN_NAV: ReadonlyArray<NavItem> = [
 ];
 
 const SUPER_ADMIN_NAV: ReadonlyArray<NavItem> = [
-  { href: '/admin/tenants', label: 'Tenants', hint: 'system' },
+  { href: '/admin/tenants', label: 'Company settings', hint: 'system' },
   { href: '/admin/email-ingestion/inboxes', label: 'Inboxes', hint: 'IMAP' },
   { href: '/settings/email-test', label: 'Email test', hint: 'smtp' },
 ];
@@ -32,8 +32,8 @@ function navForRole(role: Role): ReadonlyArray<NavItem> {
 }
 
 function tenantLabel(role: Role, tenantName: string | null): string {
-  if (role === Role.SUPER_ADMIN && !tenantName) return 'System';
-  return tenantName ?? 'No tenant';
+  if (role === Role.SUPER_ADMIN && !tenantName) return 'Company';
+  return tenantName ?? 'Company';
 }
 
 function roleLabel(role: Role): string {

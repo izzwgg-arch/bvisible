@@ -52,17 +52,13 @@ request → middleware (Edge: cookie present?) → page RSC (Node: requireUser()
 
 ## Roles
 
-| Role | Tenant scope | Can do |
-|---|---|---|
-| `SUPER_ADMIN` | `tenantId = NULL` | Manage tenants, view all users system-wide, invite ADMIN/USER into a tenant when attached to one. |
-| `ADMIN` | required | Manage users in own tenant (invite, list). Tenant-app routes. |
-| `USER` | required | Tenant-app routes only. |
+| Role | DB `tenantId` | Effective company | Can do |
+|---|---|---|---|
+| `SUPER_ADMIN` | usually `NULL` | canonical `Tenant` (`slug=bvisible`) for product + mobile JWT | Company settings, cross-company user listing, operational admin tools scoped to the canonical company id. |
+| `ADMIN` | required unless legacy row | assigned company, else canonical fallback | Manage users (invites) for their company. Product routes. |
+| `USER` | required unless legacy row | assigned company, else canonical fallback | Product routes only. |
 
-A user belongs to exactly one tenant — no cross-tenant accounts.
-SUPER_ADMIN is the one exception (`tenantId` nullable). The DB enforces
-a partial unique index on `users(email) WHERE tenantId IS NULL` so two
-SUPER_ADMINs cannot share an email (regular `@@unique([tenantId, email])`
-treats NULLs as distinct in Postgres).
+Most accounts belong to exactly one company row. `SUPER_ADMIN` keeps nullable `tenantId` for historical reasons; **never** bypass `tenantId` filters in queries.
 
 The aspirational 6-role taxonomy from earlier docs (`owner`, `estimator`,
 `purchasing`, `installer`, `viewer`) is deferred until the product
@@ -78,7 +74,9 @@ is a non-destructive migration when the time comes.
 | `requireUser(redirectTo='/login')` | redirect when null | `CurrentUser` |
 | `requireRole(...roles)` | redirect to `/dashboard?error=forbidden` if role mismatch | `CurrentUser` |
 | `requireSuperAdmin()` | as above for SUPER_ADMIN | `CurrentUser` |
-| `requireTenantId()` | redirect to `/dashboard?error=no-tenant` when no tenant | `CurrentUser & { tenantId, tenant }` |
+| `requireTenantId()` | redirect `/dashboard?error=multi-company` when ambiguous; otherwise returns user merged with effective **company** id | `TenantScopedUser` |
+| `requireUserForAppShell()` | same resolution for sidebar/dashboard chrome | `TenantScopedUser` |
+| `requireRoleWithEffectiveCompany(...roles)` | ADMIN/SUPER_ADMIN operational pages/actions needing a guaranteed `tenantId` filter | `TenantScopedUser` |
 
 These are the **only** sanctioned ways to read the session inside a page
 RSC or server action. Do not parse the cookie yourself; do not reach

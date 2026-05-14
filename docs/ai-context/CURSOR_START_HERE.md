@@ -30,7 +30,10 @@ B Visible is the operations platform for a sign-and-print company. The product c
 - Mobile app for field/install/receipt capture
 - A SaaS-grade web UI
 
-The app is **multi-tenant**. Every tenant-scoped query MUST include `tenantId`.
+B Visible is a **single-company** operations product. The database still uses
+row-level **`tenantId`** scope (the `Tenant` model is the internal **company /
+workspace** record). Product UX refers to **Company**; `tenantId` must still
+appear on every tenant-scoped query — see `SECURITY_RULES.md`.
 
 ## Operating philosophy
 
@@ -55,7 +58,7 @@ actually touch. Skip framework heroics that don't move the needle.
    deploy a branch tip — see `DEPLOY_QUEUE.md`.
 7. **Only one deploy at a time.** The deploy worker uses `flock` on
    `/opt/bvisible/deploy-queue/deploy.lock`. Never bypass it.
-8. **Tenant isolation.** Every database query that reads or writes
+8. **Company scope (`tenantId`).** Every database query that reads or writes
    tenant-scoped data MUST include `tenantId` in the WHERE clause. No exceptions.
 9. **Never log secrets**, app passwords, OAuth tokens, vendor API keys, raw
    email bodies that may contain credentials, or `.env` contents.

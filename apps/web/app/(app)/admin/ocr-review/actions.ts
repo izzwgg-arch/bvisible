@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { OcrJobStatus, prisma, Role } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import {
   buildOcrApproveTriggerDedupeKey,
   runPoReconciliationSnapshot,
@@ -27,8 +27,7 @@ const approveSchema = z.object({
 export async function approveOcrDocumentAction(
   input: unknown
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
 
   const parsed = approveSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Invalid approval payload.' };
@@ -111,8 +110,7 @@ export async function approveOcrDocumentAction(
 export async function rejectOcrDocumentAction(
   documentId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
 
   const updated = await prisma.ocrDocument.updateMany({
     where: {

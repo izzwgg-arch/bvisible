@@ -7,6 +7,7 @@ import { inviteUserSchema } from '@/lib/validators';
 import { generateToken, hashToken } from '@/lib/auth/tokens';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { requireRole } from '@/lib/auth/current-user';
+import { resolveEffectiveCompany } from '@/lib/auth/effective-company';
 import { readRequestContext } from '@/lib/request-context';
 import { sendMail, MailerConfigError } from '@/lib/mailer';
 import { renderInviteEmail } from '@/lib/emails/invite';
@@ -32,13 +33,23 @@ export async function inviteUserAction(
   }
   const { email, role } = parsed.data;
 
-  const targetTenantId = me.tenantId;
-  if (!targetTenantId) {
-    return {
-      error:
-        'You are not in a tenant context. Create a tenant first under Tenants, or attach yourself to a tenant.',
-    };
+  let eff: Awaited<ReturnType<typeof resolveEffectiveCompany>>;
+  try {
+    eff = await resolveEffectiveCompany(me);
+  } catch (e) {
+    const { MultipleCompaniesUnresolvedError } = await import(
+      '@/lib/company/default-company'
+    );
+    if (e instanceof MultipleCompaniesUnresolvedError) {
+      return {
+        error:
+          'Multiple companies are configured without a canonical bvisible slug. Resolve under Company settings before inviting users.',
+      };
+    }
+    throw e;
   }
+
+  const targetTenantId = eff.tenantId;
 
   // Reject if there's already an accepted user with this email in this
   // tenant. Pending unaccepted invites are fine — they'll be rotated.
@@ -47,7 +58,7 @@ export async function inviteUserAction(
     select: { id: true, inviteAcceptedAt: true },
   });
   if (existing?.inviteAcceptedAt) {
-    return { error: 'A user with that email already exists in this tenant.' };
+    return { error: 'A user with that email already exists for this company.' };
   }
 
   const token = generateToken();
@@ -73,7 +84,7 @@ export async function inviteUserAction(
   const mail = renderInviteEmail({
     inviteLink,
     role,
-    tenantName: me.tenant?.name ?? 'B Visible',
+    tenantName: eff.tenant.name,
     invitedByEmail: me.email,
   });
   const send = await sendMail({

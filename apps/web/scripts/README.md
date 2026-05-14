@@ -47,7 +47,7 @@ script's process.
 
 1. Visit `https://vmi3270817.contaboserver.net/login`.
 2. Sign in with the email/password you used.
-3. Create your first tenant under **Tenants** in the sidebar.
+3. Create your first admin invite under **Users** (scoped to the **B Visible** company).
 4. Invite the tenant's admin from **Users**. The invite link is
    displayed inline (email is not yet wired).
 

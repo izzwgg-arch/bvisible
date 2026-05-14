@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { OcrJobStatus, prisma, Role } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import {
   OcrApprovalForm,
@@ -23,9 +23,7 @@ export default async function OcrReviewDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) redirect('/dashboard?error=no-tenant');
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const { id } = await params;
 
   const doc = await prisma.ocrDocument.findFirst({

@@ -2,7 +2,7 @@
 
 ## The non-negotiables
 
-1. **Tenant isolation.** Every query against a tenant-scoped table includes
+1. **Company scope (`tenantId`).** Every query against a tenant-scoped table includes
    `tenantId`. Reviewer must reject PRs that violate this.
 2. **Never log secrets.** This includes:
    - Passwords (plain or hashed)

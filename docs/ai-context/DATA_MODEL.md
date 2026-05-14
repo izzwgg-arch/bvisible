@@ -3,6 +3,13 @@
 The Prisma schema lives in `packages/db/prisma/schema.prisma`. This file is the
 human-readable map. Update it whenever the schema changes.
 
+## Single company in production UX
+
+Operationally B Visible is **one business**. The UI calls this **Company**. The ORM model remains
+`Tenant` and every scoped row keeps **`tenantId`**. `SUPER_ADMIN` users may store `tenantId = NULL`
+in `users`, but product pages resolve the canonical company (`slug = bvisible`) at runtime via
+`resolveEffectiveCompany` / `requireTenantId`.
+
 ## Currently shipped (foundation + auth + estimates + purchase orders + email ingestion + vendor pricing observations)
 
 ```prisma

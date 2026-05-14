@@ -1,7 +1,6 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { OcrJobStatus, prisma, Role } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 
 export const metadata = { title: 'Receipt OCR review' };
@@ -21,9 +20,7 @@ export default async function OcrReviewIndexPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) redirect('/dashboard?error=no-tenant');
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const sp = await searchParams;
   const statusRaw = sp.status ?? 'review';
   const statusFilter =

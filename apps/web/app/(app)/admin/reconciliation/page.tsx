@@ -6,7 +6,7 @@ import {
   SpendAlertKind,
   SpendAlertStatus,
 } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { dismissSpendAlertFormAction } from '@/lib/reconciliation/actions';
 
@@ -18,16 +18,7 @@ function statusLabel(s: POReconciliationStatus): string {
 }
 
 export default async function AdminReconciliationInboxPage() {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    return (
-      <PageHeader
-        title="PO reconciliation"
-        subtitle="Assign a tenant to your admin user to review reconciliation snapshots."
-      />
-    );
-  }
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const tenantId = me.tenantId;
 
   const [recentRuns, openAlerts] = await Promise.all([

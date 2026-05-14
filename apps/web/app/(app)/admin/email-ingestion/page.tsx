@@ -1,11 +1,10 @@
-import { redirect } from 'next/navigation';
 import {
   EmailIngestStatus,
   POStatus,
   Role,
   prisma,
 } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { loadInboxDiag } from '@/lib/email-ingest/config';
 import { InboxConfigCard } from './inbox-config-card';
@@ -30,10 +29,7 @@ export default async function EmailIngestionPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    redirect('/dashboard?error=no-tenant');
-  }
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const sp = await searchParams;
   const filter: FilterKey = (FILTERS as readonly string[]).includes(sp.filter ?? '')
     ? (sp.filter as FilterKey)

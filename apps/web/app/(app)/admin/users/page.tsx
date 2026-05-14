@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { prisma, Role } from '@bvisible/db';
 import { requireRole } from '@/lib/auth/current-user';
+import { resolveEffectiveCompany } from '@/lib/auth/effective-company';
 import { PageHeader } from '@/components/app-shell';
 import { InviteUserForm } from './invite-user-form';
 
@@ -30,15 +31,15 @@ export default async function AdminUsersPage({
   searchParams: Promise<SearchParams>;
 }) {
   const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
+  const eff = await resolveEffectiveCompany(me);
   const sp = await searchParams;
 
-  // Scope: SUPER_ADMIN sees everyone (cross-tenant). ADMIN sees only
-  // their own tenant's users.
-  const userWhere = me.role === Role.SUPER_ADMIN ? {} : { tenantId: me.tenantId! };
+  // Scope: SUPER_ADMIN sees everyone (all companies). ADMIN sees only their company.
+  const userWhere = me.role === Role.SUPER_ADMIN ? {} : { tenantId: eff.tenantId };
   const inviteWhere =
     me.role === Role.SUPER_ADMIN
       ? { acceptedAt: null }
-      : { tenantId: me.tenantId!, acceptedAt: null };
+      : { tenantId: eff.tenantId, acceptedAt: null };
 
   const [users, pendingInvites] = await Promise.all([
     prisma.user.findMany({
@@ -79,8 +80,8 @@ export default async function AdminUsersPage({
         title="Users"
         subtitle={
           me.role === Role.SUPER_ADMIN
-            ? 'All users across all tenants.'
-            : `Users in ${me.tenant?.name ?? 'your tenant'}.`
+            ? 'All users across the organization.'
+            : `Users in ${eff.tenant.name}.`
         }
       />
 
@@ -101,7 +102,7 @@ export default async function AdminUsersPage({
                   <th className="px-5 py-2 font-medium">Email</th>
                   <th className="px-5 py-2 font-medium">Name</th>
                   {me.role === Role.SUPER_ADMIN ? (
-                    <th className="px-5 py-2 font-medium">Tenant</th>
+                    <th className="px-5 py-2 font-medium">Company</th>
                   ) : null}
                   <th className="px-5 py-2 font-medium">Role</th>
                   <th className="px-5 py-2 font-medium">Status</th>
@@ -165,9 +166,7 @@ export default async function AdminUsersPage({
             Invite a user
           </h2>
           <p className="mt-1 text-[12.5px] text-[var(--color-bv-muted)]">
-            {me.role === Role.SUPER_ADMIN && !me.tenantId
-              ? 'Pick a tenant first under Tenants. Or set yourself a tenant context.'
-              : 'They will get an invite link valid for 7 days.'}
+            Invited users join your company ({eff.tenant.name}). Link expires in 7 days after send.
           </p>
           <div className="mt-4">
             <InviteUserForm canChooseAdmin={me.role === Role.SUPER_ADMIN || me.role === Role.ADMIN} />

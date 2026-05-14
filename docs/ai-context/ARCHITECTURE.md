@@ -7,7 +7,7 @@ High-level shape of the system. Read `FILE_STRUCTURE.md` for paths and
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Web app (Next.js, multi-tenant)                                 │
+│  Web app (Next.js, single-company UI, internal tenantId scope)   │
 │   - Server actions / API routes                                  │
 │   - SaaS UI (sidebar + drawers, see UI_SYSTEM.md)                │
 └─────────────┬──────────────────────────┬─────────────────────────┘
@@ -38,12 +38,17 @@ High-level shape of the system. Read `FILE_STRUCTURE.md` for paths and
 - Deploys are pull-from-Git only, serialized through a flock-protected queue.
 - See `DEPLOYMENT.md` and `DEPLOY_QUEUE.md`.
 
-## Tenancy model
+## Company scope (`tenantId`)
 
-- One Postgres database, **row-level isolation** by `tenantId` column on every
-  tenant-scoped table.
-- The session/auth layer attaches `tenantId` to every request; queries that
-  forget it are bugs (see `SECURITY_RULES.md`).
+- One Postgres database, **row-level isolation** by `tenantId` on every
+  tenant-scoped table (internal **company** boundary; Prisma model `Tenant`).
+- Production targets **one** primary company row (`slug = bvisible`, name **B Visible**),
+  bootstrapped via `ensureDefaultCompany()` (`apps/web/lib/company/default-company.ts`).
+- The session/auth layer resolves an effective company id for product pages
+  (`resolveEffectiveCompany`, `requireTenantId`, `requireUserForAppShell`); queries that
+  omit `tenantId` are still bugs (see `SECURITY_RULES.md`).
+- If multiple `tenants` rows exist without a canonical `bvisible` slug, startup-style
+  helpers **throw** until an operator resolves ambiguity (no silent merges).
 
 ## Why this shape
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { open } from 'node:fs/promises';
 import { Role, prisma } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import {
   ALLOWED_MIMES,
   attachmentExists,
@@ -23,10 +23,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; attachmentId: string }> }
 ): Promise<Response> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    return new NextResponse('Not found', { status: 404 });
-  }
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const { id, attachmentId } = await params;
 
   const att = await prisma.ingestedEmailAttachment.findFirst({

@@ -7,7 +7,7 @@ import {
   Role,
   SpendAlertStatus,
 } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import {
   markPoReconciledFormAction,
@@ -63,8 +63,7 @@ export default async function PurchaseOrderReconciliationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) notFound();
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const tenantId = me.tenantId;
   const { id } = await params;
 

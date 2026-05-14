@@ -5,6 +5,34 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Single-company mode (internal `tenantId` preserved)
+
+**Scope**
+
+- Canonical company bootstrap: `ensureDefaultCompany()` / `ensureDefaultCompanyUncached()` (`apps/web/lib/company/default-company.ts`) — slug **`bvisible`**, name **B Visible**, idempotent; **`MultipleCompaniesUnresolvedError`** when multiple `tenants` rows exist without that slug.
+- Effective scope: `resolveEffectiveCompany()` (`apps/web/lib/auth/effective-company.ts`) — **`SUPER_ADMIN`** always maps to the canonical row for product + chrome; other roles keep assigned `tenantId` or fall back when null.
+- Auth helpers: `requireTenantId()`, `requireUserForAppShell()`, `requireRoleWithEffectiveCompany()` (`apps/web/lib/auth/current-user.ts`); dashboard **`multi-company`** banner.
+- Mobile: `POST /api/v1/auth/login` + `rotateMobileRefreshToken` + `requireMobileBearer` align JWT `tid` with canonical company for **`SUPER_ADMIN`** / missing `tenantId`.
+- UI: sidebar **Company settings**, dashboard **Company: B Visible**, admin copy updates; `/admin/tenants` route unchanged (labels only).
+- Tests: `pnpm --filter @bvisible/web run verify:single-company` (Vitest). Ops script: `server-scripts/db/.verify-single-company-mode.sh` (Postgres via docker compose).
+
+**Docs**
+
+- `docs/ai-context/{CURSOR_START_HERE,ARCHITECTURE,DATA_MODEL,AUTH_AND_PERMISSIONS,KNOWN_RULES,UI_SYSTEM,MOBILE_APP,EMAIL_INGESTION,SECURITY_RULES}.md`
+
+**Risks**
+
+- Hosts with **multiple** `tenants` rows and **no** `bvisible` slug will hit **`/dashboard?error=multi-company`** until data is fixed.
+- Creating extra company rows via **Company settings** re-introduces ambiguity — verification script fails when `COUNT(tenants) > 1`.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web exec tsc --noEmit`
+- `pnpm --filter @bvisible/web run verify:single-company`
+- Production DB check (on server): `bash server-scripts/db/.verify-single-company-mode.sh` from `/opt/bvisible/app`
+
+---
+
 ## 2026-05-19 — Estimate editor vendor catalog intelligence rail
 
 **Scope**

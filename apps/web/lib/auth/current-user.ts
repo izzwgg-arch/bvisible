@@ -1,6 +1,8 @@
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { prisma, Role } from '@bvisible/db';
+import { MultipleCompaniesUnresolvedError } from '@/lib/company/default-company';
+import { resolveEffectiveCompany } from './effective-company';
 import { resolveSessionFromCookie } from './session';
 
 export interface CurrentUser {
@@ -69,17 +71,53 @@ export async function requireSuperAdmin(): Promise<CurrentUser> {
   return requireRole(Role.SUPER_ADMIN);
 }
 
-// For tenant-scoped pages: the user must have a tenantId. SUPER_ADMIN
-// without a tenant is rejected — they should use admin pages instead.
-export async function requireTenantId(): Promise<
-  CurrentUser & { tenantId: string; tenant: NonNullable<CurrentUser['tenant']> }
-> {
+export type TenantScopedUser = CurrentUser & {
+  tenantId: string;
+  tenant: NonNullable<CurrentUser['tenant']>;
+};
+
+/** Sidebar / shell: fills effective company for SUPER_ADMIN and legacy null-tenant users. */
+export async function requireUserForAppShell(): Promise<TenantScopedUser> {
   const user = await requireUser();
-  if (!user.tenantId || !user.tenant) {
-    redirect('/dashboard?error=no-tenant');
+  try {
+    const eff = await resolveEffectiveCompany(user);
+    return { ...user, tenantId: eff.tenantId, tenant: eff.tenant };
+  } catch (e) {
+    if (e instanceof MultipleCompaniesUnresolvedError) {
+      redirect('/dashboard?error=multi-company');
+    }
+    throw e;
   }
-  return user as CurrentUser & {
-    tenantId: string;
-    tenant: NonNullable<CurrentUser['tenant']>;
-  };
+}
+
+/**
+ * Same as {@link requireRole} but guarantees a company (`tenantId`) for scoped admin tools.
+ */
+export async function requireRoleWithEffectiveCompany(
+  ...roles: Role[]
+): Promise<TenantScopedUser> {
+  const user = await requireRole(...roles);
+  try {
+    const eff = await resolveEffectiveCompany(user);
+    return { ...user, tenantId: eff.tenantId, tenant: eff.tenant };
+  } catch (e) {
+    if (e instanceof MultipleCompaniesUnresolvedError) {
+      redirect('/dashboard?error=multi-company');
+    }
+    throw e;
+  }
+}
+
+// Product pages: resolve internal company scope without exposing multi-tenant SaaS UX.
+export async function requireTenantId(): Promise<TenantScopedUser> {
+  const user = await requireUser();
+  try {
+    const eff = await resolveEffectiveCompany(user);
+    return { ...user, tenantId: eff.tenantId, tenant: eff.tenant };
+  } catch (e) {
+    if (e instanceof MultipleCompaniesUnresolvedError) {
+      redirect('/dashboard?error=multi-company');
+    }
+    throw e;
+  }
 }

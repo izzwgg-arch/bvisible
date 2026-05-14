@@ -16,7 +16,7 @@ import {
   type RetryEmailInput,
 } from '@/lib/validators';
 import { writeAuditLog } from '@/lib/auth/audit';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { materializeIngestedEmailOnPo } from '@/lib/email-ingest/run';
 
@@ -24,11 +24,11 @@ import { materializeIngestedEmailOnPo } from '@/lib/email-ingest/run';
 // `email-ingestion` review screen is an operational tool (it can move
 // money-bearing artifacts onto live POs), not a tenant-user feature.
 
-async function requireAdminInTenant() {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    return { error: 'No tenant context.' as const, me: null };
-  }
+async function requireAdminInTenant(): Promise<{
+  error: null;
+  me: Awaited<ReturnType<typeof requireRoleWithEffectiveCompany>>;
+}> {
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   return { error: null, me };
 }
 

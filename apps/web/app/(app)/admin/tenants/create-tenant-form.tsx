@@ -10,15 +10,15 @@ export function CreateTenantForm() {
   const [state, formAction, pending] = useActionState(createTenantAction, INITIAL);
   return (
     <form action={formAction} className="flex flex-col gap-3">
-      <Field id="name" label="Tenant name" placeholder="Acme Signs" />
-      <Field id="slug" label="Slug" placeholder="acme-signs" mono />
+      <Field id="name" label="Company name" placeholder="B Visible" />
+      <Field id="slug" label="Slug" placeholder="bvisible" mono />
       <FormError message={state.error} />
       <button
         type="submit"
         disabled={pending}
         className="mt-1 self-start inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[14px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? 'Creating…' : 'Create tenant'}
+        {pending ? 'Saving…' : 'Save company'}
       </button>
     </form>
   );

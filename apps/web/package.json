@@ -10,7 +10,7 @@
     "lint": "next lint",
     "verify:reconciliation": "vitest run lib/reconciliation",
     "verify:reconciliation-alerts": "vitest run lib/reconciliation/alert-identity.test.ts lib/reconciliation/supersede-open-recon-alerts.test.ts",
-    "verify:vendor-catalog": "vitest run lib/vendor-pricing/catalog-lookup.test.ts lib/vendor-pricing/trends.test.ts",
+    "verify:single-company": "vitest run lib/company/default-company.test.ts lib/auth/effective-company.test.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
     "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"

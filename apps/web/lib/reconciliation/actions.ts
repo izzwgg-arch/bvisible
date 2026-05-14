@@ -10,7 +10,7 @@ import {
   Role,
   SpendAlertStatus,
 } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { refreshPoReconciliationAggregate } from '@/lib/reconciliation/aggregate';
 import { classifyPairedLine } from '@/lib/reconciliation/match';
@@ -24,8 +24,7 @@ import { z } from 'zod';
 export async function dismissSpendAlertAction(
   alertId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
 
   const row = await prisma.spendAlert.findFirst({
     where: {
@@ -69,9 +68,7 @@ export async function resolvePoReconciliationLineAction(input: unknown): Promise
   ok: boolean;
   error?: string;
 }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const schema = z.object({
     lineId: z.string(),
     resolution: z.nativeEnum(POReconciliationLineResolution),
@@ -128,9 +125,7 @@ export async function resolvePoReconciliationLineAction(input: unknown): Promise
 export async function rejectPoReconciliationLinePairAction(
   lineId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const fullLine = await prisma.pOReconciliationLine.findFirst({
     where: { id: lineId, tenantId: me.tenantId },
     include: {
@@ -169,9 +164,8 @@ export async function rejectPoReconciliationLinePairAction(
 export async function mergeUnmatchedReconciliationLinesAction(
   input: unknown,
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const tenantId = me.tenantId;
-  if (!tenantId) return { ok: false, error: 'No tenant context.' };
 
   const schema = z.object({
     poSideLineId: z.string(),
@@ -314,9 +308,7 @@ export async function mergeUnmatchedReconciliationLinesAction(
 export async function markPurchaseOrderReconciledByOperatorAction(
   purchaseOrderId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: purchaseOrderId, tenantId: me.tenantId, deletedAt: null },
     select: { id: true },
@@ -333,7 +325,7 @@ export async function markPurchaseOrderReconciledByOperatorAction(
     });
 
     const latest = await tx.pOReconciliation.findFirst({
-      where: { tenantId: me.tenantId!, purchaseOrderId },
+      where: { tenantId: me.tenantId, purchaseOrderId },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
@@ -367,9 +359,7 @@ export async function markPurchaseOrderReconciledByOperatorAction(
 export async function refreshPoReconciliationManualAction(
   purchaseOrderId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) return { ok: false, error: 'No tenant context.' };
-
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const nonce = randomUUID();
   const triggerDedupeKey = buildManualRefreshTriggerDedupeKey({
     tenantId: me.tenantId,

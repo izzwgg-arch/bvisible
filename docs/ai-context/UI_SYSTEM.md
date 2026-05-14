@@ -16,16 +16,16 @@ The look, feel, and behavior of the web app.
 - Next.js 15 App Router + React 19 + TypeScript + Tailwind 4.
 - **Route groups**: `app/(auth)/*` for unauthenticated pages (login,
   forgot, reset, invite) and `app/(app)/*` for authenticated pages
-  (dashboard, settings, admin/users, admin/tenants). Edge middleware
+  (dashboard, settings, admin/users, admin/tenants as **Company settings**). Edge middleware
   (`apps/web/middleware.ts`) gates the protected paths with a cookie
   presence check; the page RSC re-validates against the DB via
-  `requireUser()`.
+  `requireUser()` / `requireUserForAppShell()` for chrome that needs a resolved **company** label.
 - **App shell** at `apps/web/components/app-shell.tsx` — fixed 240px
   sidebar, role-aware nav via `<NavLinks>` (active route highlighted
   from `usePathname()`), `<UserMenu>` at sidebar bottom (server
-  component) with email/tenant/role label, Settings link, and a
+  component) with email/**company**/role label, Settings link, and a
   no-JS sign-out `<form action={logoutAction}>`. Topbar shows
-  "B Visible" eyebrow + tenant label + healthy pill.
+  "B Visible" eyebrow + **company** label + healthy pill.
 - **PageHeader** export from `app-shell.tsx` — per-page H1/subtitle/
   actions slot used inside main content. Pages own their own H1; the
   shell only renders chrome.

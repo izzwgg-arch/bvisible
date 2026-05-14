@@ -10,6 +10,7 @@ import { mobileLoginSchema } from '@/lib/validators';
 import { createMobileSessionAndTokens } from '@/lib/mobile/mobile-session';
 import { assertMobileJwtConfigured } from '@/lib/mobile/jwt';
 import { requestMeta } from '@/lib/mobile/request-meta';
+import { ensureDefaultCompanyUncached } from '@/lib/company/default-company';
 
 const GENERIC_INVALID = 'Invalid email or password.';
 const LOCKED_OUT = 'Too many failed attempts. Try again in a few minutes.';
@@ -62,12 +63,7 @@ export async function POST(req: Request) {
   }
 
   const blockedMobile =
-    !user ||
-    !passOk ||
-    !user.passwordHash ||
-    !user.tenantId ||
-    user.role === Role.SUPER_ADMIN ||
-    user.disabledAt;
+    !user || !passOk || !user.passwordHash || user.disabledAt;
 
   if (blockedMobile) {
     await writeAuditLog({
@@ -82,18 +78,20 @@ export async function POST(req: Request) {
           ? 'unknown_email'
           : user.disabledAt
             ? 'disabled'
-            : user.role === Role.SUPER_ADMIN
-              ? 'super_admin'
-              : !user.tenantId
-                ? 'no_tenant'
-                : 'bad_password',
+            : 'bad_password',
       },
     });
     return jsonErr('invalid_credentials', GENERIC_INVALID, 401);
   }
 
+  const defaultCompany = await ensureDefaultCompanyUncached();
+  const tenantIdForMobile =
+    user.role === Role.SUPER_ADMIN
+      ? defaultCompany.id
+      : (user.tenantId ?? defaultCompany.id);
+
   const tokens = await createMobileSessionAndTokens({
-    tenantId: user.tenantId!,
+    tenantId: tenantIdForMobile,
     userId: user.id,
     role: user.role,
     deviceLabel: deviceLabel ?? null,
@@ -109,7 +107,7 @@ export async function POST(req: Request) {
   await writeAuditLog({
     action: 'mobile_login_success',
     userId: user.id,
-    tenantId: user.tenantId,
+    tenantId: tenantIdForMobile,
     targetType: 'mobile_session',
     targetId: tokens.sessionId,
     ipAddress,

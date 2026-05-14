@@ -1,7 +1,8 @@
-import { prisma } from '@bvisible/db';
+import { prisma, Role } from '@bvisible/db';
 import { jsonErr } from '@/lib/api/v1/envelope';
 import type { NextResponse } from 'next/server';
 import { verifyMobileAccessToken } from './jwt';
+import { ensureDefaultCompanyUncached } from '@/lib/company/default-company';
 
 export interface MobileAuthContext {
   tenantId: string;
@@ -65,16 +66,28 @@ export async function requireMobileBearer(
   const user = await prisma.user.findFirst({
     where: {
       id: claims.userId,
-      tenantId: claims.tenantId,
       disabledAt: null,
     },
-    select: { id: true },
+    select: { id: true, tenantId: true, role: true },
   });
 
   if (!user) {
     return {
       ok: false,
       response: jsonErr('user_disabled', 'Account unavailable.', 403),
+    };
+  }
+
+  const defaultCompany = await ensureDefaultCompanyUncached();
+  const effectiveTenantId =
+    user.role === Role.SUPER_ADMIN
+      ? defaultCompany.id
+      : (user.tenantId ?? defaultCompany.id);
+
+  if (claims.tenantId !== effectiveTenantId) {
+    return {
+      ok: false,
+      response: jsonErr('session_invalid', 'Session revoked or expired.', 401),
     };
   }
 

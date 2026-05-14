@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUserForAppShell } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { Role } from '@bvisible/db';
 import { VendorPriceAlerts } from './vendor-price-alerts';
@@ -15,23 +15,31 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requireUserForAppShell();
   const { error } = await searchParams;
 
   return (
     <>
       <PageHeader
         title={greeting(user.name, user.email)}
-        subtitle="The product surfaces (Estimates, POs, Vendors) land in upcoming releases."
+        subtitle={`Company: ${user.tenant.name}`}
       />
       {error === 'forbidden' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
           You don&apos;t have permission to view that page.
         </div>
       ) : null}
+      {error === 'multi-company' ? (
+        <div className="mb-6 rounded-[var(--radius-bv)] border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-950">
+          Multiple companies are configured in the database without a canonical{' '}
+          <span className="font-mono">bvisible</span> slug. Resolve this in{' '}
+          <strong>Company settings</strong> before continuing (single-company mode).
+        </div>
+      ) : null}
       {error === 'no-tenant' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
-          That page requires a tenant. Create one under Tenants first.
+          That page needs a company workspace. Open{' '}
+          <strong>Company settings</strong> or contact an administrator.
         </div>
       ) : null}
       {user.tenantId ? (
@@ -49,13 +57,7 @@ export default async function DashboardPage({
         <Card
           title="Role"
           body={prettyRole(user.role)}
-          mono={
-            user.role === Role.SUPER_ADMIN
-              ? 'system-wide'
-              : user.tenant
-                ? `tenant: ${user.tenant.slug}`
-                : 'no tenant'
-          }
+          mono={`company: ${user.tenant.slug}`}
         />
         <Card
           title="Health"
@@ -78,9 +80,9 @@ function greeting(name: string | null, email: string): string {
 function prettyRole(role: Role): string {
   switch (role) {
     case Role.SUPER_ADMIN:
-      return 'Super admin (system)';
+      return 'Super admin';
     case Role.ADMIN:
-      return 'Admin (tenant)';
+      return 'Admin';
     case Role.USER:
       return 'User';
   }

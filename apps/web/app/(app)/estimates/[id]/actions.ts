@@ -15,6 +15,7 @@ import {
 import { writeAuditLog } from '@/lib/auth/audit';
 import {
   requireRole,
+  requireRoleWithEffectiveCompany,
   requireTenantId,
 } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
@@ -236,10 +237,7 @@ export async function updateEstimateStatusAction(
 // edit but not destroy. The row stays in the DB so the audit trail and
 // any downstream PO references keep working.
 export async function deleteEstimateAction(estimateId: string): Promise<void> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    redirect('/dashboard?error=no-tenant');
-  }
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const ctx = await readRequestContext();
 
   const existing = await prisma.estimate.findFirst({
@@ -395,10 +393,7 @@ export async function finalizeEstimateAction(
 export async function unfinalizeEstimateAction(
   payload: FinalizeEstimateInput
 ): Promise<{ error: string | null }> {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
-  if (!me.tenantId) {
-    return { error: 'Tenant required.' };
-  }
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const ctx = await readRequestContext();
 
   const parsed = finalizeEstimateSchema.safeParse(payload);
