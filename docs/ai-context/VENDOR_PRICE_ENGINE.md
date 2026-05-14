@@ -109,6 +109,14 @@ quantity-tier normalization yet.
   never writes pricing rows.
 - **Verification (no OCR binaries):** `bash server-scripts/db/.verify-ocr-receipt-parse.sh`.
 
+## Phase 14 — PO reconciliation (deterministic, human-gated)
+
+- Pairing engine: `apps/web/lib/reconciliation/match.ts` + runner `run.ts`. Consumes
+  **`OCR_APPROVED` rows only** for the receipt side so email-regex observations stay out
+  of this comparison unless operators promote data via OCR approve.
+- UX + actions: `apps/web/lib/reconciliation/actions.ts`; surfaces documented in
+  `PO_SYSTEM.md` + `UI_SYSTEM.md`.
+
 ## Future / not implemented here
 
 - Canonical `VendorPrice` table + Redis cache described in older planning docs.

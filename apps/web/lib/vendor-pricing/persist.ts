@@ -96,9 +96,13 @@ async function persistPriceObservation(args: {
   actorId: string;
   candidate: ExtractedPriceCandidate;
   source: ObservationSource;
-}): Promise<'inserted' | 'duplicate' | 'skipped'> {
+}): Promise<
+  | { outcome: 'inserted'; vendorPriceHistoryId: string }
+  | { outcome: 'duplicate' }
+  | { outcome: 'skipped' }
+> {
   const itemNorm = normalizeVendorItemName(args.candidate.itemRaw);
-  if (!itemNorm || itemNorm.length < 2) return 'skipped';
+  if (!itemNorm || itemNorm.length < 2) return { outcome: 'skipped' };
 
   const dedupeKey =
     args.source.kind === 'email'
@@ -151,8 +155,9 @@ async function persistPriceObservation(args: {
     dedupeKey,
   };
 
+  let insertedHistoryId: string | undefined;
   try {
-    await prisma.vendorPriceHistory.create({
+    const row = await prisma.vendorPriceHistory.create({
       data:
         args.source.kind === 'email'
           ? {
@@ -167,13 +172,15 @@ async function persistPriceObservation(args: {
               sourcePoAttachmentId: args.source.sourcePoAttachmentId,
               ocrLineItemId: args.source.ocrLineItemId,
             },
+      select: { id: true },
     });
+    insertedHistoryId = row.id;
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === 'P2002'
     ) {
-      return 'duplicate';
+      return { outcome: 'duplicate' };
     }
     throw err;
   }
@@ -251,7 +258,7 @@ async function persistPriceObservation(args: {
     });
   }
 
-  return 'inserted';
+  return { outcome: 'inserted', vendorPriceHistoryId: insertedHistoryId! };
 }
 
 async function persistOneCandidate(args: {
@@ -261,7 +268,11 @@ async function persistOneCandidate(args: {
   purchaseOrderId: string;
   actorId: string;
   candidate: ExtractedPriceCandidate;
-}): Promise<'inserted' | 'duplicate' | 'skipped'> {
+}): Promise<
+  | { outcome: 'inserted'; vendorPriceHistoryId: string }
+  | { outcome: 'duplicate' }
+  | { outcome: 'skipped' }
+> {
   return persistPriceObservation({
     tenantId: args.tenantId,
     vendorId: args.vendorId,
@@ -294,10 +305,16 @@ export async function persistApprovedOcrPriceLines(args: {
     unit: string | null;
     quantityMilli: number | null;
   }>;
-}): Promise<{ inserted: number; duplicates: number; skipped: number }> {
+}): Promise<{
+  inserted: number;
+  duplicates: number;
+  skipped: number;
+  insertedHistoryIds: string[];
+}> {
   let inserted = 0;
   let duplicates = 0;
   let skipped = 0;
+  const insertedHistoryIds: string[] = [];
 
   let ord = 0;
   for (const line of args.lines) {
@@ -325,12 +342,14 @@ export async function persistApprovedOcrPriceLines(args: {
         sourcePoAttachmentId: args.sourcePoAttachmentId,
       },
     });
-    if (r === 'inserted') inserted += 1;
-    else if (r === 'duplicate') duplicates += 1;
+    if (r.outcome === 'inserted') {
+      inserted += 1;
+      insertedHistoryIds.push(r.vendorPriceHistoryId);
+    } else if (r.outcome === 'duplicate') duplicates += 1;
     else skipped += 1;
   }
 
-  return { inserted, duplicates, skipped };
+  return { inserted, duplicates, skipped, insertedHistoryIds };
 }
 
 /**
@@ -386,8 +405,8 @@ export async function runVendorPriceExtractionAfterMaterialize(args: {
       actorId: args.actorId,
       candidate: c,
     });
-    if (r === 'inserted') inserted += 1;
-    else if (r === 'duplicate') duplicates += 1;
+    if (r.outcome === 'inserted') inserted += 1;
+    else if (r.outcome === 'duplicate') duplicates += 1;
     else skipped += 1;
   }
 

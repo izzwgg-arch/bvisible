@@ -82,8 +82,8 @@ The look, feel, and behavior of the web app.
   not hijacked — that would break caret navigation inside text inputs.
 - **Sidebar nav** for tenant users now shows
   `Dashboard / Estimates / Purchase orders / Clients / Vendors` in
-  `BASE_NAV`. ADMIN adds `Users`, `Email ingestion`, and **`Receipt OCR`**
-  (`/admin/ocr-review`); SUPER_ADMIN
+  `BASE_NAV`. ADMIN adds `Users`, `Email ingestion`, **`Receipt OCR`**
+  (`/admin/ocr-review`), and **`PO reconciliation`** (`/admin/reconciliation`); SUPER_ADMIN
   additionally adds `Tenants`, `Inboxes`, and `Email test`.
 - **Email ingestion review** at `/admin/email-ingestion` (ADMIN+):
   filterable buckets (Unmatched / Matched / Failed / Dismissed / All)
@@ -99,6 +99,12 @@ The look, feel, and behavior of the web app.
 - **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): queue + detail views for
   `OcrDocument` suggestions (`REVIEW_REQUIRED`), truncated OCR preview, editable line
   picks, **Approve** (writes `VendorPriceHistory` via `OCR_APPROVED`) vs **Reject**.
+  Approving also enqueues a replay-safe `POReconciliation` snapshot for that PO batch.
+- **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
+  `/purchase-orders/[id]/reconciliation`, dashboard summary cards + operational spend alert
+  strip. Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
+  receipt / PO rows, dismiss alerts, or stamp the PO reconciled — **no automatic PO /
+  estimate mutation**.
 - **Per-tenant inbox config** at `/admin/tenants/[id]/email-inbox`
   (SUPER_ADMIN). Two-column layout: left card carries the form (host,
   port, mailbox, username, password, poll interval, TLS toggle,

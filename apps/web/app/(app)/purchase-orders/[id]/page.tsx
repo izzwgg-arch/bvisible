@@ -138,12 +138,22 @@ export default async function PurchaseOrderDetailPage({
           po.vendor ? ` · vendor ${po.vendor.name}` : ' · no vendor yet'
         }`}
         actions={
-          <Link
-            href="/purchase-orders"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-          >
-            Back to POs
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {(me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN) && (
+              <Link
+                href={`/purchase-orders/${id}/reconciliation`}
+                className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+              >
+                Reconciliation
+              </Link>
+            )}
+            <Link
+              href="/purchase-orders"
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Back to POs
+            </Link>
+          </div>
         }
       />
       <PoEditor bootstrap={bootstrap} />

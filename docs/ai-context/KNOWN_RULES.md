@@ -137,6 +137,14 @@ it.
 - **R-NOTIF-02** Tenant-scoped rows only; queries always include `tenantId`.
   Never cross tenants.
 
+## PO reconciliation
+
+- **R-RECON-01** Reconciliation snapshots and spend alerts never auto-mutate PO lines,
+  estimates, or accounting payloads. Alerts reference normalized labels + ids — not raw
+  OCR text. Every query includes `tenantId`. Humans confirm pairs, accept variance,
+  reject mappings, manually merge unmatched rows, dismiss alerts, or stamp a PO
+  reconciled.
+
 ## Tenancy
 
 - **R-TEN-01** Every tenant-scoped query includes `tenantId`. No exceptions.

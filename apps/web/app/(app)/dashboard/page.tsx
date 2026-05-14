@@ -2,6 +2,10 @@ import { requireUser } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { Role } from '@bvisible/db';
 import { VendorPriceAlerts } from './vendor-price-alerts';
+import {
+  ReconciliationSummaryCards,
+  SpendOperationAlerts,
+} from './reconciliation-widgets';
 
 export const metadata = { title: 'Dashboard' };
 export const dynamic = 'force-dynamic';
@@ -32,6 +36,13 @@ export default async function DashboardPage({
       ) : null}
       {user.tenantId ? (
         <VendorPriceAlerts tenantId={user.tenantId} />
+      ) : null}
+      {user.tenantId &&
+      (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) ? (
+        <>
+          <SpendOperationAlerts tenantId={user.tenantId} />
+          <ReconciliationSummaryCards tenantId={user.tenantId} />
+        </>
       ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card title="Account" body={`Signed in as ${user.email}`} mono={user.id} />

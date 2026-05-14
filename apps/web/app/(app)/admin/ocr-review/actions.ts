@@ -3,6 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { OcrJobStatus, prisma, Role } from '@bvisible/db';
 import { requireRole } from '@/lib/auth/current-user';
+import {
+  buildOcrApproveTriggerDedupeKey,
+  runPoReconciliationSnapshot,
+} from '@/lib/reconciliation/run';
 import { persistApprovedOcrPriceLines } from '@/lib/vendor-pricing/persist';
 import { z } from 'zod';
 
@@ -98,6 +102,9 @@ export async function approveOcrDocumentAction(
 
   revalidatePath('/admin/ocr-review');
   revalidatePath(`/admin/ocr-review/${doc.id}`);
+  revalidatePath('/admin/reconciliation');
+  revalidatePath(`/purchase-orders/${doc.poAttachment.purchaseOrderId}/reconciliation`);
+  revalidatePath('/dashboard');
   return { ok: true };
 }
 

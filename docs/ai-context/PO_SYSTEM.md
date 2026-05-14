@@ -163,6 +163,25 @@ internal OCR tick (`DEBUGGING.md` §11f); operators confirm suggestions at
 `/admin/ocr-review/*` before any `VendorPriceHistory` row is written (`KNOWN_RULES.md`
 R-OCR-01).
 
+### PO reconciliation & spend alerts (Phase 14)
+
+Append-only `POReconciliation` snapshots compare **expected `POLineItem` rows**
+(normalized descriptions using the vendor naming pipeline) against
+**`VendorPriceHistory` rows with `extractionMethod = OCR_APPROVED`** tied to this PO via
+`sourcePoAttachment`. Deterministic pairing requires equal counts per normalized label;
+otherwise ambiguous PO/receipt rows + `SpendAlert` candidates.
+
+**Triggers:** approving OCR lines runs `runPoReconciliationSnapshot` with a dedupe key
+(`tenantId + PO + OCR doc + sorted line ids`). Manual **Recompute snapshot** uses a fresh
+UUID nonce. Duplicate triggers short-circuit via `@@unique([tenantId, triggerDedupeKey])`.
+
+**Humans only:** confirm pairs, accept variance, reject mappings, merge unmatched rows,
+dismiss alerts, stamp `PurchaseOrder.operatorMarkedReconciledAt`. Nothing silently mutates
+PO lines, estimates, or QuickBooks fields.
+
+Env thresholds: `RECON_PRICE_TOLERANCE_BPS`, `RECON_ABSOLUTE_PRICE_TOLERANCE_CENTS`,
+`RECON_QTY_TOLERANCE_BPS`.
+
 ## Vendor email ingestion (Phase 8 foundation)
 
 Inbound vendor emails are pulled by the IMAP poller and matched to a
@@ -224,4 +243,7 @@ Phase 7: `vendor_created`, `po_created`, `po_created_from_estimate`,
 adds `email_ingest_tick`, `email_ingest_message_ingested`,
 `email_ingest_message_matched`, `email_ingest_message_failed`,
 `email_ingest_manual_link`, `email_ingest_dismissed`,
-`email_ingest_retried`, `tenant_inbox_configured`.
+`email_ingest_retried`, `tenant_inbox_configured`. Phase 14 reconciliation adds
+`po_reconciliation_run`, `spend_alert_dismissed`, `po_reconciliation_line_resolution`,
+`po_reconciliation_manual_merge`, `po_operator_marked_reconciled`,
+`po_reconciliation_manual_refresh`.

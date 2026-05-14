@@ -188,6 +188,51 @@ enum EmailMatchReason {
   NONE
 }
 
+// Snapshot reconciliation state between POLineItem expectations and
+// operator-approved OCR-backed VendorPriceHistory rows on this PO.
+// Append-only runs — replay deduped via triggerDedupeKey (see run.ts).
+enum POReconciliationStatus {
+  PENDING
+  PARTIAL
+  MATCHED
+  VARIANCE
+  REVIEW_REQUIRED
+  RESOLVED
+}
+
+enum POReconciliationLineMatch {
+  MATCHED
+  PRICE_VARIANCE
+  QTY_VARIANCE
+  PRICE_AND_QTY_VARIANCE
+  UNMATCHED_PO_LINE
+  UNMATCHED_RECEIPT_LINE
+  AMBIGUOUS_PO_LINE
+  AMBIGUOUS_RECEIPT_LINE
+}
+
+enum POReconciliationLineResolution {
+  NONE
+  CONFIRMED_PAIR
+  ACCEPTED_VARIANCE
+  REJECTED_PAIR
+}
+
+enum SpendAlertKind {
+  PRICE_OVER_PO_EXPECTED
+  QTY_MISMATCH
+  UNMATCHED_RECEIPT_LINE
+  MISSING_PO_RECEIPT_LINE
+  RECONCILIATION_AMBIGUOUS
+  PO_TOTAL_OVER_EXPECTED
+}
+
+enum SpendAlertStatus {
+  OPEN
+  DISMISSED
+  RESOLVED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -217,6 +262,9 @@ model Tenant {
   mobileSessions       MobileSession[]
   mobilePendingUploads MobilePendingUpload[]
   ocrDocuments         OcrDocument[]
+  poReconciliations    POReconciliation[]
+  poReconciliationLines POReconciliationLine[]
+  spendAlerts          SpendAlert[]
 
   @@map("tenants")
 }
@@ -251,6 +299,11 @@ model User {
   mobilePendingUploads MobilePendingUpload[]
   ocrDocumentsConfirmed OcrDocument[]    @relation("OcrDocumentConfirmedBy")
   ocrDocumentsRejected  OcrDocument[]    @relation("OcrDocumentRejectedBy")
+  purchaseOrdersMarkedReconciled PurchaseOrder[] @relation("PoMarkedReconciledBy")
+  poReconciliationsResolved       POReconciliation[]       @relation("POReconciliationResolvedBy")
+  poReconciliationLinesResolved   POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
+  spendAlertsDismissed            SpendAlert[]             @relation("SpendAlertDismissedBy")
+  spendAlertsResolvedSpend        SpendAlert[]             @relation("SpendAlertResolvedBy")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -524,6 +577,7 @@ model Vendor {
   itemAliases    VendorItemAlias[]
   priceHistory   VendorPriceHistory[]
   priceNotifications VendorPriceNotification[]
+  spendAlerts    SpendAlert[]
 
   @@unique([tenantId, name])
   @@index([tenantId, deletedAt])
@@ -559,6 +613,9 @@ model PurchaseOrder {
   notes         String?
   createdById   String
   deletedAt     DateTime?
+  /// Operator attestation only — does not mutate PO lines or finances.
+  operatorMarkedReconciledAt   DateTime?
+  operatorMarkedReconciledById String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -571,6 +628,9 @@ model PurchaseOrder {
   events      POEvent[]
   matchedEmails IngestedEmail[] @relation("MatchedPO")
   mobilePendingUploads MobilePendingUpload[]
+  reconciliations POReconciliation[]
+  spendAlerts     SpendAlert[]
+  operatorMarkedReconciledBy User? @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -601,6 +661,7 @@ model POLineItem {
 
   tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  reconciliationLines POReconciliationLine[]
 
   @@index([tenantId, purchaseOrderId, sortOrder])
   @@index([purchaseOrderId, sortOrder])
@@ -868,6 +929,7 @@ model VendorPriceHistory {
   sourceAttachment IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
   sourcePoAttachment POAttachment?        @relation(fields: [sourcePoAttachmentId], references: [id], onDelete: SetNull)
   ocrLineItem      OcrLineItem?           @relation(fields: [ocrLineItemId], references: [id], onDelete: SetNull)
+  reconciliationLines POReconciliationLine[]
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, vendorCatalogItemId, createdAt])
@@ -965,6 +1027,93 @@ model OcrLineItem {
 
   @@index([ocrDocumentId, sortOrder])
   @@map("ocr_line_items")
+}
+
+/// Append-only reconciliation snapshot for one PO (expected PO lines vs
+/// OCR_APPROVED VendorPriceHistory rows on this PO). Replay-safe via
+/// @@unique([tenantId, triggerDedupeKey]).
+model POReconciliation {
+  id                String                 @id @default(cuid())
+  tenantId          String
+  purchaseOrderId   String
+  status            POReconciliationStatus @default(PENDING)
+  triggerDedupeKey  String                 @db.VarChar(64)
+  summary           Json?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  resolvedAt        DateTime?
+  resolvedById      String?
+
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder   PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  resolvedBy      User?                   @relation("POReconciliationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  lines           POReconciliationLine[]
+  spendAlerts     SpendAlert[]
+
+  @@unique([tenantId, triggerDedupeKey])
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@map("po_reconciliations")
+}
+
+model POReconciliationLine {
+  id                     String                       @id @default(cuid())
+  tenantId               String
+  poReconciliationId     String
+  sortOrder              Int                          @default(0)
+  poLineItemId           String?
+  vendorPriceHistoryId   String?
+  match                  POReconciliationLineMatch
+  expectedQtyMilli       Int?
+  expectedUnitCostCents  Int?
+  observedQtyMilli       Int?
+  observedUnitPriceCents Int?
+  priceVarianceCents     Int?
+  qtyVarianceMilli       Int?
+  resolution             POReconciliationLineResolution @default(NONE)
+  resolvedAt             DateTime?
+  resolvedById           String?
+
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  poReconciliation   POReconciliation   @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
+  poLineItem         POLineItem?        @relation(fields: [poLineItemId], references: [id], onDelete: SetNull)
+  vendorPriceHistory VendorPriceHistory? @relation(fields: [vendorPriceHistoryId], references: [id], onDelete: SetNull)
+  resolvedBy         User?              @relation("POReconciliationLineResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([poReconciliationId, sortOrder])
+  @@index([tenantId, poReconciliationId])
+  @@map("po_reconciliation_lines")
+}
+
+/// Operational spend / reconciliation alerts — candidates only; humans dismiss or resolve.
+model SpendAlert {
+  id                  String           @id @default(cuid())
+  tenantId            String
+  purchaseOrderId     String?
+  vendorId            String?
+  poReconciliationId  String?
+  kind                SpendAlertKind
+  status              SpendAlertStatus @default(OPEN)
+  title               String           @db.VarChar(200)
+  body                String           @db.VarChar(900)
+  dedupeKey           String           @db.VarChar(64)
+  metadata            Json?
+  dismissedAt         DateTime?
+  dismissedById       String?
+  resolvedAt          DateTime?
+  resolvedById        String?
+  createdAt           DateTime         @default(now())
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder    PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  vendor           Vendor?           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  poReconciliation POReconciliation? @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
+  dismissedBy      User?             @relation("SpendAlertDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  resolvedBy       User?             @relation("SpendAlertResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, vendorId])
+  @@map("spend_alerts")
 }
 
 // Lightweight per-tick observability log. One row per (tenantId, tick)

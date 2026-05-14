@@ -13,6 +13,11 @@ export {
   VendorPriceConfidence,
   VendorPriceExtractionMethod,
   OcrJobStatus,
+  POReconciliationStatus,
+  POReconciliationLineMatch,
+  POReconciliationLineResolution,
+  SpendAlertKind,
+  SpendAlertStatus,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -43,4 +48,7 @@ export type {
   MobilePendingUpload,
   OcrDocument,
   OcrLineItem,
+  POReconciliation,
+  POReconciliationLine,
+  SpendAlert,
 } from '@prisma/client';

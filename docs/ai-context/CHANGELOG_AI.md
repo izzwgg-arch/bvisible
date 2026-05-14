@@ -5,6 +5,49 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Phase 14: PO reconciliation + spend intelligence foundation
+
+**Migration:** `packages/db/prisma/migrations/20260517143000_po_reconciliation_foundation/migration.sql`.
+
+**Production deploy:** not run from this chat session.
+
+**Scope**
+
+- Append-only `POReconciliation` snapshots with replay-safe `@@unique([tenantId, triggerDedupeKey])`.
+- `POReconciliationLine` rows pair `POLineItem` expectations vs `VendorPriceHistory` observations where `extractionMethod = OCR_APPROVED` and `sourcePoAttachment` belongs to the PO.
+- Deterministic normalized-label bucketing; uneven counts ⇒ ambiguous lines + `SpendAlert` (`RECONCILIATION_AMBIGUOUS`).
+- `SpendAlert` kinds for price/qty drift, missing receipt coverage, unmatched receipt SKUs, PO total guardrail — copy uses **normalized labels + ids**, never raw OCR blobs.
+- Operator workflows (server actions in `apps/web/lib/reconciliation/actions.ts`): dismiss alerts, confirm pairs, accept variance, reject mapping, manual merge PO/receipt rows, recompute snapshot, stamp PO reconciled.
+- Env thresholds: `RECON_PRICE_TOLERANCE_BPS`, `RECON_ABSOLUTE_PRICE_TOLERANCE_CENTS`, `RECON_QTY_TOLERANCE_BPS`.
+
+**Files created**
+
+- `packages/db/prisma/migrations/20260517143000_po_reconciliation_foundation/migration.sql`
+- `apps/web/lib/reconciliation/{dedupe.ts,dedupe.test.ts,match.ts,match.test.ts,thresholds.ts,run.ts,aggregate.ts,actions.ts}`
+- `apps/web/app/(app)/admin/reconciliation/page.tsx`
+- `apps/web/app/(app)/purchase-orders/[id]/reconciliation/page.tsx`
+- `apps/web/app/(app)/dashboard/reconciliation-widgets.tsx`
+
+**Files modified**
+
+- `packages/db/prisma/schema.prisma`, `packages/db/src/index.ts`
+- `apps/web/lib/vendor-pricing/persist.ts`, `apps/web/app/(app)/admin/ocr-review/actions.ts`
+- `apps/web/lib/auth/audit.ts`
+- `apps/web/app/(app)/dashboard/page.tsx`, `apps/web/app/(app)/purchase-orders/[id]/page.tsx`, `apps/web/app/(app)/vendors/[id]/page.tsx`
+- `apps/web/components/app-shell.tsx`, `apps/web/package.json`
+- Docs: `CHANGELOG_AI.md`, `DATA_MODEL.md`, `PO_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `EMAIL_INGESTION.md`, `API_STRUCTURE.md`, `UI_SYSTEM.md`, `SECURITY_RULES.md`, `DEBUGGING.md`, `KNOWN_RULES.md`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:reconciliation` (15 tests in this session).
+
+**Risks**
+
+- Spend alerts from older snapshots may linger until dismissed manually after merges.
+- SUPER_ADMIN users still need a tenant assignment to load tenant-scoped reconciliation queries (same constraint as other tenant pages).
+
+---
+
 ## 2026-05-14 — Phase 13: local OCR + receipt understanding foundation
 
 **Migration:** `packages/db/prisma/migrations/20260516120000_ocr_receipt_foundation/migration.sql`.

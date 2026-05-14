@@ -16,6 +16,7 @@ const ADMIN_NAV: ReadonlyArray<NavItem> = [
   { href: '/admin/users', label: 'Users', hint: 'invites' },
   { href: '/admin/email-ingestion', label: 'Email ingestion', hint: 'inbound' },
   { href: '/admin/ocr-review', label: 'Receipt OCR', hint: 'review' },
+  { href: '/admin/reconciliation', label: 'PO reconciliation', hint: 'spend' },
 ];
 
 const SUPER_ADMIN_NAV: ReadonlyArray<NavItem> = [

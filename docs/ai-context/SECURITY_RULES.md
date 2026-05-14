@@ -31,6 +31,11 @@
 6. **Mobile uploads** use a server-allocated pending row + randomized
    `storageKey`, short TTL, then magic-byte finalize — same filesystem layout
    as web PO uploads (`apps/web/lib/po/uploads.ts`). Not public S3-style URLs.
+7. **PO reconciliation + spend alerts stay tenant-scoped and OCR-safe.**
+   `POReconciliation`, `POReconciliationLine`, and `SpendAlert` queries always
+   filter `tenantId`. Operator-facing alert copy uses normalized item labels plus
+   structural ids — never raw OCR dumps (`SECURITY_RULES.md` posture mirrors
+   truncated OCR previews elsewhere).
 
 ## Auth posture
 

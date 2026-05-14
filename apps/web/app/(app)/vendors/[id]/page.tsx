@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@bvisible/db';
+import {
+  prisma,
+  SpendAlertStatus,
+  VendorPriceExtractionMethod,
+} from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 
@@ -35,36 +39,59 @@ export default async function VendorDetailPage({
   });
   if (!vendor) notFound();
 
-  const history = await prisma.vendorPriceHistory.findMany({
-    where: { tenantId: me.tenantId, vendorId: id },
-    orderBy: { createdAt: 'desc' },
-    take: 250,
-    select: {
-      id: true,
-      itemNameRaw: true,
-      itemNameNormalized: true,
-      priceCents: true,
-      unit: true,
-      quantityMilli: true,
-      confidence: true,
-      extractionMethod: true,
-      createdAt: true,
-      sourceEmailId: true,
-      vendorCatalogItemId: true,
-      sourceEmail: {
-        select: {
-          subject: true,
-          matchedPurchaseOrderId: true,
+  const [history, openSpendAlerts, latestOcrApproved] = await Promise.all([
+    prisma.vendorPriceHistory.findMany({
+      where: { tenantId: me.tenantId, vendorId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 250,
+      select: {
+        id: true,
+        itemNameRaw: true,
+        itemNameNormalized: true,
+        priceCents: true,
+        unit: true,
+        quantityMilli: true,
+        confidence: true,
+        extractionMethod: true,
+        createdAt: true,
+        sourceEmailId: true,
+        vendorCatalogItemId: true,
+        sourceEmail: {
+          select: {
+            subject: true,
+            matchedPurchaseOrderId: true,
+          },
+        },
+        sourcePoAttachment: {
+          select: { purchaseOrderId: true },
+        },
+        ocrLineItem: {
+          select: { ocrDocumentId: true },
         },
       },
-      sourcePoAttachment: {
-        select: { purchaseOrderId: true },
+    }),
+    prisma.spendAlert.count({
+      where: {
+        tenantId: me.tenantId,
+        vendorId: id,
+        status: SpendAlertStatus.OPEN,
       },
-      ocrLineItem: {
-        select: { ocrDocumentId: true },
+    }),
+    prisma.vendorPriceHistory.findFirst({
+      where: {
+        tenantId: me.tenantId,
+        vendorId: id,
+        extractionMethod: VendorPriceExtractionMethod.OCR_APPROVED,
       },
-    },
-  });
+      orderBy: { createdAt: 'desc' },
+      select: {
+        createdAt: true,
+        priceCents: true,
+        itemNameNormalized: true,
+        sourcePoAttachment: { select: { purchaseOrderId: true } },
+      },
+    }),
+  ]);
 
   const lowerThanPrior = new Set<string>();
   const byCatalog = new Map<string, typeof history>();
@@ -124,9 +151,44 @@ export default async function VendorDetailPage({
           </h2>
           <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--color-bv-muted)]">
             Rows are append-only observations from regex extraction on email
-            subject, plain-text snippet, and attachment filenames — no PDF/OCR
-            and no AI (Phase 10 foundation).
+            subject, plain-text snippet, and attachment filenames — plus operator-approved receipt OCR (Phase 13+).
           </p>
+          <dl className="mt-4 grid gap-2 text-[13px]">
+            <div className="flex justify-between gap-3 border-t border-[var(--color-bv-border)] pt-3">
+              <dt className="text-[var(--color-bv-muted)]">Open spend alerts</dt>
+              <dd className="font-medium tabular-nums text-[var(--color-bv-text)]">
+                {openSpendAlerts}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--color-bv-muted)]">
+                Latest OCR-confirmed unit
+              </dt>
+              <dd className="text-right font-medium text-[var(--color-bv-text)]">
+                {latestOcrApproved ? (
+                  <>
+                    {fmtMoney(latestOcrApproved.priceCents)}{' '}
+                    <span className="block font-mono text-[11px] font-normal text-[var(--color-bv-muted)]">
+                      {latestOcrApproved.itemNameNormalized}
+                    </span>
+                  </>
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
+            <div className="flex flex-wrap justify-between gap-2 border-t border-[var(--color-bv-border)] pt-3">
+              <dt className="text-[var(--color-bv-muted)]">Reconciliation inbox</dt>
+              <dd>
+                <Link
+                  href="/admin/reconciliation"
+                  className="text-[13px] font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+                >
+                  Open queue
+                </Link>
+              </dd>
+            </div>
+          </dl>
         </section>
       </div>
 

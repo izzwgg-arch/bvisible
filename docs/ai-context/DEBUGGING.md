@@ -1157,6 +1157,15 @@ the route accepts either (`SECURITY_RULES.md`).
 bash server-scripts/db/.verify-ocr-receipt-parse.sh
 ```
 
+### PO reconciliation unit checks
+
+```bash
+pnpm --filter @bvisible/web run verify:reconciliation
+```
+
+Covers deterministic pairing, tolerance math, aggregate status ordering, and canonical
+dedupe-key hashing (`apps/web/lib/reconciliation/*.test.ts`).
+
 ### Symptom: jobs stuck `FAILED`
 
 Read `ocr_documents.lastError` (short technical message only — never raw OCR dumps).

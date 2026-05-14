@@ -608,6 +608,19 @@ Tenant ──< User
   code; insert a new observation with a fresh `dedupeKey` / timestamp.
   Lower-price UX uses `VendorPriceNotification` + `POEventKind.VENDOR_LOWER_PRICE`.
 
+### Phase 14 — PO reconciliation & spend alerts
+
+- `POReconciliation` — append-only snapshot per deterministic trigger (`tenantId` +
+  `triggerDedupeKey` unique). Stores aggregate JSON summary + lifecycle status;
+  optional `resolvedAt` when operators finish a review pass on that row.
+- `POReconciliationLine` — links optional `POLineItem` + optional `VendorPriceHistory`,
+  stores expected vs observed qty/price milli + cents, variance columns, and operator
+  resolution enum (`NONE`, `CONFIRMED_PAIR`, `ACCEPTED_VARIANCE`, `REJECTED_PAIR`).
+- `SpendAlert` — operational inbox (`OPEN` / `DISMISSED` / `RESOLVED`) with deduped
+  `(tenantId, dedupeKey)`; references PO/vendor/reconciliation ids for navigation only.
+- `PurchaseOrder.operatorMarkedReconciledAt` / `operatorMarkedReconciledById` —
+  human-only reconciliation stamp (does not mutate line economics).
+
 ## Soft delete
 
 Tables that support soft delete use `deletedAt` (nullable timestamp).

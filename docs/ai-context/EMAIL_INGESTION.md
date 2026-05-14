@@ -187,6 +187,9 @@ For each `UNSEEN` message:
    log `vendor_price_extraction_failed` and do **not** fail ingestion.
    See `DATA_MODEL.md` and `SECURITY_RULES.md` for boundaries (no PDF
    parsing, no OCR, no LLM).
+   **PO reconciliation (Phase 14)** intentionally compares PO lines to receipt observations
+   created via **`OCR_APPROVED`** after attachment OCR review — not to the Phase 10 email-regex
+   extractions from this step (those remain operational signals only).
 8. Mark the IMAP message `\Seen`. Only happens AFTER the DB transaction
    for the row commits — a crash before this point replays the message
    on the next tick, the unique constraint prevents duplicates.
