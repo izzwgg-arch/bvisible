@@ -7,9 +7,23 @@ records what changed, the files touched, the risks, and the verification.
 
 ## 2026-05-13 — Purchase order foundation (Phase 7)
 
-**Commit:** _to be filled in by the commit step_ (`feat: add purchase order foundation`).
+**Commit:** `51c5369eaf9c2f0dae6548faa7c1f88410e113ab` (`feat: add purchase order foundation`).
 **Migration:** `20260513234614_purchase_orders_and_finalize`.
-**Deploy:** _to be filled in_.
+**Deploy:** `20260514T000821-9643c4` → `done`. Migration applied,
+`db-verify.sh` OK (4 migrations, latest = the new one), PM2 reload OK,
+healthcheck OK on first attempt. Verified from the workstation:
+`/api/health` returns the expected payload over HTTPS, and every new
+gated route (`/purchase-orders`, `/purchase-orders/new`, `/vendors`,
+`/vendors/new`, `/api/po/<id>/attachments/<id>`) 307s to
+`/login?next=...`. Production schema verified: 5 new tables
+(`vendors`, `purchase_orders`, `po_line_items`, `po_attachments`,
+`po_events`), `EstimateStatus` enum now ends in `FINALIZED`, all four
+new PO enums are present, `purchase_orders` carries the expected
+`(tenantId, number)` UNIQUE + the four `(tenantId, ...)` btree
+indexes, and the FKs on `estimateId` / `vendorId` correctly use
+`ON DELETE SET NULL` while the line / attachment / event children use
+`ON DELETE CASCADE`. The `/opt/bvisible/shared/uploads` shared dir is
+present and owned by `deploy:deploy` as expected.
 
 **Scope**
 
