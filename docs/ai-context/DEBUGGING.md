@@ -465,6 +465,51 @@ tail -n 200 -f /opt/bvisible/shared/logs/pm2/bvisible-web.err.log \
   | grep --line-buffered -E 'vendor_price_extraction|vendor_price_extraction_failed'
 ```
 
+**Deterministic DB verification (no IMAP)** — creates tenant slug
+`vendor-pricing-verify`, seeds vendor + PO + synthetic `IngestedEmail`, runs the
+same `runVendorPriceExtractionAfterMaterialize` path the ingest hook uses,
+asserts catalog/history/notification/`VENDOR_LOWER_PRICE` counts + replay
+dedupe, then deletes the tenant:
+
+```bash
+# From the deploy box as deploy (sources DATABASE_URL from shared env):
+bash /opt/bvisible/app/server-scripts/db/.verify-vendor-pricing.sh
+
+# From a dev machine with DATABASE_URL exported:
+cd apps/web
+pnpm exec tsx --tsconfig tsconfig.json scripts/verify-vendor-pricing.ts
+```
+
+Expected terminal output ends with `PASS vendor-pricing DB verification`.
+
+**Inspect unread lower-price notifications** (adjust `tenantId`):
+
+```bash
+PW=$(sudo grep '^POSTGRES_PASSWORD=' /opt/bvisible/shared/env/.env | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+docker compose -p bvisible exec -T -e PGPASSWORD="$PW" db \
+  psql -U bvisible -d bvisible -c \
+  "SELECT id, \"vendorId\", \"oldPriceCents\", \"newPriceCents\", \"createdAt\"
+     FROM vendor_price_notifications
+    WHERE \"tenantId\" = '<tenantId>' AND \"dismissedAt\" IS NULL
+ ORDER BY \"createdAt\" DESC LIMIT 20;"
+```
+
+**Inspect extraction history**:
+
+```bash
+docker compose -p bvisible exec -T -e PGPASSWORD="$PW" db \
+  psql -U bvisible -d bvisible -c \
+  "SELECT \"itemNameNormalized\", \"priceCents\", confidence, \"extractionMethod\", \"sourceEmailId\", \"createdAt\"
+     FROM vendor_price_histories
+    WHERE \"tenantId\" = '<tenantId>'
+ ORDER BY \"createdAt\" DESC LIMIT 30;"
+```
+
+**Clear sandbox alerts safely:** use the dashboard **Dismiss** control (writes
+`dismissedAt` + audit `vendor_price_notification_dismissed`). Avoid deleting
+production notification rows from SQL unless you are intentionally repairing a
+bad migration — prefer dismissal so the audit trail stays coherent.
+
 ### Lease / overlap visibility
 
 ```bash

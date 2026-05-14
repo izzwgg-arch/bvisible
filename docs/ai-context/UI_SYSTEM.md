@@ -172,7 +172,9 @@ The look, feel, and behavior of the web app.
   amber banner listing unread `VendorPriceNotification` rows with old/new
   prices, vendor link, subject line, PO link when available, and a
   **Dismiss** `<form action={dismissVendorPriceNotificationAction}>`.
-  Nothing auto-dismisses (R-NOTIF-01).
+  Nothing auto-dismisses (R-NOTIF-01). Automated regression: `pnpm run test`
+  (`apps/web/lib/vendor-pricing/*.test.ts`) plus optional DB script
+  `server-scripts/db/.verify-vendor-pricing.sh` — see `DEBUGGING.md` § 9.
 
 ## Layout (web)
 

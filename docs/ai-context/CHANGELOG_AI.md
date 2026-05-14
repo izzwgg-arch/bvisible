@@ -5,6 +5,55 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Vendor pricing tests + verification script (stabilization)
+
+**Commit message:** `test: stabilize vendor pricing intelligence` (hash: see `git rev-parse HEAD` at deploy time).
+**Migration:** none.
+**Deploy:** TBD.
+
+**Scope**
+
+Vitest coverage for `normalizeVendorItemName`, regex extraction (`extract.ts`),
+and `runVendorPriceExtractionAfterMaterialize` with a mocked Prisma client
+(notification + `VENDOR_LOWER_PRICE` + dedupe paths). Added deterministic DB
+script `server-scripts/db/.verify-vendor-pricing.sh` + `apps/web/scripts/verify-vendor-pricing.ts`
+(no IMAP). Rewrote `VENDOR_PRICE_ENGINE.md` to match shipped behavior. Deleted
+accidental `server-scripts/.enqueue-phase9.sh` and gitignored `server-scripts/.enqueue-*.sh`
+for future local helpers.
+
+**What changed (repo)**
+
+Added:
+
+- `apps/web/vitest.config.ts`
+- `apps/web/lib/vendor-pricing/normalize.test.ts`
+- `apps/web/lib/vendor-pricing/extract.test.ts`
+- `apps/web/lib/vendor-pricing/persist.test.ts`
+- `apps/web/scripts/verify-vendor-pricing.ts`
+- `server-scripts/db/.verify-vendor-pricing.sh`
+
+Modified:
+
+- `apps/web/package.json`, root `package.json`, `pnpm-lock.yaml` — Vitest + `pnpm run test`.
+- `.gitignore` — ignore local enqueue helpers.
+- `docs/ai-context/{VENDOR_PRICE_ENGINE,DEBUGGING,API_STRUCTURE,UI_SYSTEM,EMAIL_INGESTION,CHANGELOG_AI}.md`
+
+Removed:
+
+- `server-scripts/.enqueue-phase9.sh` (duplicate/untracked helper; pattern now gitignored).
+
+**Risks**
+
+- Mocked persist tests can drift from real Prisma behavior — mitigated by the DB verification script on staging/prod-like databases.
+- Verify script briefly creates/deletes tenant `vendor-pricing-verify`; do not run concurrent copies against the same DB.
+
+**Verification**
+
+- Local: `pnpm install --frozen-lockfile`, `pnpm run test`, `pnpm run build`.
+- Server: run `.verify-vendor-pricing.sh` after deploy with PM2 healthy.
+
+---
+
 ## 2026-05-14 — Vendor pricing intelligence foundation (Phase 10)
 
 **Commit message:** `feat: add vendor pricing intelligence foundation` (hash: see `git rev-parse HEAD` at deploy time).

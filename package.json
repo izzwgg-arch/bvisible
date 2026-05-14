@@ -16,6 +16,7 @@
     "build": "pnpm --filter @bvisible/db run build && pnpm --filter @bvisible/web run build",
     "typecheck": "pnpm -r --parallel run typecheck",
     "lint": "pnpm --filter @bvisible/web run lint",
+    "test": "pnpm --filter @bvisible/web run test",
     "dev": "pnpm --filter @bvisible/web run dev"
   }
 }

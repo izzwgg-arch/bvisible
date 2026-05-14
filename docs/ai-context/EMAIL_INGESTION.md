@@ -342,6 +342,10 @@ recent `EmailIngestRun` rows but never the cipher.
   prior price for the same `VendorCatalogItem`, the system creates a
   `VendorPriceNotification` (manual dismiss), a `POEvent` of kind
   `VENDOR_LOWER_PRICE`, and an audit row — **no auto-repricing**.
+- **Regression check:** `bash server-scripts/db/.verify-vendor-pricing.sh`
+  (or `pnpm --filter @bvisible/web exec tsx --tsconfig tsconfig.json scripts/verify-vendor-pricing.ts`
+  with `DATABASE_URL`) exercises the persist path without IMAP — see
+  `DEBUGGING.md` § 9.
 
 ## What's intentionally NOT here yet
 
