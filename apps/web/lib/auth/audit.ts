@@ -20,7 +20,20 @@ export type AuditAction =
   | 'estimate_saved'
   | 'estimate_status_changed'
   | 'estimate_multiplier_overridden'
-  | 'estimate_deleted';
+  | 'estimate_deleted'
+  | 'estimate_finalized'
+  | 'estimate_unfinalized'
+  | 'vendor_created'
+  | 'po_created'
+  | 'po_created_from_estimate'
+  | 'po_saved'
+  | 'po_status_changed'
+  | 'po_qbo_number_set'
+  | 'po_vendor_set'
+  | 'po_attachment_added'
+  | 'po_attachment_deleted'
+  | 'po_note_added'
+  | 'po_deleted';
 
 export interface AuditEntry {
   action: AuditAction;

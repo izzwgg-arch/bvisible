@@ -1,6 +1,8 @@
 'use client';
 
-import { EstimateStatus } from '@bvisible/db';
+import Link from 'next/link';
+import { useState } from 'react';
+import { EstimateStatus, POStatus } from '@bvisible/db';
 import type { BreakdownByKind } from '@bvisible/pricing';
 import { formatMoney } from '@/lib/estimate/format';
 import { NumericCell } from '@/components/grid/cell-input';
@@ -10,6 +12,8 @@ import type { EditorBootstrap } from './editor';
 
 const DEFAULT_MULTIPLIER_MILLI = 3000;
 
+// FINALIZED is intentionally excluded — the only path into FINALIZED
+// is the gated finalize action below, not the generic status changer.
 const STATUS_OPTIONS: ReadonlyArray<EstimateStatus> = [
   EstimateStatus.DRAFT,
   EstimateStatus.SENT,
@@ -22,6 +26,16 @@ const STATUS_TONE: Record<EstimateStatus, string> = {
   SENT: 'border-blue-200 bg-blue-50 text-blue-700',
   APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   REJECTED: 'border-rose-200 bg-rose-50 text-rose-700',
+  FINALIZED: 'border-violet-200 bg-violet-50 text-violet-700',
+};
+
+const PO_STATUS_TONE: Record<POStatus, string> = {
+  DRAFT: 'border-slate-200 bg-slate-50 text-slate-700',
+  SENT: 'border-blue-200 bg-blue-50 text-blue-700',
+  ORDERED: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  PARTIALLY_RECEIVED: 'border-amber-200 bg-amber-50 text-amber-800',
+  RECEIVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  CANCELED: 'border-rose-200 bg-rose-50 text-rose-700',
 };
 
 interface TotalsPanelProps {
@@ -50,6 +64,13 @@ interface TotalsPanelProps {
   onSave: () => void;
   onStatusChange: (next: EstimateStatus) => void;
   onDelete: (() => void) | null;
+  poBusy: boolean;
+  poMsg: string | null;
+  finalizeBusy: boolean;
+  finalizeMsg: string | null;
+  onCreatePo: (vendorId: string | null) => void;
+  onFinalize: () => void;
+  onUnfinalize: (() => void) | null;
 }
 
 export function TotalsPanel(props: TotalsPanelProps) {
@@ -69,7 +90,25 @@ export function TotalsPanel(props: TotalsPanelProps) {
     onSave,
     onStatusChange,
     onDelete,
+    poBusy,
+    poMsg,
+    finalizeBusy,
+    finalizeMsg,
+    onCreatePo,
+    onFinalize,
+    onUnfinalize,
   } = props;
+  const [vendorChoice, setVendorChoice] = useState<string>('');
+
+  const isFinalized = bootstrap.estimate.status === EstimateStatus.FINALIZED;
+  const linkedPos = bootstrap.linkedPos;
+  const hasPo = linkedPos.length > 0;
+  const hasQboPo = linkedPos.some((p) => !!p.qboPoNumber);
+  const finalizeBlockedReason = !hasPo
+    ? 'Create a PO from this estimate first.'
+    : !hasQboPo
+      ? 'Linked PO needs a QuickBooks PO number first.'
+      : null;
 
   const multiplierLabel = (multiplierMilli / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
   const multiplierIsCustom = multiplierMilli !== DEFAULT_MULTIPLIER_MILLI;
@@ -169,6 +208,123 @@ export function TotalsPanel(props: TotalsPanelProps) {
       </section>
 
       <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">
+            Linked POs
+          </h3>
+          <span className="text-[11.5px] text-[var(--color-bv-muted)]">
+            {linkedPos.length}
+          </span>
+        </div>
+        <ul className="mt-2 flex flex-col gap-1.5 text-[12.5px]">
+          {linkedPos.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-center justify-between gap-2 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1.5"
+            >
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  href={`/purchase-orders/${p.id}` as never}
+                  className="font-mono text-[12px] text-[var(--color-bv-accent)] hover:underline"
+                >
+                  {p.number}
+                </Link>
+                <span className="truncate text-[11px] text-[var(--color-bv-muted)]">
+                  {p.vendor?.name ?? 'no vendor'} · QBO {p.qboPoNumber ?? '—'}
+                </span>
+              </div>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px] font-medium ${PO_STATUS_TONE[p.status]}`}
+              >
+                {p.status.replace('_', ' ')}
+              </span>
+            </li>
+          ))}
+          {linkedPos.length === 0 ? (
+            <li className="text-[12px] text-[var(--color-bv-muted)]">
+              No POs yet for this estimate.
+            </li>
+          ) : null}
+        </ul>
+
+        {!isFinalized ? (
+          <div className="mt-3 flex flex-col gap-2 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3">
+            <label className="flex flex-col gap-1 text-[11.5px] text-[var(--color-bv-muted)]">
+              <span className="font-medium">Create PO from this estimate</span>
+              <select
+                value={vendorChoice}
+                onChange={(e) => setVendorChoice(e.currentTarget.value)}
+                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[12.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+              >
+                <option value="">— pick vendor (optional) —</option>
+                {bootstrap.vendors.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => onCreatePo(vendorChoice || null)}
+              disabled={poBusy}
+              className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2.5 py-1.5 text-[12.5px] font-medium text-[var(--color-bv-text)] hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {poBusy ? 'Creating PO…' : 'Create PO from estimate'}
+            </button>
+            {poMsg ? (
+              <p className="text-[11.5px] text-rose-700">{poMsg}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex flex-col gap-1.5">
+          {!isFinalized ? (
+            <>
+              <button
+                type="button"
+                onClick={onFinalize}
+                disabled={finalizeBusy || !!finalizeBlockedReason}
+                title={finalizeBlockedReason ?? undefined}
+                className="inline-flex items-center justify-center rounded-[8px] bg-violet-600 px-3.5 py-2 text-[13px] font-medium text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+              >
+                {finalizeBusy ? 'Finalizing…' : 'Finalize estimate (R-EST-04)'}
+              </button>
+              {finalizeBlockedReason ? (
+                <p className="text-[11.5px] text-[var(--color-bv-muted)]">
+                  {finalizeBlockedReason}
+                </p>
+              ) : null}
+              {finalizeMsg ? (
+                <p className="text-[11.5px] text-rose-700">{finalizeMsg}</p>
+              ) : null}
+            </>
+          ) : onUnfinalize ? (
+            <>
+              <p className="rounded-[6px] border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11.5px] text-violet-800">
+                FINALIZED — locked. Unfinalize to edit again.
+              </p>
+              <button
+                type="button"
+                onClick={onUnfinalize}
+                disabled={finalizeBusy}
+                className="inline-flex items-center justify-center rounded-[6px] border border-violet-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {finalizeBusy ? 'Unfinalizing…' : 'Unfinalize'}
+              </button>
+              {finalizeMsg ? (
+                <p className="text-[11.5px] text-rose-700">{finalizeMsg}</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="rounded-[6px] border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11.5px] text-violet-800">
+              FINALIZED — only an admin can unfinalize.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
         <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">Status</h3>
         <div className="mt-3 grid grid-cols-2 gap-2">
           {STATUS_OPTIONS.map((s) => {
@@ -177,7 +333,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
               <button
                 key={s}
                 type="button"
-                disabled={statusBusy || active}
+                disabled={statusBusy || active || isFinalized}
                 onClick={() => onStatusChange(s)}
                 className={`inline-flex items-center justify-center rounded-[6px] border px-2 py-1.5 text-[12.5px] font-medium ${
                   active
@@ -190,6 +346,11 @@ export function TotalsPanel(props: TotalsPanelProps) {
             );
           })}
         </div>
+        {isFinalized ? (
+          <p className="mt-2 text-[11.5px] text-[var(--color-bv-muted)]">
+            Status is locked while FINALIZED.
+          </p>
+        ) : null}
         <p className="mt-3 text-[11.5px] text-[var(--color-bv-muted)]">
           {bootstrap.estimate.number} · client {bootstrap.estimate.client.companyName}
         </p>

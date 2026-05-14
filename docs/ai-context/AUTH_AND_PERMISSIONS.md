@@ -99,7 +99,10 @@ into Prisma for the user behind the helpers.
 | `/admin/users` | protected | ADMIN or SUPER_ADMIN. |
 | `/admin/tenants` | protected | SUPER_ADMIN only. |
 | `/clients`, `/clients/new` | protected | Tenant user (any role with a `tenantId`). Gated by `requireTenantId()`. |
-| `/estimates`, `/estimates/new`, `/estimates/[id]` | protected | Tenant user. The editor is read-write for both ADMIN and USER (per the Phase 6 spec). Soft-delete (the danger-zone button) is restricted to ADMIN / SUPER_ADMIN — the button is not rendered for USER. |
+| `/estimates`, `/estimates/new`, `/estimates/[id]` | protected | Tenant user. The editor is read-write for both ADMIN and USER (per the Phase 6 spec). Soft-delete (the danger-zone button) is restricted to ADMIN / SUPER_ADMIN — the button is not rendered for USER. The "Unfinalize" button on a FINALIZED estimate is also ADMIN+ only. |
+| `/vendors`, `/vendors/new` | protected | Tenant user. Per-tenant unique on vendor `name`. |
+| `/purchase-orders`, `/purchase-orders/new`, `/purchase-orders/[id]` | protected | Tenant user. The editor + meta panel + attachments + timeline note are read-write for both ADMIN and USER. Soft-delete is ADMIN+ only (button hidden for USER). |
+| `/api/po/[id]/attachments/[attachmentId]` | protected | Tenant user. Joins on `(tenantId, purchaseOrderId)` and refuses cross-tenant or soft-deleted POs. Returns 404 (not 403) on mismatch so the route does not leak whether the id exists in another tenant. |
 
 ## Server actions for auth
 
@@ -121,6 +124,19 @@ enforced by Next). Server actions get CSRF protection for free.
 | `saveEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | Tenant user. Validates ownership of the estimate AND every referenced `machineId`. Reruns `@bvisible/pricing` server-side and writes cached totals atomically. Audits `estimate_saved` and (when the multiplier changed) `estimate_multiplier_overridden`. |
 | `updateEstimateStatusAction` | `app/(app)/estimates/[id]/actions.ts` | Tenant user. Audit `estimate_status_changed`. |
 | `deleteEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | ADMIN or SUPER_ADMIN. Soft delete (`deletedAt`); audit `estimate_deleted`. |
+| `finalizeEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | Tenant user. R-EST-04 gate (linked PO + qboPoNumber). Audit `estimate_finalized`. |
+| `unfinalizeEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | ADMIN or SUPER_ADMIN. Audit `estimate_unfinalized`. |
+| `createVendorAction` | `app/(app)/vendors/actions.ts` | Tenant user. `requireTenantId()`. Audit `vendor_created`. |
+| `createBlankPoAction` | `app/(app)/purchase-orders/actions.ts` | Tenant user. Verifies `estimateId` + `vendorId` (when supplied) belong to the tenant. Allocates `PO-NNNNNN` per tenant inside the create transaction. Audit `po_created`. |
+| `createPoFromEstimateAction` | `app/(app)/purchase-orders/actions.ts` | Tenant user. Verifies estimate + optional vendor under the tenant. Copies estimate lines into PO lines without mutating the estimate. Audit `po_created_from_estimate`. |
+| `savePurchaseOrderAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Replaces lines + recomputes cached `subtotalCents` server-side. Audit `po_saved`. |
+| `updatePoStatusAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Audit `po_status_changed`. |
+| `setPoQboNumberAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Audit `po_qbo_number_set`. |
+| `setPoVendorAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Verifies vendor under the caller's tenant. Audit `po_vendor_set`. |
+| `addPoNoteAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Audit `po_note_added`. |
+| `uploadPoAttachmentAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Server-side magic-byte sniff before persisting. Audit `po_attachment_added`. |
+| `deletePoAttachmentAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Audit `po_attachment_deleted`. |
+| `deletePurchaseOrderAction` | `app/(app)/purchase-orders/[id]/actions.ts` | ADMIN or SUPER_ADMIN. Soft delete (`deletedAt`). Audit `po_deleted`. |
 
 ## Permission model
 

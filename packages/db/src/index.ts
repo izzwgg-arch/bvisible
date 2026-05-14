@@ -1,5 +1,14 @@
 export { prisma } from './client';
-export { Prisma, Role, EstimateStatus, EstimateLineKind } from '@prisma/client';
+export {
+  Prisma,
+  Role,
+  EstimateStatus,
+  EstimateLineKind,
+  POStatus,
+  POLineKind,
+  POAttachmentKind,
+  POEventKind,
+} from '@prisma/client';
 export type {
   PrismaClient,
   Tenant,
@@ -12,4 +21,9 @@ export type {
   Machine,
   Estimate,
   EstimateLineItem,
+  Vendor,
+  PurchaseOrder,
+  POLineItem,
+  POAttachment,
+  POEvent,
 } from '@prisma/client';

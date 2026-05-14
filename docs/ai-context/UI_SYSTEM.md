@@ -11,7 +11,7 @@ The look, feel, and behavior of the web app.
 - **Practicality is king, user-friendly is queen.** Don't add a flourish that
   costs the user a click.
 
-## Currently shipped (foundation + auth + estimates)
+## Currently shipped (foundation + auth + estimates + purchase orders)
 
 - Next.js 15 App Router + React 19 + TypeScript + Tailwind 4.
 - **Route groups**: `app/(auth)/*` for unauthenticated pages (login,
@@ -81,8 +81,50 @@ The look, feel, and behavior of the web app.
   Tab is left to the browser default. Arrow keys are intentionally
   not hijacked — that would break caret navigation inside text inputs.
 - **Sidebar nav** for tenant users now shows
-  `Dashboard / Estimates / Clients` in `BASE_NAV`. ADMIN adds Users;
-  SUPER_ADMIN adds Tenants + Email test.
+  `Dashboard / Estimates / Purchase orders / Clients / Vendors` in
+  `BASE_NAV`. ADMIN adds Users; SUPER_ADMIN adds Tenants + Email test.
+- **Purchase order editor** at
+  `apps/web/app/(app)/purchase-orders/[id]/{editor,line-grid,meta-panel,timeline-panel,attachments-panel}.tsx`:
+  - Same two-column layout as the estimate editor: line grid + notes +
+    attachments + timeline on the left, sticky meta panel (320px) on the
+    right.
+  - Line grid reuses the **shared cell primitives** (`<CellInput>` /
+    `<NumericCell>`) and the **same `makeGridKeyHandler`** from the
+    estimate grid — Enter steps down (auto-appending a row of the same
+    kind at the bottom), Shift+Enter steps up, Tab is browser-default.
+    Per-row × / ↑ / ↓ controls match the estimate editor.
+  - **Meta panel**: cached subtotal, save button (disabled until dirty —
+    `Cmd/Ctrl+S` also saves), QBO PO number input that **commits on blur**
+    (via `setPoQboNumberAction`; UI hint warns "save first" if the field
+    is touched while still dirty), vendor `<select>` (commits on change
+    via `setPoVendorAction`), linked-estimate row (read-only — links to
+    the estimate page), six-button status grid (one button per
+    `POStatus`; the active status is the highlighted button), danger
+    zone with soft-delete (ADMIN+ only — hidden for USER).
+  - **Attachments panel**: kind picker + file `<input>` (allowed
+    extensions surfaced via `accept`); inline list of existing
+    attachments (filename, kind tag, MIME, size, date, uploader) with a
+    download link to `/api/po/[id]/attachments/[attachmentId]` and a
+    "Remove" button. Submission is a `<form action={uploadPoAttachmentAction}>` 
+    with the standard `useActionState` busy / error / success treatment.
+  - **Timeline panel**: newest-first list of `POEvent` rows with an icon
+    derived from `POEventKind` and a human-readable timestamp; inline
+    "Add note" form posts to `addPoNoteAction` and re-renders the
+    timeline via `revalidatePath`.
+- **Estimate totals panel** now exposes the **PO bridge**: a "Linked
+  POs" list (with a status pill per linked PO and a deep link to the PO
+  page), a "Create PO from estimate" form (optional vendor picker; submits
+  `createPoFromEstimateAction` and navigates to the new PO on success),
+  and the **Finalize / Unfinalize** buttons. Finalize is disabled with an
+  inline reason when R-EST-04 isn't satisfied (no linked PO, or no
+  qboPoNumber on any linked PO). Unfinalize only renders for ADMIN+.
+- **Status pills** for both `EstimateStatus` (now including `FINALIZED`
+  in slate) and `POStatus` (DRAFT / SENT / ORDERED /
+  PARTIALLY_RECEIVED / RECEIVED / CANCELED) live in the same six-tone
+  vocabulary as the rest of the app.
+- **Vendor list** at `/vendors` is a single-table view (name, email,
+  phone, PO count, updated). New vendor form at `/vendors/new` is the
+  standard single-column auth-card pattern.
 
 ## Layout (web)
 

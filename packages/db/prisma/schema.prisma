@@ -1,10 +1,16 @@
-// B Visible — auth + tenant foundation + estimate foundation.
+// B Visible — auth + tenant foundation + estimate foundation
+// + purchase order foundation.
 // Foundation models: Tenant, User, Role, Session, UserInvite,
 // PasswordResetToken, AuditLog.
 // Estimate foundation: Client, Machine, Estimate, EstimateLineItem
 // + EstimateStatus / EstimateLineKind enums.
-// See docs/ai-context/DATA_MODEL.md for the target model set and
-// docs/ai-context/ESTIMATE_ENGINE.md for the pricing rules.
+// PO foundation: Vendor, PurchaseOrder, POLineItem, POAttachment,
+// POEvent + POStatus / POLineKind / POAttachmentKind / POEventKind
+// enums. EstimateStatus.FINALIZED is gated by R-EST-04 in
+// apps/web/app/(app)/estimates/[id]/actions.ts (finalizeEstimateAction).
+// See docs/ai-context/DATA_MODEL.md for the target model set,
+// docs/ai-context/ESTIMATE_ENGINE.md for the pricing rules, and
+// docs/ai-context/PO_SYSTEM.md for the PO workflow.
 
 generator client {
   provider      = "prisma-client-js"
@@ -22,11 +28,17 @@ enum Role {
   USER
 }
 
+// FINALIZED is the terminal "this estimate is locked because money is
+// being spent against it" status. R-EST-04: an estimate can only enter
+// FINALIZED via finalizeEstimateAction, which requires at least one
+// linked PurchaseOrder with a non-null qboPoNumber. updateEstimateStatusAction
+// refuses FINALIZED directly.
 enum EstimateStatus {
   DRAFT
   SENT
   APPROVED
   REJECTED
+  FINALIZED
 }
 
 // One row per editable line in the spreadsheet-style estimate editor.
@@ -43,6 +55,57 @@ enum EstimateLineKind {
   MISC
 }
 
+// Purchase order lifecycle. Kept deliberately small for the foundation:
+// no approvals, no PARTIAL_RECEIVED splits across line items, no
+// vendor-side acceptance state. POEvent rows tell the full story.
+enum POStatus {
+  DRAFT
+  SENT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELED
+}
+
+// Mirrors EstimateLineKind so estimate→PO conversion preserves the
+// kind label without lossy mapping. Estimators see the same vocabulary
+// on both sides of the handoff.
+enum POLineKind {
+  MATERIAL
+  MACHINE
+  LABOR
+  DESIGN
+  INSTALL
+  MISC
+}
+
+// Coarse classification of an attachment for filtering/icons in the UI.
+// The kind is set at upload time; magic-byte MIME detection happens
+// independently in apps/web/lib/po/uploads.ts.
+enum POAttachmentKind {
+  RECEIPT
+  INVOICE
+  VENDOR_DOC
+  DRAWING
+  OTHER
+}
+
+// POEvent.kind drives the human-readable timeline. Only the kinds we
+// actually emit today are listed; new kinds (vendor_reply, mobile_receipt)
+// land with their respective phases. See docs/ai-context/PO_SYSTEM.md.
+enum POEventKind {
+  CREATED
+  CREATED_FROM_ESTIMATE
+  LINES_SAVED
+  STATUS_CHANGED
+  QBO_NUMBER_ASSIGNED
+  VENDOR_ASSIGNED
+  ATTACHMENT_ADDED
+  ATTACHMENT_DELETED
+  NOTE_ADDED
+  CANCELED
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -50,12 +113,17 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  invites   UserInvite[]
-  clients   Client[]
-  machines  Machine[]
-  estimates Estimate[]
-  lineItems EstimateLineItem[]
+  users        User[]
+  invites      UserInvite[]
+  clients      Client[]
+  machines     Machine[]
+  estimates    Estimate[]
+  lineItems    EstimateLineItem[]
+  vendors      Vendor[]
+  purchaseOrders PurchaseOrder[]
+  poLineItems  POLineItem[]
+  poAttachments POAttachment[]
+  poEvents     POEvent[]
 
   @@map("tenants")
 }
@@ -78,11 +146,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant           Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sessions         Session[]
-  resetTokens      PasswordResetToken[]
-  invitesIssued    UserInvite[]         @relation("UserInviteInviter")
-  estimatesCreated Estimate[]           @relation("EstimateCreator")
+  tenant            Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions          Session[]
+  resetTokens       PasswordResetToken[]
+  invitesIssued     UserInvite[]         @relation("UserInviteInviter")
+  estimatesCreated  Estimate[]           @relation("EstimateCreator")
+  purchaseOrdersCreated PurchaseOrder[]  @relation("POCreator")
+  poAttachmentsUploaded POAttachment[]   @relation("POAttachmentUploader")
+  poEventsAuthored  POEvent[]            @relation("POEventActor")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -239,10 +310,11 @@ model Estimate {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client    Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  createdBy User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  lines     EstimateLineItem[]
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client         Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy      User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines          EstimateLineItem[]
+  purchaseOrders PurchaseOrder[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -283,4 +355,152 @@ model EstimateLineItem {
   @@index([tenantId, estimateId, sortOrder])
   @@index([estimateId, sortOrder])
   @@map("estimate_line_items")
+}
+
+// Tenant-scoped vendor reference. Foundation only — no contacts, no
+// addresses, no pricing intelligence. Soft-deleted via deletedAt so a
+// PO that references a retired vendor still resolves the name.
+model Vendor {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  email     String?
+  phone     String?
+  notes     String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, deletedAt])
+  @@map("vendors")
+}
+
+// Operational handoff record. `number` is human-friendly (PO-NNNNNN),
+// allocated per tenant by apps/web/lib/po/number.ts inside the same
+// transaction that creates the row.
+//
+// `qboPoNumber` is the QuickBooks PO number entered manually after the
+// user creates the PO in QuickBooks. R-EST-04: an Estimate cannot be
+// FINALIZED until at least one of its linked PurchaseOrders has a
+// non-null qboPoNumber.
+//
+// `subtotalCents` is a CACHED total (sum of line.computedCostCents),
+// refreshed inside the same transaction that writes line items by
+// savePoAction. List/dashboard views read it directly without joining
+// POLineItem.
+//
+// `estimateId` is nullable: a PO can exist without a source estimate
+// (rare, but supported for retro-PO entry), and we don't want deleting
+// the source estimate to cascade-delete the spending record.
+model PurchaseOrder {
+  id            String    @id @default(cuid())
+  tenantId      String
+  estimateId    String?
+  vendorId      String?
+  number        String
+  qboPoNumber   String?
+  status        POStatus  @default(DRAFT)
+  subtotalCents Int       @default(0)
+  notes         String?
+  createdById   String
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate    Estimate?      @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  vendor      Vendor?        @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdBy   User           @relation("POCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines       POLineItem[]
+  attachments POAttachment[]
+  events      POEvent[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, estimateId])
+  @@index([tenantId, vendorId])
+  @@index([tenantId, qboPoNumber])
+  @@index([tenantId, deletedAt])
+  @@map("purchase_orders")
+}
+
+// One row per line on the PO. Mirrors EstimateLineItem so estimate→PO
+// conversion is a near-direct copy. `qtyMilli` × `unitCostCents`
+// (integer cents, see CODING_STANDARDS.md). `computedCostCents` is
+// the cached line total, refreshed by savePoAction on every save.
+model POLineItem {
+  id                String     @id @default(cuid())
+  tenantId          String
+  purchaseOrderId   String
+  sortOrder         Int
+  kind              POLineKind
+  description       String
+  qtyMilli          Int        @default(1000)
+  unitCostCents     Int        @default(0)
+  computedCostCents Int        @default(0)
+  notes             String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, purchaseOrderId, sortOrder])
+  @@index([purchaseOrderId, sortOrder])
+  @@map("po_line_items")
+}
+
+// File metadata for an uploaded PO attachment. Bytes live on disk under
+// /opt/bvisible/shared/uploads/<tenantId>/po/<poId>/<storageKey> with a
+// random key — `originalFilename` is preserved for display only.
+//
+// `mimeType` is the SERVER-DETECTED type from a magic-byte sniff at
+// upload time (see apps/web/lib/po/uploads.ts). The download route
+// re-detects on stream so a row with a tampered DB value can never
+// influence what the browser thinks it's receiving.
+model POAttachment {
+  id               String           @id @default(cuid())
+  tenantId         String
+  purchaseOrderId  String
+  storageKey       String
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  kind             POAttachmentKind @default(OTHER)
+  uploadedById     String
+  createdAt        DateTime         @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  uploadedBy    User          @relation("POAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@map("po_attachments")
+}
+
+// Append-only PO timeline. Distinct from AuditLog: this is the
+// human-facing operational log shown on the PO detail page. AuditLog
+// remains the security-audit channel. Both are written for state
+// changes that matter to operators AND auditors.
+model POEvent {
+  id              String      @id @default(cuid())
+  tenantId        String
+  purchaseOrderId String
+  kind            POEventKind
+  message         String
+  metadata        Json?
+  actorId         String?
+  createdAt       DateTime    @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  actor         User?         @relation("POEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@index([purchaseOrderId, createdAt])
+  @@map("po_events")
 }

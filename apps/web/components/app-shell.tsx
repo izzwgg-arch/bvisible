@@ -7,7 +7,9 @@ import { Role } from '@bvisible/db';
 const BASE_NAV: ReadonlyArray<NavItem> = [
   { href: '/dashboard', label: 'Dashboard', hint: 'overview' },
   { href: '/estimates', label: 'Estimates', hint: 'quotes' },
+  { href: '/purchase-orders', label: 'Purchase orders', hint: 'spending' },
   { href: '/clients', label: 'Clients', hint: 'companies' },
+  { href: '/vendors', label: 'Vendors', hint: 'suppliers' },
 ];
 
 const ADMIN_NAV: ReadonlyArray<NavItem> = [

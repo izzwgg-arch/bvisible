@@ -2,14 +2,18 @@
 
 import { startTransition, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EstimateLineKind, EstimateStatus } from '@bvisible/db';
+import { EstimateLineKind, EstimateStatus, POStatus } from '@bvisible/db';
 import { computeEstimate, type LineInput } from '@bvisible/pricing';
 import {
   saveEstimateAction,
   updateEstimateStatusAction,
   deleteEstimateAction,
+  finalizeEstimateAction,
+  unfinalizeEstimateAction,
   type SaveEstimateState,
+  type FinalizeEstimateResult,
 } from './actions';
+import { createPoFromEstimateAction } from '../../purchase-orders/actions';
 import { LineGrid } from './line-grid';
 import { TotalsPanel } from './totals-panel';
 import {
@@ -47,7 +51,17 @@ export interface EditorBootstrap {
   }>;
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   clients: ReadonlyArray<{ id: string; companyName: string }>;
+  vendors: ReadonlyArray<{ id: string; name: string }>;
+  linkedPos: ReadonlyArray<{
+    id: string;
+    number: string;
+    status: POStatus;
+    qboPoNumber: string | null;
+    subtotalCents: number;
+    vendor: { id: string; name: string } | null;
+  }>;
   canDelete: boolean;
+  canUnfinalize: boolean;
 }
 
 export interface DraftLine {
@@ -197,6 +211,10 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
   const [saving, setSaving] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [poBusy, setPoBusy] = useState(false);
+  const [poMsg, setPoMsg] = useState<string | null>(null);
+  const [finalizeBusy, setFinalizeBusy] = useState(false);
+  const [finalizeMsg, setFinalizeMsg] = useState<string | null>(null);
   const router = useRouter();
 
   const dirty = useMemo(() => snapshot(state) !== state.baselineHash, [state]);
@@ -307,6 +325,65 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
     }
   }
 
+  async function handleCreatePo(vendorId: string | null) {
+    if (poBusy) return;
+    setPoBusy(true);
+    setPoMsg(null);
+    try {
+      const r = await createPoFromEstimateAction({
+        estimateId: bootstrap.estimate.id,
+        vendorId: vendorId ?? null,
+      });
+      if (r.error || !r.purchaseOrderId) {
+        setPoMsg(r.error ?? 'Could not create PO.');
+      } else {
+        router.push(`/purchase-orders/${r.purchaseOrderId}` as never);
+      }
+    } finally {
+      setPoBusy(false);
+    }
+  }
+
+  async function handleFinalize() {
+    if (finalizeBusy) return;
+    setFinalizeBusy(true);
+    setFinalizeMsg(null);
+    try {
+      const r: FinalizeEstimateResult = await finalizeEstimateAction({
+        estimateId: bootstrap.estimate.id,
+      });
+      if (!r.ok) {
+        setFinalizeMsg(r.message ?? 'Could not finalize.');
+      } else {
+        startTransition(() => router.refresh());
+      }
+    } finally {
+      setFinalizeBusy(false);
+    }
+  }
+
+  async function handleUnfinalize() {
+    if (finalizeBusy) return;
+    if (
+      !window.confirm(
+        'Unfinalize this estimate? It will return to APPROVED so it can be edited.'
+      )
+    ) {
+      return;
+    }
+    setFinalizeBusy(true);
+    setFinalizeMsg(null);
+    try {
+      const r = await unfinalizeEstimateAction({
+        estimateId: bootstrap.estimate.id,
+      });
+      if (r.error) setFinalizeMsg(r.error);
+      else startTransition(() => router.refresh());
+    } finally {
+      setFinalizeBusy(false);
+    }
+  }
+
   return (
     <div ref={rootRef} className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <div className="flex flex-col gap-4">
@@ -339,6 +416,13 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
         onSave={handleSave}
         onStatusChange={handleStatusChange}
         onDelete={bootstrap.canDelete ? handleDelete : null}
+        poBusy={poBusy}
+        poMsg={poMsg}
+        finalizeBusy={finalizeBusy}
+        finalizeMsg={finalizeMsg}
+        onCreatePo={handleCreatePo}
+        onFinalize={handleFinalize}
+        onUnfinalize={bootstrap.canUnfinalize ? handleUnfinalize : null}
       />
     </div>
   );

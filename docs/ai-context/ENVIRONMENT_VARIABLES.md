@@ -46,7 +46,11 @@ SMTP_FROM="B Visible <ingest@yourdomain.com>"  # From: header
 SMTP_SECURE=                          # optional; "true" forces TLS-on-connect, "false" forces STARTTLS/plain. Auto-inferred from port (465 → true) when blank.
 SMTP_REPLY_TO=                        # optional; appears as Reply-To: on outbound mail
 
-# Storage
+# Storage — root for all per-tenant attachments. PO attachments live under
+# <UPLOAD_ROOT>/<tenantId>/po/<purchaseOrderId>/<storageKey>. Mode 0750 on
+# the directory, 0640 on files, owned by deploy:deploy. Nothing in this tree
+# is web-served directly — every download goes through the tenant-gated
+# Next.js route handler. Default if unset is /opt/bvisible/shared/uploads.
 UPLOAD_ROOT=/opt/bvisible/shared/uploads
 
 # QuickBooks (optional; required to finalize estimates)

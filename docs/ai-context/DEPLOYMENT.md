@@ -99,7 +99,11 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
 - gzip on for text-ish responses, security headers in place
   (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
   `Permissions-Policy`). HSTS intentionally NOT set yet.
-- `client_max_body_size 25m`. Bump per-feature.
+- `client_max_body_size 25m`. Matches the Phase 7 PO attachment limit
+  (`experimental.serverActions.bodySizeLimit: '25mb'` in
+  `apps/web/next.config.mjs`). If you ever raise the app-side limit,
+  raise this nginx limit in the same commit or uploads will be cut off
+  upstream of Node with no useful error in PM2 logs.
 - WebSocket upgrade headers wired through.
 - ACME challenge dir: `/var/www/html/.well-known/acme-challenge/` (kept
   reachable on `:80` so renewals succeed).
@@ -186,6 +190,15 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
   at runtime via `apps/web/lib/mailer.ts`. The keys may be edited
   on the server in place; the next PM2 reload (which `deploy-once.sh`
   always does) flushes the cached transport and picks up new values.
+- Phase 7 (purchase orders) added no new env keys, but it does write
+  attachments to `UPLOAD_ROOT` (defaults to `/opt/bvisible/shared/uploads`).
+  The directory is owned by `deploy:deploy` and **must be preserved
+  across deploys** — `deploy-once.sh` already symlinks
+  `/opt/bvisible/shared/uploads` into the working tree (step 5 of the
+  build pipeline), so attachments uploaded against one release are
+  visible to every subsequent release. Per-PO files live at
+  `/opt/bvisible/shared/uploads/<tenantId>/po/<purchaseOrderId>/<storageKey>`
+  with directory mode `0750` and file mode `0640`.
 
 ## systemd
 

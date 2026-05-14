@@ -3,7 +3,7 @@
 The Prisma schema lives in `packages/db/prisma/schema.prisma`. This file is the
 human-readable map. Update it whenever the schema changes.
 
-## Currently shipped (foundation + auth + estimates)
+## Currently shipped (foundation + auth + estimates + purchase orders)
 
 ```prisma
 enum Role { SUPER_ADMIN  ADMIN  USER }
@@ -106,8 +106,16 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-enum EstimateStatus { DRAFT  SENT  APPROVED  REJECTED }
+enum EstimateStatus { DRAFT  SENT  APPROVED  REJECTED  FINALIZED }
 enum EstimateLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
+enum POStatus { DRAFT  SENT  ORDERED  PARTIALLY_RECEIVED  RECEIVED  CANCELED }
+enum POLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
+enum POAttachmentKind { RECEIPT  INVOICE  VENDOR_DOC  DRAWING  OTHER }
+enum POEventKind {
+  CREATED  CREATED_FROM_ESTIMATE  LINES_SAVED  STATUS_CHANGED
+  QBO_NUMBER_ASSIGNED  VENDOR_ASSIGNED  ATTACHMENT_ADDED
+  ATTACHMENT_DELETED  NOTE_ADDED  CANCELED
+}
 
 model Client {
   id          String    @id @default(cuid())
@@ -191,6 +199,108 @@ model EstimateLineItem {
   @@index([estimateId, sortOrder])
   @@map("estimate_line_items")
 }
+
+model Vendor {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  email     String?
+  phone     String?
+  notes     String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+  @@unique([tenantId, name])
+  @@index([tenantId, deletedAt])
+  @@map("vendors")
+}
+
+model PurchaseOrder {
+  id            String    @id @default(cuid())
+  tenantId      String
+  estimateId    String?                                          // nullable: blank POs allowed
+  vendorId      String?                                          // nullable: pick vendor later
+  number        String                                           // PO-NNNNNN, per-tenant
+  qboPoNumber   String?                                          // pasted manually after QBO entry
+  status        POStatus  @default(DRAFT)
+  subtotalCents Int       @default(0)                            // cached sum of line costs
+  notes         String?
+  createdById   String
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate    Estimate?      @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  vendor      Vendor?        @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdBy   User           @relation("POCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines       POLineItem[]
+  attachments POAttachment[]
+  events      POEvent[]
+  @@unique([tenantId, number])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, estimateId])
+  @@index([tenantId, vendorId])
+  @@index([tenantId, qboPoNumber])
+  @@index([tenantId, deletedAt])
+  @@map("purchase_orders")
+}
+
+model POLineItem {
+  id                String     @id @default(cuid())
+  tenantId          String
+  purchaseOrderId   String
+  sortOrder         Int
+  kind              POLineKind                                   // mirrors EstimateLineKind
+  description       String
+  qtyMilli          Int        @default(1000)
+  unitCostCents     Int        @default(0)
+  computedCostCents Int        @default(0)
+  notes             String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  @@index([tenantId, purchaseOrderId, sortOrder])
+  @@index([purchaseOrderId, sortOrder])
+  @@map("po_line_items")
+}
+
+model POAttachment {
+  id               String           @id @default(cuid())
+  tenantId         String
+  purchaseOrderId  String
+  storageKey       String                                        // server-generated random filename
+  originalFilename String                                        // sanitized; display only
+  mimeType         String                                        // server-detected at upload (magic bytes)
+  sizeBytes        Int
+  kind             POAttachmentKind @default(OTHER)
+  uploadedById     String
+  createdAt        DateTime         @default(now())
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  uploadedBy    User          @relation("POAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@map("po_attachments")
+}
+
+model POEvent {
+  id              String      @id @default(cuid())
+  tenantId        String
+  purchaseOrderId String
+  kind            POEventKind                                    // see enum above
+  message         String
+  metadata        Json?
+  actorId         String?                                        // null for system events
+  createdAt       DateTime    @default(now())
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  actor         User?         @relation("POEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@index([purchaseOrderId, createdAt])
+  @@map("po_events")
+}
 ```
 
 Notes:
@@ -219,6 +329,7 @@ Notes:
 | `20260513180326_init` | 2026-05-13 | `Role` enum, `tenants`, `users`, indexes, `tenantId` FK. |
 | `20260513192157_auth_and_invites` | 2026-05-13 | New columns on `users` (`lastLoginAt`, `disabledAt`, `invitedAt`, `inviteAcceptedAt`); new tables `sessions`, `user_invites`, `password_reset_tokens`, `audit_logs`; partial unique index `users_email_super_admin_key`. Generated against a shadow Postgres on the server (`server-scripts/db/.shadow-migrate.sh`) so the production DB was not touched until the deploy ran `migrate deploy`. |
 | `20260513221527_estimates_clients_machines` | 2026-05-13 | New enums `EstimateStatus`, `EstimateLineKind`; new tables `clients`, `machines`, `estimates`, `estimate_line_items`. All tenant-scoped, all money in integer cents, qty in `qtyMilli`. Indexes for `(tenantId, *)` lookups and `unique(tenantId, number)` on estimates. Generated via the same shadow-Postgres workflow; `.shadow-migrate.sh` was extended with a `--append-superadmin-index` flag (default off) so it no longer hand-appends the SUPER_ADMIN partial unique index for every migration. |
+| `20260513234614_purchase_orders_and_finalize` | 2026-05-13 | New enums `POStatus`, `POLineKind`, `POAttachmentKind`, `POEventKind`; `EstimateStatus.FINALIZED` enum value; new tables `vendors`, `purchase_orders`, `po_line_items`, `po_attachments`, `po_events`. Tenant-scoped, integer cents, soft delete via `deletedAt`. Unique on `(tenantId, number)` for POs, `(tenantId, name)` for vendors. Foreign keys: `purchase_orders.estimateId → estimates(id) ON DELETE SET NULL`, `purchase_orders.vendorId → vendors(id) ON DELETE SET NULL`. Generated via shadow Postgres. |
 
 ## Core entities (target schema)
 

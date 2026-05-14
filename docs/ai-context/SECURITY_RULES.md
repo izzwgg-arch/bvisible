@@ -25,7 +25,9 @@
    owned by `deploy:deploy`. Never commit `.env` to Git.
 5. **Uploads are sanitized.** No execution permission, no path traversal in
    filenames, content-type sniffing on download. Stored under
-   `/opt/bvisible/shared/uploads/<tenantId>/...`.
+   `/opt/bvisible/shared/uploads/<tenantId>/...`. Implementation for the
+   PO foundation (`apps/web/lib/po/uploads.ts`) is the canonical pattern
+   for every future upload surface (see "Attachment posture" below).
 6. **Mobile uploads use presigned URLs** with a short TTL and per-tenant
    prefix.
 
@@ -97,6 +99,57 @@
   `metadata.mailDelivery` (`sent` | `failed_<kind>` | `failed_no_config`
   | `skipped_no_user`) so an operator can correlate UI reports with
   the actual delivery outcome without grepping process logs.
+
+## Attachment posture (PO foundation — pattern for all future uploads)
+
+- **Storage root** is `/opt/bvisible/shared/uploads`, owned by
+  `deploy:deploy`, mode `0750`. Per-PO files live under
+  `<root>/<tenantId>/po/<purchaseOrderId>/<storageKey>`. The mkdir is
+  recursive with mode `0750`; the file write is `0640`. Nothing in this
+  tree is web-served directly — Nginx has no alias / static handler for
+  it. All access goes through the Next.js route handler.
+- **`storageKey` is server-generated** as
+  `<timestamp>-<24-char-hex>.<extension>` via `crypto.randomBytes`. The
+  client's filename is never used as the on-disk filename. The original
+  filename is sanitized (allowlist `[A-Za-z0-9._-]`, max 200 chars,
+  reduced to `file` if empty after sanitization) and stored only as
+  display metadata.
+- **Path traversal protection.** `resolveAttachmentPath()` resolves the
+  absolute path with `path.resolve()` and refuses any result that does
+  not start with the per-PO directory's resolved prefix + path separator.
+  Stored `storageKey` values are also rejected if they contain `..`,
+  forward or backward slashes, or NUL bytes.
+- **Server-side MIME validation on upload.** The action reads the file
+  bytes, runs `detectMimeFromBytes()` against an allowlist of magic-byte
+  signatures (`%PDF-` → `application/pdf`, `\xFF\xD8\xFF` → JPEG,
+  `\x89PNG\r\n\x1a\n` → PNG, `RIFF....WEBP` → WEBP), and refuses any
+  blob whose magic doesn't match. Client `File.type` is **never trusted**
+  — it is only used to pick the `accept` filter on the input.
+- **Server-side MIME validation on download.** Even though the upload
+  path enforced the allowlist, the route handler re-reads the head of
+  the file on every download and re-runs `detectMimeFromBytes()` before
+  setting `Content-Type`. If the on-disk bytes no longer match the
+  allowlist (corruption, manual replacement) the download 404s rather
+  than serving an unknown MIME.
+- **`Content-Disposition: attachment` + `X-Content-Type-Options: nosniff`** 
+  on every download. The original filename is RFC 5987-encoded so
+  non-ASCII characters never break the header; the on-disk filename is
+  the random `storageKey`, never the user-visible name.
+- **Size limit** is 25 MB per file, enforced both at the Next.js layer
+  (`experimental.serverActions.bodySizeLimit: '25mb'` in
+  `next.config.mjs`) and inside `uploadPoAttachmentAction` (defense in
+  depth). Going higher requires updating both knobs *and* re-evaluating
+  PM2 / Nginx limits.
+- **Tenant gating.** The download route loads the attachment by
+  `(tenantId, id, purchaseOrderId)` after `requireTenantId()`. Mismatches
+  (cross-tenant id, soft-deleted PO, missing on-disk file) return 404
+  without distinguishing the failure mode in the response body.
+- **Audit + timeline.** Uploads write `po_attachment_added` to AuditLog
+  AND insert a `POEvent` of kind `ATTACHMENT_ADDED`. Deletes write
+  `po_attachment_deleted` + `ATTACHMENT_DELETED`. The on-disk `unlink`
+  on delete is best-effort and failure is logged but not surfaced to
+  the user (the row is gone, the orphan is harmless and reaped by
+  future maintenance).
 
 ## Server posture (already in place)
 

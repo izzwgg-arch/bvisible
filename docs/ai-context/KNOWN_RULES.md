@@ -17,20 +17,42 @@ it.
   $45 minimum, $0.50 per grommet. Helper: `packages/pricing/src/banner.ts`.
   (Editor calculator UI to compose a banner line lands in the next phase;
   the engine helper is shipped now so other surfaces can use it.)
-- **R-EST-04** An estimate cannot be **finalized** until its linked PO has a
-  QuickBooks PO number (`PurchaseOrder.qboPoNumber`). See `PO_SYSTEM.md`.
-  No `finalized` status exists yet — Phase 6 statuses are
-  `DRAFT / SENT / APPROVED / REJECTED`. Finalization gating lands with the
-  PO module.
+- **R-EST-04** An estimate cannot be **finalized** until at least one of its
+  linked, non-deleted `PurchaseOrder`s has a non-null `qboPoNumber`. Enforced
+  server-side by `finalizeEstimateAction`
+  (`apps/web/app/(app)/estimates/[id]/actions.ts`); typed errors
+  `no_linked_po` / `no_qbo_number` map to sanitized UI strings and are
+  written to `audit_logs` as `estimate_finalized` (or never written if the
+  gate fails). `updateEstimateStatusAction` rejects `FINALIZED` directly to
+  guarantee no other code path can bypass the gate. Once an estimate is
+  `FINALIZED`, status changes are blocked except via `unfinalizeEstimateAction`
+  (ADMIN+). `EstimateStatus` enum: `DRAFT / SENT / APPROVED / REJECTED / FINALIZED`.
 
 ## Purchase Orders
 
 - **R-PO-01** The PO is the master file for a job. Estimates, vendor docs,
   receipts, attachments, timeline, and price updates all link to it.
 - **R-PO-02** Vendor email replies are routed by **PO number** in the subject
-  or body. Mobile receipts likewise.
+  or body. Mobile receipts likewise. (Implementation deferred — vendor
+  email ingestion lands later. The data model already carries
+  `PurchaseOrder.qboPoNumber` as the routing key.)
 - **R-PO-03** Once a PO is `closed`, no further attachments may be added
-  without a `reopened` event in the timeline.
+  without a `reopened` event in the timeline. (Foundation: today the
+  PO foundation accepts attachments at any non-deleted status; the
+  closed/reopened gate lands with vendor email ingestion.)
+- **R-PO-04** PO numbers are per-tenant, monotonic, format `PO-NNNNNN`.
+  Allocation uses a Postgres advisory lock — see
+  `apps/web/lib/po/number.ts` (`nextPoNumber`) and the shared
+  `acquireTenantSequenceLock` helper in `apps/web/lib/sequence/lock.ts`.
+  The internal `PurchaseOrder.number` is independent from
+  `PurchaseOrder.qboPoNumber`, which the user pastes in after creating
+  the PO inside QuickBooks.
+- **R-PO-05** Attachment uploads are restricted to PDF / JPEG / PNG /
+  WEBP, max 25 MB. The MIME type is detected from the file's magic
+  bytes server-side; the client `Content-Type` is never trusted. The
+  bytes-on-disk MIME is re-detected on every download stream so a
+  tampered DB row cannot influence what the browser receives. See
+  `apps/web/lib/po/uploads.ts` and `SECURITY_RULES.md`.
 
 ## Vendors / pricing
 

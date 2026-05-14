@@ -5,6 +5,224 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Purchase order foundation (Phase 7)
+
+**Commit:** _to be filled in by the commit step_ (`feat: add purchase order foundation`).
+**Migration:** `20260513234614_purchase_orders_and_finalize`.
+**Deploy:** _to be filled in_.
+
+**Scope**
+
+The operational handoff layer between Estimate → Purchase Order →
+Vendor execution. Adds vendors (minimal), purchase orders (full editor
++ status/timeline/attachments/QBO number), the "Create PO from estimate"
+flow that copies estimate lines into PO lines without mutating the
+source estimate, and the R-EST-04 Finalize gate (an estimate cannot
+move to `FINALIZED` unless at least one linked, non-deleted PO carries
+a `qboPoNumber`). All money + quantities follow the Phase 6 integer-cent
+/ milli-quantity convention; per-tenant `PO-NNNNNN` numbers are issued
+under a Postgres advisory lock that's been refactored into the shared
+`acquireTenantSequenceLock(tx, tenantId, kind)` helper (estimate
+numbering reuses it). Attachments are stored under
+`/opt/bvisible/shared/uploads/<tenantId>/po/<poId>/<storageKey>` with
+server-side magic-byte MIME validation on both upload AND download,
+randomised filenames, path-traversal protection, a 25 MB cap, and a
+tenant-gated route handler that re-detects the MIME from disk before
+streaming.
+
+Did NOT add: vendor email ingestion, OCR / invoice parsing, vendor AI /
+recommendations, accounting sync, mobile receipt uploads, approval
+workflow complexity, or any background queues / workers.
+
+**What changed (repo)**
+
+Schema (`packages/db`):
+
+- `prisma/schema.prisma` — adds enums `POStatus`
+  (`DRAFT/SENT/ORDERED/PARTIALLY_RECEIVED/RECEIVED/CANCELED`),
+  `POLineKind` (mirror of `EstimateLineKind`), `POAttachmentKind`
+  (`RECEIPT/INVOICE/VENDOR_DOC/DRAWING/OTHER`), and `POEventKind` (10
+  values: `CREATED`, `CREATED_FROM_ESTIMATE`, `LINES_SAVED`,
+  `STATUS_CHANGED`, `QBO_NUMBER_ASSIGNED`, `VENDOR_ASSIGNED`,
+  `ATTACHMENT_ADDED`, `ATTACHMENT_DELETED`, `NOTE_ADDED`, `CANCELED`).
+  Adds `EstimateStatus.FINALIZED`. Adds models `Vendor`,
+  `PurchaseOrder`, `POLineItem`, `POAttachment`, `POEvent` — all
+  tenant-scoped with composite `(tenantId, …)` indexes; money in `Int`
+  cents; quantities in `qtyMilli`; soft delete via `deletedAt` on
+  `Vendor` and `PurchaseOrder`; unique on `(tenantId, name)` for
+  vendors and `(tenantId, number)` for POs.
+- `src/index.ts` — re-exports the new enums and model types.
+- `prisma/migrations/20260513234614_purchase_orders_and_finalize/migration.sql`
+  generated against a shadow Postgres on the server (Prisma's
+  transactional `ALTER TYPE ADD VALUE` works on Postgres 16, so the
+  `FINALIZED` value lands cleanly in the same migration).
+
+Web app (`apps/web`):
+
+- `lib/sequence/lock.ts` (new) — generic
+  `acquireTenantSequenceLock(tx, tenantId, kind)` advisory-lock helper.
+  Estimate numbering refactored to use it.
+- `lib/po/number.ts` (new) — `nextPoNumber(tx, tenantId)`; allocates
+  `PO-NNNNNN` per tenant, concurrency-safe via the lock helper.
+- `lib/po/uploads.ts` (new) — storage path resolution, randomised
+  `storageKey` generation, magic-byte MIME detection (PDF / JPEG / PNG
+  / WEBP), path-traversal-safe `resolveAttachmentPath`, and a 25 MB
+  upper bound.
+- `lib/auth/audit.ts` — extends `AuditAction` with `vendor_created`,
+  `po_created`, `po_created_from_estimate`, `po_saved`,
+  `po_status_changed`, `po_qbo_number_set`, `po_vendor_set`,
+  `po_attachment_added`, `po_attachment_deleted`, `po_note_added`,
+  `po_deleted`, `estimate_finalized`, `estimate_unfinalized`.
+- `lib/validators.ts` — adds `createVendorSchema`,
+  `createPurchaseOrderSchema`, `createPoFromEstimateSchema`,
+  `poLineSchema`, `savePurchaseOrderSchema`, `updatePoStatusSchema`,
+  `setPoQboNumberSchema` (regex-validated), `setPoVendorSchema`,
+  `addPoNoteSchema`, `uploadAttachmentMetaSchema`,
+  `deleteAttachmentSchema`, `finalizeEstimateSchema`. Replaces
+  `optional()` with `nullish()` on shared helpers (`longText`,
+  `optionalEmail`, `optionalShort`, `nullableIdRef`) so empty form
+  values consistently transform to `null`. Removes the `.refine()`
+  from `updateEstimateStatusSchema` so the action body owns the
+  FINALIZED-rejection rule (keeps the inferred type wide enough for
+  the editor to call it with any `EstimateStatus`).
+- `next.config.mjs` — `experimental.serverActions.bodySizeLimit:
+  '25mb'` to match the attachment cap.
+- `components/app-shell.tsx` — adds `Purchase orders` and `Vendors`
+  to `BASE_NAV`.
+- `app/(app)/vendors/page.tsx`, `vendors/actions.ts`,
+  `vendors/new/page.tsx`, `vendors/new/vendor-form.tsx` — vendor
+  list + create.
+- `app/(app)/purchase-orders/page.tsx`,
+  `purchase-orders/actions.ts`, `purchase-orders/new/page.tsx`,
+  `purchase-orders/new/new-po-form.tsx` — PO list + new-PO + the two
+  creation actions (`createBlankPoAction`,
+  `createPoFromEstimateAction`).
+- `app/(app)/purchase-orders/[id]/page.tsx`, `editor.tsx`,
+  `line-grid.tsx`, `meta-panel.tsx`, `timeline-panel.tsx`,
+  `attachments-panel.tsx`, `actions.ts` — full PO detail editor.
+  Reuses the shared `<CellInput>` / `<NumericCell>` cell primitives
+  and the `makeGridKeyHandler` keyboard helper from the estimate
+  editor (no new keyboard logic). Server actions:
+  `savePurchaseOrderAction`, `updatePoStatusAction`,
+  `setPoQboNumberAction`, `setPoVendorAction`, `addPoNoteAction`,
+  `uploadPoAttachmentAction`, `deletePoAttachmentAction`,
+  `deletePurchaseOrderAction`.
+- `app/api/po/[id]/attachments/[attachmentId]/route.ts` (new) —
+  tenant-gated download; re-detects MIME from disk before streaming;
+  emits `Content-Disposition: attachment` with RFC 5987 encoding +
+  `X-Content-Type-Options: nosniff`.
+- `app/(app)/estimates/[id]/actions.ts` — adds `finalizeEstimateAction`
+  (R-EST-04 gate, returns typed errors `not_found`,
+  `already_finalized`, `no_linked_po`, `no_qbo_number`, `invalid`)
+  and `unfinalizeEstimateAction` (ADMIN+ only).
+  `updateEstimateStatusAction` now refuses `FINALIZED` directly and
+  refuses any change while the estimate is already FINALIZED.
+- `app/(app)/estimates/[id]/page.tsx` — bootstraps `linkedPos` +
+  `vendors` for the editor.
+- `app/(app)/estimates/[id]/editor.tsx` and `totals-panel.tsx` —
+  surface "Linked POs", "Create PO from estimate" (with optional
+  vendor pick), and Finalize / Unfinalize controls. Finalize button
+  is disabled with a sanitized reason hint when R-EST-04 isn't yet
+  satisfied. The status-change buttons are disabled while the
+  estimate is FINALIZED.
+
+Documentation:
+
+- `docs/ai-context/PO_SYSTEM.md` — rewritten to reflect the shipped
+  foundation vs the still-deferred items.
+- `docs/ai-context/DATA_MODEL.md` — adds the Phase 7 enums + models +
+  migration row.
+- `docs/ai-context/API_STRUCTURE.md` — adds the new actions, the
+  attachment download REST route, and the PO/vendor pages.
+- `docs/ai-context/UI_SYSTEM.md` — adds the PO editor / vendor list
+  UX notes.
+- `docs/ai-context/AUTH_AND_PERMISSIONS.md` — adds the per-action
+  role table for Phase 7 and the new page entries.
+- `docs/ai-context/KNOWN_RULES.md` — re-anchors R-EST-04, adds
+  R-PO-01 / R-PO-04 / R-PO-05.
+- `docs/ai-context/SECURITY_RULES.md` — adds the "Attachment posture"
+  section as the canonical pattern for every future upload.
+- `docs/ai-context/DEBUGGING.md` — adds § 11d "Purchase orders /
+  vendors / attachments" runbook.
+- `docs/ai-context/ENVIRONMENT_VARIABLES.md` — clarifies `UPLOAD_ROOT`
+  layout for PO attachments (no new keys).
+- `docs/ai-context/DEPLOYMENT.md` — notes the 25 MB nginx /
+  serverActions alignment and confirms the existing
+  `/opt/bvisible/shared/uploads` symlink covers PO attachments
+  unchanged.
+
+**Risks**
+
+- **Soft-delete semantics are unilateral**. `deletePurchaseOrderAction`
+  sets `deletedAt`. There is no UI to undelete; recovery requires a
+  manual `UPDATE` against the DB. ADMIN+ only — USER cannot trigger
+  this.
+- **Attachments are not garbage-collected** on PO soft delete. The
+  on-disk files remain under `/opt/bvisible/shared/uploads/...`. This
+  is intentional for now (recoverability) but adds disk-pressure risk
+  if many POs are created and deleted at scale. Pruning is a future
+  maintenance script.
+- **MIME allowlist is small** (PDF / JPEG / PNG / WEBP). Receipts that
+  arrive as HEIC, TIFF, or DOCX will be rejected. Adding more types
+  means extending the magic-byte table in `apps/web/lib/po/uploads.ts`
+  AND adjusting the `accept` filter on the upload input AND
+  documenting it here.
+- **`createPoFromEstimateAction` snapshots line costs at the time of
+  conversion**. Subsequent edits to the source estimate do NOT
+  propagate to already-converted POs. This is the spec'd behaviour
+  ("don't mutate the original estimate" + "operational PO is the
+  source of truth for purchasing") but it can confuse users who edit
+  an estimate after creating a PO.
+- **R-EST-04 is one-way at the UI level**. Finalize unlocks once any
+  linked PO has a QBO number, but if the user later clears the QBO
+  number on that PO the estimate remains FINALIZED (unfinalize is an
+  explicit ADMIN+ action). This is intentional — finalize is a
+  business commitment, not a live derived state — but worth knowing
+  for support questions.
+- **Per-tenant PO numbering depends on the advisory lock + unique
+  index**. Both must remain in place. Dropping
+  `purchase_orders_tenantId_number_key` would silently allow
+  collisions even though the lock is held during allocation
+  (concurrent transactions in DIFFERENT tenants don't contend).
+
+**Verification performed**
+
+Local:
+
+- `pnpm install --frozen-lockfile` — clean.
+- `pnpm --filter @bvisible/db generate` — Prisma client regenerated
+  with the new models / enums.
+- `pnpm run build` — full monorepo build passes (Next standalone
+  build included). No new TypeScript errors after the validator
+  refactor.
+- Shadow-Postgres migration generation on the server produces a
+  single `20260513234614_purchase_orders_and_finalize` migration that
+  includes `ALTER TYPE "EstimateStatus" ADD VALUE 'FINALIZED'` plus
+  the five new tables. Copied back into the repo.
+
+Functional (planned for the deploy / verify step):
+
+- Create vendor → list / detail.
+- Create blank PO → editor renders → save → reload preserves lines +
+  notes + cached subtotal.
+- Create PO from estimate → estimate is unchanged, PO carries the
+  copied lines, PO timeline shows `CREATED_FROM_ESTIMATE`.
+- Set QBO number on the PO → audit + timeline events appear; the
+  source estimate's Finalize button unlocks.
+- Finalize the estimate → status flips to FINALIZED; further status
+  changes are refused by `updateEstimateStatusAction` until ADMIN+
+  unfinalizes.
+- Upload PDF / PNG / JPEG / WEBP attachments — each appears in the
+  attachments list with the correct re-detected MIME on download.
+- Upload a `.txt` renamed to `.pdf` → rejected at upload time
+  (magic-byte sniff).
+- Cross-tenant access: estimate / PO / attachment ids from another
+  tenant return 404 from every action and from the download route.
+- Auth, mailer, and `/api/health` continue to behave (no changes to
+  those code paths).
+
+---
+
 ## 2026-05-13 — Estimate foundation (Phase 6)
 
 **Commit:** `de568ed` (`feat: add estimate foundation`).

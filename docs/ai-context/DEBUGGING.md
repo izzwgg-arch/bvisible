@@ -733,6 +733,160 @@ console.log('seeded', t.length, 'tenants');
 flaky, write the four `prisma.machine.createMany(...)` calls inline against
 the shipped rates in `ESTIMATE_ENGINE.md`.)
 
+## 11d. Purchase orders / vendors / attachments
+
+### Symptom: list shows wrong PO subtotal but the editor shows the right one
+
+`POLineItem.computedCostCents` is recomputed inside
+`savePurchaseOrderAction` and `PurchaseOrder.subtotalCents` is the cached
+sum. The list reads the cached column, the editor recomputes locally on
+every keystroke. If they diverge, a save did not run — re-open the PO and
+hit Save (or `Cmd/Ctrl+S`).
+
+To verify the cache is correct for a specific PO:
+
+```bash
+PW=$(sudo grep '^POSTGRES_PASSWORD=' /opt/bvisible/shared/env/.env | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+PSQL="docker compose -p bvisible exec -T -e PGPASSWORD=$PW db psql -U bvisible -d bvisible"
+
+$PSQL -c "
+  SELECT po.number, po.subtotal_cents,
+         COALESCE(SUM(li.computed_cost_cents), 0) AS line_sum
+  FROM purchase_orders po
+  LEFT JOIN po_line_items li ON li.purchase_order_id = po.id
+  WHERE po.id = '<purchaseOrderId>'
+  GROUP BY po.id;"
+```
+
+`subtotal_cents` should equal `line_sum` exactly. A mismatch is a save bug.
+
+### Symptom: "Finalize" button is greyed out on an estimate
+
+The button is gated by R-EST-04 — server-side enforcement is in
+`finalizeEstimateAction`, the UI just mirrors it. Two failure modes:
+
+| Reason shown | Fix |
+|---|---|
+| "no_linked_po" | Click "Create PO from estimate" in the totals panel (or build a blank PO and set its `estimateId`). |
+| "no_qbo_number" | Open the linked PO and paste the QuickBooks PO number into the QBO field; it commits on blur. |
+
+Server-side query (what the action actually checks):
+
+```bash
+$PSQL -c "
+  SELECT e.number AS est_no, po.number AS po_no, po.qbo_po_number
+  FROM estimates e
+  LEFT JOIN purchase_orders po
+    ON po.estimate_id = e.id
+   AND po.tenant_id = e.tenant_id
+   AND po.deleted_at IS NULL
+  WHERE e.id = '<estimateId>'
+  ORDER BY po.created_at;"
+```
+
+If at least one row has `qbo_po_number IS NOT NULL`, finalize will pass.
+
+### Symptom: PO timeline missing an event you expect
+
+Every state-changing action writes a `POEvent` AND an `AuditLog` row.
+List both side-by-side:
+
+```bash
+$PSQL -c "
+  SELECT 'event' AS src, kind::text AS kind, created_at, message
+  FROM po_events WHERE purchase_order_id = '<poId>'
+  UNION ALL
+  SELECT 'audit', action, created_at, COALESCE(metadata->>'message','')
+  FROM audit_logs
+  WHERE target_id = '<poId>' AND action LIKE 'po_%'
+  ORDER BY created_at DESC;"
+```
+
+If the `audit` row exists but the `po_events` row doesn't, the action
+crashed AFTER the audit and BEFORE the event insert — file a bug with
+the audit row's id and the deploy log around that timestamp.
+
+### Symptom: attachment upload fails ("not allowed" / 400)
+
+Two server-side validations can refuse a file:
+
+1. **Size > 25 MB** — enforced by `experimental.serverActions.bodySizeLimit`
+   in `apps/web/next.config.mjs` AND by an explicit check in
+   `uploadPoAttachmentAction`. Client `File.type` is irrelevant.
+2. **Unrecognized magic bytes** — the action runs
+   `detectMimeFromBytes()` (PDF / JPEG / PNG / WEBP only). A `.pdf`
+   file that's actually HTML will be rejected. The client-supplied
+   `Content-Type` is ignored.
+
+To confirm a file's real magic bytes locally:
+
+```bash
+xxd -l 12 path/to/file
+# %PDF-       → application/pdf
+# FF D8 FF    → image/jpeg
+# 89 50 4E 47 → image/png
+# RIFF...WEBP → image/webp
+```
+
+### Symptom: attachment download returns 404
+
+The handler at `/api/po/[id]/attachments/[attachmentId]/route.ts`
+returns 404 (never 403) for any of:
+
+- caller has no tenant → `requireTenantId()` throws → 404
+- attachment row not found under `(tenantId, purchaseOrderId)` → 404
+- PO is soft-deleted → 404
+- on-disk file missing → 404
+- on-disk magic bytes no longer match the upload allowlist → 404
+
+This is intentional (don't leak whether an id exists in another tenant).
+To distinguish causes, look at the row directly:
+
+```bash
+$PSQL -c "
+  SELECT a.id, a.storage_key, a.mime_type, a.size_bytes,
+         po.number, po.deleted_at
+  FROM po_attachments a
+  JOIN purchase_orders po ON po.id = a.purchase_order_id
+  WHERE a.id = '<attachmentId>';"
+```
+
+And on disk:
+
+```bash
+ls -la /opt/bvisible/shared/uploads/<tenantId>/po/<poId>/
+```
+
+Files are mode `0640`, owned by `deploy:deploy`, named with the
+random `storageKey` (NOT the original filename — that's display-only
+metadata).
+
+### Symptom: upload succeeded but file is missing from disk
+
+The action persists the file BEFORE inserting the `POAttachment` row.
+If the row exists but the file doesn't, either:
+
+- Manual `rm` on the server (forensic — check shell history).
+- Disk full at write time (`df -h /`).
+- The deploy queue's snapshot/restore path nuked
+  `/opt/bvisible/shared/uploads/`. The shared dir is preserved across
+  deploys precisely so this can't happen via the normal path; if it
+  does, re-check the symlink farm in `/opt/bvisible/app/`.
+
+### Symptom: PO numbering collision (`PO-NNNNNN`)
+
+`nextPoNumber()` (`apps/web/lib/po/number.ts`) wraps a per-tenant
+Postgres advisory lock (`acquireTenantSequenceLock(tx, tenantId,
+'purchase_order')`) around a `MAX(number)`-style scan. Two requests in
+the same tenant serialize behind the lock; two tenants do not contend.
+A duplicate number is therefore impossible unless the unique index
+`purchase_orders_tenantId_number_key` is dropped. Verify:
+
+```bash
+$PSQL -c "\d purchase_orders" | grep -i unique
+# expected: purchase_orders_tenantId_number_key  UNIQUE  ...
+```
+
 ## 12. UI / sidebar / drawer / hydration
 
 - Hydration mismatch warnings in browser console → look for `Date.now()` /

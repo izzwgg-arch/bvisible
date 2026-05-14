@@ -5,8 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { prisma, EstimateLineKind, EstimateStatus, Role } from '@bvisible/db';
 import { computeEstimate } from '@bvisible/pricing';
 import {
+  finalizeEstimateSchema,
   saveEstimateSchema,
   updateEstimateStatusSchema,
+  type FinalizeEstimateInput,
   type SaveEstimateInput,
   type UpdateEstimateStatusInput,
 } from '@/lib/validators';
@@ -187,12 +189,27 @@ export async function updateEstimateStatusAction(
   }
   const { estimateId, status } = parsed.data;
 
+  // R-EST-04: FINALIZED is gated. Routing it through the generic status
+  // changer would let any caller bypass the linked-PO + qbo-number
+  // checks. Steer them to finalizeEstimateAction instead.
+  if (status === EstimateStatus.FINALIZED) {
+    return {
+      error: 'Use the Finalize action — finalize is gated by R-EST-04.',
+    };
+  }
+
   const existing = await prisma.estimate.findFirst({
     where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
     select: { id: true, status: true, number: true },
   });
   if (!existing) return { error: 'Estimate not found.' };
   if (existing.status === status) return { error: null };
+  // Once FINALIZED, only ADMIN+ can leave (via unfinalizeEstimateAction).
+  if (existing.status === EstimateStatus.FINALIZED) {
+    return {
+      error: 'Estimate is finalized. Use Unfinalize to release the lock first.',
+    };
+  }
 
   await prisma.estimate.update({
     where: { id: estimateId, tenantId: me.tenantId },
@@ -251,4 +268,171 @@ export async function deleteEstimateAction(estimateId: string): Promise<void> {
 
   revalidatePath('/estimates');
   redirect(`/estimates?deleted=${encodeURIComponent(existing.number)}`);
+}
+
+// R-EST-04: An Estimate can only enter FINALIZED if it has at least one
+// linked, non-deleted PurchaseOrder AND at least one of those POs has a
+// non-null qboPoNumber. The check is server-only — UI affordances are
+// nice-to-have, this is the source of truth.
+export type FinalizeEstimateError =
+  | { kind: 'not_found' }
+  | { kind: 'already_finalized' }
+  | { kind: 'no_linked_po' }
+  | { kind: 'no_qbo_number' }
+  | { kind: 'invalid'; message: string };
+
+export interface FinalizeEstimateResult {
+  ok: boolean;
+  error: FinalizeEstimateError | null;
+  message: string | null;
+}
+
+const FINALIZE_MESSAGES: Record<FinalizeEstimateError['kind'], string> = {
+  not_found: 'Estimate not found.',
+  already_finalized: 'Estimate is already finalized.',
+  no_linked_po: 'Create a PO from this estimate before finalizing.',
+  no_qbo_number: 'The linked PO needs a QuickBooks PO number first.',
+  invalid: 'Invalid input.',
+};
+
+export async function finalizeEstimateAction(
+  payload: FinalizeEstimateInput
+): Promise<FinalizeEstimateResult> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+
+  const parsed = finalizeEstimateSchema.safeParse(payload);
+  if (!parsed.success) {
+    const e: FinalizeEstimateError = {
+      kind: 'invalid',
+      message: parsed.error.issues[0]?.message ?? 'Invalid input.',
+    };
+    return { ok: false, error: e, message: e.message };
+  }
+  const { estimateId } = parsed.data;
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
+    select: { id: true, status: true, number: true },
+  });
+  if (!estimate) {
+    return {
+      ok: false,
+      error: { kind: 'not_found' },
+      message: FINALIZE_MESSAGES.not_found,
+    };
+  }
+  if (estimate.status === EstimateStatus.FINALIZED) {
+    return {
+      ok: false,
+      error: { kind: 'already_finalized' },
+      message: FINALIZE_MESSAGES.already_finalized,
+    };
+  }
+
+  // Two-step gate so the audit log can record exactly which check failed.
+  const linkedPoCount = await prisma.purchaseOrder.count({
+    where: {
+      tenantId: me.tenantId,
+      estimateId: estimate.id,
+      deletedAt: null,
+    },
+  });
+  if (linkedPoCount === 0) {
+    return {
+      ok: false,
+      error: { kind: 'no_linked_po' },
+      message: FINALIZE_MESSAGES.no_linked_po,
+    };
+  }
+
+  const withQboCount = await prisma.purchaseOrder.count({
+    where: {
+      tenantId: me.tenantId,
+      estimateId: estimate.id,
+      deletedAt: null,
+      qboPoNumber: { not: null },
+    },
+  });
+  if (withQboCount === 0) {
+    return {
+      ok: false,
+      error: { kind: 'no_qbo_number' },
+      message: FINALIZE_MESSAGES.no_qbo_number,
+    };
+  }
+
+  await prisma.estimate.update({
+    where: { id: estimate.id, tenantId: me.tenantId },
+    data: { status: EstimateStatus.FINALIZED },
+  });
+
+  await writeAuditLog({
+    action: 'estimate_finalized',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: {
+      number: estimate.number,
+      from: estimate.status,
+      linkedPoCount,
+      withQboCount,
+    },
+  });
+
+  revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath('/estimates');
+  return { ok: true, error: null, message: null };
+}
+
+// Unfinalize is ADMIN+ only — once we've committed against the
+// estimate, walking back is a deliberate act, not an accidental click.
+// Audit-logged separately from regular status changes so leaks are
+// obvious in the timeline.
+export async function unfinalizeEstimateAction(
+  payload: FinalizeEstimateInput
+): Promise<{ error: string | null }> {
+  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
+  if (!me.tenantId) {
+    return { error: 'Tenant required.' };
+  }
+  const ctx = await readRequestContext();
+
+  const parsed = finalizeEstimateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
+  }
+  const { estimateId } = parsed.data;
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
+    select: { id: true, status: true, number: true },
+  });
+  if (!estimate) return { error: 'Estimate not found.' };
+  if (estimate.status !== EstimateStatus.FINALIZED) {
+    return { error: 'Estimate is not finalized.' };
+  }
+
+  await prisma.estimate.update({
+    where: { id: estimate.id, tenantId: me.tenantId },
+    data: { status: EstimateStatus.APPROVED },
+  });
+
+  await writeAuditLog({
+    action: 'estimate_unfinalized',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: estimate.number },
+  });
+
+  revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath('/estimates');
+  return { error: null };
 }

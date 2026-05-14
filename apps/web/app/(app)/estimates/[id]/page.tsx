@@ -16,7 +16,7 @@ export default async function EstimateDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [estimate, machines, clients] = await Promise.all([
+  const [estimate, machines, clients, linkedPos, vendors] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -57,6 +57,24 @@ export default async function EstimateDetailPage({
       select: { id: true, companyName: true },
       take: 500,
     }),
+    prisma.purchaseOrder.findMany({
+      where: { tenantId: me.tenantId, estimateId: id, deletedAt: null },
+      orderBy: [{ createdAt: 'asc' }],
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        qboPoNumber: true,
+        subtotalCents: true,
+        vendor: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.vendor.findMany({
+      where: { tenantId: me.tenantId, deletedAt: null },
+      orderBy: [{ name: 'asc' }],
+      select: { id: true, name: true },
+      take: 500,
+    }),
   ]);
 
   if (!estimate) {
@@ -88,7 +106,10 @@ export default async function EstimateDetailPage({
     })),
     machines,
     clients,
+    vendors,
+    linkedPos,
     canDelete: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
+    canUnfinalize: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
   };
 
   return (
