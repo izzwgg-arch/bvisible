@@ -26,6 +26,7 @@ records what changed, the files touched, the risks, and the verification.
 **Verification**
 
 - `pnpm --filter @bvisible/web run build` (pass).
+- Follow-up commit gates the unreconciled PO Prisma count so standard users do not pay for admin-only metrics.
 
 **Remaining gaps**
 
