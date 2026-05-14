@@ -83,8 +83,13 @@ QBO_CLIENT_ID=
 QBO_CLIENT_SECRET=
 QBO_REDIRECT_URI=
 
-# Mobile push (optional)
+# Mobile push (optional — future)
 EXPO_ACCESS_TOKEN=
+
+# Mobile REST (`/api/v1/*`): HS256 key for access JWTs. Required before mobile
+# login returns 200; login/refresh return 503 if unset. Min 32 chars; use a
+# dedicated secret — do not reuse session or ingest material.
+MOBILE_JWT_SECRET=
 
 # Observability
 LOG_LEVEL=info

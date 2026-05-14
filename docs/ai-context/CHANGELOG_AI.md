@@ -5,6 +5,48 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Mobile `/api/v1` foundation (Bearer JWT + PO uploads)
+
+**Migration:** `packages/db/prisma/migrations/20260515083000_mobile_upload_foundation/migration.sql` (`POAttachmentKind` values + `mobile_sessions`, `mobile_pending_uploads`).
+**Deploy:** not run from this session (commit below must be pushed before deploy per workspace rule).
+
+**Scope**
+
+Production-safe mobile REST: login / refresh / logout, tenant-scoped PO read APIs,
+two-phase uploads reusing `apps/web/lib/po/uploads.ts` + shared
+`insertPoAttachmentAndTimelineEvent`. Expo app scaffold with login, PO list/detail,
+and attachment picker. Vitest + `server-scripts/db/.verify-mobile-api.sh`.
+
+**Files created**
+
+- `apps/web/lib/api/v1/envelope.ts`, `parse-json-body.ts`
+- `apps/web/lib/mobile/constants.ts`, `jwt.ts`, `mobile-session.ts`, `require-mobile-bearer.ts`, `request-meta.ts`, `upload-kind.ts`
+- `apps/web/lib/mobile/*.test.ts`
+- `apps/web/app/api/v1/auth/login/route.ts`, `refresh/route.ts`, `logout/route.ts`
+- `apps/web/app/api/v1/purchase-orders/route.ts`, `[id]/route.ts`
+- `apps/web/app/api/v1/uploads/presign/route.ts`, `[id]/bytes/route.ts`, `complete/route.ts`
+- `apps/mobile/*` (Expo Router app + `lib/api.ts`, `lib/session.ts`)
+- `server-scripts/db/.verify-mobile-api.sh`
+
+- `.gitignore` — `/uploads/` root-only so `apps/web/app/api/v1/uploads/` routes are tracked
+- `apps/web/lib/validators.ts`, `apps/web/lib/auth/audit.ts`
+- `apps/web/app/(app)/purchase-orders/[id]/attachments-panel.tsx`
+- `packages/db/src/index.ts` — export `MobileSession`, `MobilePendingUpload` types
+- `docs/ai-context/{MOBILE_APP,API_STRUCTURE,SECURITY_RULES,PO_SYSTEM,DATA_MODEL,DEBUGGING,KNOWN_RULES,ENVIRONMENT_VARIABLES}.md`
+
+**Risks**
+
+- Postgres migration uses multiple `ALTER TYPE ... ADD VALUE` in one transaction — OK on PG16; if a host pinned older PG, split per Postgres rules.
+- Mobile client `fetch(uri)→blob→PUT` varies by platform — verify on device.
+
+**Verification**
+
+- `pnpm prisma:generate` (with `DATABASE_URL` set)
+- `pnpm --filter @bvisible/web run build` (with `MOBILE_JWT_SECRET` set)
+- `pnpm --filter @bvisible/web run test` (25 tests)
+
+---
+
 ## 2026-05-14 — Vendor pricing tests + verification script (stabilization)
 
 **Commit message:** `test: stabilize vendor pricing intelligence` (hash: see `git rev-parse HEAD` at deploy time).

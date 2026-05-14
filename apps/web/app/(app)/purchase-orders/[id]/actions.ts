@@ -35,6 +35,7 @@ import {
   resolveAttachmentPath,
   safeOriginalFilename,
 } from '@/lib/po/uploads';
+import { insertPoAttachmentAndTimelineEvent } from '@/lib/po/attachment-insert';
 import { unlink } from 'node:fs/promises';
 
 export interface SavePoState {
@@ -422,44 +423,25 @@ export async function uploadPoAttachmentAction(
     };
   }
 
-  const created = await prisma.$transaction(async (tx) => {
-    const att = await tx.pOAttachment.create({
-      data: {
-        tenantId: me.tenantId,
-        purchaseOrderId,
-        storageKey,
-        originalFilename: original,
-        mimeType: detected.mime,
-        sizeBytes: bytes.byteLength,
-        kind: kind as POAttachmentKind,
-        uploadedById: me.id,
-      },
-      select: { id: true },
-    });
-    await tx.pOEvent.create({
-      data: {
-        tenantId: me.tenantId,
-        purchaseOrderId,
-        kind: POEventKind.ATTACHMENT_ADDED,
-        message: `Attached ${original} (${detected.mime})`,
-        metadata: {
-          attachmentId: att.id,
-          mimeType: detected.mime,
-          sizeBytes: bytes.byteLength,
-          kind,
-        },
-        actorId: me.id,
-      },
-    });
-    return att;
-  });
+  const created = await prisma.$transaction(async (tx) =>
+    insertPoAttachmentAndTimelineEvent(tx, {
+      tenantId: me.tenantId,
+      purchaseOrderId,
+      uploadedById: me.id,
+      storageKey,
+      originalFilename: original,
+      mimeType: detected.mime,
+      sizeBytes: bytes.byteLength,
+      kind: kind as POAttachmentKind,
+    })
+  );
 
   await writeAuditLog({
     action: 'po_attachment_added',
     userId: me.id,
     tenantId: me.tenantId,
     targetType: 'po_attachment',
-    targetId: created.id,
+    targetId: created.attachmentId,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
     metadata: {

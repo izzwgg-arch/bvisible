@@ -15,7 +15,9 @@ id_ed25519*
 known_hosts
 
 # Runtime artifacts (server-side or local)
-uploads/
+# Repo-root upload staging only — do NOT blanket-ignore path segments named `uploads`
+# (Next routes live under apps/web/app/api/v1/uploads/).
+/uploads/
 logs/
 *.log
 

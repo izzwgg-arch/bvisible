@@ -95,6 +95,9 @@ enum POLineKind {
 enum POAttachmentKind {
   RECEIPT
   INVOICE
+  VENDOR_INVOICE
+  INSTALL_PHOTO
+  FIELD_DOCUMENT
   VENDOR_DOC
   DRAWING
   OTHER
@@ -196,6 +199,8 @@ model Tenant {
   vendorItemAliases   VendorItemAlias[]
   vendorPriceHistories VendorPriceHistory[]
   vendorPriceNotifications VendorPriceNotification[]
+  mobileSessions       MobileSession[]
+  mobilePendingUploads MobilePendingUpload[]
 
   @@map("tenants")
 }
@@ -226,6 +231,8 @@ model User {
   purchaseOrdersCreated PurchaseOrder[]  @relation("POCreator")
   poAttachmentsUploaded POAttachment[]   @relation("POAttachmentUploader")
   poEventsAuthored  POEvent[]            @relation("POEventActor")
+  mobileSessions    MobileSession[]
+  mobilePendingUploads MobilePendingUpload[]
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -254,6 +261,55 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+// Mobile API (Bearer JWT + rotating refresh). Browser sessions use
+// `Session` + cookie; this table is exclusively for /api/v1/* callers.
+model MobileSession {
+  id               String    @id @default(cuid())
+  tenantId         String
+  userId           String
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  deviceLabel      String?   @db.VarChar(120)
+  lastUsedAt       DateTime  @default(now())
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([userId, revokedAt])
+  @@map("mobile_sessions")
+}
+
+// Two-phase mobile upload: presign allocates storageKey + expiry; client
+// PUTs bytes to /api/v1/uploads/[id]/bytes; complete verifies magic MIME
+// and inserts POAttachment + POEvent.
+model MobilePendingUpload {
+  id                String           @id @default(cuid())
+  tenantId          String
+  userId            String
+  purchaseOrderId   String
+  storageKey        String           @db.VarChar(120)
+  kind              POAttachmentKind
+  originalFilename  String           @db.VarChar(200)
+  declaredSizeBytes Int
+  expiresAt         DateTime
+  completedAt       DateTime?
+  revokedAt         DateTime?
+  createdAt         DateTime         @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([tenantId, purchaseOrderId])
+  @@map("mobile_pending_uploads")
 }
 
 model UserInvite {
@@ -496,6 +552,7 @@ model PurchaseOrder {
   attachments POAttachment[]
   events      POEvent[]
   matchedEmails IngestedEmail[] @relation("MatchedPO")
+  mobilePendingUploads MobilePendingUpload[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])

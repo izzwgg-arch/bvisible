@@ -8,9 +8,10 @@ under `/api/v1/*` for the mobile app and external integrations.
 - Server actions live in `apps/web/app/_actions/<feature>.ts` and are imported
   directly by client components. Inputs validated with `zod`.
 - REST routes live in `apps/web/app/api/v1/<resource>/route.ts`.
-- All endpoints require auth (see `AUTH_AND_PERMISSIONS.md`) except
-  `/api/v1/health`.
-- All endpoints attach `tenantId` from the session — clients never send it.
+- Public JSON health check: `GET /api/health` (no cookie, no Bearer).
+- **`/api/v1/*`** mobile routes use `Authorization: Bearer <access JWT>` — no
+  `bv_session` cookie. Tenant comes from the JWT + DB session row; clients
+  never send `tenantId`.
 
 ## Standard response envelopes
 
@@ -37,13 +38,21 @@ conflict, 422 business-rule violation, 500 server error.
 | `/api/email-ingest/[id]/attachments/[attachmentId]` | `GET` | Tenant-gated download of an `IngestedEmailAttachment`. Same magic-byte re-detection + path-traversal guard as the PO download route, but resolves under the per-tenant email storage root (`apps/web/lib/email-ingest/storage.ts:resolveEmailAttachmentPath`). Used by the operator review UI for unmatched messages. |
 | `/api/internal/email-ingest/tick` | `POST` | Internal-only tick endpoint hit by the systemd timer. Auth is a constant-time compare against `INGEST_TICK_SECRET` in the `x-bvisible-ingest-secret` header (NOT a session). Iterates every enabled `TenantEmailInbox`, claims a soft lease via `lastPolledAt`, polls IMAP via `imapflow`, parses with `mailparser`, and runs the matching pipeline. Returns `{ ok, runs: [{ tenantId, scanned, ingested, matched, errors, durationMs }] }`. Never returns email bodies or credentials. |
 | `/api/internal/email-ingest/test` | `POST` | Internal-only IMAP test endpoint. Same shared-secret auth posture as `/tick` (`INGEST_TICK_SECRET` constant-time compare; 503 if unset, 401 on mismatch). Body: `{ tenantId?, host, port, secure, mailbox, username, password? }`. If `password` is omitted and `tenantId` is supplied, the route decrypts the stored sealed cipher for that tenant and uses it. Opens IMAP, lists folders, checks the configured mailbox exists, returns `{ ok: true|false, kind?, message?, mailboxCount?, mailboxExists?, durationMs }`. **Never** mutates the DB, marks messages `\Seen`, returns the password, or logs it. The middleware whitelists this path so loopback POSTs work without a session cookie. |
+| `/api/v1/auth/login` | `POST` | Mobile login (JSON `{ email, password, deviceLabel? }`). Returns `{ accessToken, refreshToken, expiresIn, tokenType }`. Requires `MOBILE_JWT_SECRET` on the server. |
+| `/api/v1/auth/refresh` | `POST` | JSON `{ refreshToken }`; rotates refresh hash in `mobile_sessions`. |
+| `/api/v1/auth/logout` | `POST` | Bearer access JWT; revokes `mobile_sessions` row. |
+| `/api/v1/purchase-orders` | `GET` | Bearer; lists tenant POs (not deleted). |
+| `/api/v1/purchase-orders/[id]` | `GET` | Bearer; PO detail + attachments + recent `POEvent`s. |
+| `/api/v1/uploads/presign` | `POST` | Bearer; JSON `{ purchaseOrderId, kind, originalFilename, declaredSizeBytes }`. Creates `mobile_pending_upload`. |
+| `/api/v1/uploads/[id]/bytes` | `PUT` | Bearer; raw body, size must match declared bytes. |
+| `/api/v1/uploads/complete` | `POST` | Bearer; JSON `{ uploadId }`; magic-byte finalize → `POAttachment` + `ATTACHMENT_ADDED`. |
 
 ### Server actions (web only)
 
 Auth and admin mutations are Next 15 server actions, NOT REST routes.
-Server actions get same-origin POST enforcement (CSRF) for free. The
-`/api/v1/*` REST surface is reserved for the mobile app and external
-integrations and lands later.
+Server actions get same-origin POST enforcement (CSRF) for free.
+`/api/v1/*` is the JSON REST surface for the Expo client (`MOBILE_APP.md`);
+handlers authenticate Bearer JWTs — no browser cookie.
 
 | Action | Module | Roles |
 |---|---|---|
@@ -126,7 +135,7 @@ client (it always comes from the session).
 | `vendor-prices` | `GET /vendors/:id/prices`, `POST` (insert + history append) |
 | `email-ingest` | `POST /api/v1/email-ingest/scan` (admin only) |
 | `notifications` | `GET`, `POST /:id/dismiss` |
-| `mobile/uploads` | `POST /api/v1/mobile/uploads` (presigned + finalize) |
+| `mobile/uploads` | `POST /api/v1/uploads/presign` + `PUT .../bytes` + `POST /api/v1/uploads/complete` |
 
 ## Versioning
 
@@ -137,5 +146,6 @@ client (it always comes from the session).
 ## Where to look in code
 
 - Auth middleware: `apps/web/middleware.ts`
+- Mobile JWT + refresh rotation: `apps/web/lib/mobile/*`
 - Tenant resolution helper: `apps/web/lib/tenant.ts`
-- Zod schemas: `packages/shared/src/schemas/`
+- Zod schemas: `apps/web/lib/validators.ts` (mobile: `mobile*` schemas)

@@ -7,6 +7,7 @@ import {
   POStatus,
   Role,
 } from '@bvisible/db';
+import { MAX_UPLOAD_BYTES } from '@/lib/po/uploads';
 
 // Email rules: lowercase, trimmed, max 254 (RFC 5321), valid shape.
 export const emailSchema = z
@@ -442,6 +443,42 @@ export const dismissVendorPriceNotificationSchema = z.object({
   notificationId: z.string().min(1).max(60),
 });
 
+// ---------------------------------------------------------------------
+// Mobile API v1 (/api/v1/*)
+// ---------------------------------------------------------------------
+
+export const mobileUploadKindSchema = z.enum([
+  'RECEIPT',
+  'INSTALL_PHOTO',
+  'FIELD_DOCUMENT',
+  'VENDOR_INVOICE',
+]);
+
+export const mobileLoginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1, 'Enter your password.').max(256),
+  deviceLabel: z.string().trim().max(120).optional(),
+});
+
+export const mobileRefreshSchema = z.object({
+  refreshToken: z.string().min(20).max(512),
+});
+
+export const mobileUploadPresignSchema = z.object({
+  purchaseOrderId: z.string().min(1).max(60),
+  kind: mobileUploadKindSchema,
+  originalFilename: z.string().min(1).max(200),
+  declaredSizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_UPLOAD_BYTES, `File too large (max ${MAX_UPLOAD_BYTES / 1024 / 1024} MB).`),
+});
+
+export const mobileUploadCompleteSchema = z.object({
+  uploadId: z.string().min(1).max(60),
+});
+
 export type ManualLinkEmailInput = z.infer<typeof manualLinkEmailSchema>;
 export type RetryEmailInput = z.infer<typeof retryEmailSchema>;
 export type DismissEmailInput = z.infer<typeof dismissEmailSchema>;
@@ -478,3 +515,7 @@ export type SetPoVendorInput = z.infer<typeof setPoVendorSchema>;
 export type AddPoNoteInput = z.infer<typeof addPoNoteSchema>;
 export type UploadAttachmentMetaInput = z.infer<typeof uploadAttachmentMetaSchema>;
 export type DeleteAttachmentInput = z.infer<typeof deleteAttachmentSchema>;
+export type MobileLoginInput = z.infer<typeof mobileLoginSchema>;
+export type MobileRefreshInput = z.infer<typeof mobileRefreshSchema>;
+export type MobileUploadPresignInput = z.infer<typeof mobileUploadPresignSchema>;
+export type MobileUploadCompleteInput = z.infer<typeof mobileUploadCompleteSchema>;

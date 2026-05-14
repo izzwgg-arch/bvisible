@@ -38,8 +38,8 @@ it.
   `PurchaseOrder.qboPoNumber` first, then internal
   `PurchaseOrder.number`, then falls back to a vendor + recent-PO
   heuristic, and otherwise marks the email `UNMATCHED` for operator
-  review at `/admin/email-ingestion`. Mobile receipts are still
-  deferred to the mobile app phase.
+  review at `/admin/email-ingestion`. Field uploads use `/api/v1/uploads/*`
+  against an authenticated PO (`MOBILE_APP.md`).
 - **R-PO-03** Once a PO is `closed`, no further attachments may be added
   without a `reopened` event in the timeline. (Foundation: today the
   PO foundation accepts attachments at any non-deleted status; the

@@ -28,8 +28,9 @@
    `/opt/bvisible/shared/uploads/<tenantId>/...`. Implementation for the
    PO foundation (`apps/web/lib/po/uploads.ts`) is the canonical pattern
    for every future upload surface (see "Attachment posture" below).
-6. **Mobile uploads use presigned URLs** with a short TTL and per-tenant
-   prefix.
+6. **Mobile uploads** use a server-allocated pending row + randomized
+   `storageKey`, short TTL, then magic-byte finalize — same filesystem layout
+   as web PO uploads (`apps/web/lib/po/uploads.ts`). Not public S3-style URLs.
 
 ## Auth posture
 
@@ -61,8 +62,13 @@
 - **Audit log.** Every auth event writes an `AuditLog` row via
   `apps/web/lib/auth/audit.ts`. The metadata column NEVER holds
   plaintext passwords, password hashes, or raw token values.
-- **JWT access tokens** for the mobile app (≤ 15 min, rotating refresh)
-  land later — not in this phase.
+- **JWT access tokens** for the mobile app (`/api/v1/*`): HS256 JWT signed with
+  `MOBILE_JWT_SECRET` (≥ 32 chars), TTL ~15 minutes. Claims include `sub`
+  (user id), `tid` (tenant id), `sid` (mobile session id), `role`. Each
+  request also loads `mobile_sessions` — revoked or expired sessions reject
+  even if the JWT is not yet expired. Rotating opaque refresh tokens are
+  stored SHA-256 hashed (`mobile_sessions.refreshTokenHash`). Implementation:
+  `apps/web/lib/mobile/*`, routes under `apps/web/app/api/v1/`.
 
 ## Mailer posture
 

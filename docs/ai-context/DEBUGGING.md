@@ -1079,6 +1079,37 @@ $PSQL -c "\d purchase_orders" | grep -i unique
 # expected: purchase_orders_tenantId_number_key  UNIQUE  ...
 ```
 
+## 11e. Mobile API (`/api/v1`)
+
+### Symptom: login returns 503 `server_misconfigured`
+
+Set `MOBILE_JWT_SECRET` (≥ 32 chars) in the server `.env`, restart PM2.
+
+### Symptom: 401 `session_invalid` right after logout
+
+Expected — logout revokes `mobile_sessions`; acquire new tokens via login.
+
+### Symptom: refresh returns 401 after success once
+
+Refresh tokens **rotate**. Always persist the latest refresh token from the
+response (`apps/mobile/lib/api.ts` does this).
+
+### Symptom: CORS / OPTIONS from Expo
+
+Middleware sends `Access-Control-Allow-*` for `/api/v1`. If you still see
+preflight failures, confirm the app calls `EXPO_PUBLIC_API_BASE_URL` over HTTPS.
+
+### Deterministic smoke script
+
+On the server (with Next listening locally):
+
+```bash
+export BOOTSTRAP_EMAIL=...
+export BOOTSTRAP_PASSWORD=...
+bash server-scripts/db/.verify-mobile-api.sh
+# Optional: TEST_PO_ID=<cuid> bash server-scripts/db/.verify-mobile-api.sh
+```
+
 ## 12. UI / sidebar / drawer / hydration
 
 - Hydration mismatch warnings in browser console → look for `Date.now()` /

@@ -38,4 +38,6 @@ export type {
   VendorItemAlias,
   VendorPriceHistory,
   VendorPriceNotification,
+  MobileSession,
+  MobilePendingUpload,
 } from '@prisma/client';

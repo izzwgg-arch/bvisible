@@ -125,7 +125,8 @@ DRAFT → SENT → ORDERED → PARTIALLY_RECEIVED → RECEIVED
 - DB row in `po_attachments`: `storageKey` (server-generated random),
   `originalFilename` (sanitized for display only), `mimeType` (server-
   detected at upload), `sizeBytes`, `kind` (RECEIPT / INVOICE /
-  VENDOR_DOC / DRAWING / OTHER), `uploadedById`.
+  VENDOR_INVOICE / INSTALL_PHOTO / FIELD_DOCUMENT / VENDOR_DOC / DRAWING /
+  OTHER / EMAIL_ATTACHMENT for ingest), `uploadedById`.
 - Bytes on disk at
   `/opt/bvisible/shared/uploads/<tenantId>/po/<purchaseOrderId>/<storageKey>`.
   Mode 640, owned by the deploy user via the standard upload root.
@@ -145,6 +146,13 @@ DRAFT → SENT → ORDERED → PARTIALLY_RECEIVED → RECEIVED
 - Re-detection on download: the route reads the first bytes off disk
   and sets `Content-Type` from that, NOT from the DB row. A tampered
   `mimeType` value can never influence what the browser parses.
+
+### Mobile `/api/v1/uploads/*`
+
+Same byte storage and magic-byte rules as the web uploader. Flow:
+`presign` → `PUT` raw bytes to the returned URL (Bearer on both steps) →
+`complete`. Declared size must match actual bytes. See `MOBILE_APP.md`.
+
 - `Content-Disposition: attachment; filename="..."` always set so
   rogue HTML can't render in-origin. `X-Content-Type-Options: nosniff`
   set as a backstop.

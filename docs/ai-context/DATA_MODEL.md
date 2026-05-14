@@ -110,7 +110,7 @@ enum EstimateStatus { DRAFT  SENT  APPROVED  REJECTED  FINALIZED }
 enum EstimateLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
 enum POStatus { DRAFT  SENT  ORDERED  PARTIALLY_RECEIVED  RECEIVED  CANCELED }
 enum POLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
-enum POAttachmentKind { RECEIPT  INVOICE  VENDOR_DOC  DRAWING  OTHER  EMAIL_ATTACHMENT }
+enum POAttachmentKind { RECEIPT  INVOICE  VENDOR_INVOICE  INSTALL_PHOTO  FIELD_DOCUMENT  VENDOR_DOC  DRAWING  OTHER  EMAIL_ATTACHMENT }
 enum POEventKind {
   CREATED  CREATED_FROM_ESTIMATE  LINES_SAVED  STATUS_CHANGED
   QBO_NUMBER_ASSIGNED  VENDOR_ASSIGNED  ATTACHMENT_ADDED
@@ -517,7 +517,7 @@ Notes:
 | `20260513221527_estimates_clients_machines` | 2026-05-13 | New enums `EstimateStatus`, `EstimateLineKind`; new tables `clients`, `machines`, `estimates`, `estimate_line_items`. All tenant-scoped, all money in integer cents, qty in `qtyMilli`. Indexes for `(tenantId, *)` lookups and `unique(tenantId, number)` on estimates. Generated via the same shadow-Postgres workflow; `.shadow-migrate.sh` was extended with a `--append-superadmin-index` flag (default off) so it no longer hand-appends the SUPER_ADMIN partial unique index for every migration. |
 | `20260513234614_purchase_orders_and_finalize` | 2026-05-13 | New enums `POStatus`, `POLineKind`, `POAttachmentKind`, `POEventKind`; `EstimateStatus.FINALIZED` enum value; new tables `vendors`, `purchase_orders`, `po_line_items`, `po_attachments`, `po_events`. Tenant-scoped, integer cents, soft delete via `deletedAt`. Unique on `(tenantId, number)` for POs, `(tenantId, name)` for vendors. Foreign keys: `purchase_orders.estimateId → estimates(id) ON DELETE SET NULL`, `purchase_orders.vendorId → vendors(id) ON DELETE SET NULL`. Generated via shadow Postgres. |
 | `20260514005509_email_ingestion_foundation` | 2026-05-14 | New enums `EmailIngestStatus`, `EmailMatchReason`; `POAttachmentKind` gains `EMAIL_ATTACHMENT`; `POEventKind` gains `VENDOR_REPLY`. New tables `tenant_email_inboxes` (1:1 per tenant), `ingested_emails` (UNIQUE `(tenantId, messageId)` for R-MAIL-01 idempotency), `ingested_email_attachments`, `email_ingest_runs`. Adds nullable `sourceEmailId` on `po_attachments` and `po_events` (FK SET NULL → `ingested_emails(id)`). Generated via shadow Postgres; `ALTER TYPE ... ADD VALUE` is run by Postgres 16 in the same migration transaction safely. |
-| `20260514190000_vendor_pricing_intelligence` | 2026-05-14 | `POEventKind` gains `VENDOR_LOWER_PRICE`. New enums `VendorPriceConfidence`, `VendorPriceExtractionMethod`. New tables `vendor_catalog_items`, `vendor_item_aliases`, `vendor_price_histories` (append-only; UNIQUE `(tenantId, dedupeKey)`), `vendor_price_notifications`. Relations from `vendors`, `ingested_emails`, `ingested_email_attachments`. |
+| `20260515083000_mobile_upload_foundation` | 2026-05-15 | `POAttachmentKind` gains `VENDOR_INVOICE`, `INSTALL_PHOTO`, `FIELD_DOCUMENT`. New tables `mobile_sessions` (rotating refresh, device metadata) and `mobile_pending_uploads` (two-phase upload → `POAttachment`). |
 
 ## Core entities (target schema)
 

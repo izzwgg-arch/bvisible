@@ -12,6 +12,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'bv_session';
 
+const MOBILE_API_CORS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+  'Access-Control-Max-Age': '86400',
+};
+
 const PUBLIC_PATHS = new Set<string>([
   '/login',
   '/forgot',
@@ -41,6 +48,19 @@ function isPublic(pathname: string): boolean {
 
 export function middleware(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
+
+  // Mobile REST API: Bearer JWT only (no browser session cookie).
+  // OPTIONS preflight + CORS so Expo/React Native can call from device.
+  if (pathname.startsWith('/api/v1')) {
+    if (req.method === 'OPTIONS') {
+      return new NextResponse(null, { status: 204, headers: MOBILE_API_CORS });
+    }
+    const res = NextResponse.next();
+    for (const [k, v] of Object.entries(MOBILE_API_CORS)) {
+      res.headers.set(k, v);
+    }
+    return res;
+  }
 
   // The root path is handled by app/page.tsx, which decides redirect
   // direction based on session presence. Don't gate it here.

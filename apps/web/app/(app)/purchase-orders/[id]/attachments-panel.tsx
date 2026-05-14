@@ -26,6 +26,9 @@ interface AttachmentRow {
 const KIND_OPTIONS: ReadonlyArray<POAttachmentKind> = [
   POAttachmentKind.RECEIPT,
   POAttachmentKind.INVOICE,
+  POAttachmentKind.VENDOR_INVOICE,
+  POAttachmentKind.INSTALL_PHOTO,
+  POAttachmentKind.FIELD_DOCUMENT,
   POAttachmentKind.VENDOR_DOC,
   POAttachmentKind.DRAWING,
   POAttachmentKind.OTHER,
@@ -37,6 +40,12 @@ function kindLabel(k: POAttachmentKind): string {
       return 'Receipt';
     case POAttachmentKind.INVOICE:
       return 'Invoice';
+    case POAttachmentKind.VENDOR_INVOICE:
+      return 'Vendor invoice';
+    case POAttachmentKind.INSTALL_PHOTO:
+      return 'Install photo';
+    case POAttachmentKind.FIELD_DOCUMENT:
+      return 'Field document';
     case POAttachmentKind.VENDOR_DOC:
       return 'Vendor doc';
     case POAttachmentKind.DRAWING:

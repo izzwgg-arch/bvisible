@@ -1,67 +1,56 @@
 # MOBILE_APP — B Visible
 
-A small Expo / React Native app for shop and field staff. Lives in
-`apps/mobile/`.
+Expo / React Native client in `apps/mobile/`. This doc reflects what is
+**shipped today**; speculative features stay labeled as future work.
 
 ## Audience
 
-- **Installers** in the field — capture install photos, sign-offs, receipts.
-- **Shop staff** — quick PO lookup, mark items received, attach packing slips.
+- Field staff — receipts, install photos, vendor invoices, field documents on a PO.
+- Shop staff — quick PO lookup.
 
-## Scope (do not creep)
+## Shipped (mobile API foundation)
 
-- View **assigned POs** only (not the full list).
-- Upload receipts and photos against a PO by scanning a QR or typing the
-  QuickBooks PO number.
-- Mark a PO line item as received (with quantity + notes).
-- See push notifications for newly assigned POs.
-- That's it. No estimating on mobile. No vendor-price management on mobile.
+### Auth
 
-## Auth
+- Same email/password as the web app (`POST /api/v1/auth/login`).
+- **No browser cookies.** Short-lived access JWT (~15 min,
+  `MOBILE_JWT_SECRET`, HS256) plus opaque **rotating** refresh token stored
+  only as SHA-256 in `mobile_sessions`.
+- `POST /api/v1/auth/refresh` rotates refresh; old refresh is rejected.
+- `POST /api/v1/auth/logout` with `Authorization: Bearer <access>` revokes
+  the session row → subsequent API calls fail even before JWT expiry.
+- `SUPER_ADMIN` (no `tenantId`) cannot use mobile login.
 
-- Login with the same email/password as the web app, or magic-link via
-  ingest mailbox.
-- Issues short-lived JWT (15 min) + rotating refresh token.
-- Refresh token revoked when the user logs out, or when an admin revokes the
-  device under the User detail screen on the web.
-- Failed-login backoff per device.
+### Data
 
-## Uploads
+- `GET /api/v1/purchase-orders` — list POs for the JWT tenant.
+- `GET /api/v1/purchase-orders/:id` — detail + attachments + recent timeline.
 
-- App requests a presigned URL from
-  `POST /api/v1/mobile/uploads` with `{ poId, mimeType, sizeBytes }`.
-- Uploads directly to the storage path on the server, then calls
-  `POST /api/v1/mobile/uploads/:id/finalize` with metadata.
-- Server places the file under
-  `/opt/bvisible/shared/uploads/<tenantId>/po/<poId>/<uploadId>/...`.
-- Uploads time out at 60s; the app retries with exponential backoff and
-  surfaces a clear error if it gives up.
-- Photos are downsized client-side to ≤ 2048px on the long edge before
-  upload.
+### Uploads (two-phase)
 
-## Offline
+1. `POST /api/v1/uploads/presign` — validates PO access + kind; creates
+   `mobile_pending_uploads` + server `storageKey`; returns `uploadId` and
+   absolute `uploadUrl` for step 2 (same Next origin).
+2. `PUT uploadUrl` — raw body, size **must** equal `declaredSizeBytes`
+   (≤ 25 MB). Writes via `persistAttachmentBytes` (existing PO upload helper).
+3. `POST /api/v1/uploads/complete` — magic-byte MIME re-check; transaction:
+   mark pending complete + `insertPoAttachmentAndTimelineEvent` (`ATTACHMENT_ADDED`);
+   audits `mobile_upload_*` + `po_attachment_added`.
 
-- The app caches the assigned-PO list and last-viewed details for 24h.
-- Receipts/photos taken offline are queued and uploaded automatically when the
-  device is back online.
-- The queue is visible to the user with retry/discard controls.
+Supported kinds (mobile picker): `RECEIPT`, `INSTALL_PHOTO`,
+`FIELD_DOCUMENT`, `VENDOR_INVOICE`. Allowlisted MIME: PDF, JPEG, PNG, WEBP.
 
-## Push
+### Client configuration
 
-- Expo push tokens stored on the user, scoped to the tenant.
-- Tokens rotate on app reinstall; old tokens are pruned when push delivery
-  fails twice.
+- Set `EXPO_PUBLIC_API_BASE_URL` to the HTTPS origin of the web app (no path).
+- Middleware adds CORS for `/api/v1` so device clients can send Bearer tokens.
 
-## Build + release
+## Future (not shipped)
 
-- Expo EAS build, two channels: `staging` and `production`.
-- Production updates require a tagged commit on `main` and an OTA push
-  approval.
-- Crash reporting via Sentry (DSN in `.env`).
+- Assigned-PO-only scope, QR flow, line-level receiving.
+- Client-side photo resize, offline queue, push notifications.
+- Magic-link-only login via ingest mailbox.
 
-## What ties back to the web
+## Build
 
-- Every receipt/photo creates a `POEvent` and a `POAttachment` (or
-  `POReceipt`).
-- The web detail drawer shows mobile-uploaded items inline, with thumbnails
-  and the uploader's name.
+- From repo root: `pnpm --filter @bvisible/mobile start` (after install).
