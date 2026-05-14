@@ -31,13 +31,22 @@ runIngestForTenant(tenantId)            (apps/web/lib/email-ingest/run.ts)
    └─ release lease + log EmailIngestRun
 ```
 
-## Mailbox setup (Gmail / Workspace, the bootstrap path)
+## Mailbox setup (Gmail / Workspace)
 
 1. Create a dedicated user (e.g. `ingest@yourdomain.com`).
 2. Enable 2-Step Verification on that account.
 3. Google Account → Security → **App passwords** → generate one for
    "Mail" / "Other (B Visible Ingest)".
-4. Either populate the env-var fallback in
+4. **In-app (recommended).** As SUPER_ADMIN, open
+   `/admin/tenants/<tenantId>/email-inbox` (or `Inboxes` from the
+   sidebar → `Configure`). Fill the host / port / mailbox / username
+   fields, paste the app password, hit **Test connection** to verify
+   IMAP can authenticate and the mailbox exists, then **Save inbox**.
+   The plaintext password is sealed with AES-256-GCM
+   (`apps/web/lib/email-ingest/crypto.ts:sealSecret`) before the row
+   is written; the form never echoes it back on subsequent loads.
+5. **Env-var fallback (single-tenant bootstrap).** If you have not yet
+   reached the in-app form, populate
    `/opt/bvisible/shared/env/.env`:
 
    ```dotenv
@@ -52,30 +61,89 @@ runIngestForTenant(tenantId)            (apps/web/lib/email-ingest/run.ts)
    INGEST_TICK_SECRET=<32+ chars of entropy>
    ```
 
-   …or insert a `TenantEmailInbox` row directly via psql with the
-   password sealed by `apps/web/lib/email-ingest/crypto.ts:sealSecret()`
-   (today there is no in-app form; the per-tenant config form is the
-   recommended next step).
+   The first tenant in `Tenant.createdAt ASC` is used as the
+   `tenantId` for env-fallback ingestion. `INGEST_SECRET` and
+   `INGEST_TICK_SECRET` remain required regardless of which path you
+   pick — the first encrypts the in-DB password, the second
+   authenticates the systemd timer to the internal tick route.
 
-5. Optional: create a Gmail filter that labels expected vendor mail
-   (`label:vendors`) and set `IMAP_MAILBOX=vendors` (or the per-tenant
-   equivalent) so the poll scans a smaller scope.
+6. Optional: create a Gmail filter that labels expected vendor mail
+   (`label:vendors`) and set the mailbox field to `vendors` so the
+   poll scans a smaller scope.
+
+### Rotating IMAP credentials
+
+In the in-app form, **leave the password field blank** to keep the
+existing sealed cipher; type a new value to rotate. Save writes the
+new cipher and clears `lastErrorAt` / `lastErrorMessage` so a stale
+"auth failed" doesn't keep flagging the row in the diagnostics
+sidebar. Audit log: `tenant_inbox_saved` with
+`{ passwordRotated: true, senderDomain }`.
+
+### Disabling an inbox
+
+Toggle **Enabled** off and Save. The next tick skips the tenant
+entirely (the tick endpoint enumerates `enabled = true` rows). To
+purge the credentials entirely, click **Delete inbox**; the audit
+trail is preserved and the env-var fallback resumes if it is set.
+
+## Connectivity test (in-app, recommended)
+
+The per-tenant inbox page (`/admin/tenants/[id]/email-inbox`) has a
+**Test connection** button next to **Save**. The button calls
+`testInboxConnectionAction` (SUPER_ADMIN, cookie-authenticated) which
+opens IMAP, authenticates, lists folders, checks the configured
+mailbox exists, and returns one of:
+
+| Outcome              | UI message                                                                |
+|----------------------|----------------------------------------------------------------------------|
+| `ok`                 | `Connected. <N> mailboxes visible. Selected mailbox "<name>" exists.`     |
+| `auth_failed`        | `Authentication failed. Check the username and password.`                 |
+| `mailbox_not_found`  | `Connected, but the configured mailbox/folder does not exist on the server.` |
+| `connect_failed`     | `Could not reach the IMAP server. Check host, port, and TLS.`             |
+| `tls_error`          | `TLS handshake failed. Check the TLS toggle and the port.`                |
+| `unknown`            | Generic message; the (sanitized) detail goes to the audit log only.       |
+
+The test never marks messages `\Seen`, never writes to
+`IngestedEmail`, and never bumps `lastPolledAt`. Audit:
+`tenant_inbox_test_run` with `{ host, port, secure, mailbox,
+senderDomain, ok, kind, durationMs }`. The password itself is never
+included.
+
+If the password field is left blank, the action decrypts the stored
+sealed cipher for the tenant and tests with that — useful when
+rotating only the host/mailbox.
 
 ## Connectivity test (on the deploy box, never logging the password)
 
 ```bash
 SECRET=$(sudo grep '^INGEST_TICK_SECRET=' /opt/bvisible/shared/env/.env \
          | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+
+# Force a tick across every enabled tenant inbox.
 curl -fsS -X POST \
   -H "x-bvisible-ingest-secret: ${SECRET}" \
   http://127.0.0.1:3000/api/internal/email-ingest/tick \
   | jq .
+
+# Test a single config without writing to the DB. Pass tenantId to
+# decrypt the stored password; pass `password` to test a fresh value.
+curl -fsS -X POST \
+  -H "x-bvisible-ingest-secret: ${SECRET}" \
+  -H "content-type: application/json" \
+  --data '{"tenantId":"<TENANT_ID>","host":"imap.gmail.com","port":993,"secure":true,"mailbox":"INBOX","username":"ingest@yourdomain.com"}' \
+  http://127.0.0.1:3000/api/internal/email-ingest/test \
+  | jq .
 ```
 
-Expected: a JSON summary `{ ok, runs: [{ tenantId, scanned, ingested,
-matched, errors, durationMs }] }`. A `503` means
-`INGEST_TICK_SECRET` is unset on the server. A `401` means the secret
-on disk doesn't match the value the timer is sending.
+Expected for `/tick`: `{ ok, data: { processed, reports: [{ tenantId,
+scannedCount, ingestedCount, matchedCount, errorCount, durationMs }] } }`.
+Expected for `/test`: `{ ok, data: { ok: true|false, kind?, message?,
+mailboxCount?, mailboxExists?, durationMs } }`.
+
+A `503` from either route means `INGEST_TICK_SECRET` is unset on the
+server. A `401` means the secret on disk doesn't match the value being
+sent.
 
 If `runs[].errors > 0`, tail PM2 stderr for `"emailIngest":true`
 lines — see `DEBUGGING.md § 9` for the `errorKind` table.
@@ -229,6 +297,21 @@ paired with sender PII, and any serialized `imapflow` auth object.
   escaping in the UI; the body snippet renders inside `<pre>` only;
   filenames are the `[A-Za-z0-9._-]{1,200}` value used for PO uploads.
 
+## SUPER_ADMIN inbox surfaces
+
+| Route                                     | Who           | Purpose                                                                                  |
+|-------------------------------------------|---------------|------------------------------------------------------------------------------------------|
+| `/admin/email-ingestion/inboxes`          | SUPER_ADMIN   | System-wide list of every tenant + inbox status. Stat chips: configured / healthy / errored / disabled. |
+| `/admin/tenants/[id]/email-inbox`         | SUPER_ADMIN   | Per-tenant configure / edit / test / delete + per-tenant diagnostics + recent ticks + recent ingested emails. |
+| `/admin/email-ingestion`                  | ADMIN+        | Operator review of inbound mail (unmatched / matched / failed / dismissed). SUPER_ADMIN sees a "Configure inbox" CTA in the page header. |
+
+The per-tenant page never serializes the IMAP password into the
+response body. The form's password input is always rendered empty
+(blank means "keep existing sealed value"); the displayed username is
+masked to `<first>***<last>@<domain>`; the diagnostics card surfaces
+`lastPolledAt`, `lastErrorAt`, `lastErrorMessage`, status counts, and
+recent `EmailIngestRun` rows but never the cipher.
+
 ## What's intentionally NOT here yet
 
 - OCR or invoice parsing (`pdfminer`, `tesseract`, table extraction).
@@ -237,7 +320,8 @@ paired with sender PII, and any serialized `imapflow` auth object.
 - Auto-marking invoices `received` / `paid`.
 - AI / LLM matching.
 - IMAP IDLE / push / Gmail API webhooks.
+- Gmail OAuth (today: app passwords only).
 - Background queue infrastructure beyond the 60 s systemd timer + soft
   lease.
-- Per-tenant inbox configuration UI (today: env-var fallback or hand-
-  crafted SQL insert; the form is the recommended next step).
+- Multiple inboxes per tenant (today: one row per tenant; editing
+  replaces).

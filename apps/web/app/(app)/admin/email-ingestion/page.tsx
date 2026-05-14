@@ -158,11 +158,23 @@ export default async function EmailIngestionPage({
     dismissed: counterMap.get(EmailIngestStatus.DISMISSED) ?? 0,
   };
 
+  const isSuperAdmin = me.role === Role.SUPER_ADMIN;
+
   return (
     <>
       <PageHeader
         title="Email ingestion"
         subtitle="Inbound vendor email captured by the IMAP poller. Review, link, retry, or dismiss. Matched emails materialize on the matched PO's timeline."
+        actions={
+          isSuperAdmin ? (
+            <a
+              href={`/admin/tenants/${me.tenantId}/email-inbox`}
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[13px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Configure inbox
+            </a>
+          ) : null
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">

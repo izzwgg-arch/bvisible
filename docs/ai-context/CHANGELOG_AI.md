@@ -5,6 +5,162 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Tenant inbox configuration UI (Phase 9)
+
+**Commit:** TBD (`feat: add tenant inbox configuration UI`).
+**Migration:** none — UI + API only against the existing
+`TenantEmailInbox` schema.
+**Deploy:** TBD.
+
+**Scope**
+
+Operational layer over the Phase 8 IMAP ingestion engine. SUPER_ADMIN
+can now configure per-tenant inboxes, rotate IMAP credentials, and
+verify connectivity entirely through the web UI without touching SQL,
+env vars, or PM2. The plaintext password lives only in process memory
+for the lifetime of one server-action invocation; it is sealed via
+AES-256-GCM (key derived from `INGEST_SECRET`) before it lands in the
+database, and the UI never echoes it back. A new internal route
+`/api/internal/email-ingest/test` mirrors the `/tick` auth posture
+(constant-time compare against `INGEST_TICK_SECRET`) for service-to-
+service callers.
+
+Did NOT add: OCR, invoice parsing, AI extraction, vendor intelligence,
+Gmail OAuth, queue infrastructure, mailbox sync UI, or changes to the
+deterministic matching ladder.
+
+**What changed (repo)**
+
+Added:
+
+- `apps/web/lib/email-ingest/test.ts` — pure `testImapConnection`
+  library: opens IMAP with `imapflow` (logger off, 8 s greeting / 15 s
+  socket bounds), lists folders, checks the configured mailbox
+  exists, returns one of `{ ok: true, mailboxCount, mailboxExists,
+  mailbox, durationMs }` or `{ ok: false, kind, message, durationMs }`
+  with `kind ∈ { auth_failed | mailbox_not_found | connect_failed |
+  tls_error | unknown }`. Never logs the password, never re-throws
+  raw connection errors.
+- `apps/web/app/api/internal/email-ingest/test/route.ts` — internal
+  POST endpoint guarded by the same `INGEST_TICK_SECRET` constant-
+  time compare as `/tick`. JSON body: `{ tenantId?, host, port,
+  secure, mailbox, username, password? }`. If `password` is omitted
+  and `tenantId` is supplied, decrypts the stored sealed cipher and
+  uses it. Returns the sanitized `TestImapResult`. Never writes to
+  the DB, never marks `\Seen`, never returns the password.
+- `apps/web/app/(app)/admin/tenants/[id]/email-inbox/page.tsx` —
+  SUPER_ADMIN per-tenant inbox config page. Two-column layout: form
+  on the left, diagnostics + recent ticks + recent ingested emails
+  on the right.
+- `apps/web/app/(app)/admin/tenants/[id]/email-inbox/inbox-form.tsx`
+  — client component with the form, **Test connection** button,
+  inline result panel (sanitized friendly messages), and a
+  destructive **Delete inbox** button (with confirm). Password input
+  is **always blank on render**; an empty submit keeps the existing
+  sealed cipher.
+- `apps/web/app/(app)/admin/tenants/[id]/email-inbox/actions.ts` —
+  three server actions: `saveTenantInboxAction` (upsert),
+  `deleteTenantInboxAction` (delete), `testInboxConnectionAction`
+  (calls `testImapConnection` directly — does NOT round-trip through
+  the internal HTTP route). All SUPER_ADMIN-only, all zod-validated,
+  all audit-logged.
+- `apps/web/app/(app)/admin/email-ingestion/inboxes/page.tsx` —
+  SUPER_ADMIN system-wide list of every tenant + inbox status with a
+  per-row link into that tenant's inbox config page. Stat strip:
+  configured / healthy / errored / disabled counts.
+
+Modified:
+
+- `apps/web/lib/validators.ts` — added `saveTenantInboxSchema`,
+  `deleteTenantInboxSchema`, `testInboxConnectionSchema`,
+  `internalTestInboxSchema`, plus the underlying field-level zod
+  helpers (`imapHostnameSchema`, `imapPortSchema`,
+  `pollIntervalSchema`, `imapMailboxSchema`, `imapUsernameSchema`,
+  `imapPasswordSchema`).
+- `apps/web/lib/auth/audit.ts` — appended `tenant_inbox_saved`,
+  `tenant_inbox_deleted`, `tenant_inbox_test_run` to the
+  `AuditAction` union.
+- `apps/web/middleware.ts` — whitelisted
+  `/api/internal/email-ingest/test` so the loopback POST is not
+  redirected to `/login`.
+- `apps/web/components/app-shell.tsx` — added an **Inboxes** entry
+  to the SUPER_ADMIN nav pointing at `/admin/email-ingestion/inboxes`.
+- `apps/web/app/(app)/admin/tenants/page.tsx` — added an "Inbox"
+  status column with the same chip palette and a per-row "Email
+  inbox" link.
+- `apps/web/app/(app)/admin/email-ingestion/page.tsx` — added a
+  "Configure inbox" CTA in the page header for SUPER_ADMIN viewers.
+
+Docs:
+
+- `docs/ai-context/EMAIL_INGESTION.md` — rewrote the mailbox-setup
+  section to lead with the in-app form, added rotation + disable
+  flows, replaced the connectivity-test section with the dual
+  in-app / curl approach, added a "SUPER_ADMIN inbox surfaces"
+  table, removed "no in-app form" from the deferred list.
+- `docs/ai-context/SECURITY_RULES.md` — added rules for the
+  internal `/test` endpoint and the SUPER_ADMIN-only
+  save/delete/test server actions, including the empty-password-
+  preserves-cipher contract.
+- `docs/ai-context/ENVIRONMENT_VARIABLES.md` — clarified that the
+  env-var fallback is now strictly bootstrap-only once a
+  `TenantEmailInbox` row exists for the first tenant.
+- `docs/ai-context/API_STRUCTURE.md` — added the new internal
+  route, the three new server actions, and the two new admin
+  pages.
+- `docs/ai-context/UI_SYSTEM.md` — added the per-tenant inbox
+  config page, the all-inboxes overview, the email-ingestion
+  review surface description (now that it has a SUPER_ADMIN CTA),
+  and the new SUPER_ADMIN nav entry.
+- `docs/ai-context/DEBUGGING.md` — added a "Test connection"
+  section with the friendly-message → fix table and the
+  service-to-service curl recipe for `/api/internal/email-
+  ingest/test`.
+- `docs/ai-context/AUTH_AND_PERMISSIONS.md` — added the new pages,
+  the new server actions, the internal `/test` endpoint, and the
+  three new audit actions to the audit list.
+
+**Risks**
+
+- Test connection takes a real IMAP round-trip and can take 1–8 s
+  depending on the provider. Bounded with `greetingTimeout: 8_000`
+  and `socketTimeout: 15_000` in `imapflow` so the form never hangs
+  beyond the action's natural Next.js 30 s `maxDuration`. A misbehav-
+  ing provider can still slow the page; SUPER_ADMIN-only access
+  caps blast radius.
+- The internal `/test` route accepts an arbitrary host/port/user/
+  password from the body. Misuse would let a holder of
+  `INGEST_TICK_SECRET` use the deploy box as an IMAP-test gateway.
+  This is the same trust posture as the existing `/tick` route and
+  is still gated by 127.0.0.1 binding + UFW + the secret.
+- The form's password value is held in client-side React state for
+  the lifetime of the page. We never persist it to localStorage and
+  the autocomplete is `new-password` so the browser doesn't fill
+  saved values. After a successful save the value is wiped from the
+  React state.
+- Plaintext IMAP passwords briefly traverse the wire to the server
+  via Next.js server-action POST. The transport is HTTPS at the
+  Nginx ingress (no plain port is exposed). Within the deploy box
+  PM2 sees the body as a normal action argument; it is not logged.
+
+**Verification performed**
+
+- Local: `pnpm install --frozen-lockfile`, `prisma generate`,
+  `pnpm --filter @bvisible/web build` — all clean. New routes
+  appear in the build report:
+  `/admin/email-ingestion/inboxes`,
+  `/admin/tenants/[id]/email-inbox`,
+  `/api/internal/email-ingest/test`.
+- Lints clean across all touched files.
+
+**Recommended next step**
+
+Wire vendor catalog + price intelligence (Phase 10) so matched
+vendor email can power "lower price detected" notifications using
+attachment data instead of just timeline noise.
+
+---
+
 ## 2026-05-13 — Vendor email ingestion foundation (Phase 8)
 
 **Commit:** TBD (`feat: add vendor email ingestion foundation`).

@@ -41,7 +41,10 @@ export type AuditAction =
   | 'email_ingest_manual_link'
   | 'email_ingest_dismissed'
   | 'email_ingest_retried'
-  | 'tenant_inbox_configured';
+  | 'tenant_inbox_configured'
+  | 'tenant_inbox_saved'
+  | 'tenant_inbox_deleted'
+  | 'tenant_inbox_test_run';
 
 export interface AuditEntry {
   action: AuditAction;

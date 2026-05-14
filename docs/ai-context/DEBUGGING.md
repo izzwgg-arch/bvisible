@@ -346,6 +346,54 @@ means the secret on disk doesn't match what the timer sent — re-edit
 `/opt/bvisible/cron/bvisible-ingest-tick.sh` if you rotated the secret
 without redeploying.
 
+### Test connection (in-app, recommended)
+
+The fastest way to diagnose IMAP problems is the SUPER_ADMIN form.
+Open `/admin/tenants/<tenantId>/email-inbox`, optionally edit the
+host/port/mailbox, and click **Test connection**. The result panel
+renders one of:
+
+| UI message                                                  | What it means                                              | Fix |
+|-------------------------------------------------------------|------------------------------------------------------------|-----|
+| `Connected. <N> mailboxes visible. Selected mailbox "..." exists.` | Auth + mailbox check both succeeded.                       | None. Hit **Save**. |
+| `Authentication failed. Check the username and password.`   | IMAP login rejected.                                       | Rotate the app password. For Gmail Workspace: regenerate at <https://myaccount.google.com/apppasswords> and paste the new value into the password field. Leaving it blank keeps the old (failing) cipher in place. |
+| `Connected, but the configured mailbox/folder does not exist on the server.` | TLS + auth OK, the mailbox name isn't in `LIST` output.    | Check capitalization (Gmail labels are case-sensitive) and the slash-escape rules for nested folders. Default to `INBOX`. |
+| `Could not reach the IMAP server. Check host, port, and TLS.` | DNS / TCP / connect-time failure.                          | Verify host + port; confirm UFW egress isn't blocking outbound 993; try `openssl s_client -connect $HOST:$PORT` from the deploy box. |
+| `TLS handshake failed. Check the TLS toggle and the port.`  | Negotiation died after TCP came up.                        | Mismatch between the TLS toggle and the port (e.g. TLS=on with port 143). Most providers want 993+TLS=on. |
+| Generic message + audit `kind=unknown`                      | Did not match any classifier.                              | Tail PM2 stderr or hit the internal `/test` endpoint with curl for the raw `result` payload (which still never carries the password). |
+
+The form's password field is **blank on render** — empty submit means
+"keep the existing sealed cipher". Type a new value to rotate. The
+test never marks messages `\Seen` and never writes anything to the
+database; it's a pure connectivity probe.
+
+### Test connection (curl, service-to-service)
+
+```bash
+SECRET=$(sudo grep '^INGEST_TICK_SECRET=' /opt/bvisible/shared/env/.env \
+         | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+
+# Test the stored config for a tenant by passing tenantId only.
+curl -fsS -X POST \
+  -H "x-bvisible-ingest-secret: ${SECRET}" \
+  -H "content-type: application/json" \
+  --data '{"tenantId":"<TENANT_ID>","host":"imap.gmail.com","port":993,"secure":true,"mailbox":"INBOX","username":"ingest@yourdomain.com"}' \
+  http://127.0.0.1:3000/api/internal/email-ingest/test \
+  | jq .
+
+# Test a fresh password without saving.
+curl -fsS -X POST \
+  -H "x-bvisible-ingest-secret: ${SECRET}" \
+  -H "content-type: application/json" \
+  --data '{"host":"imap.gmail.com","port":993,"secure":true,"mailbox":"INBOX","username":"ingest@yourdomain.com","password":"<APP_PASSWORD>"}' \
+  http://127.0.0.1:3000/api/internal/email-ingest/test \
+  | jq .
+```
+
+Returns `{ "ok": true, "data": { "ok": true|false, "kind"?, "message"?, "mailboxCount"?, "mailboxExists"?, "durationMs": ms } }`.
+Same 503 / 401 semantics as `/tick`. Never writes to the DB, never
+marks `\Seen`, never returns the password it received.
+
 ### IMAP connect failure
 
 PM2 stderr is the source of truth. The mailer-style discipline applies:

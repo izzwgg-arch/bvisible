@@ -168,6 +168,30 @@
   (separate value from `INGEST_SECRET`). No session cookie, no CSRF
   token, no role check — failure returns 401 without leaking which
   half of the comparison failed.
+- **Internal test endpoint authentication.** `/api/internal/email-
+  ingest/test` uses the same constant-time compare against
+  `INGEST_TICK_SECRET`. Returns 503 when the secret is unset and 401
+  on mismatch. Body is JSON; the route never writes to the DB, never
+  marks messages `\Seen`, never returns the password it received, and
+  never logs it. The middleware whitelists this path so the loopback
+  POST works without a session cookie. The browser-driven SUPER_ADMIN
+  form does NOT call this endpoint — it goes through the
+  `testInboxConnectionAction` server action (cookie-authenticated,
+  SUPER_ADMIN-gated) which calls the same `testImapConnection`
+  library function directly. The two surfaces share zero credential
+  state.
+- **SUPER_ADMIN inbox configuration.** Only SUPER_ADMIN can reach
+  `/admin/tenants/[id]/email-inbox`,
+  `/admin/email-ingestion/inboxes`, or invoke the
+  `saveTenantInboxAction` / `deleteTenantInboxAction` /
+  `testInboxConnectionAction` server actions. The form's password
+  input is always rendered empty on edit; an empty submission keeps
+  the existing sealed cipher. Submitting a new value re-seals via
+  `sealSecret(plain)` and writes the new ciphertext atomically with
+  the rest of the row. Audit actions: `tenant_inbox_saved` (with
+  `passwordRotated: boolean`, never the value),
+  `tenant_inbox_deleted`, `tenant_inbox_test_run` (with `kind`, never
+  the password).
 - **Concurrency / lease.** Each tick claims a soft lease per tenant by
   conditionally updating `TenantEmailInbox.lastPolledAt` only if the
   previous timestamp is older than `pollIntervalSeconds`. A second tick

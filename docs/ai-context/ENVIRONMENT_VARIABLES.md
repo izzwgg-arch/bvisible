@@ -28,12 +28,13 @@ DATABASE_URL="postgresql://bvisible:***@127.0.0.1:5432/bvisible?schema=public&co
 # Redis (queues / cache)
 REDIS_URL=redis://redis:6379
 
-# Vendor email ingestion — IMAP poller (Phase 8). The runtime prefers a
-# per-tenant TenantEmailInbox row (with the password sealed via
-# INGEST_SECRET); the env keys below are the *single-tenant fallback*
-# used by apps/web/lib/email-ingest/config.ts when no DB row exists.
-# Setting them in production lights up the very first tenant's inbox
-# before the in-app config form ships.
+# Vendor email ingestion — IMAP poller (Phase 8 + 9). The runtime
+# prefers a per-tenant TenantEmailInbox row (with the password sealed
+# via INGEST_SECRET); SUPER_ADMIN configures these via the in-app form
+# at /admin/tenants/[id]/email-inbox (Phase 9). The env keys below are
+# the *single-tenant fallback* used by apps/web/lib/email-ingest/
+# config.ts when no DB row exists for the first tenant. Useful for
+# the very first bootstrap before any inbox row has been written.
 #
 # Provider-agnostic IMAP (Gmail/Workspace, Fastmail, Office 365, etc.).
 # We do NOT use the Gmail API or webhooks — pure UNSEEN polling.
@@ -165,7 +166,11 @@ The IMAP poller has two layers of configuration:
    row exists for a tenant, the loader falls back to `IMAP_HOST` /
    `IMAP_USER` / `IMAP_PASSWORD` / `IMAP_PORT` / `IMAP_TLS` /
    `IMAP_MAILBOX` / `IMAP_POLL_INTERVAL_SECONDS` for the *first*
-   tenant only. Useful before the in-app config form ships.
+   tenant only. With the in-app inbox form available
+   (`/admin/tenants/[id]/email-inbox`, SUPER_ADMIN), this path is
+   only needed for the very first bootstrap. As soon as a
+   `TenantEmailInbox` row exists for that tenant, the env values are
+   ignored for it (the row wins).
 
 Required for either layout:
 

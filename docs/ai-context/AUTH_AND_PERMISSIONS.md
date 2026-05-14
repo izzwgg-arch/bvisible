@@ -103,8 +103,11 @@ into Prisma for the user behind the helpers.
 | `/vendors`, `/vendors/new` | protected | Tenant user. Per-tenant unique on vendor `name`. |
 | `/purchase-orders`, `/purchase-orders/new`, `/purchase-orders/[id]` | protected | Tenant user. The editor + meta panel + attachments + timeline note are read-write for both ADMIN and USER. Soft-delete is ADMIN+ only (button hidden for USER). |
 | `/api/po/[id]/attachments/[attachmentId]` | protected | Tenant user. Joins on `(tenantId, purchaseOrderId)` and refuses cross-tenant or soft-deleted POs. Returns 404 (not 403) on mismatch so the route does not leak whether the id exists in another tenant. |
-| `/admin/email-ingestion` | protected | ADMIN or SUPER_ADMIN with a tenant. Operator review surface for inbound vendor email. |
+| `/admin/email-ingestion` | protected | ADMIN or SUPER_ADMIN with a tenant. Operator review surface for inbound vendor email. SUPER_ADMIN sees an extra "Configure inbox" CTA in the header. |
+| `/admin/email-ingestion/inboxes` | protected | SUPER_ADMIN only. System-wide list of every tenant's inbox status with a link into each per-tenant config page. |
+| `/admin/tenants/[id]/email-inbox` | protected | SUPER_ADMIN only. Per-tenant IMAP inbox configuration form (host / port / mailbox / username / password / TLS / poll interval / enabled toggle), inline test-connection button, delete button, and read-only diagnostics + recent ticks + recent ingested emails. |
 | `/api/email-ingest/[id]/attachments/[attachmentId]` | protected | ADMIN or SUPER_ADMIN with a tenant. Tenant-gated download of an `IngestedEmailAttachment`; same magic-byte re-detection + 404-on-mismatch posture as the PO download route. |
+| `/api/internal/email-ingest/test` | internal-only | Constant-time `safeCompareSecret()` against `INGEST_TICK_SECRET`. Same posture as `/api/internal/email-ingest/tick`. The middleware whitelists this path so the loopback POST works without a session cookie. The browser-driven SUPER_ADMIN form does NOT call this endpoint — it goes through `testInboxConnectionAction` (cookie-authenticated, SUPER_ADMIN-gated). |
 | `/api/internal/email-ingest/tick` | internal | NOT session-authenticated. Constant-time compare against `INGEST_TICK_SECRET` in the `x-bvisible-ingest-secret` header. Used only by the systemd timer; UFW + the `127.0.0.1` bind keep it off the public internet. |
 
 ## Server actions for auth
@@ -143,6 +146,9 @@ enforced by Next). Server actions get CSRF protection for free.
 | `manualLinkEmailToPoAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN or SUPER_ADMIN with a tenant. Verifies the chosen PO is non-deleted and tenant-owned, then materializes the email onto it (idempotent on `(purchaseOrderId, sourceEmailId)`). Audit `email_ingest_manual_link`. |
 | `retryEmailAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN or SUPER_ADMIN with a tenant. Resets the row to `PENDING` so the next tick re-runs the deterministic matcher. Audit `email_ingest_retried`. |
 | `dismissEmailAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN or SUPER_ADMIN with a tenant. Sets the row to `DISMISSED`. Bytes on disk are retained for audit; the operator queue filters dismissed rows out. Audit `email_ingest_dismissed`. |
+| `saveTenantInboxAction` | `app/(app)/admin/tenants/[id]/email-inbox/actions.ts` | SUPER_ADMIN only. Upserts a `TenantEmailInbox` row. Password optional on update — empty/omitted keeps the existing AES-256-GCM ciphertext; a non-empty value re-seals via `sealSecret(plain)` and writes the new cipher. Required on create. Audit `tenant_inbox_saved`. |
+| `deleteTenantInboxAction` | `app/(app)/admin/tenants/[id]/email-inbox/actions.ts` | SUPER_ADMIN only. Deletes the `TenantEmailInbox` row. Audit `tenant_inbox_deleted`. |
+| `testInboxConnectionAction` | `app/(app)/admin/tenants/[id]/email-inbox/actions.ts` | SUPER_ADMIN only. Calls `testImapConnection()` directly (not via the internal HTTP route — the cookie-authenticated server action shares the library). Returns the sanitized `TestImapResult` (`ok | auth_failed | mailbox_not_found | connect_failed | tls_error | unknown`). Never writes to the DB, never marks `\Seen`, never returns the password. Audit `tenant_inbox_test_run`. |
 
 ## Permission model
 
@@ -252,7 +258,9 @@ Every auth-relevant event writes an `AuditLog` row via
 `po_deleted`, `email_ingest_tick`, `email_ingest_message_ingested`,
 `email_ingest_message_matched`, `email_ingest_message_failed`,
 `email_ingest_manual_link`, `email_ingest_dismissed`,
-`email_ingest_retried`, `tenant_inbox_configured`.
+`email_ingest_retried`, `tenant_inbox_configured`,
+`tenant_inbox_saved`, `tenant_inbox_deleted`,
+`tenant_inbox_test_run`.
 
 Rules for what goes in `metadata`:
 

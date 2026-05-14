@@ -82,7 +82,43 @@ The look, feel, and behavior of the web app.
   not hijacked — that would break caret navigation inside text inputs.
 - **Sidebar nav** for tenant users now shows
   `Dashboard / Estimates / Purchase orders / Clients / Vendors` in
-  `BASE_NAV`. ADMIN adds Users; SUPER_ADMIN adds Tenants + Email test.
+  `BASE_NAV`. ADMIN adds `Users` + `Email ingestion`; SUPER_ADMIN
+  additionally adds `Tenants`, `Inboxes`, and `Email test`.
+- **Email ingestion review** at `/admin/email-ingestion` (ADMIN+):
+  filterable buckets (Unmatched / Matched / Failed / Dismissed / All)
+  with count badges. Per-row expand panel renders the body snippet
+  inside `<pre>` (never `dangerouslySetInnerHTML`), the per-attachment
+  download links (skipped attachments show their `skipReason`), and
+  inline forms for **Link** (PO combobox), **Retry**, and **Dismiss**.
+  Sidebar carries the read-only inbox config card (host / port /
+  mailbox / `lastPolledAt` / `lastErrorAt` / `lastErrorMessage`;
+  password is **never** displayed) and a "Recent ticks" list. The
+  page header includes a "Configure inbox" CTA when the viewer is
+  SUPER_ADMIN.
+- **Per-tenant inbox config** at `/admin/tenants/[id]/email-inbox`
+  (SUPER_ADMIN). Two-column layout: left card carries the form (host,
+  port, mailbox, username, password, poll interval, TLS toggle,
+  enabled toggle), right rail carries diagnostics + recent ticks +
+  recent ingested emails. The password input is **always rendered
+  empty** — an empty submit keeps the existing AES-256-GCM ciphertext;
+  a non-empty value rotates it. The placeholder shows
+  "•••••••• (configured)" so the operator can see at a glance that a
+  cipher is on file. Three buttons: **Save changes**, **Test
+  connection**, **Delete inbox** (with confirm). Test result panel
+  renders inline with sanitized friendly messages — `Connected.`
+  (with mailbox count + duration), `Authentication failed.`, `Mailbox
+  not found.`, `Connect failed.`, `TLS error.`, or a generic message
+  for unclassified failures. Form errors show via `<FormError>`;
+  success via `<FormNotice tone="success">`.
+- **All-inboxes overview** at `/admin/email-ingestion/inboxes`
+  (SUPER_ADMIN). Top stat strip: configured / healthy / errored /
+  disabled counts. Table: every tenant + status chip (`healthy` /
+  `errored` / `disabled` / `not configured`) + masked username +
+  last-polled timestamp + per-row "Configure" / "Edit" link to the
+  tenant's `/admin/tenants/[id]/email-inbox`.
+- **Tenants page** (`/admin/tenants`, SUPER_ADMIN) now includes an
+  "Inbox" status column with the same chip palette and a per-row
+  "Email inbox" link to the tenant's inbox config page.
 - **Purchase order editor** at
   `apps/web/app/(app)/purchase-orders/[id]/{editor,line-grid,meta-panel,timeline-panel,attachments-panel}.tsx`:
   - Same two-column layout as the estimate editor: line grid + notes +

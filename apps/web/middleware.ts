@@ -22,6 +22,11 @@ const PUBLIC_PATHS = new Set<string>([
   // header conveniently and shouldn't redirect a service-to-service POST
   // to /login. The 127.0.0.1 bind + UFW keep this off the public net.
   '/api/internal/email-ingest/tick',
+  // Same posture for the IMAP-test endpoint: shared-secret authed,
+  // service-to-service. The in-app SUPER_ADMIN form does NOT call this
+  // route — it goes through a server action — so no browser path needs
+  // a session cookie here.
+  '/api/internal/email-ingest/test',
 ]);
 
 const PUBLIC_PREFIXES = ['/reset/', '/invite/'];

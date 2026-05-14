@@ -331,9 +331,120 @@ export const dismissEmailSchema = z.object({
   ingestedEmailId: z.string().min(1).max(60),
 });
 
+// Hostname: trim, lower-case for comparison purposes, length-bounded.
+// We accept anything that looks roughly like a DNS label sequence or a
+// raw IPv4 — the IMAP library will reject genuinely invalid hosts at
+// connect time. Refuse leading/trailing whitespace and any character
+// the resolver treats as a separator.
+const imapHostnameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1, 'Host is required.')
+  .max(253, 'Host is too long (max 253 chars).')
+  .regex(
+    /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/,
+    'Enter a valid hostname (letters, digits, dots, hyphens).'
+  );
+
+const imapPortSchema = z.coerce
+  .number()
+  .int('Port must be a whole number.')
+  .min(1, 'Port must be 1-65535.')
+  .max(65535, 'Port must be 1-65535.');
+
+// 30s..3600s. Matches the clamp in apps/web/lib/email-ingest/config.ts.
+const pollIntervalSchema = z.coerce
+  .number()
+  .int('Poll interval must be a whole number of seconds.')
+  .min(30, 'Poll interval must be at least 30 seconds.')
+  .max(3600, 'Poll interval must be at most 3600 seconds.');
+
+const imapMailboxSchema = z
+  .string()
+  .trim()
+  .min(1, 'Mailbox is required.')
+  .max(120, 'Mailbox name is too long (max 120 chars).')
+  // Refuse control chars and the IMAP wildcard chars; non-ASCII is
+  // legal in IMAP4rev1 but rare and risky in display, so reject it.
+  .regex(/^[\x20-\x7e]+$/u, 'Mailbox must be plain ASCII.')
+  .refine((v) => !/[*%]/.test(v), 'Mailbox cannot contain * or %.');
+
+const imapUsernameSchema = z
+  .string()
+  .trim()
+  .min(1, 'Username is required.')
+  .max(254, 'Username is too long (max 254 chars).');
+
+// IMAP passwords vary wildly (Gmail app-password = 16 chars no spaces;
+// many providers allow long passphrases). Bound it at 1024 to refuse
+// nonsense paste-of-a-PEM mistakes.
+const imapPasswordSchema = z
+  .string()
+  .min(1, 'Password is required.')
+  .max(1024, 'Password is too long (max 1024 chars).');
+
+// SUPER_ADMIN: save (create or update) a tenant inbox. Password is
+// optional on update — empty/omitted means "keep the existing sealed
+// password". The action enforces that on create the password is
+// required.
+export const saveTenantInboxSchema = z.object({
+  tenantId: z.string().min(1).max(60),
+  host: imapHostnameSchema,
+  port: imapPortSchema,
+  secure: z.coerce.boolean(),
+  mailbox: imapMailboxSchema,
+  username: imapUsernameSchema,
+  // Optional on edit; the action layer rejects an empty value when
+  // creating a new row.
+  password: z
+    .string()
+    .max(1024, 'Password is too long (max 1024 chars).')
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  pollIntervalSeconds: pollIntervalSchema,
+  enabled: z.coerce.boolean(),
+});
+
+export const deleteTenantInboxSchema = z.object({
+  tenantId: z.string().min(1).max(60),
+});
+
+// SUPER_ADMIN: in-form "Test connection" payload. Same shape as save
+// but the password may be omitted to mean "use the stored sealed
+// password for this tenant" (for credential-rotation workflows where
+// the operator wants to test a new host/mailbox without re-typing the
+// password they just rotated in).
+export const testInboxConnectionSchema = z.object({
+  tenantId: z.string().min(1).max(60),
+  host: imapHostnameSchema,
+  port: imapPortSchema,
+  secure: z.coerce.boolean(),
+  mailbox: imapMailboxSchema,
+  username: imapUsernameSchema,
+  password: imapPasswordSchema.optional(),
+});
+
+// Internal /api/internal/email-ingest/test request body. Same fields,
+// but tenantId is also optional (allows a stateless test without
+// touching the DB row at all).
+export const internalTestInboxSchema = z.object({
+  tenantId: z.string().min(1).max(60).optional(),
+  host: imapHostnameSchema,
+  port: imapPortSchema,
+  secure: z.coerce.boolean(),
+  mailbox: imapMailboxSchema,
+  username: imapUsernameSchema,
+  password: imapPasswordSchema.optional(),
+});
+
 export type ManualLinkEmailInput = z.infer<typeof manualLinkEmailSchema>;
 export type RetryEmailInput = z.infer<typeof retryEmailSchema>;
 export type DismissEmailInput = z.infer<typeof dismissEmailSchema>;
+export type SaveTenantInboxInput = z.infer<typeof saveTenantInboxSchema>;
+export type DeleteTenantInboxInput = z.infer<typeof deleteTenantInboxSchema>;
+export type TestInboxConnectionInput = z.infer<typeof testInboxConnectionSchema>;
+export type InternalTestInboxInput = z.infer<typeof internalTestInboxSchema>;
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RequestResetInput = z.infer<typeof requestResetSchema>;
