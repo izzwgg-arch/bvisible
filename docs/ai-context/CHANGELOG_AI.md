@@ -31,6 +31,19 @@ records what changed, the files touched, the risks, and the verification.
 - `pnpm --filter @bvisible/web run verify:single-company`
 - Production DB check (on server): `bash server-scripts/db/.verify-single-company-mode.sh` from `/opt/bvisible/app`
 
+**Production deploy — single-company mode (2026-05-14)**
+
+- **Deploy job ID:** `20260514T204117-2df17d`
+- **Deployed SHA:** `0ce4ca6add674ee1eada0a8074872590bbd46e3a`
+- **Prisma migrate deploy:** no pending migrations (`db-verify` OK).
+- **PM2:** `bvisible-web` **online** (fork, cwd standalone `server.js`).
+- **Healthcheck:** OK — `{"status":"ok","service":"bvisible-web"}` on localhost after deploy; public `https://vmi3270817.contaboserver.net/api/health` OK.
+- **`server-scripts/db/.verify-single-company-mode.sh`:** first run failed (`slug=bvisible` missing — sole tenant was `qa-est-12344`). Ops ran **`ensureDefaultCompanyUncached()`** once via `pnpm exec tsx` from `apps/web` (idempotent normalize). Re-run: **`[verify-single-company] OK tenants_total=1 slug_bvisible_rows=1 name='B Visible'`**.
+- **Prod data snapshot (post-bootstrap):** one tenant row **`B Visible` / `bvisible`**; **`admin@bvisible.local`** is **`SUPER_ADMIN`** with **`tenantId` NULL** in DB (expected — effective company resolved at runtime/mobile JWT).
+- **Browser verification (logged-in UX):** **not run** in this session — no credential available here to exercise `/login` and admin surfaces end-to-end.
+- **Mobile/API smoke (`SUPER_ADMIN` JWT):** **not run** here (requires password + `MOBILE_JWT_SECRET` configuration exercise).
+- **Caveat:** production had a **single non-canonical tenant slug** before deploy; bootstrap **renamed slug/name in place** (same primary key). If multiple tenants had existed without `bvisible`, manual resolution would have been required.
+
 ---
 
 ## 2026-05-19 — Estimate editor vendor catalog intelligence rail
