@@ -12,7 +12,8 @@
     "verify:reconciliation-alerts": "vitest run lib/reconciliation/alert-identity.test.ts lib/reconciliation/supersede-open-recon-alerts.test.ts",
     "verify:vendor-catalog": "vitest run lib/vendor-pricing/catalog-lookup.test.ts lib/vendor-pricing/trends.test.ts",
     "typecheck": "tsc --noEmit",
-    "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts"
+    "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
+    "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"
   },
   "dependencies": {
     "@bvisible/db": "workspace:*",

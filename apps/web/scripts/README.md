@@ -50,3 +50,44 @@ script's process.
 3. Create your first tenant under **Tenants** in the sidebar.
 4. Invite the tenant's admin from **Users**. The invite link is
    displayed inline (email is not yet wired).
+
+## reset-super-admin-password.ts
+
+Rotates the password for an **existing** `SUPER_ADMIN` (Argon2id hash via
+`hashPassword`). Refuses when **zero** SUPER_ADMIN rows exist (use bootstrap
+instead). When **multiple** SUPER_ADMIN rows exist, requires
+`RESET_SUPER_ADMIN_EMAIL` to choose the target. Deletes all browser **`Session`**
+rows for that user (JWT/mobile untouched).
+
+Plaintext password is **never** logged.
+
+### Required env vars
+
+| Var | Required | Notes |
+|---|---|---|
+| `RESET_SUPER_ADMIN_PASSWORD` | yes | 12–128 chars (`passwordSchema`). |
+| `RESET_SUPER_ADMIN_EMAIL` | if ambiguous | Required when more than one SUPER_ADMIN exists. |
+| `CLEAR_SUPER_ADMIN_DISABLED` | no | Set to `1` to clear `disabledAt` during reset. |
+| `DATABASE_URL` | yes | From `/opt/bvisible/shared/env/.env`. |
+
+### Example
+
+```bash
+cd /opt/bvisible/app/apps/web
+( set -a; . /opt/bvisible/shared/env/.env; set +a; \
+  RESET_SUPER_ADMIN_PASSWORD='new-strong-passphrase-here' \
+  pnpm exec tsx scripts/reset-super-admin-password.ts )
+```
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Password updated, sessions cleared, audit row written. |
+| `1` | Unhandled error. |
+| `2` | Missing/invalid env. |
+| `4` | No SUPER_ADMIN exists (use bootstrap). |
+| `5` | Multiple SUPER_ADMIN without `RESET_SUPER_ADMIN_EMAIL`. |
+| `6` | Email filter did not match. |
+| `7` | Target has no `passwordHash`. |
+| `8` | Target disabled and `CLEAR_SUPER_ADMIN_DISABLED` not set. |
