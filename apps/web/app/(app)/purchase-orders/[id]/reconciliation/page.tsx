@@ -5,6 +5,7 @@ import {
   POReconciliationLineResolution,
   prisma,
   Role,
+  SpendAlertStatus,
 } from '@bvisible/db';
 import { requireRole } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
@@ -44,6 +45,19 @@ function matchBadgeClass(m: POReconciliationLineMatch): string {
   }
 }
 
+function spendAlertStatusChipClass(s: SpendAlertStatus): string {
+  switch (s) {
+    case SpendAlertStatus.OPEN:
+      return 'border-amber-200 bg-amber-50 text-amber-950';
+    case SpendAlertStatus.SUPERSEDED:
+      return 'border-slate-200 bg-slate-100 text-slate-800';
+    case SpendAlertStatus.DISMISSED:
+      return 'border-neutral-200 bg-neutral-50 text-neutral-600';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-900';
+  }
+}
+
 export default async function PurchaseOrderReconciliationPage({
   params,
 }: {
@@ -66,21 +80,39 @@ export default async function PurchaseOrderReconciliationPage({
   });
   if (!po) notFound();
 
-  const latest = await prisma.pOReconciliation.findFirst({
-    where: { tenantId, purchaseOrderId: id },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      lines: {
-        orderBy: { sortOrder: 'asc' },
-        include: {
-          poLineItem: { select: { id: true, description: true } },
-          vendorPriceHistory: {
-            select: { id: true, itemNameNormalized: true },
+  const [latest, spendAlertsHistory] = await Promise.all([
+    prisma.pOReconciliation.findFirst({
+      where: { tenantId, purchaseOrderId: id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        lines: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            poLineItem: { select: { id: true, description: true } },
+            vendorPriceHistory: {
+              select: { id: true, itemNameNormalized: true },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.spendAlert.findMany({
+      where: { tenantId, purchaseOrderId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        status: true,
+        kind: true,
+        title: true,
+        createdAt: true,
+        supersededAt: true,
+        dismissedAt: true,
+        poReconciliationId: true,
+        supersededByReconciliationId: true,
+      },
+    }),
+  ]);
 
   const staleMark =
     po.operatorMarkedReconciledAt &&
@@ -359,6 +391,74 @@ export default async function PurchaseOrderReconciliationPage({
           </p>
         </>
       )}
+
+      <section className="mt-10">
+        <h2 className="mb-3 text-[15px] font-semibold text-[var(--color-bv-text)]">
+          Spend alerts (this PO)
+        </h2>
+        <p className="mb-4 text-[13px] text-[var(--color-bv-muted)]">
+          Historical rows stay visible for audit. Dashboard counts use{' '}
+          <span className="font-medium text-[var(--color-bv-text)]">OPEN</span> only;
+          new reconciliation snapshots supersede prior OPEN alerts tied to an older run (
+          <span className="font-medium text-[var(--color-bv-text)]">SUPERSEDED</span>
+          ).
+        </p>
+        {spendAlertsHistory.length === 0 ? (
+          <p className="text-[13px] text-[var(--color-bv-muted)]">
+            No spend alerts recorded for this PO yet.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-[var(--radius-bv)] border border-[var(--color-bv-border)]">
+            <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
+              <thead className="border-b border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <tr>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5">Kind</th>
+                  <th className="px-3 py-2.5">Title</th>
+                  <th className="px-3 py-2.5">Created</th>
+                  <th className="px-3 py-2.5">Snapshot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {spendAlertsHistory.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="border-b border-[var(--color-bv-border)] last:border-b-0"
+                  >
+                    <td className="px-3 py-2 align-middle">
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${spendAlertStatusChipClass(
+                          row.status,
+                        )}`}
+                      >
+                        {row.status.replaceAll('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 align-middle font-mono text-[11px] text-[var(--color-bv-muted)]">
+                      {row.kind.replaceAll('_', ' ')}
+                    </td>
+                    <td className="max-w-[280px] px-3 py-2 align-middle text-[12px]">
+                      {row.title}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 align-middle text-[12px] text-[var(--color-bv-muted)]">
+                      {row.createdAt.toISOString().slice(0, 19).replace('T', ' ')}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 align-middle font-mono text-[11px] text-[var(--color-bv-muted)]">
+                      {row.poReconciliationId ? row.poReconciliationId.slice(0, 8) : '—'}
+                      {row.supersededByReconciliationId ? (
+                        <span className="block text-[10px] normal-case text-[var(--color-bv-muted)]">
+                          superseded by{' '}
+                          {row.supersededByReconciliationId.slice(0, 8)}
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </>
   );
 }

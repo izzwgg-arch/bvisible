@@ -101,8 +101,9 @@ The look, feel, and behavior of the web app.
   picks, **Approve** (writes `VendorPriceHistory` via `OCR_APPROVED`) vs **Reject**.
   Approving also enqueues a replay-safe `POReconciliation` snapshot for that PO batch.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
-  `/purchase-orders/[id]/reconciliation`, dashboard summary cards + operational spend alert
-  strip. Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
+  `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /
+  `SUPERSEDED` / `DISMISSED` chips for audit), dashboard summary cards + operational spend alert
+  strip (`OPEN` only). Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
   receipt / PO rows, dismiss alerts, or stamp the PO reconciled — **no automatic PO /
   estimate mutation**.
 - **Per-tenant inbox config** at `/admin/tenants/[id]/email-inbox`

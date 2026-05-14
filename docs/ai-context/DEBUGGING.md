@@ -1161,10 +1161,32 @@ bash server-scripts/db/.verify-ocr-receipt-parse.sh
 
 ```bash
 pnpm --filter @bvisible/web run verify:reconciliation
+pnpm --filter @bvisible/web run verify:reconciliation-alerts
 ```
 
-Covers deterministic pairing, tolerance math, aggregate status ordering, and canonical
-dedupe-key hashing (`apps/web/lib/reconciliation/*.test.ts`).
+Covers deterministic pairing, tolerance math, aggregate status ordering, canonical
+dedupe-key hashing, **`reconciliationAlertIdentityKey`**, and supersede **where-clause**
+policy (`apps/web/lib/reconciliation/*.test.ts`).
+
+### Spend alerts: OPEN vs SUPERSEDED (stale dashboard noise)
+
+- **Active ops UI** (dashboard strip, `/admin/reconciliation`, vendor OPEN counts) queries
+  `SpendAlert.status = OPEN` only.
+- When a **new** `POReconciliation` snapshot is inserted for a PO, the runner marks prior
+  **`OPEN` alerts with non-null `poReconciliationId`** as **`SUPERSEDED`** and sets
+  `supersededAt` + `supersededByReconciliationId` before inserting alerts for the new run.
+  **`DISMISSED` rows are untouched** (never reopened by automation).
+- **Inspect in SQL** (replace tenant / PO ids):
+
+```sql
+SELECT id, status, kind, "poReconciliationId", "supersededByReconciliationId", "supersededAt", "dismissedAt"
+FROM spend_alerts
+WHERE "tenantId" = '<tenant_id>' AND "purchaseOrderId" = '<po_id>'
+ORDER BY "createdAt" DESC;
+```
+
+Expect resolved historical problems as **`SUPERSEDED`** with `supersededByReconciliationId`
+pointing at the newer snapshot; the PO reconciliation detail page lists rows with status chips for audit.
 
 ### Symptom: jobs stuck `FAILED`
 

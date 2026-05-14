@@ -616,8 +616,12 @@ Tenant ──< User
 - `POReconciliationLine` — links optional `POLineItem` + optional `VendorPriceHistory`,
   stores expected vs observed qty/price milli + cents, variance columns, and operator
   resolution enum (`NONE`, `CONFIRMED_PAIR`, `ACCEPTED_VARIANCE`, `REJECTED_PAIR`).
-- `SpendAlert` — operational inbox (`OPEN` / `DISMISSED` / `RESOLVED`) with deduped
-  `(tenantId, dedupeKey)`; references PO/vendor/reconciliation ids for navigation only.
+- `SpendAlert` — operational inbox with explicit lifecycle: `OPEN`,
+  `SUPERSEDED` (system: prior snapshot replaced by a newer reconciliation run),
+  `DISMISSED` (operator dismiss — never auto-reopened).
+  Deterministic `identityKey` (structural ids + alert kind via `reconciliationAlertIdentityKey`)
+  complements `dedupeKey` (`@@unique([tenantId, dedupeKey])`, includes reconciliation id for replay-safe inserts).
+  `supersededAt` / `supersededByReconciliationId` record supersede provenance; `dismissedAt` is for manual dismiss only.
 - `PurchaseOrder.operatorMarkedReconciledAt` / `operatorMarkedReconciledById` —
   human-only reconciliation stamp (does not mutate line economics).
 

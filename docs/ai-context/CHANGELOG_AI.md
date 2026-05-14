@@ -5,6 +5,32 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-18 — SpendAlert `SUPERSEDED` lifecycle + stale OPEN closure
+
+**Migration:** `packages/db/prisma/migrations/20260518140000_spend_alert_superseded_lifecycle/migration.sql`.
+
+**Behavior**
+
+- `SpendAlertStatus`: `OPEN`, `DISMISSED`, `SUPERSEDED` (legacy `RESOLVED` migrated to `SUPERSEDED`).
+- Columns: `identityKey`, `supersededAt`, `supersededByReconciliationId`. Operator dismiss remains `DISMISSED` + `dismissedAt` (never auto-reopened).
+- On each new `POReconciliation` snapshot for a PO: supersede prior **`OPEN` alerts with `poReconciliationId` set**, then `createMany` current-condition alerts (replay-safe `dedupeKey`).
+
+**Files**
+
+- `packages/db/prisma/schema.prisma`, migration above
+- `apps/web/lib/reconciliation/{alert-identity.ts,supersede-open-recon-alerts.ts,run.ts}`
+- `apps/web/lib/reconciliation/{alert-identity.test.ts,supersede-open-recon-alerts.test.ts}`
+- `apps/web/app/(app)/purchase-orders/[id]/reconciliation/page.tsx`
+- `apps/web/package.json` (`verify:reconciliation-alerts`)
+- Docs: `DATA_MODEL.md`, `VENDOR_PRICE_ENGINE.md`, `UI_SYSTEM.md`, `DEBUGGING.md`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:reconciliation-alerts`
+- `pnpm --filter @bvisible/web run verify:reconciliation`
+
+---
+
 ## 2026-05-14 — Phase 14: PO reconciliation + spend intelligence foundation
 
 **Migration:** `packages/db/prisma/migrations/20260517143000_po_reconciliation_foundation/migration.sql`.

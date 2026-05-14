@@ -230,7 +230,7 @@ enum SpendAlertKind {
 enum SpendAlertStatus {
   OPEN
   DISMISSED
-  RESOLVED
+  SUPERSEDED
 }
 
 model Tenant {
@@ -1049,6 +1049,7 @@ model POReconciliation {
   resolvedBy      User?                   @relation("POReconciliationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
   lines           POReconciliationLine[]
   spendAlerts     SpendAlert[]
+  supersededSpendAlerts SpendAlert[] @relation("SpendAlertSupersededBy")
 
   @@unique([tenantId, triggerDedupeKey])
   @@index([tenantId, purchaseOrderId, createdAt])
@@ -1093,6 +1094,8 @@ model SpendAlert {
   poReconciliationId  String?
   kind                SpendAlertKind
   status              SpendAlertStatus @default(OPEN)
+  /// Deterministic cross-snapshot identity (no reconciliation id — used for supersede + audits).
+  identityKey         String           @db.VarChar(64)
   title               String           @db.VarChar(200)
   body                String           @db.VarChar(900)
   dedupeKey           String           @db.VarChar(64)
@@ -1101,18 +1104,22 @@ model SpendAlert {
   dismissedById       String?
   resolvedAt          DateTime?
   resolvedById        String?
+  supersededAt        DateTime?
+  supersededByReconciliationId String?
   createdAt           DateTime         @default(now())
 
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrder    PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   vendor           Vendor?           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   poReconciliation POReconciliation? @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
+  supersededByReconciliation POReconciliation? @relation("SpendAlertSupersededBy", fields: [supersededByReconciliationId], references: [id], onDelete: SetNull)
   dismissedBy      User?             @relation("SpendAlertDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
   resolvedBy       User?             @relation("SpendAlertResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, vendorId])
+  @@index([tenantId, purchaseOrderId, status])
   @@map("spend_alerts")
 }
 

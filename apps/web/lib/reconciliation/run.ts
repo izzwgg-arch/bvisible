@@ -18,6 +18,8 @@ import {
   type OcrReceiptHistoryRow,
 } from './match';
 import { readReconciliationThresholds } from './thresholds';
+import { reconciliationAlertIdentityKey } from './alert-identity';
+import { spendAlertSupersedeWhereForNewPoReconciliationSnapshot } from './supersede-open-recon-alerts';
 
 function fmtMoney(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -389,6 +391,11 @@ export async function runPoReconciliationSnapshot(args: {
           poReconciliationId: recon.id,
           kind: SpendAlertKind.RECONCILIATION_AMBIGUOUS,
           status: SpendAlertStatus.OPEN,
+          identityKey: reconciliationAlertIdentityKey({
+            tenantId: args.tenantId,
+            kind: SpendAlertKind.RECONCILIATION_AMBIGUOUS,
+            purchaseOrderId: args.purchaseOrderId,
+          }),
           title: 'Receipt ↔ PO mapping ambiguous',
           body:
             'Normalized item labels repeat unevenly between this PO and approved receipt lines. Map manually or adjust descriptions.',
@@ -419,6 +426,13 @@ export async function runPoReconciliationSnapshot(args: {
               poReconciliationId: recon.id,
               kind: SpendAlertKind.PRICE_OVER_PO_EXPECTED,
               status: SpendAlertStatus.OPEN,
+              identityKey: reconciliationAlertIdentityKey({
+                tenantId: args.tenantId,
+                kind: SpendAlertKind.PRICE_OVER_PO_EXPECTED,
+                purchaseOrderId: args.purchaseOrderId,
+                poLineItemId: pl.id,
+                vendorPriceHistoryId: hist.id,
+              }),
               title: `Unit price above PO expectation (${hist.itemNameNormalized})`,
               body: `PO ${fmtMoney(pl.unitCostCents)} vs receipt ${fmtMoney(hist.priceCents)} (+${fmtMoney(classified.priceVarianceCents)}).`,
               dedupeKey: reconciliationDedupeKey({
@@ -449,6 +463,13 @@ export async function runPoReconciliationSnapshot(args: {
               poReconciliationId: recon.id,
               kind: SpendAlertKind.QTY_MISMATCH,
               status: SpendAlertStatus.OPEN,
+              identityKey: reconciliationAlertIdentityKey({
+                tenantId: args.tenantId,
+                kind: SpendAlertKind.QTY_MISMATCH,
+                purchaseOrderId: args.purchaseOrderId,
+                poLineItemId: pl.id,
+                vendorPriceHistoryId: hist.id,
+              }),
               title: `Quantity mismatch (${hist.itemNameNormalized})`,
               body: classified.missingReceiptQty
                 ? `Receipt line omitted quantity — PO expects ${pl.qtyMilli / 1000} units.`
@@ -480,6 +501,12 @@ export async function runPoReconciliationSnapshot(args: {
             poReconciliationId: recon.id,
             kind: SpendAlertKind.UNMATCHED_RECEIPT_LINE,
             status: SpendAlertStatus.OPEN,
+            identityKey: reconciliationAlertIdentityKey({
+              tenantId: args.tenantId,
+              kind: SpendAlertKind.UNMATCHED_RECEIPT_LINE,
+              purchaseOrderId: args.purchaseOrderId,
+              vendorPriceHistoryId: hist.id,
+            }),
             title: `Receipt item not on PO (${hist.itemNameNormalized})`,
             body:
               'Approved OCR observation does not pair with a PO line using normalized descriptions.',
@@ -508,6 +535,12 @@ export async function runPoReconciliationSnapshot(args: {
             poReconciliationId: recon.id,
             kind: SpendAlertKind.MISSING_PO_RECEIPT_LINE,
             status: SpendAlertStatus.OPEN,
+            identityKey: reconciliationAlertIdentityKey({
+              tenantId: args.tenantId,
+              kind: SpendAlertKind.MISSING_PO_RECEIPT_LINE,
+              purchaseOrderId: args.purchaseOrderId,
+              poLineItemId: pl.id,
+            }),
             title: `Missing receipt coverage (${norm})`,
             body:
               'PO line has no OCR-approved receipt observation paired by normalized description.',
@@ -541,6 +574,11 @@ export async function runPoReconciliationSnapshot(args: {
           poReconciliationId: recon.id,
           kind: SpendAlertKind.PO_TOTAL_OVER_EXPECTED,
           status: SpendAlertStatus.OPEN,
+          identityKey: reconciliationAlertIdentityKey({
+            tenantId: args.tenantId,
+            kind: SpendAlertKind.PO_TOTAL_OVER_EXPECTED,
+            purchaseOrderId: args.purchaseOrderId,
+          }),
           title: 'Receipt totals exceed PO subtotal',
           body: `Summed receipt extensions ${fmtMoney(receiptExtendedSum)} vs PO subtotal ${fmtMoney(po.subtotalCents)}.`,
           dedupeKey: reconciliationDedupeKey({
@@ -556,6 +594,18 @@ export async function runPoReconciliationSnapshot(args: {
           },
         });
       }
+
+      await tx.spendAlert.updateMany({
+        where: spendAlertSupersedeWhereForNewPoReconciliationSnapshot({
+          tenantId: args.tenantId,
+          purchaseOrderId: args.purchaseOrderId,
+        }),
+        data: {
+          status: SpendAlertStatus.SUPERSEDED,
+          supersededAt: new Date(),
+          supersededByReconciliationId: recon.id,
+        },
+      });
 
       if (alertCreates.length > 0) {
         await tx.spendAlert.createMany({

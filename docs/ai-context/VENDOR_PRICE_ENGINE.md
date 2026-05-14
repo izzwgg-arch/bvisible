@@ -114,6 +114,7 @@ quantity-tier normalization yet.
 - Pairing engine: `apps/web/lib/reconciliation/match.ts` + runner `run.ts`. Consumes
   **`OCR_APPROVED` rows only** for the receipt side so email-regex observations stay out
   of this comparison unless operators promote data via OCR approve.
+- New reconciliation snapshots **supersede prior `OPEN` spend alerts** tied to older runs for the same PO (`SpendAlertStatus.SUPERSEDED`, `supersededByReconciliationId`), then insert alerts for the current snapshot (`dedupeKey` uniqueness). Operator-dismissed rows stay `DISMISSED`.
 - UX + actions: `apps/web/lib/reconciliation/actions.ts`; surfaces documented in
   `PO_SYSTEM.md` + `UI_SYSTEM.md`.
 
