@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma, POStatus } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney } from '@/lib/estimate/format';
 
 export const metadata = { title: 'Purchase orders' };
@@ -55,7 +56,7 @@ export default async function PurchaseOrdersPage({
             href="/purchase-orders/new"
             className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90"
           >
-            New PO
+            Create PO
           </Link>
         }
       />
@@ -71,74 +72,85 @@ export default async function PurchaseOrdersPage({
         </div>
       ) : null}
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
-                <th className="px-5 py-2 font-medium">Number</th>
-                <th className="px-5 py-2 font-medium">Vendor</th>
-                <th className="px-5 py-2 font-medium">Linked estimate</th>
-                <th className="px-5 py-2 font-medium">QBO #</th>
-                <th className="px-5 py-2 font-medium">Status</th>
-                <th className="px-5 py-2 font-medium text-right">Subtotal</th>
-                <th className="px-5 py-2 font-medium">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pos.map((p) => (
-                <tr
-                  key={p.id}
-                  className="border-b border-[var(--color-bv-border)] last:border-b-0 hover:bg-[var(--color-bv-bg)]"
-                >
-                  <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--color-bv-text)]">
-                    <Link
-                      href={`/purchase-orders/${p.id}` as never}
-                      className="hover:text-[var(--color-bv-accent)]"
-                    >
-                      {p.number}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-2.5 text-[var(--color-bv-text)]">
-                    {p.vendor?.name ?? <span className="text-[var(--color-bv-muted)]">—</span>}
-                  </td>
-                  <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
-                    {p.estimate ? (
+      {pos.length === 0 ? (
+        <EmptyState
+          title="No purchase orders yet"
+          description={
+            <>
+              POs record spending against vendors. Create one manually or convert an approved
+              estimate.{' '}
+              <Link href="/vendors" className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline">
+                Vendors
+              </Link>{' '}
+              should exist before you place orders.
+            </>
+          }
+          primaryAction={{ label: 'Create PO', href: '/purchase-orders/new' }}
+          secondaryAction={{ label: 'Go to estimates', href: '/estimates' }}
+        />
+      ) : (
+        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
+                  <th className="px-5 py-2 font-medium">Number</th>
+                  <th className="px-5 py-2 font-medium">Vendor</th>
+                  <th className="px-5 py-2 font-medium">Linked estimate</th>
+                  <th className="px-5 py-2 font-medium">QBO #</th>
+                  <th className="px-5 py-2 font-medium">Status</th>
+                  <th className="px-5 py-2 font-medium text-right">Subtotal</th>
+                  <th className="px-5 py-2 font-medium">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pos.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="border-b border-[var(--color-bv-border)] last:border-b-0 hover:bg-[var(--color-bv-bg)]"
+                  >
+                    <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--color-bv-text)]">
                       <Link
-                        href={`/estimates/${p.estimate.id}` as never}
-                        className="font-mono text-[12px] hover:text-[var(--color-bv-accent)]"
+                        href={`/purchase-orders/${p.id}` as never}
+                        className="hover:text-[var(--color-bv-accent)]"
                       >
-                        {p.estimate.number}
+                        {p.number}
                       </Link>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--color-bv-text)]">
-                    {p.qboPoNumber ?? <span className="text-[var(--color-bv-muted)]">—</span>}
-                  </td>
-                  <td className="px-5 py-2.5">
-                    <StatusPill status={p.status} />
-                  </td>
-                  <td className="px-5 py-2.5 text-right text-[var(--color-bv-text)] tabular-nums">
-                    {formatMoney(p.subtotalCents)}
-                  </td>
-                  <td className="px-5 py-2.5 text-[var(--color-bv-muted)] tabular-nums">
-                    {p.updatedAt.toISOString().slice(0, 10)}
-                  </td>
-                </tr>
-              ))}
-              {pos.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-[var(--color-bv-muted)]">
-                    No POs yet. Click “New PO” or convert an approved estimate.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                    </td>
+                    <td className="px-5 py-2.5 text-[var(--color-bv-text)]">
+                      {p.vendor?.name ?? <span className="text-[var(--color-bv-muted)]">—</span>}
+                    </td>
+                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
+                      {p.estimate ? (
+                        <Link
+                          href={`/estimates/${p.estimate.id}` as never}
+                          className="font-mono text-[12px] hover:text-[var(--color-bv-accent)]"
+                        >
+                          {p.estimate.number}
+                        </Link>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--color-bv-text)]">
+                      {p.qboPoNumber ?? <span className="text-[var(--color-bv-muted)]">—</span>}
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <StatusPill status={p.status} />
+                    </td>
+                    <td className="px-5 py-2.5 text-right text-[var(--color-bv-text)] tabular-nums">
+                      {formatMoney(p.subtotalCents)}
+                    </td>
+                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)] tabular-nums">
+                      {p.updatedAt.toISOString().slice(0, 10)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </>
   );
 }

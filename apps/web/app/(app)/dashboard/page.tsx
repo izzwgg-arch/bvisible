@@ -1,11 +1,15 @@
 import { requireUserForAppShell } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { Role } from '@bvisible/db';
+import { getDashboardMetrics } from '@/lib/dashboard/get-dashboard-metrics';
 import { VendorPriceAlerts } from './vendor-price-alerts';
+import { SpendOperationAlerts } from './reconciliation-widgets';
 import {
-  ReconciliationSummaryCards,
-  SpendOperationAlerts,
-} from './reconciliation-widgets';
+  DashboardFirstRunGuide,
+  DashboardMetricGrid,
+  DashboardQuickActions,
+  DashboardRecentActivity,
+} from './dashboard-widgets';
 
 export const metadata = { title: 'Dashboard' };
 export const dynamic = 'force-dynamic';
@@ -18,11 +22,23 @@ export default async function DashboardPage({
   const user = await requireUserForAppShell();
   const { error } = await searchParams;
 
+  const showOperator =
+    user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
+
+  const metrics =
+    user.tenantId != null
+      ? await getDashboardMetrics(user.tenantId, {
+          includeOperatorMetrics: showOperator,
+        })
+      : null;
+
+  const workspaceLabel = user.tenant.name;
+
   return (
     <>
       <PageHeader
         title={greeting(user.name, user.email)}
-        subtitle={`Company: ${user.tenant.name}`}
+        subtitle={`${workspaceLabel} · priorities and shortcuts`}
       />
       {error === 'forbidden' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
@@ -38,33 +54,29 @@ export default async function DashboardPage({
       ) : null}
       {error === 'no-tenant' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
-          That page needs a company workspace. Open{' '}
-          <strong>Company settings</strong> or contact an administrator.
+          That page needs a workspace. Open <strong>Company settings</strong> or contact an
+          administrator.
         </div>
       ) : null}
-      {user.tenantId ? (
-        <VendorPriceAlerts tenantId={user.tenantId} />
-      ) : null}
-      {user.tenantId &&
-      (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) ? (
+
+      {metrics ? (
         <>
-          <SpendOperationAlerts tenantId={user.tenantId} />
-          <ReconciliationSummaryCards tenantId={user.tenantId} />
+          <DashboardFirstRunGuide metrics={metrics} />
+          <DashboardQuickActions role={user.role} hasClients={metrics.clientCount > 0} />
+          <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
+          <DashboardRecentActivity rows={metrics.recentActivity} />
         </>
       ) : null}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card title="Account" body={`Signed in as ${user.email}`} mono={user.id} />
-        <Card
-          title="Role"
-          body={prettyRole(user.role)}
-          mono={`company: ${user.tenant.slug}`}
-        />
-        <Card
-          title="Health"
-          body="API at /api/health. Each deploy runs migrate-deploy, db-verify, and a healthcheck before going live."
-          mono="GET /api/health"
-        />
-      </div>
+
+      {user.tenantId ? (
+        <div id="vendor-price-alerts" className="scroll-mt-8">
+          <VendorPriceAlerts tenantId={user.tenantId} />
+        </div>
+      ) : null}
+
+      {user.tenantId && showOperator ? (
+        <SpendOperationAlerts tenantId={user.tenantId} />
+      ) : null}
     </>
   );
 }
@@ -74,42 +86,5 @@ function greeting(name: string | null, email: string): string {
   const who = (name || fallback).split(' ')[0] ?? fallback;
   const hour = new Date().getHours();
   const tod = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
-  return `Good ${tod}, ${who}.`;
-}
-
-function prettyRole(role: Role): string {
-  switch (role) {
-    case Role.SUPER_ADMIN:
-      return 'Super admin';
-    case Role.ADMIN:
-      return 'Admin';
-    case Role.USER:
-      return 'User';
-  }
-}
-
-function Card({
-  title,
-  body,
-  mono,
-}: {
-  title: string;
-  body: string;
-  mono?: string;
-}) {
-  return (
-    <article className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-      <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-        {title}
-      </h2>
-      <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--color-bv-muted)]">
-        {body}
-      </p>
-      {mono ? (
-        <div className="mt-4 inline-flex items-center rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 font-mono text-[12px] text-[var(--color-bv-text)]">
-          {mono}
-        </div>
-      ) : null}
-    </article>
-  );
+  return `Good ${tod}, ${who}`;
 }

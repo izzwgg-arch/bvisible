@@ -5,6 +5,34 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Dashboard + app shell SaaS polish
+
+**Scope**
+
+- Polished **app shell** (`apps/web/components/app-shell.tsx`): wider sidebar, Workspace / Administration nav groups via `<NavLinks sections>`, clearer active link styling, refined header (B Visible + workspace subtitle), upgraded `<UserMenu>` (initials tile, role badge, Sign out contrast). Brand eyebrow → **Operations platform** (`brand.tsx`).
+- **Dashboard**: real DB metrics (`apps/web/lib/dashboard/get-dashboard-metrics.ts`) + `dashboard-widgets.tsx` — open estimates/POs, vendor price alert count (links to `#vendor-price-alerts`), pending OCR + unreconciled PO counts for ADMIN+, recent `audit_logs` activity, quick actions (New estimate / PO / client / vendor / Configure inbox), first-run checklist; removed redundant `ReconciliationSummaryCards`; retained `VendorPriceAlerts` + `SpendOperationAlerts`.
+- **Empty states**: shared `<EmptyState>` (`components/app/empty-state.tsx`); clients/vendors/estimates/purchase-orders list pages; Receipt OCR index; richer inbox review grid empties; reconciliation spend empty guidance; vendor alerts empty card on dashboard.
+- **Settings**: label **Company** (was Tenant); human-readable role.
+
+**Files**
+
+- `apps/web/{components/{app-shell.tsx,app/{nav-links.tsx,user-menu.tsx},brand.tsx,app/empty-state.tsx},app/(app)/dashboard/{page.tsx,dashboard-widgets.tsx,vendor-price-alerts.tsx,reconciliation-widgets.tsx},lib/dashboard/get-dashboard-metrics.ts,app/(app)/{clients,vendors,estimates,purchase-orders}/page.tsx,app/(app)/admin/{ocr-review/page.tsx,email-ingestion/review-table.tsx,reconciliation/page.tsx},settings/page.tsx}`
+- `docs/ai-context/{UI_SYSTEM.md,CHANGELOG_AI.md}`
+
+**Risks**
+
+- Low–medium: dashboard adds parallel Prisma reads on `/dashboard` (counts + audit tail); acceptable for operator scale.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run build` (pass).
+
+**Remaining gaps**
+
+- App shell grid layout not tuned for very narrow mobile breakpoints (desktop-first ops UI).
+
+---
+
 ## 2026-05-14 — Single-company mode (internal `tenantId` preserved)
 
 **Scope**

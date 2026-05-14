@@ -14,7 +14,7 @@ export function Brand({ className }: { className?: string }) {
           B Visible
         </span>
         <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-          Operations
+          Operations platform
         </span>
       </div>
     </div>

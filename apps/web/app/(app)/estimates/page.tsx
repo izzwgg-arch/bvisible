@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma, EstimateStatus } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney } from '@/lib/estimate/format';
 
 export const metadata = { title: 'Estimates' };
@@ -50,7 +51,7 @@ export default async function EstimatesPage() {
               href="/estimates/new"
               className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90"
             >
-              New estimate
+              Create estimate
             </Link>
           ) : (
             <Link
@@ -63,61 +64,82 @@ export default async function EstimatesPage() {
         }
       />
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
-                <th className="px-5 py-2 font-medium">Number</th>
-                <th className="px-5 py-2 font-medium">Title</th>
-                <th className="px-5 py-2 font-medium">Client</th>
-                <th className="px-5 py-2 font-medium">Status</th>
-                <th className="px-5 py-2 font-medium text-right">Sell price</th>
-                <th className="px-5 py-2 font-medium text-right">Cost</th>
-                <th className="px-5 py-2 font-medium">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {estimates.map((e) => (
-                <tr key={e.id} className="border-b border-[var(--color-bv-border)] last:border-b-0 hover:bg-[var(--color-bv-bg)]">
-                  <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--color-bv-text)]">
-                    <Link href={`/estimates/${e.id}` as never} className="hover:text-[var(--color-bv-accent)]">
-                      {e.number}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-2.5 text-[var(--color-bv-text)]">
-                    <Link href={`/estimates/${e.id}` as never} className="hover:text-[var(--color-bv-accent)]">
-                      {e.title}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">{e.client.companyName}</td>
-                  <td className="px-5 py-2.5">
-                    <StatusPill status={e.status} />
-                  </td>
-                  <td className="px-5 py-2.5 text-right font-medium text-[var(--color-bv-text)] tabular-nums">
-                    {formatMoney(e.finalPriceCents)}
-                  </td>
-                  <td className="px-5 py-2.5 text-right text-[var(--color-bv-muted)] tabular-nums">
-                    {formatMoney(e.subtotalCostCents)}
-                  </td>
-                  <td className="px-5 py-2.5 text-[var(--color-bv-muted)] tabular-nums">
-                    {e.updatedAt.toISOString().slice(0, 10)}
-                  </td>
+      {estimates.length === 0 ? (
+        <EmptyState
+          title="No estimates yet"
+          description={
+            hasClients > 0 ? (
+              <>
+                Estimates are quotes with line-item costing. Create one to send pricing to a client,
+                then convert an approved estimate into purchase orders when you&apos;re ready to buy.
+              </>
+            ) : (
+              <>
+                Add a{' '}
+                <Link href="/clients/new" className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline">
+                  client
+                </Link>{' '}
+                first — every estimate belongs to a customer record.
+              </>
+            )
+          }
+          primaryAction={
+            hasClients > 0
+              ? { label: 'Create estimate', href: '/estimates/new' }
+              : { label: 'Create client', href: '/clients/new' }
+          }
+          secondaryAction={
+            hasClients > 0 ? { label: 'Create client', href: '/clients/new' } : undefined
+          }
+        />
+      ) : (
+        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
+                  <th className="px-5 py-2 font-medium">Number</th>
+                  <th className="px-5 py-2 font-medium">Title</th>
+                  <th className="px-5 py-2 font-medium">Client</th>
+                  <th className="px-5 py-2 font-medium">Status</th>
+                  <th className="px-5 py-2 font-medium text-right">Sell price</th>
+                  <th className="px-5 py-2 font-medium text-right">Cost</th>
+                  <th className="px-5 py-2 font-medium">Updated</th>
                 </tr>
-              ))}
-              {estimates.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-[var(--color-bv-muted)]">
-                    {hasClients > 0
-                      ? 'No estimates yet. Click “New estimate” to start one.'
-                      : 'No estimates yet. Add a client first.'}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {estimates.map((e) => (
+                  <tr key={e.id} className="border-b border-[var(--color-bv-border)] last:border-b-0 hover:bg-[var(--color-bv-bg)]">
+                    <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--color-bv-text)]">
+                      <Link href={`/estimates/${e.id}` as never} className="hover:text-[var(--color-bv-accent)]">
+                        {e.number}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-2.5 text-[var(--color-bv-text)]">
+                      <Link href={`/estimates/${e.id}` as never} className="hover:text-[var(--color-bv-accent)]">
+                        {e.title}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">{e.client.companyName}</td>
+                    <td className="px-5 py-2.5">
+                      <StatusPill status={e.status} />
+                    </td>
+                    <td className="px-5 py-2.5 text-right font-medium text-[var(--color-bv-text)] tabular-nums">
+                      {formatMoney(e.finalPriceCents)}
+                    </td>
+                    <td className="px-5 py-2.5 text-right text-[var(--color-bv-muted)] tabular-nums">
+                      {formatMoney(e.subtotalCostCents)}
+                    </td>
+                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)] tabular-nums">
+                      {e.updatedAt.toISOString().slice(0, 10)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </>
   );
 }

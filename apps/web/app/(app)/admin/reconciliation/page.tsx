@@ -69,9 +69,22 @@ export default async function AdminReconciliationInboxPage() {
           Top price variances and coverage gaps from the latest snapshots.
         </p>
         {openAlerts.length === 0 ? (
-          <p className="mt-4 text-[13px] text-[var(--color-bv-muted)]">
-            No open alerts.
-          </p>
+          <div className="mt-4 rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-5 py-8 shadow-[var(--shadow-bv-card)]">
+            <p className="text-[13.5px] font-medium text-[var(--color-bv-text)]">
+              Spend inbox is quiet
+            </p>
+            <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--color-bv-muted)]">
+              Alerts appear when deterministic reconciliation spots variance or coverage gaps between PO
+              lines and approved receipts. Approve receipt OCR on a PO or refresh reconciliation from the
+              PO detail screen to generate the next snapshot.
+            </p>
+            <Link
+              href="/purchase-orders"
+              className="mt-4 inline-flex text-[13px] font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+            >
+              Go to purchase orders
+            </Link>
+          </div>
         ) : (
           <ul className="mt-4 flex flex-col gap-2">
             {openAlerts.map((a) => (

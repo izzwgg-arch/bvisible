@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { ChangePasswordForm } from './change-password-form';
 import { logoutAction } from './actions';
+import { Role } from '@bvisible/db';
 
 export const metadata = { title: 'Settings' };
 export const dynamic = 'force-dynamic';
@@ -25,10 +26,10 @@ export default async function SettingsPage() {
             <dd className="text-[var(--color-bv-text)]">{user.name || '—'}</dd>
             <dt className="text-[var(--color-bv-muted)]">Email</dt>
             <dd className="text-[var(--color-bv-text)]">{user.email}</dd>
-            <dt className="text-[var(--color-bv-muted)]">Tenant</dt>
+            <dt className="text-[var(--color-bv-muted)]">Company</dt>
             <dd className="text-[var(--color-bv-text)]">{user.tenant?.name ?? '— (system)'}</dd>
             <dt className="text-[var(--color-bv-muted)]">Role</dt>
-            <dd className="text-[var(--color-bv-text)]">{user.role}</dd>
+            <dd className="text-[var(--color-bv-text)]">{roleLabel(user.role)}</dd>
           </dl>
           <form action={logoutAction} className="mt-6">
             <button
@@ -54,4 +55,15 @@ export default async function SettingsPage() {
       </div>
     </>
   );
+}
+
+function roleLabel(role: Role): string {
+  switch (role) {
+    case Role.SUPER_ADMIN:
+      return 'Super admin';
+    case Role.ADMIN:
+      return 'Admin';
+    case Role.USER:
+      return 'User';
+  }
 }

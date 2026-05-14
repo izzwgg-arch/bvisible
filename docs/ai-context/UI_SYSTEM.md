@@ -20,15 +20,13 @@ The look, feel, and behavior of the web app.
   (`apps/web/middleware.ts`) gates the protected paths with a cookie
   presence check; the page RSC re-validates against the DB via
   `requireUser()` / `requireUserForAppShell()` for chrome that needs a resolved **company** label.
-- **App shell** at `apps/web/components/app-shell.tsx` — fixed 240px
-  sidebar, role-aware nav via `<NavLinks>` (active route highlighted
-  from `usePathname()`), `<UserMenu>` at sidebar bottom (server
-  component) with email/**company**/role label, Settings link, and a
-  no-JS sign-out `<form action={logoutAction}>`. Topbar shows
-  "B Visible" eyebrow + **company** label + healthy pill.
-- **PageHeader** export from `app-shell.tsx` — per-page H1/subtitle/
-  actions slot used inside main content. Pages own their own H1; the
-  shell only renders chrome.
+- **App shell** at `apps/web/components/app-shell.tsx` — ~268px sidebar with
+  soft shadow, grouped nav (**Workspace** vs **Administration**) via
+  `<NavLinks sections={…}>`, active route ring/highlight from `usePathname()`,
+  `<UserMenu>` at the sidebar bottom (initials avatar, workspace line, role chip,
+  Settings + no-JS **Sign out** via `<form action={logoutAction}>`). Top bar:
+  **B Visible** product title + workspace name subtitle (no decorative health pill).
+- **PageHeader** export from `app-shell.tsx` — larger title rhythm; per-page H1/subtitle/actions inside main.
 - **Auth card** at `apps/web/components/auth/auth-card.tsx` — centered
   420px card layout used by login/forgot/reset/invite, with the brand
   mark above and an optional footer link below.
@@ -45,16 +43,23 @@ The look, feel, and behavior of the web app.
 - **Form helpers**: `<FormError>` (red banner) and `<FormNotice>`
   (info/success banner) at `apps/web/components/auth/form-error.tsx`.
 - **Brand mark** at `apps/web/components/brand.tsx` — square accent tile
-  + wordmark + "Operations" eyebrow.
+  + wordmark + **Operations platform** eyebrow.
 - **Design tokens** defined in `apps/web/app/globals.css` under `@theme`
   (CSS custom properties): `--color-bv-bg`, `--color-bv-surface`,
   `--color-bv-border`, `--color-bv-text`, `--color-bv-muted`,
   `--color-bv-accent`, `--radius-bv` (12px), `--shadow-bv-card`,
   `--shadow-bv-elevated`, and `--font-sans` (Inter stack).
 - **Utility helper** `cn()` at `apps/web/lib/cn.ts` (clsx + tailwind-merge).
-- **Empty states** are inline in their tables (e.g. "No users yet.") —
-  the dedicated `<EmptyState>` component lands when the first list view
-  needs more than one line.
+- **Empty states** — reusable `<EmptyState>` at `apps/web/components/app/empty-state.tsx`
+  for clients/vendors/estimates/PO list pages (replace bare table placeholders when a list is empty).
+  Admin surfaces (Receipt OCR index, email ingestion review grid, reconciliation spend inbox,
+  vendor price alerts on the dashboard) use the same card language + next-step CTAs where helpful.
+- **Dashboard** (`apps/web/app/(app)/dashboard/page.tsx`) — server-loaded **real counts**
+  via `getDashboardMetrics()` in `apps/web/lib/dashboard/get-dashboard-metrics.ts`: open estimates,
+  open POs, vendor price notifications (`dismissedAt: null`), pending OCR queue (ADMIN+),
+  unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
+  recent rows from `audit_logs`, plus quick actions and first-run guidance when the workspace is empty.
+  Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
 - **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel}.tsx`:
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
@@ -103,8 +108,9 @@ The look, feel, and behavior of the web app.
   Approving also enqueues a replay-safe `POReconciliation` snapshot for that PO batch.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
   `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /
-  `SUPERSEDED` / `DISMISSED` chips for audit), dashboard summary cards + operational spend alert
-  strip (`OPEN` only). Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
+  `SUPERSEDED` / `DISMISSED` chips for audit). The **dashboard** links into this inbox via the
+  unreconciled PO metric for admins; **SpendOperationAlerts** (`OPEN` only) lists actionable rows on `/dashboard`.
+  Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
   receipt / PO rows, dismiss alerts, or stamp the PO reconciled — **no automatic PO /
   estimate mutation**.
 - **Per-tenant inbox config** at `/admin/tenants/[id]/email-inbox`

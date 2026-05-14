@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { startTransition, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -133,9 +134,23 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
   }
 
   if (rows.length === 0) {
+    const guide = inboxEmptyGuidance(filter);
     return (
-      <div className="rounded-[8px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-8 text-center text-[13px] text-[var(--color-bv-muted)]">
-        No emails in the {filter} bucket.
+      <div className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-8 py-12 text-center shadow-[var(--shadow-bv-card)]">
+        <h3 className="text-[16px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+          {guide.title}
+        </h3>
+        <p className="mx-auto mt-2 max-w-lg text-[13.5px] leading-relaxed text-[var(--color-bv-muted)]">
+          {guide.body}
+        </p>
+        {guide.href ? (
+          <Link
+            href={guide.href as never}
+            className="mt-6 inline-flex items-center justify-center rounded-[10px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-[var(--shadow-bv-card)] transition-colors hover:opacity-92"
+          >
+            {guide.linkLabel}
+          </Link>
+        ) : null}
       </div>
     );
   }
@@ -315,4 +330,40 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
       })}
     </ul>
   );
+}
+
+function inboxEmptyGuidance(
+  filter: ReviewTableProps['filter'],
+): { title: string; body: string; href?: string; linkLabel?: string } {
+  switch (filter) {
+    case 'unmatched':
+      return {
+        title: 'Nothing needs matching right now',
+        body: "When vendor mail arrives and automatic PO matching cannot finish, messages appear here. Pick the correct PO to attach vendors' replies and documents to the record.",
+        href: '/purchase-orders',
+        linkLabel: 'Browse purchase orders',
+      };
+    case 'matched':
+      return {
+        title: 'No matched mail in view',
+        body: 'Matched emails are filed on their PO timelines. Switch filters or wait for the next inbound tick.',
+      };
+    case 'failed':
+      return {
+        title: 'No failed processing runs',
+        body: 'Failures appear here when ingestion hits an error mid-flight. Use Retry on a row after fixing connectivity or configuration.',
+        href: '/admin/email-ingestion',
+        linkLabel: 'Email ingestion overview',
+      };
+    case 'dismissed':
+      return {
+        title: 'No dismissed messages',
+        body: 'Dismissed mail stays for audit but leaves the active queues. Use this tab when you need to confirm junk was intentionally skipped.',
+      };
+    default:
+      return {
+        title: 'No mail loaded',
+        body: 'Adjust the filter chips above to see unmatched, matched, failed, or dismissed buckets.',
+      };
+  }
 }

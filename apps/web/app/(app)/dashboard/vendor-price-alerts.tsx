@@ -40,7 +40,19 @@ export async function VendorPriceAlerts({ tenantId }: { tenantId: string }) {
     },
   });
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    return (
+      <section className="mb-6 rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-8 shadow-[var(--shadow-bv-card)]">
+        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+          Vendor price alerts
+        </h2>
+        <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-[var(--color-bv-muted)]">
+          No active alerts. When inbound mail or receipt OCR surfaces a lower unit price than history,
+          a notification appears here for operator review (nothing updates automatically).
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 p-5 shadow-[var(--shadow-bv-card)]">
