@@ -1,0 +1,10 @@
+fix(email-ingest): whitelist internal tick route in middleware
+
+Edge middleware was redirecting POST /api/internal/email-ingest/tick to
+/login because the route is under /api but isn't in the PUBLIC_PATHS
+list. Add it. The route handler still authenticates via constant-time
+compare against INGEST_TICK_SECRET; the 127.0.0.1 bind + UFW keep the
+endpoint off the public internet.
+
+Verified locally: pnpm run build clean, route appears under "Routes
+(app)" without warnings.

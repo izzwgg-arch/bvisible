@@ -16,6 +16,12 @@ const PUBLIC_PATHS = new Set<string>([
   '/login',
   '/forgot',
   '/api/health',
+  // Internal-only ingest tick. Authenticated by the route handler via
+  // constant-time compare against INGEST_TICK_SECRET (apps/web/app/api/
+  // internal/email-ingest/tick/route.ts). The middleware can't see the
+  // header conveniently and shouldn't redirect a service-to-service POST
+  // to /login. The 127.0.0.1 bind + UFW keep this off the public net.
+  '/api/internal/email-ingest/tick',
 ]);
 
 const PUBLIC_PREFIXES = ['/reset/', '/invite/'];
