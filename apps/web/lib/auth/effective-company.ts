@@ -1,6 +1,6 @@
 import { Role } from '@bvisible/db';
 import {
-  ensureDefaultCompanyUncached,
+  ensureDefaultCompany,
   type DefaultCompanyRow,
 } from '@/lib/company/default-company';
 
@@ -25,7 +25,7 @@ export async function resolveEffectiveCompany(user: {
   tenant: TenantSummary | null;
   role: Role;
 }): Promise<{ tenantId: string; tenant: TenantSummary }> {
-  const defaultCompany = await ensureDefaultCompanyUncached();
+  const defaultCompany = await ensureDefaultCompany();
 
   if (user.role === Role.SUPER_ADMIN) {
     return { tenantId: defaultCompany.id, tenant: asTenantShape(defaultCompany) };

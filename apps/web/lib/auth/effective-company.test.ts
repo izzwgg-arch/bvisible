@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/company/default-company', () => ({
-  ensureDefaultCompanyUncached: vi.fn(async () => ({
+  ensureDefaultCompany: vi.fn(async () => ({
     id: 'default-id',
     name: 'B Visible',
     slug: 'bvisible',
@@ -10,9 +10,9 @@ vi.mock('@/lib/company/default-company', () => ({
 
 import { Role } from '@bvisible/db';
 import { resolveEffectiveCompany } from './effective-company';
-import { ensureDefaultCompanyUncached } from '@/lib/company/default-company';
+import { ensureDefaultCompany } from '@/lib/company/default-company';
 
-const mockedEnsure = vi.mocked(ensureDefaultCompanyUncached);
+const mockedEnsure = vi.mocked(ensureDefaultCompany);
 
 describe('resolveEffectiveCompany', () => {
   beforeEach(() => {
