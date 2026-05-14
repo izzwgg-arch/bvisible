@@ -37,5 +37,11 @@ export async function acquireTenantSequenceLock(
 ): Promise<void> {
   const key = tenantLockKey(tenantId);
   const tag = NAMESPACE_TAGS[kind];
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${key}, ${tag})`;
+  // Prisma may bind JS numbers as BIGINT parameters; Postgres only defines
+  // pg_advisory_xact_lock(integer, integer). Cast explicitly for compatibility.
+  await tx.$executeRawUnsafe(
+    'SELECT pg_advisory_xact_lock($1::integer, $2::integer)',
+    key,
+    tag
+  );
 }

@@ -36,6 +36,7 @@ Modified:
 
 - `apps/web/package.json`, root `package.json`, `pnpm-lock.yaml` — Vitest + `pnpm run test`.
 - `.gitignore` — ignore local enqueue helpers.
+- `apps/web/lib/sequence/lock.ts` — explicit integer casts for `pg_advisory_xact_lock` (needed after verification script exercised `nextPoNumber` against Postgres 16).
 - `docs/ai-context/{VENDOR_PRICE_ENGINE,DEBUGGING,API_STRUCTURE,UI_SYSTEM,EMAIL_INGESTION,CHANGELOG_AI}.md`
 
 Removed:
@@ -50,7 +51,7 @@ Removed:
 **Verification**
 
 - Local: `pnpm install --frozen-lockfile`, `pnpm run test`, `pnpm run build`.
-- Server: run `.verify-vendor-pricing.sh` after deploy with PM2 healthy.
+- Server: run `.verify-vendor-pricing.sh` after deploy with PM2 healthy (script calls `nextPoNumber`; ensure advisory-lock SQL uses `$n::integer` casts — see `apps/web/lib/sequence/lock.ts`).
 
 ---
 
