@@ -403,6 +403,7 @@ model VendorCatalogItem {
   priceNotifications VendorPriceNotification[]
   @@unique([tenantId, vendorId, nameNormalized])
   @@index([tenantId, vendorId])
+  @@index([tenantId, nameNormalized])
   @@map("vendor_catalog_items")
 }
 
@@ -418,6 +419,7 @@ model VendorItemAlias {
   catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
   @@unique([tenantId, vendorId, aliasNormalized])
   @@index([tenantId, vendorCatalogItemId])
+  @@index([tenantId, aliasNormalized])
   @@map("vendor_item_aliases")
 }
 

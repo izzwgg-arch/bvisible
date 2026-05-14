@@ -24,6 +24,8 @@ export interface CellInputProps {
   maxLength?: number;
   disabled?: boolean;
   className?: string;
+  /** Non-invasive hook for parent features (e.g. pricing intel); must not steal focus. */
+  onCellFocus?: () => void;
 }
 
 export function CellInput({
@@ -37,6 +39,7 @@ export function CellInput({
   cellGrid,
   maxLength,
   disabled,
+  onCellFocus,
   className,
 }: CellInputProps) {
   return (
@@ -44,6 +47,7 @@ export function CellInput({
       type="text"
       value={value}
       onChange={(e) => onChange(e.currentTarget.value)}
+      onFocus={() => onCellFocus?.()}
       placeholder={placeholder}
       aria-label={ariaLabel}
       disabled={disabled}
@@ -92,6 +96,8 @@ export interface NumericCellProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** Called when cell receives focus (spreadsheet intel hooks). */
+  onCellFocus?: () => void;
 }
 
 export function NumericCell({
@@ -107,6 +113,7 @@ export function NumericCell({
   disabled,
   placeholder,
   className,
+  onCellFocus,
 }: NumericCellProps) {
   const [raw, setRaw] = useState<string>(() => format(value));
   const focused = useRef(false);
@@ -127,6 +134,7 @@ export function NumericCell({
       onChange={(e) => setRaw(e.currentTarget.value)}
       onFocus={(e) => {
         focused.current = true;
+        onCellFocus?.();
         // Select the contents on focus so typing replaces, like Excel.
         try {
           e.currentTarget.select();

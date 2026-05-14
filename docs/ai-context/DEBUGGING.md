@@ -482,6 +482,14 @@ pnpm exec tsx --tsconfig tsconfig.json scripts/verify-vendor-pricing.ts
 
 Expected terminal output ends with `PASS vendor-pricing DB verification`.
 
+**Estimate catalog lookup unit checks (no DB)**
+
+```bash
+pnpm --filter @bvisible/web run verify:vendor-catalog
+```
+
+Covers deterministic catalog merge ordering + trend thresholds used by the estimate editor intelligence rail.
+
 **Inspect unread lower-price notifications** (adjust `tenantId`):
 
 ```bash

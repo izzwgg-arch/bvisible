@@ -873,6 +873,7 @@ model VendorCatalogItem {
   ocrLineItemsMapped OcrLineItem[]
 
   @@unique([tenantId, vendorId, nameNormalized])
+  @@index([tenantId, nameNormalized])
   @@index([tenantId, vendorId])
   @@map("vendor_catalog_items")
 }
@@ -894,6 +895,7 @@ model VendorItemAlias {
 
   @@unique([tenantId, vendorId, aliasNormalized])
   @@index([tenantId, vendorCatalogItemId])
+  @@index([tenantId, aliasNormalized])
   @@map("vendor_item_aliases")
 }
 

@@ -55,9 +55,10 @@ The look, feel, and behavior of the web app.
 - **Empty states** are inline in their tables (e.g. "No users yet.") —
   the dedicated `<EmptyState>` component lands when the first list view
   needs more than one line.
-- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel}.tsx`:
+- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel}.tsx`:
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
+  - **Material-row vendor intelligence** — lightweight aside card below the grid when the estimator focuses a material description or qty cell (debounced server lookups via `lookupVendorCatalogForEstimateAction`; OCR_APPROVED catalog observations only). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`.
   - Grid uses `<table>` semantics (one DOM node per cell) and the shared
     cell primitives at `apps/web/components/grid/cell-input.tsx` —
     `<CellInput>` for text, `<NumericCell>` for money / qty / multiplier.

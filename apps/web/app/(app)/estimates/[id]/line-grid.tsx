@@ -28,6 +28,8 @@ interface LineGridProps {
   lines: ReadonlyArray<DraftLine>;
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   lineCosts: Record<string, number>;
+  /** MATERIAL rows report id; other kinds pass null so the intel rail resets. */
+  onVendorIntelLineFocus?: (lineId: string | null) => void;
   dispatch: React.Dispatch<
     | { type: 'add-line'; kind: EstimateLineKind }
     | { type: 'remove-line'; id: string }
@@ -41,7 +43,13 @@ interface LineGridProps {
   >;
 }
 
-export function LineGrid({ lines, machines, lineCosts, dispatch }: LineGridProps) {
+export function LineGrid({
+  lines,
+  machines,
+  lineCosts,
+  onVendorIntelLineFocus,
+  dispatch,
+}: LineGridProps) {
   const machinesById = useMemo(
     () => new Map(machines.map((m) => [m.id, m])),
     [machines]
@@ -101,6 +109,10 @@ export function LineGrid({ lines, machines, lineCosts, dispatch }: LineGridProps
               {lines.map((line, idx) => {
                 const cost = lineCosts[line.id] ?? 0;
                 const isMachine = line.kind === EstimateLineKind.MACHINE;
+                const reportIntelFocus = () =>
+                  onVendorIntelLineFocus?.(
+                    line.kind === EstimateLineKind.MATERIAL ? line.id : null,
+                  );
                 return (
                   <tr
                     key={line.id}
@@ -143,6 +155,7 @@ export function LineGrid({ lines, machines, lineCosts, dispatch }: LineGridProps
                             patch: { description: v },
                           })
                         }
+                        onCellFocus={reportIntelFocus}
                         ariaLabel={`Row ${idx + 1} description`}
                         cellRow={idx}
                         cellCol="description"
@@ -190,6 +203,7 @@ export function LineGrid({ lines, machines, lineCosts, dispatch }: LineGridProps
                             patch: { qtyMilli: v },
                           })
                         }
+                        onCellFocus={reportIntelFocus}
                         format={formatQty}
                         parse={parseQty}
                         ariaLabel={`Row ${idx + 1} quantity`}

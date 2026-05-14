@@ -16,6 +16,7 @@ import {
 import { createPoFromEstimateAction } from '../../purchase-orders/actions';
 import { LineGrid } from './line-grid';
 import { TotalsPanel } from './totals-panel';
+import { VendorCatalogIntelPanel } from './vendor-catalog-intel-panel';
 import {
   defaultDescription,
   defaultUnitCostCents,
@@ -207,6 +208,7 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
 
 export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
   const [state, dispatch] = useReducer(reducer, bootstrap, initialFromBootstrap);
+  const [vendorIntelLineId, setVendorIntelLineId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveEstimateState>({ error: null });
   const [saving, setSaving] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -234,6 +236,11 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
       lines,
     });
   }, [state.lines, state.multiplierMilli, state.designFlatCents]);
+
+  const vendorIntelLine = useMemo(() => {
+    if (!vendorIntelLineId) return null;
+    return state.lines.find((l) => l.id === vendorIntelLineId) ?? null;
+  }, [vendorIntelLineId, state.lines]);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -396,8 +403,10 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
           lines={state.lines}
           machines={bootstrap.machines}
           lineCosts={computed.lineCosts}
+          onVendorIntelLineFocus={setVendorIntelLineId}
           dispatch={dispatch}
         />
+        <VendorCatalogIntelPanel line={vendorIntelLine} />
       </div>
 
       <TotalsPanel

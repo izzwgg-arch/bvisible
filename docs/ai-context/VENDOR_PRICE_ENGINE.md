@@ -109,6 +109,18 @@ quantity-tier normalization yet.
   never writes pricing rows.
 - **Verification (no OCR binaries):** `bash server-scripts/db/.verify-ocr-receipt-parse.sh`.
 
+## Estimate editor catalog hints (read-only)
+
+- Service: `lookupVendorCatalogIntelligence` in `apps/web/lib/vendor-pricing/catalog-lookup.ts`
+  (deterministic exact → alias → **prefix** on normalized keys; **tenant scoped**
+  on every query).
+- Trends / spikes: `apps/web/lib/vendor-pricing/trends.ts` — compares latest OCR-approved
+  unit observation vs rolling average / prior point using fixed basis-point thresholds
+  plus coefficient-of-variation volatility — **no embeddings**, **no substring scoring**.
+- UI: debounced rail under the estimate line grid (`vendor-catalog-intel-panel.tsx`);
+  never auto-fills costs or moves focus. Automated regression:
+  `pnpm --filter @bvisible/web run verify:vendor-catalog`.
+
 ## Phase 14 — PO reconciliation (deterministic, human-gated)
 
 - Pairing engine: `apps/web/lib/reconciliation/match.ts` + runner `run.ts`. Consumes

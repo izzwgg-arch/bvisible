@@ -5,6 +5,36 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-19 — Estimate editor vendor catalog intelligence rail
+
+**Scope**
+
+- Deterministic `lookupVendorCatalogIntelligence` service (`apps/web/lib/vendor-pricing/catalog-lookup.ts`): normalized exact / alias / prefix catalog matching + capped `OCR_APPROVED` history reads per tenant.
+- Trend helpers (`apps/web/lib/vendor-pricing/trends.ts`): spike vs 90d avg/prev + volatility via coefficient of variation (basis-point gates).
+- Estimate UX: debounced read-only panel under the material grid; focuses tracked via optional cell hooks (`CellInput` / `NumericCell`) without changing spreadsheet navigation.
+- Performance indexes: `(tenantId, nameNormalized)` on `vendor_catalog_items`, `(tenantId, aliasNormalized)` on `vendor_item_aliases`.
+
+**Migration:** `packages/db/prisma/migrations/20260519103000_vendor_catalog_lookup_indexes/migration.sql`.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:vendor-catalog`
+
+**Files**
+
+- `apps/web/lib/vendor-pricing/{catalog-lookup.ts,catalog-intel-types.ts,trends.ts}`
+- `apps/web/lib/vendor-pricing/{catalog-lookup.test.ts,trends.test.ts}`
+- `apps/web/lib/estimate/vendor-catalog-intel-action.ts`
+- `apps/web/app/(app)/estimates/[id]/{vendor-catalog-intel-panel.tsx,line-grid.tsx,editor.tsx}`
+- `apps/web/components/grid/cell-input.tsx`
+- `apps/web/package.json`, `packages/db/prisma/schema.prisma`, migration `20260519103000_vendor_catalog_lookup_indexes`
+
+**Docs**
+
+- `ESTIMATE_ENGINE.md`, `VENDOR_PRICE_ENGINE.md`, `UI_SYSTEM.md`, `DATA_MODEL.md`, `DEBUGGING.md`
+
+---
+
 ## 2026-05-18 — SpendAlert `SUPERSEDED` lifecycle + stale OPEN closure
 
 **Migration:** `packages/db/prisma/migrations/20260518140000_spend_alert_superseded_lifecycle/migration.sql`.
