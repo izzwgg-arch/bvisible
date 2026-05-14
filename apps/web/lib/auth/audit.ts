@@ -33,7 +33,15 @@ export type AuditAction =
   | 'po_attachment_added'
   | 'po_attachment_deleted'
   | 'po_note_added'
-  | 'po_deleted';
+  | 'po_deleted'
+  | 'email_ingest_tick'
+  | 'email_ingest_message_ingested'
+  | 'email_ingest_message_matched'
+  | 'email_ingest_message_failed'
+  | 'email_ingest_manual_link'
+  | 'email_ingest_dismissed'
+  | 'email_ingest_retried'
+  | 'tenant_inbox_configured';
 
 export interface AuditEntry {
   action: AuditAction;

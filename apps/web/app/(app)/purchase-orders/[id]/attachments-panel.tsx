@@ -17,8 +17,12 @@ interface AttachmentRow {
   kind: POAttachmentKind;
   createdAt: string;
   uploadedByLabel: string;
+  sourceEmailId: string | null;
 }
 
+// EMAIL_ATTACHMENT is intentionally NOT in the picker. It's reserved
+// for the email ingestion pipeline; if a user wants to attach a file
+// manually they pick one of the user-facing kinds.
 const KIND_OPTIONS: ReadonlyArray<POAttachmentKind> = [
   POAttachmentKind.RECEIPT,
   POAttachmentKind.INVOICE,
@@ -39,6 +43,8 @@ function kindLabel(k: POAttachmentKind): string {
       return 'Drawing';
     case POAttachmentKind.OTHER:
       return 'Other';
+    case POAttachmentKind.EMAIL_ATTACHMENT:
+      return 'Email';
   }
 }
 
@@ -124,8 +130,13 @@ export function PoAttachmentsPanel({
           >
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <span
-                className="inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] uppercase tracking-wider text-[var(--color-bv-muted)]"
+                className={`inline-flex shrink-0 items-center justify-center rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wider ${
+                  a.sourceEmailId
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
+                }`}
               >
+                {a.sourceEmailId ? '✉ ' : ''}
                 {kindLabel(a.kind)}
               </span>
               <a

@@ -5,6 +5,173 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-13 — Vendor email ingestion foundation (Phase 8)
+
+**Commit:** TBD (`feat: add vendor email ingestion foundation`).
+**Migration:** `20260514005509_email_ingestion_foundation`.
+**Deploy:** TBD.
+
+**Scope**
+
+Inbound vendor email is now pulled by an IMAP poller, parsed,
+matched to a Purchase Order via a strict deterministic ladder (QBO PO
+number → internal PO number → vendor + recent PO heuristic →
+otherwise unmatched), and surfaced on the PO timeline as
+`VENDOR_REPLY` events with allowlisted attachments promoted into the
+PO's attachment store. Idempotency is the unique
+`(tenantId, messageId)` constraint on `IngestedEmail`; an IMAP message
+is only marked `\Seen` after the row commits, so PM2 restarts mid-tick
+replay safely. Operators triage matched / unmatched / failed /
+dismissed buckets at `/admin/email-ingestion`. The poller runs in the
+existing `bvisible-web` PM2 process — a systemd timer hits an
+internal-only `/api/internal/email-ingest/tick` route every 60 s
+authenticated by a constant-time compare against `INGEST_TICK_SECRET`.
+Per-tenant IMAP passwords are encrypted at rest via AES-256-GCM keyed
+on `INGEST_SECRET`. The single-tenant fallback path reads
+`IMAP_HOST` / `IMAP_PORT` / `IMAP_USER` / `IMAP_PASSWORD` /
+`IMAP_TLS` / `IMAP_MAILBOX` / `IMAP_POLL_INTERVAL_SECONDS`.
+
+Did NOT add: OCR, invoice parsing, AI matching, fuzzy embeddings,
+auto-marking invoices received/paid, vendor pricing intelligence,
+background queue infrastructure beyond the 60 s timer + soft lease,
+IMAP push / IDLE / webhooks.
+
+**What changed (repo)**
+
+Schema (`packages/db`):
+
+- `prisma/schema.prisma` — adds enums `EmailIngestStatus`
+  (`PENDING/UNMATCHED/MATCHED/FAILED/DISMISSED`) and `EmailMatchReason`
+  (`NONE/QBO_NUMBER/PO_NUMBER/VENDOR_AND_RECENT/MANUAL`); adds
+  `EMAIL_ATTACHMENT` to `POAttachmentKind` and `VENDOR_REPLY` to
+  `POEventKind`; adds models `TenantEmailInbox` (1:1 per tenant —
+  encrypted IMAP creds + poll bookkeeping), `IngestedEmail` (UNIQUE
+  `(tenantId, messageId)` per R-MAIL-01), `IngestedEmailAttachment`
+  (per-attachment metadata + SHA-256 + skip-reason), `EmailIngestRun`
+  (per-tick stats); adds nullable `sourceEmailId` (FK SET NULL) to
+  `POAttachment` and `POEvent`; back-relations on `Tenant`, `Vendor`,
+  `PurchaseOrder`.
+- `prisma/migrations/20260514005509_email_ingestion_foundation/` —
+  generated via the shadow-Postgres script on the deploy box.
+- `src/index.ts` — re-exports `EmailIngestStatus`, `EmailMatchReason`,
+  `TenantEmailInbox`, `IngestedEmail`, `IngestedEmailAttachment`,
+  `EmailIngestRun` types.
+
+Web app (`apps/web`):
+
+- `package.json` — adds `imapflow`, `mailparser`, `@types/mailparser`.
+- `lib/email-ingest/crypto.ts` — AES-256-GCM seal/open + constant-time
+  secret compare. Key is SHA-256(`INGEST_SECRET`).
+- `lib/email-ingest/storage.ts` — persists email attachments under
+  `/opt/bvisible/shared/uploads/<tenantId>/email/<emailId>/<storageKey>`
+  using the same magic-byte allowlist + path-traversal guard as PO
+  uploads; `promoteEmailAttachmentToPo()` copies bytes into the per-PO
+  directory when the email is matched.
+- `lib/email-ingest/config.ts` — `loadResolvedInbox(tenantId)` and
+  `loadInboxDiag(tenantId)`. DB row first, env-var fallback second.
+- `lib/email-ingest/client.ts` — thin `imapflow` wrapper. Disables the
+  library's internal logger to prevent credential leakage; bounded
+  connect/socket timeouts.
+- `lib/email-ingest/parse.ts` — `mailparser` wrapper that returns a
+  message with sanitized header strings, a body text snippet (first
+  ~2 KB of plain text), and per-attachment buffers + filenames.
+- `lib/email-ingest/match.ts` — deterministic four-rule matcher.
+- `lib/email-ingest/run.ts` — `runIngestForTenant(tenantId)`:
+  claims a soft lease via conditional `lastPolledAt` UPDATE, opens
+  IMAP, fetches `UNSEEN`, parses + persists each, runs the matcher,
+  and (on match) materializes onto the PO. `materializeIngestedEmailOnPo`
+  is also called from the manual-link action.
+- `app/api/internal/email-ingest/tick/route.ts` — internal POST
+  endpoint with `INGEST_TICK_SECRET` constant-time compare. Iterates
+  enabled `TenantEmailInbox` rows.
+- `app/api/email-ingest/[id]/attachments/[attachmentId]/route.ts` —
+  ADMIN+ tenant-gated download with magic-byte re-detection.
+- `app/(app)/admin/email-ingestion/{page,actions,review-table,inbox-config-card}.tsx`
+  — operator review UI. Filterable buckets (unmatched / matched /
+  failed / dismissed / all), expand-row body snippet + attachment
+  download links, manual link / retry / dismiss.
+- `lib/auth/audit.ts` — adds `email_ingest_tick`,
+  `email_ingest_message_ingested`, `email_ingest_message_matched`,
+  `email_ingest_message_failed`, `email_ingest_manual_link`,
+  `email_ingest_dismissed`, `email_ingest_retried`,
+  `tenant_inbox_configured`.
+- `lib/validators.ts` — adds `manualLinkEmailSchema`,
+  `retryEmailSchema`, `dismissEmailSchema` + types.
+- `components/app-shell.tsx` — adds **Email ingestion** to the admin
+  nav for ADMIN+.
+- `app/(app)/purchase-orders/[id]/timeline-panel.tsx` — adds icon for
+  `VENDOR_REPLY`.
+- `app/(app)/purchase-orders/[id]/attachments-panel.tsx` +
+  `page.tsx` — surfaces an "✉" badge for attachments with
+  `sourceEmailId`.
+
+Server scripts:
+
+- `cron/bvisible-ingest-tick.timer` (`OnUnitActiveSec=60s`),
+  `bvisible-ingest-tick.service` (`oneshot`, runs as `deploy`),
+  `bvisible-ingest-tick.sh` (curl with `x-bvisible-ingest-secret`).
+- `deploy-queue/deploy-once.sh` — installs the unit files + script
+  on every deploy, daemon-reloads, enables the timer.
+
+Docs:
+
+- `docs/ai-context/EMAIL_INGESTION.md` — rewritten to match the
+  shipped pipeline (see below).
+- `PO_SYSTEM.md`, `DATA_MODEL.md`, `API_STRUCTURE.md`,
+  `SECURITY_RULES.md`, `ENVIRONMENT_VARIABLES.md`, `DEBUGGING.md`,
+  `DEPLOYMENT.md`, `AUTH_AND_PERMISSIONS.md`, `KNOWN_RULES.md`
+  (R-MAIL-01) — updated.
+
+**Risks**
+
+- **First production IMAP credentials.** Until the operator pastes
+  per-tenant IMAP creds (or sets the `IMAP_*` env-var fallback) the
+  poller is a no-op every 60 s. There is no Slack-style alarm yet —
+  the operator is expected to check `/admin/email-ingestion` after a
+  deploy that touches the inbox config.
+- **Lease is per-tenant only.** Two ticks for the same tenant
+  serialize via `lastPolledAt`; two tenants do not contend. If a single
+  tenant has thousands of unread messages, a long tick can run beyond
+  the 60 s window — the next tick will short-circuit harmlessly.
+- **Disk quota.** Email attachments live under
+  `/opt/bvisible/shared/uploads/<tenantId>/email/`. The 25 MB per-file
+  cap from the PO foundation applies, but there is no per-tenant
+  quota. A spam wave with large attachments could fill `/`.
+- **MIME allowlist intentionally narrow.** `.docx`, `.xlsx`, `.zip`
+  are NOT accepted today — they land as `IngestedEmailAttachment`
+  rows with `skipped = true` + `skipReason = 'mime_not_allowed'`. The
+  body of the email is still captured and matchable.
+- **Sender spoofing.** We do not check SPF/DKIM/DMARC alignment yet.
+  Match by `From:` is heuristic only (rule 3). A spoofed sender
+  matched to the wrong PO must be reverted by the operator using the
+  retry / dismiss flow + manual link.
+
+**Verification**
+
+- `pnpm install --frozen-lockfile` clean. `pnpm prisma generate` clean.
+  `pnpm run build` produces standalone bundle, no warnings beyond the
+  pre-existing pricing engine warnings.
+- Linter: clean across all new and edited files.
+- Migration generated against shadow Postgres on the deploy box and
+  copied back; no schema drift.
+- Functional verification done locally with a test mailbox: end-to-end
+  poll → parse → match → materialize → PO timeline → operator review
+  with manual link, retry, and dismiss. Idempotency verified by
+  re-running the same UID twice (no duplicate row, no duplicate
+  attachment, no duplicate POEvent).
+- Production deploy + ingestion verification: TBD.
+
+**Recommended next step**
+
+Build the per-tenant inbox configuration form (super-admin scoped)
+that writes to `TenantEmailInbox` with the password sealed via
+`INGEST_SECRET`. Today the only paths to a working inbox are (a) the
+env-var fallback or (b) a hand-crafted SQL insert via psql. The form
+is small and removes the only operational sharp edge in the Phase 8
+foundation.
+
+---
+
 ## 2026-05-13 — Purchase order foundation (Phase 7)
 
 **Commit:** `51c5369eaf9c2f0dae6548faa7c1f88410e113ab` (`feat: add purchase order foundation`).

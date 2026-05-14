@@ -14,6 +14,7 @@ const BASE_NAV: ReadonlyArray<NavItem> = [
 
 const ADMIN_NAV: ReadonlyArray<NavItem> = [
   { href: '/admin/users', label: 'Users', hint: 'invites' },
+  { href: '/admin/email-ingestion', label: 'Email ingestion', hint: 'inbound' },
 ];
 
 const SUPER_ADMIN_NAV: ReadonlyArray<NavItem> = [

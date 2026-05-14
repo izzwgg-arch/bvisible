@@ -308,28 +308,114 @@ iostat -x 1 5         # needs sysstat
 If `/opt/bvisible/releases/` is bloated, prune the oldest snapshots — keep
 the last 5.
 
-## 9. Email ingestion failures
+## 9. Email ingestion failures (Phase 8)
+
+The poller is a systemd timer + service pair on the deploy box that
+hits the in-process Next.js route every minute. There is **no** docker
+container for ingestion — the work runs inside `bvisible-web`.
+
+### Timer / service health
 
 ```bash
-docker logs --tail 200 -f bvisible-email-ingest-1
-# IMAP login test (don't log the password, even on screen):
-docker exec -it bvisible-email-ingest-1 \
-  python3 -c "import imaplib,os; m=imaplib.IMAP4_SSL('imap.gmail.com',993); \
-              m.login(os.environ['IMAP_USER'], os.environ['IMAP_APP_PASSWORD']); \
-              print(m.noop())"
+systemctl status bvisible-ingest-tick.timer  --no-pager
+systemctl status bvisible-ingest-tick.service --no-pager
+systemctl list-timers --all | grep bvisible-ingest
+journalctl -u bvisible-ingest-tick.service --since "1 hour ago" --no-pager
 ```
 
-If login fails:
+The `.service` is a one-shot `curl -X POST -H 'x-bvisible-ingest-secret: …'
+http://127.0.0.1:3000/api/internal/email-ingest/tick`. Its journal lines
+are the curl exit and the JSON tick summary. The summary never includes
+credentials, body bytes, or attachment hashes paired with sender PII.
 
-- App password rotated/revoked → mint a new one in Google Workspace, update
-  `.env`, redeploy `email-ingest`.
-- 2-Step Verification disabled → re-enable; app passwords require it.
-- Account locked → unlock via admin console.
+### Manual tick
 
-If parsing produces lots of review-queue items:
+```bash
+SECRET=$(sudo grep '^INGEST_TICK_SECRET=' /opt/bvisible/shared/env/.env \
+         | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+curl -fsS -X POST \
+  -H "x-bvisible-ingest-secret: ${SECRET}" \
+  http://127.0.0.1:3000/api/internal/email-ingest/tick \
+  | jq .
+```
 
-- Check `IngestedEmail` rows for the offending vendor.
-- Update `VendorContact` / `ItemAlias` to teach the matcher.
+Expected: `{ "ok": true, "runs": [{ "tenantId": "...", "scanned": N,
+"ingested": N, "matched": N, "errors": 0, "durationMs": ms }] }`.
+A `503` means `INGEST_TICK_SECRET` is unset on the server. A `401`
+means the secret on disk doesn't match what the timer sent — re-edit
+`/opt/bvisible/cron/bvisible-ingest-tick.sh` if you rotated the secret
+without redeploying.
+
+### IMAP connect failure
+
+PM2 stderr is the source of truth. The mailer-style discipline applies:
+allowed log fields are `messageId`, `senderDomain`, `attachmentCount`,
+`matchReason`, `durationMs`, `errorKind`. Forbidden: passwords, raw
+RFC822 source, raw imapflow auth objects.
+
+```bash
+tail -n 200 -f /opt/bvisible/shared/logs/pm2/bvisible-web.err.log \
+  | grep --line-buffered '"emailIngest":true'
+```
+
+Common patterns:
+
+| `errorKind` | Meaning | Fix |
+|---|---|---|
+| `imap_connect` | Server unreachable / DNS / TLS handshake failed | Check `IMAP_HOST` / `IMAP_PORT` / `IMAP_TLS`. Provider may have rotated cert chain. |
+| `imap_auth` | Auth rejected | Rotate the app password / OAuth secret. For Gmail Workspace: regenerate at <https://myaccount.google.com/apppasswords>. Then update either `IMAP_PASSWORD` (env-var fallback) or the per-tenant `TenantEmailInbox.passwordCipher` (re-seal via `INGEST_SECRET`). |
+| `imap_fetch` | Mailbox vanished or message disappeared mid-fetch | Provider hiccup; transient — next tick retries. If persistent, confirm `IMAP_MAILBOX` exists and the account hasn't been suspended. |
+| `parse_failed` | `mailparser` couldn't read the RFC822 source | Row will land with `status = FAILED` and a sanitized `errorMessage`. Use the operator UI's **Failed** filter to inspect; **Retry** queues another tick. |
+| `persist_failed` | DB write or attachment persist threw | Almost always disk-full or file-system permission drift. Check `df -h` + `ls -ld /opt/bvisible/shared/uploads/<tenantId>`. |
+
+### "Same email keeps coming back" / suspected duplicate
+
+Every email is uniquely keyed on `(tenantId, messageId)` per R-MAIL-01.
+The IMAP message is only marked `\Seen` after the row commits, so a
+crash mid-tick replays safely on the next tick.
+
+```bash
+PW=$(sudo grep '^POSTGRES_PASSWORD=' /opt/bvisible/shared/env/.env | head -n1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+PSQL="docker compose -p bvisible exec -T -e PGPASSWORD=$PW db psql -U bvisible -d bvisible"
+
+# How many distinct messages have we ingested for a tenant?
+$PSQL -c "SELECT count(*), count(DISTINCT \"messageId\")
+          FROM ingested_emails
+          WHERE \"tenantId\" = '<tenantId>';"
+# The two counts MUST be equal. If not, the unique index has been dropped.
+
+# Bytes-on-disk dedupe via SHA-256:
+$PSQL -c "SELECT sha256, count(*) FROM ingested_email_attachments
+          WHERE \"tenantId\" = '<tenantId>'
+          GROUP BY sha256 HAVING count(*) > 1
+          ORDER BY 2 DESC LIMIT 20;"
+```
+
+### Lots of unmatched emails
+
+Open `/admin/email-ingestion` (ADMIN+) and use the **Unmatched** filter.
+For each row the panel shows the body snippet and per-attachment list
+with download links. The matcher is deterministic; common reasons for
+unmatched:
+
+- The vendor wrote a free-form thread without the QBO PO number → use
+  the inline **Link to PO** combobox + **Link** button.
+- The QBO PO number was sent in an attachment filename only → today
+  the matcher does not look inside attachment filenames; manually link.
+- The PO is older than the 90-day window → manually link.
+
+### Lease / overlap visibility
+
+```bash
+$PSQL -c "SELECT \"tenantId\", \"lastPolledAt\", \"lastErrorAt\",
+                 \"lastErrorMessage\"
+          FROM tenant_email_inboxes
+          ORDER BY \"lastPolledAt\" DESC NULLS LAST;"
+```
+
+`lastPolledAt` younger than `pollIntervalSeconds` is the soft lease that
+prevents two ticks from racing. PM2 restart / `pm2 reload` is safe — the
+new process will respect the lease as soon as it observes the row.
 
 ## 10. Tenant-scope bugs
 

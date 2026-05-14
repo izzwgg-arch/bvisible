@@ -311,6 +311,30 @@ export const deleteAttachmentSchema = z.object({
   attachmentId: z.string().min(1).max(60),
 });
 
+// ---------------------------------------------------------------------
+// Vendor email ingestion
+// ---------------------------------------------------------------------
+
+// Manual operator link of an unmatched/failed IngestedEmail to a PO.
+// Server validates that both ids belong to the caller's tenant before
+// creating any rows.
+export const manualLinkEmailSchema = z.object({
+  ingestedEmailId: z.string().min(1).max(60),
+  purchaseOrderId: z.string().min(1).max(60),
+});
+
+export const retryEmailSchema = z.object({
+  ingestedEmailId: z.string().min(1).max(60),
+});
+
+export const dismissEmailSchema = z.object({
+  ingestedEmailId: z.string().min(1).max(60),
+});
+
+export type ManualLinkEmailInput = z.infer<typeof manualLinkEmailSchema>;
+export type RetryEmailInput = z.infer<typeof retryEmailSchema>;
+export type DismissEmailInput = z.infer<typeof dismissEmailSchema>;
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RequestResetInput = z.infer<typeof requestResetSchema>;
 export type CompleteResetInput = z.infer<typeof completeResetSchema>;

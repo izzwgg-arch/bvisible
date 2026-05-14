@@ -30,7 +30,10 @@ PurchaseOrder
 - `POEvent` append-only timeline (kinds: `CREATED`,
   `CREATED_FROM_ESTIMATE`, `LINES_SAVED`, `STATUS_CHANGED`,
   `QBO_NUMBER_ASSIGNED`, `VENDOR_ASSIGNED`, `ATTACHMENT_ADDED`,
-  `ATTACHMENT_DELETED`, `NOTE_ADDED`, `CANCELED`).
+  `ATTACHMENT_DELETED`, `NOTE_ADDED`, `CANCELED`, `VENDOR_REPLY`).
+  `VENDOR_REPLY` is emitted by the email ingestion pipeline; its row
+  also carries a non-null `sourceEmailId` pointing to the originating
+  `IngestedEmail`.
 - `EstimateStatus.FINALIZED` enum value + R-EST-04 finalize gate
   (`finalizeEstimateAction` / `unfinalizeEstimateAction`).
 - UI: `/purchase-orders`, `/purchase-orders/new`,
@@ -45,7 +48,6 @@ PurchaseOrder
 
 ## What's deferred (intentionally out of scope this phase)
 
-- Vendor email ingestion / `vendor_reply` POEvents — Phase 8.
 - Mobile receipt uploads (presigned URLs, JWT auth) — mobile app phase.
 - OCR / invoice parsing.
 - Vendor pricing intelligence (`VendorPrice`, `VendorPriceHistory`).
@@ -53,6 +55,7 @@ PurchaseOrder
 - Approval workflows beyond the simple status enum.
 - The `closed` / `reopened` gate from R-PO-03 (today attachments can
   be added at any non-deleted status).
+- IMAP IDLE / push (today: polling only — see `EMAIL_INGESTION.md`).
 
 ## QuickBooks PO number
 
@@ -133,18 +136,37 @@ DRAFT → SENT → ORDERED → PARTIALLY_RECEIVED → RECEIVED
   rogue HTML can't render in-origin. `X-Content-Type-Options: nosniff`
   set as a backstop.
 
-## Future: vendor reply routing (deferred)
+## Vendor email ingestion (Phase 8 foundation)
 
-Inbound emails (Phase 8) will be matched to a PO by the QBO PO number
-found in the **subject** or **body** of the email. Matching order:
+Inbound vendor emails are pulled by the IMAP poller and matched to a
+PO using the strict order in `EMAIL_INGESTION.md`:
 
-1. Exact match on `qboPoNumber` in the subject.
-2. Exact match in the body (first occurrence).
-3. Fallback: vendor + recent date heuristics → review queue.
+1. Exact match on `qboPoNumber` in subject or first 8 KB of plaintext body.
+2. Exact match on internal `PurchaseOrder.number` (e.g. `PO-000123`).
+3. `From:` address matches a vendor that has a recent (last 90 days)
+   non-canceled PO and that vendor has exactly one such PO.
+4. Otherwise unmatched → operator review at `/admin/email-ingestion`.
 
-Once matched, the email body and attachments will become a `POEvent` of
-type `vendor_reply` (new enum value at that time) and the attachments
-will become `POAttachment` rows. None of that is implemented yet.
+Behaviour:
+
+- Each matched email writes a `VENDOR_REPLY` POEvent with sender,
+  subject, attachment count and `messageId` in the metadata, plus
+  one `ATTACHMENT_ADDED` POEvent per accepted attachment.
+- Attachments allowed by the existing PO allowlist (PDF / JPEG / PNG /
+  WEBP) are persisted as `POAttachment` rows with
+  `kind = EMAIL_ATTACHMENT`, `sourceEmailId` set to the originating
+  `IngestedEmail.id`, and bytes hard-linked into the per-PO upload
+  directory under the same secure scheme as manual uploads.
+- Idempotency is the unique `(tenantId, messageId)` constraint on
+  `IngestedEmail` (R-MAIL-01). Already-seen messages short-circuit
+  before any side effect.
+- Unmatched / failed emails sit in `/admin/email-ingestion` until an
+  operator either links them to a PO (`manualLinkEmailToPoAction`)
+  or dismisses them (`dismissEmailAction`).
+
+See `EMAIL_INGESTION.md` for the full pipeline, lease/lock model,
+systemd timer, encryption-at-rest scheme for IMAP credentials, and
+operator runbook.
 
 ## Future: mobile receipts (deferred)
 
@@ -167,8 +189,12 @@ cookie) and uses presigned URLs — neither is implemented yet.
 ## Audit
 
 Every state change writes both a `POEvent` (timeline) and an
-`audit_logs` row (security audit). `AuditAction` values added by this
-phase: `vendor_created`, `po_created`, `po_created_from_estimate`,
+`audit_logs` row (security audit). `AuditAction` values added by
+Phase 7: `vendor_created`, `po_created`, `po_created_from_estimate`,
 `po_saved`, `po_status_changed`, `po_qbo_number_set`, `po_vendor_set`,
 `po_attachment_added`, `po_attachment_deleted`, `po_note_added`,
-`po_deleted`, `estimate_finalized`, `estimate_unfinalized`.
+`po_deleted`, `estimate_finalized`, `estimate_unfinalized`. Phase 8
+adds `email_ingest_tick`, `email_ingest_message_ingested`,
+`email_ingest_message_matched`, `email_ingest_message_failed`,
+`email_ingest_manual_link`, `email_ingest_dismissed`,
+`email_ingest_retried`, `tenant_inbox_configured`.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Trigger B Visible vendor email ingestion tick every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=10s
+Unit=bvisible-ingest-tick.service
+
+[Install]
+WantedBy=timers.target

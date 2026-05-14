@@ -26,7 +26,7 @@ HTTP status codes follow the usual rules: 200 ok, 400 validation, 401 not
 authenticated, 403 not authorized (e.g. wrong tenant), 404 not found, 409
 conflict, 422 business-rule violation, 500 server error.
 
-## Currently shipped (foundation + auth + estimates + purchase orders)
+## Currently shipped (foundation + auth + estimates + purchase orders + email ingestion)
 
 ### REST routes
 
@@ -34,6 +34,8 @@ conflict, 422 business-rule violation, 500 server error.
 |---|---|---|
 | `/api/health` | `GET` | Returns `{"status":"ok","service":"bvisible-web"}`. Marked `dynamic = 'force-dynamic'` and `runtime = 'nodejs'`. No auth, no DB. Used by deploy healthchecks and uptime monitors. |
 | `/api/po/[id]/attachments/[attachmentId]` | `GET` | Tenant-gated PO attachment download. Resolves the row under `(tenantId, purchaseOrderId)`, validates the on-disk path stays inside the per-PO directory (`apps/web/lib/po/uploads.ts:resolveAttachmentPath`), reads the first bytes off disk to **re-detect** the MIME via magic-byte sniff (the recorded `mimeType` is a hint only), then streams the file with `Content-Type: <re-detected>`, `Content-Disposition: attachment; filename="..."` (RFC 5987-encoded for non-ASCII names), and `X-Content-Type-Options: nosniff`. Returns 404 for cross-tenant, soft-deleted, missing-on-disk, or unrecognized-magic-byte requests. |
+| `/api/email-ingest/[id]/attachments/[attachmentId]` | `GET` | Tenant-gated download of an `IngestedEmailAttachment`. Same magic-byte re-detection + path-traversal guard as the PO download route, but resolves under the per-tenant email storage root (`apps/web/lib/email-ingest/storage.ts:resolveEmailAttachmentPath`). Used by the operator review UI for unmatched messages. |
+| `/api/internal/email-ingest/tick` | `POST` | Internal-only tick endpoint hit by the systemd timer. Auth is a constant-time compare against `INGEST_TICK_SECRET` in the `x-bvisible-ingest-secret` header (NOT a session). Iterates every enabled `TenantEmailInbox`, claims a soft lease via `lastPolledAt`, polls IMAP via `imapflow`, parses with `mailparser`, and runs the matching pipeline. Returns `{ ok, runs: [{ tenantId, scanned, ingested, matched, errors, durationMs }] }`. Never returns email bodies or credentials. |
 
 ### Server actions (web only)
 
@@ -71,6 +73,9 @@ integrations and lands later.
 | `uploadPoAttachmentAction` | `app/(app)/purchase-orders/[id]/actions.ts` | tenant user. Receives a `FormData` blob; refuses size > 25 MB; sniffs magic bytes for the allowlist (PDF / JPEG / PNG / WEBP); writes bytes under `/opt/bvisible/shared/uploads/<tenantId>/po/<poId>/<storageKey>` with mode 0640; inserts metadata + `ATTACHMENT_ADDED` POEvent in one transaction. |
 | `deletePoAttachmentAction` | `app/(app)/purchase-orders/[id]/actions.ts` | tenant user. Removes the row, then best-effort `unlink` of the on-disk file. Emits `ATTACHMENT_DELETED`. |
 | `deletePurchaseOrderAction` | `app/(app)/purchase-orders/[id]/actions.ts` | ADMIN, SUPER_ADMIN — soft delete. |
+| `manualLinkEmailToPoAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN, SUPER_ADMIN. Validates that the chosen `purchaseOrderId` belongs to the caller's tenant, then calls `materializeIngestedEmailOnPo` (idempotent) to create the `VENDOR_REPLY` POEvent, promote allowlisted attachments into `po_attachments` with `kind = EMAIL_ATTACHMENT` + `sourceEmailId`, and flip the email's status to `MATCHED` with `matchReason = MANUAL`. Logs `email_ingest_manual_link`. |
+| `retryEmailAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN, SUPER_ADMIN. Re-runs the deterministic match for an `UNMATCHED` or `FAILED` email without re-fetching from IMAP. If a match is found the email is materialized; otherwise it is left in its current state with `retriedAt` set. Logs `email_ingest_manual_retry`. |
+| `dismissEmailAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN, SUPER_ADMIN. Sets the email's status to `DISMISSED` and stamps `processedAt`. Bytes on disk are retained (operator can still download for audit). Logs `email_ingest_manual_dismiss`. |
 
 Each action validates input with a `zod` schema from
 `apps/web/lib/validators.ts`, audits the result via
@@ -100,7 +105,8 @@ client (it always comes from the session).
 | `/vendors/new` | protected (tenant user) | Create-vendor form (name required; email/phone/notes optional). Per-tenant unique on name. |
 | `/purchase-orders` | protected (tenant user) | Tenant PO list with vendor + linked-estimate + QBO number + status pill + cached subtotal. |
 | `/purchase-orders/new` | protected (tenant user) | Pick optional vendor + optional linked estimate; redirects to the editor. (For copying estimate lines, use the estimate page's "Create PO from estimate" instead — the New page only stores the link.) |
-| `/purchase-orders/[id]` | protected (tenant user) | Spreadsheet-style PO line editor that reuses the grid primitives + keyboard helper from the estimate editor. Right-side panels: subtotal/save, QBO PO number (commits on blur), vendor picker, linked estimate, status (six-button grid), danger zone (ADMIN+ only). Left side: notes card, line grid, attachments panel (kind picker + file input; allowed: PDF, JPEG, PNG, WEBP; max 25 MB), timeline (newest-first POEvents + inline note input). |
+| `/purchase-orders/[id]` | protected (tenant user) | Spreadsheet-style PO line editor that reuses the grid primitives + keyboard helper from the estimate editor. Right-side panels: subtotal/save, QBO PO number (commits on blur), vendor picker, linked estimate, status (six-button grid), danger zone (ADMIN+ only). Left side: notes card, line grid, attachments panel (kind picker + file input; allowed: PDF, JPEG, PNG, WEBP; max 25 MB; email-ingested rows are flagged with an "✉" badge linking back to the source email), timeline (newest-first POEvents + inline note input; `VENDOR_REPLY` rows render with the mail icon). |
+| `/admin/email-ingestion` | protected (ADMIN, SUPER_ADMIN) | Operator review queue. Top: inbox config card (host / port / mailbox / `lastPolledAt` / `lastErrorAt` / `lastErrorMessage`; password is **never** displayed even in masked form). Bottom: filterable table of recent `IngestedEmail` rows with status / match-reason chips, a row-expand panel showing the body snippet + per-attachment list with download links, plus inline forms for manual linking (PO combobox), retry, and dismiss. |
 
 ## Resource sketch (target)
 

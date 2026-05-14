@@ -205,12 +205,30 @@ See `DEPLOY_QUEUE.md` for the queue mechanics and the exact
 - `bvisible-deploy-worker.timer` — fires every 30s.
 - `bvisible-deploy-worker.service` — `oneshot`, runs as `deploy:deploy`,
   invokes `/opt/bvisible/deploy-queue/deploy-worker.sh`.
+- `bvisible-ingest-tick.timer` — fires every 60s. Provisioned and
+  upgraded automatically by `deploy-once.sh` from
+  `server-scripts/cron/`. Never run more than one tick at a time —
+  the route handler claims a per-tenant lease via
+  `TenantEmailInbox.lastPolledAt` so two overlapping ticks become a
+  no-op, and PM2 restarts mid-tick are safe (idempotency anchor is
+  `IngestedEmail (tenantId, messageId)` UNIQUE; the next tick re-fetches
+  and the unique constraint short-circuits the second write).
+- `bvisible-ingest-tick.service` — `oneshot`, runs as `deploy:deploy`,
+  invokes `/opt/bvisible/cron/bvisible-ingest-tick.sh` which curls the
+  loopback `bvisible-web` upstream at
+  `http://127.0.0.1:3000/api/internal/email-ingest/tick` with the
+  `x-bvisible-ingest-secret` header. The script + service + timer are
+  installed under `/opt/bvisible/cron/` and `/etc/systemd/system/` by
+  the deploy pipeline (sudo install). Polling survives PM2 restarts
+  and reboots.
 
 ## Quick health checks
 
 ```bash
 ssh deploy@212.56.32.136
 systemctl status bvisible-deploy-worker.timer --no-pager
+systemctl status bvisible-ingest-tick.timer --no-pager
+journalctl -u bvisible-ingest-tick.service --since '15 min ago' --no-pager
 ufw status verbose
 ss -tulpn | grep LISTEN
 docker ps

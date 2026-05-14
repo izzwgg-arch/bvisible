@@ -8,6 +8,8 @@ export {
   POLineKind,
   POAttachmentKind,
   POEventKind,
+  EmailIngestStatus,
+  EmailMatchReason,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -26,4 +28,8 @@ export type {
   POLineItem,
   POAttachment,
   POEvent,
+  TenantEmailInbox,
+  IngestedEmail,
+  IngestedEmailAttachment,
+  EmailIngestRun,
 } from '@prisma/client';

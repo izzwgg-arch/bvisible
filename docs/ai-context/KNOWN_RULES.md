@@ -32,10 +32,14 @@ it.
 
 - **R-PO-01** The PO is the master file for a job. Estimates, vendor docs,
   receipts, attachments, timeline, and price updates all link to it.
-- **R-PO-02** Vendor email replies are routed by **PO number** in the subject
-  or body. Mobile receipts likewise. (Implementation deferred — vendor
-  email ingestion lands later. The data model already carries
-  `PurchaseOrder.qboPoNumber` as the routing key.)
+- **R-PO-02** Vendor email replies are routed by **PO number** in the
+  subject or body. Mobile receipts likewise. The vendor email half is
+  shipped: the matcher (`apps/web/lib/email-ingest/match.ts`) tries
+  `PurchaseOrder.qboPoNumber` first, then internal
+  `PurchaseOrder.number`, then falls back to a vendor + recent-PO
+  heuristic, and otherwise marks the email `UNMATCHED` for operator
+  review at `/admin/email-ingestion`. Mobile receipts are still
+  deferred to the mobile app phase.
 - **R-PO-03** Once a PO is `closed`, no further attachments may be added
   without a `reopened` event in the timeline. (Foundation: today the
   PO foundation accepts attachments at any non-deleted status; the
@@ -68,10 +72,32 @@ it.
 ## Email ingestion
 
 - **R-MAIL-01** Duplicate detection is by `(tenantId, messageId)`.
+  Enforced by a UNIQUE index on `IngestedEmail (tenantId, messageId)`.
+  An IMAP message is only marked `\Seen` AFTER the row commits — a
+  crash mid-tick is replay-safe; the unique constraint short-circuits
+  the second write. See `EMAIL_INGESTION.md`.
 - **R-MAIL-02** Attachments are stored under
-  `/opt/bvisible/shared/uploads/<tenantId>/email/<yyyy>/<mm>/<messageId>/...`.
-- **R-MAIL-03** Uncertain parses (no PO number found, ambiguous vendor) go to
-  the review queue and are not applied automatically.
+  `/opt/bvisible/shared/uploads/<tenantId>/email/<ingestedEmailId>/<storageKey>`
+  (file mode `0640`, dir mode `0750`, owned by `deploy:deploy`). The
+  on-disk filename is the server-generated `storageKey`; the original
+  filename is sanitized to `[A-Za-z0-9._-]{1,200}` and stored only as
+  display metadata. When matched to a PO the bytes are copied into the
+  per-PO directory; the email-side row + bytes are retained for audit.
+- **R-MAIL-03** Uncertain parses (no PO number found, ambiguous
+  vendor) land in the operator queue at `/admin/email-ingestion` with
+  `status = UNMATCHED` and are not applied automatically. Operators
+  can manually link, retry, or dismiss; every action is audited.
+- **R-MAIL-04** IMAP credentials are encrypted at rest with
+  AES-256-GCM keyed on `INGEST_SECRET` and stored in
+  `TenantEmailInbox.passwordCipher`. The plaintext password lives only
+  in process memory for the duration of a single IMAP connection and
+  is never logged, audited, or returned by any API. The single-tenant
+  fallback path reads `IMAP_PASSWORD` from `.env`.
+- **R-MAIL-05** Email attachments share the PO upload allowlist
+  (PDF / JPEG / PNG / WEBP, magic-byte sniffed, 25 MB cap). Anything
+  outside the allowlist lands as `IngestedEmailAttachment` with
+  `skipped = true` + a non-secret `skipReason` and bytes are NOT
+  written to disk.
 
 ## Notifications
 

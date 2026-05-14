@@ -1,0 +1,12 @@
+[Unit]
+Description=B Visible vendor email ingestion tick (one-shot)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/opt/bvisible/cron/bvisible-ingest-tick.sh
+TimeoutStartSec=120
+Nice=5

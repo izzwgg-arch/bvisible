@@ -28,12 +28,36 @@ DATABASE_URL="postgresql://bvisible:***@127.0.0.1:5432/bvisible?schema=public&co
 # Redis (queues / cache)
 REDIS_URL=redis://redis:6379
 
-# Email ingestion (Google Workspace) — IMAP side is unimplemented;
-# these keys are placeholders for when the ingestion worker lands.
+# Vendor email ingestion — IMAP poller (Phase 8). The runtime prefers a
+# per-tenant TenantEmailInbox row (with the password sealed via
+# INGEST_SECRET); the env keys below are the *single-tenant fallback*
+# used by apps/web/lib/email-ingest/config.ts when no DB row exists.
+# Setting them in production lights up the very first tenant's inbox
+# before the in-app config form ships.
+#
+# Provider-agnostic IMAP (Gmail/Workspace, Fastmail, Office 365, etc.).
+# We do NOT use the Gmail API or webhooks — pure UNSEEN polling.
 IMAP_HOST=imap.gmail.com
 IMAP_PORT=993
 IMAP_USER=ingest@yourdomain.com
-IMAP_APP_PASSWORD=                    # Google Workspace app password
+IMAP_PASSWORD=                        # IMAP auth password / Google App Password (never logged)
+IMAP_TLS=true                         # "true" = TLS-on-connect (993). "false" = plain/STARTTLS.
+IMAP_MAILBOX=INBOX                    # optional; defaults to INBOX
+IMAP_POLL_INTERVAL_SECONDS=60         # advisory; the systemd timer fires every 60s. Clamp 30..3600.
+
+# AES-256-GCM key used by apps/web/lib/email-ingest/crypto.ts to seal
+# IMAP passwords stored in TenantEmailInbox.passwordCipher. SHA-256 is
+# applied internally so the input may be any reasonably-strong string
+# (>= 32 chars recommended). REQUIRED before any per-tenant inbox row
+# can be read or written.
+INGEST_SECRET=
+
+# Shared secret presented in the `x-bvisible-ingest-secret` header by
+# /opt/bvisible/cron/bvisible-ingest-tick.sh when it pokes the
+# /api/internal/email-ingest/tick route. Constant-time compared on the
+# server. The route returns 503 if this is not set so a misconfigured
+# server never silently 200s with no auth.
+INGEST_TICK_SECRET=
 
 # Outbound mailer (Phase 5) — used by invite, password reset, and
 # the SUPER_ADMIN /settings/email-test page. Read at runtime by
@@ -127,6 +151,40 @@ Sanity-check after editing: sign in as a SUPER_ADMIN, open
 **Settings → Email test**, and send a test message. The page runs
 SMTP `verify()` first, then sends a branded message. Errors are
 sanitized (no credentials displayed).
+
+## Vendor email ingestion (Phase 8)
+
+The IMAP poller has two layers of configuration:
+
+1. **Per-tenant DB row (`TenantEmailInbox`)** — the production layout.
+   Holds `host`, `port`, `secure`, `mailbox`, `username`,
+   `passwordCipher` (sealed with `INGEST_SECRET`), `pollIntervalSeconds`,
+   `enabled`, plus poll bookkeeping (`lastPolledAt`, `lastErrorAt`,
+   `lastErrorMessage`). Multiple tenants → multiple inbox rows.
+2. **Env-var fallback** — the bootstrap layout. When no `TenantEmailInbox`
+   row exists for a tenant, the loader falls back to `IMAP_HOST` /
+   `IMAP_USER` / `IMAP_PASSWORD` / `IMAP_PORT` / `IMAP_TLS` /
+   `IMAP_MAILBOX` / `IMAP_POLL_INTERVAL_SECONDS` for the *first*
+   tenant only. Useful before the in-app config form ships.
+
+Required for either layout:
+
+| Var | Required | Notes |
+|---|---|---|
+| `INGEST_SECRET` | yes | AES-256-GCM input key. SHA-256-derived to 32 bytes inside `apps/web/lib/email-ingest/crypto.ts`. Without it, no per-tenant inbox row can be decrypted; the env-var fallback path still works. |
+| `INGEST_TICK_SECRET` | yes | Shared secret presented by `bvisible-ingest-tick.sh` to `/api/internal/email-ingest/tick`. The route refuses the request with `503` if this is unset (no silent 200). |
+| `IMAP_HOST` | fallback only | Hostname of the IMAP server. |
+| `IMAP_PORT` | fallback only | Default 993. |
+| `IMAP_USER` | fallback only | Auth user. |
+| `IMAP_PASSWORD` | fallback only | Auth password / app password. **Never logged**. |
+| `IMAP_TLS` | fallback only | `"true"` = TLS-on-connect; default true. |
+| `IMAP_MAILBOX` | fallback only | Default `INBOX`. |
+| `IMAP_POLL_INTERVAL_SECONDS` | fallback only | Advisory lease window (clamped 30..3600). |
+
+Logging discipline: only `messageId`, `senderDomain`, `attachmentCount`,
+`matchResult`, and `durationMs` may be logged. Never the password,
+never the full attachment bytes, never the raw IMAP frames (the
+imapflow logger is hard-disabled in `client.ts`).
 
 ## Postgres bootstrap (one-off, server-side)
 

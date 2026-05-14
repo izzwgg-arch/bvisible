@@ -24,6 +24,7 @@ const KIND_ICON: Record<POEventKind, string> = {
   ATTACHMENT_DELETED: '−',
   NOTE_ADDED: '✦',
   CANCELED: '⊘',
+  VENDOR_REPLY: '✉',
 };
 
 interface TimelinePanelProps {

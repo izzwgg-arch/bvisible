@@ -1,5 +1,5 @@
 // B Visible — auth + tenant foundation + estimate foundation
-// + purchase order foundation.
+// + purchase order foundation + vendor email ingestion foundation.
 // Foundation models: Tenant, User, Role, Session, UserInvite,
 // PasswordResetToken, AuditLog.
 // Estimate foundation: Client, Machine, Estimate, EstimateLineItem
@@ -8,9 +8,15 @@
 // POEvent + POStatus / POLineKind / POAttachmentKind / POEventKind
 // enums. EstimateStatus.FINALIZED is gated by R-EST-04 in
 // apps/web/app/(app)/estimates/[id]/actions.ts (finalizeEstimateAction).
+// Email ingestion foundation: TenantEmailInbox (1:1 per tenant),
+// IngestedEmail, IngestedEmailAttachment, EmailIngestRun
+// + EmailIngestStatus / EmailMatchReason enums; POAttachment.kind gets
+// EMAIL_ATTACHMENT and POEvent.kind gets VENDOR_REPLY so an ingested
+// email materialises into a PO timeline entry + attachment rows.
 // See docs/ai-context/DATA_MODEL.md for the target model set,
-// docs/ai-context/ESTIMATE_ENGINE.md for the pricing rules, and
-// docs/ai-context/PO_SYSTEM.md for the PO workflow.
+// docs/ai-context/ESTIMATE_ENGINE.md for the pricing rules,
+// docs/ai-context/PO_SYSTEM.md for the PO workflow, and
+// docs/ai-context/EMAIL_INGESTION.md for the ingestion contract.
 
 generator client {
   provider      = "prisma-client-js"
@@ -82,17 +88,25 @@ enum POLineKind {
 // Coarse classification of an attachment for filtering/icons in the UI.
 // The kind is set at upload time; magic-byte MIME detection happens
 // independently in apps/web/lib/po/uploads.ts.
+// EMAIL_ATTACHMENT is reserved for files that arrived via the inbound
+// email pipeline (apps/web/lib/email-ingest/*); rows of that kind also
+// carry a non-null sourceEmailId so the UI can deep-link back to the
+// review surface.
 enum POAttachmentKind {
   RECEIPT
   INVOICE
   VENDOR_DOC
   DRAWING
   OTHER
+  EMAIL_ATTACHMENT
 }
 
 // POEvent.kind drives the human-readable timeline. Only the kinds we
-// actually emit today are listed; new kinds (vendor_reply, mobile_receipt)
-// land with their respective phases. See docs/ai-context/PO_SYSTEM.md.
+// actually emit today are listed; new kinds (mobile_receipt) land with
+// their respective phases. See docs/ai-context/PO_SYSTEM.md.
+// VENDOR_REPLY is emitted by the email ingestion foundation when a
+// matched inbound email materialises onto a PO; the row also carries
+// a non-null sourceEmailId for cross-link.
 enum POEventKind {
   CREATED
   CREATED_FROM_ESTIMATE
@@ -104,6 +118,38 @@ enum POEventKind {
   ATTACHMENT_DELETED
   NOTE_ADDED
   CANCELED
+  VENDOR_REPLY
+}
+
+// IngestedEmail.status — the per-email processing state. PENDING is the
+// initial write inside the tick. UNMATCHED means the matcher returned
+// no PO and the row needs operator review. MATCHED means the matcher
+// linked to a PO and the email is fully processed. FAILED means an
+// exception happened mid-process; retry from the review screen.
+// DISMISSED means an operator chose not to attach; the row stays for
+// audit and the IMAP message stays \Seen.
+enum EmailIngestStatus {
+  PENDING
+  MATCHED
+  UNMATCHED
+  FAILED
+  DISMISSED
+}
+
+// EmailMatchReason explains how/why an IngestedEmail was matched (or
+// not). Stored on every row including unmatched/dismissed so support
+// can audit the matcher's decision without rerunning it.
+//   QBO_NUMBER         exact match on PurchaseOrder.qboPoNumber
+//   PO_NUMBER          exact match on PurchaseOrder.number (PO-NNNNNN)
+//   VENDOR_AND_RECENT  unique open PO for the sender's vendor in 30d
+//   MANUAL             operator linked from /admin/email-ingestion
+//   NONE               no match (review queue)
+enum EmailMatchReason {
+  QBO_NUMBER
+  PO_NUMBER
+  VENDOR_AND_RECENT
+  MANUAL
+  NONE
 }
 
 model Tenant {
@@ -124,6 +170,10 @@ model Tenant {
   poLineItems  POLineItem[]
   poAttachments POAttachment[]
   poEvents     POEvent[]
+  emailInbox            TenantEmailInbox?
+  ingestedEmails        IngestedEmail[]
+  ingestedEmailAttachments IngestedEmailAttachment[]
+  emailIngestRuns       EmailIngestRun[]
 
   @@map("tenants")
 }
@@ -373,6 +423,7 @@ model Vendor {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrders PurchaseOrder[]
+  ingestedEmails IngestedEmail[] @relation("MatchedVendor")
 
   @@unique([tenantId, name])
   @@index([tenantId, deletedAt])
@@ -418,6 +469,7 @@ model PurchaseOrder {
   lines       POLineItem[]
   attachments POAttachment[]
   events      POEvent[]
+  matchedEmails IngestedEmail[] @relation("MatchedPO")
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -462,6 +514,10 @@ model POLineItem {
 // upload time (see apps/web/lib/po/uploads.ts). The download route
 // re-detects on stream so a row with a tampered DB value can never
 // influence what the browser thinks it's receiving.
+// `sourceEmailId` is non-null only when this attachment was created by
+// the email ingestion pipeline (apps/web/lib/email-ingest/run.ts). The
+// FK is SET NULL on delete so dismissing an IngestedEmail row does not
+// cascade-delete the live PO file.
 model POAttachment {
   id               String           @id @default(cuid())
   tenantId         String
@@ -472,13 +528,16 @@ model POAttachment {
   sizeBytes        Int
   kind             POAttachmentKind @default(OTHER)
   uploadedById     String
+  sourceEmailId    String?
   createdAt        DateTime         @default(now())
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  uploadedBy    User          @relation("POAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  uploadedBy    User           @relation("POAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  sourceEmail   IngestedEmail? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, purchaseOrderId, createdAt])
+  @@index([sourceEmailId])
   @@map("po_attachments")
 }
 
@@ -486,6 +545,10 @@ model POAttachment {
 // human-facing operational log shown on the PO detail page. AuditLog
 // remains the security-audit channel. Both are written for state
 // changes that matter to operators AND auditors.
+// `sourceEmailId` is non-null only for VENDOR_REPLY rows emitted by the
+// ingestion pipeline. SET NULL on delete so dismissing the source email
+// keeps the timeline entry (operators still want to see "vendor replied"
+// even after the original IngestedEmail row is gone).
 model POEvent {
   id              String      @id @default(cuid())
   tenantId        String
@@ -494,13 +557,154 @@ model POEvent {
   message         String
   metadata        Json?
   actorId         String?
+  sourceEmailId   String?
   createdAt       DateTime    @default(now())
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  actor         User?         @relation("POEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  actor         User?          @relation("POEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  sourceEmail   IngestedEmail? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, purchaseOrderId, createdAt])
   @@index([purchaseOrderId, createdAt])
+  @@index([sourceEmailId])
   @@map("po_events")
+}
+
+// One mailbox per tenant. The IMAP password is stored ENCRYPTED at
+// rest with AES-256-GCM keyed off the INGEST_SECRET env var (see
+// apps/web/lib/email-ingest/crypto.ts). A DB leak does not yield the
+// password — both ciphertext + IV + auth tag are required to decrypt
+// and the key is held only in process memory on the live server.
+//
+// `lastError*` fields are populated by the ingestion tick on failure
+// and cleared on the next successful run; they drive the
+// /admin/email-ingestion config card so an operator can see the
+// connection state without grepping logs.
+//
+// `pollIntervalSeconds` is advisory: the systemd timer fires every
+// 60s; the tick refuses to run for a tenant whose `lastPolledAt + N`
+// is still in the future. Value clamped 30..3600 by the validator.
+model TenantEmailInbox {
+  id                  String    @id @default(cuid())
+  tenantId            String    @unique
+  host                String
+  port                Int
+  secure              Boolean   @default(true)
+  mailbox             String    @default("INBOX")
+  username            String
+  passwordCipher      String                                       // base64(iv|tag|ciphertext); see crypto.ts
+  pollIntervalSeconds Int       @default(60)
+  enabled             Boolean   @default(true)
+  lastPolledAt        DateTime?
+  lastErrorAt         DateTime?
+  lastErrorMessage    String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_email_inboxes")
+}
+
+// One row per inbound email message we have observed. Idempotency key
+// is (tenantId, messageId) — the Message-ID header from the original
+// envelope. The matcher writes status + matchedPurchaseOrderId; the UI
+// drives manual links / retries via dedicated server actions.
+//
+// We deliberately do NOT store the full HTML/text body. `bodyTextSnippet`
+// is the first ~2 KB of the plain-text body (or text-extracted-from-HTML)
+// for review-screen context only; vendor emails sometimes carry
+// password-reset URLs or PII and we don't want a wide blast radius if
+// the row leaks. `subject` and `from` are kept in full — both are
+// already present in any mail-server log on the path.
+model IngestedEmail {
+  id                String           @id @default(cuid())
+  tenantId          String
+  messageId         String                                          // RFC 5322 Message-ID header
+  fromAddress       String
+  fromName          String?
+  toAddress         String?
+  subject           String
+  receivedAt        DateTime                                        // envelope `Date:` header
+  status            EmailIngestStatus @default(PENDING)
+  matchReason       EmailMatchReason  @default(NONE)
+  matchedPurchaseOrderId String?
+  matchedVendorId   String?
+  matchHint         String?                                         // matched token (qbo number, PO number, vendor email)
+  bodyTextSnippet   String?                                         // first ~2 KB of plain text, sanitized
+  hasAttachments    Boolean           @default(false)
+  attachmentCount   Int               @default(0)
+  errorMessage      String?
+  processedAt       DateTime?                                       // set on first successful match/unmatch write
+  retriedAt         DateTime?                                       // last manual retry attempt
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  matchedPurchaseOrder PurchaseOrder?         @relation("MatchedPO", fields: [matchedPurchaseOrderId], references: [id], onDelete: SetNull)
+  matchedVendor     Vendor?                   @relation("MatchedVendor", fields: [matchedVendorId], references: [id], onDelete: SetNull)
+  attachments       IngestedEmailAttachment[]
+  poAttachments     POAttachment[]
+  poEvents          POEvent[]
+
+  @@unique([tenantId, messageId])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, matchedPurchaseOrderId])
+  @@index([tenantId, fromAddress, createdAt])
+  @@map("ingested_emails")
+}
+
+// One row per attachment carried by an IngestedEmail. Bytes live on
+// disk under /opt/bvisible/shared/uploads/<tenantId>/email/<emailId>/
+// keyed by a server-generated random storageKey (see
+// apps/web/lib/email-ingest/storage.ts). `sha256` is the content hash;
+// when an attachment is later promoted to a POAttachment the same
+// bytes are re-used (no double-write to the PO directory) and the
+// POAttachment row carries `sourceEmailId` pointing back here.
+//
+// `mimeType` is the SERVER-DETECTED magic-byte type (not the value
+// from the email's MIME header). Unsupported magic bytes ⇒ the
+// attachment is dropped during parse with `skipReason` recorded.
+model IngestedEmailAttachment {
+  id               String   @id @default(cuid())
+  tenantId         String
+  ingestedEmailId  String
+  storageKey       String                                            // random; see uploads.ts safeExtension rules
+  originalFilename String                                            // sanitized; display only
+  mimeType         String                                            // server-detected
+  sizeBytes        Int
+  sha256           String                                            // hex; for dedupe + integrity
+  skipped          Boolean  @default(false)                          // true when MIME outside allowlist
+  skipReason       String?
+  createdAt        DateTime @default(now())
+
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ingestedEmail  IngestedEmail @relation(fields: [ingestedEmailId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, ingestedEmailId])
+  @@index([sha256])
+  @@map("ingested_email_attachments")
+}
+
+// Lightweight per-tick observability log. One row per (tenantId, tick)
+// recording how many messages we scanned/ingested/matched and any
+// top-level error. Drives the inbox-config card and the tail-the-logs
+// support workflow without forcing operators to grep stdout.
+model EmailIngestRun {
+  id            String    @id @default(cuid())
+  tenantId      String
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  durationMs    Int?
+  scannedCount  Int       @default(0)
+  ingestedCount Int       @default(0)
+  matchedCount  Int       @default(0)
+  errorCount    Int       @default(0)
+  errorMessage  String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startedAt])
+  @@map("email_ingest_runs")
 }

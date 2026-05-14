@@ -196,6 +196,36 @@ else
 fi
 
 # ============================================================================
+# Vendor email ingestion timer — installs/upgrades the systemd timer
+# that hits /api/internal/email-ingest/tick. Idempotent. The script
+# itself lives under /opt/bvisible/cron/ owned by deploy:deploy. Unit
+# files go to /etc/systemd/system/ via sudo (deploy has passwordless
+# sudo per AUTH_AND_PERMISSIONS.md).
+# ============================================================================
+INGEST_SRC="$APP_DIR/server-scripts/cron"
+if [ -d "$INGEST_SRC" ]; then
+  log "Installing vendor email ingestion timer"
+  sudo install -d -o deploy -g deploy -m 750 /opt/bvisible/cron 2>&1 | tee -a "$LOG_FILE" || true
+  sudo install -o deploy -g deploy -m 750 \
+    "$INGEST_SRC/bvisible-ingest-tick.sh" \
+    /opt/bvisible/cron/bvisible-ingest-tick.sh 2>&1 | tee -a "$LOG_FILE" || true
+  sudo install -o root -g root -m 644 \
+    "$INGEST_SRC/bvisible-ingest-tick.service" \
+    /etc/systemd/system/bvisible-ingest-tick.service 2>&1 | tee -a "$LOG_FILE" || true
+  sudo install -o root -g root -m 644 \
+    "$INGEST_SRC/bvisible-ingest-tick.timer" \
+    /etc/systemd/system/bvisible-ingest-tick.timer 2>&1 | tee -a "$LOG_FILE" || true
+  if sudo systemctl daemon-reload 2>&1 | tee -a "$LOG_FILE" \
+     && sudo systemctl enable --now bvisible-ingest-tick.timer 2>&1 | tee -a "$LOG_FILE"; then
+    log "bvisible-ingest-tick.timer enabled"
+  else
+    log "WARN: could not enable bvisible-ingest-tick.timer (non-fatal — runtime will work, polling won't until enabled by hand)"
+  fi
+else
+  log "No server-scripts/cron — skipping ingest timer install"
+fi
+
+# ============================================================================
 # PM2 + healthcheck — wires the bvisible-web runtime
 # ============================================================================
 STANDALONE_DIR="$APP_DIR/apps/web/.next/standalone/apps/web"

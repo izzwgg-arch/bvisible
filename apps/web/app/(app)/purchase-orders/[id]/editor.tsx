@@ -60,6 +60,7 @@ export interface PoEditorBootstrap {
     sizeBytes: number;
     kind: POAttachmentKind;
     createdAt: string;
+    sourceEmailId: string | null;
     uploadedByLabel: string;
   }>;
   canDelete: boolean;

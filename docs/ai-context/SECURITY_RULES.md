@@ -151,6 +151,65 @@
   the user (the row is gone, the orphan is harmless and reaped by
   future maintenance).
 
+## Email ingestion posture
+
+- **IMAP credentials at rest.** Per-tenant IMAP passwords live in
+  `tenant_email_inboxes.passwordCipher` as base64(IV ‖ tag ‖ ciphertext)
+  produced by AES-256-GCM in `apps/web/lib/email-ingest/crypto.ts`. The
+  AES key is derived from `INGEST_SECRET` (32+ bytes of entropy in
+  `/opt/bvisible/shared/env/.env`). The plaintext password lives only in
+  process memory for the duration of a single IMAP connection and is
+  never written to logs, audit metadata, or API responses. The single-
+  tenant fallback path reads `IMAP_PASSWORD` from the same env file
+  (mode 640, owned by `deploy:deploy`).
+- **Internal tick endpoint authentication.** `/api/internal/email-
+  ingest/tick` accepts only the systemd timer's curl call. Auth is a
+  constant-time `safeCompareSecret()` against `INGEST_TICK_SECRET`
+  (separate value from `INGEST_SECRET`). No session cookie, no CSRF
+  token, no role check — failure returns 401 without leaking which
+  half of the comparison failed.
+- **Concurrency / lease.** Each tick claims a soft lease per tenant by
+  conditionally updating `TenantEmailInbox.lastPolledAt` only if the
+  previous timestamp is older than `pollIntervalSeconds`. A second tick
+  that fires while a first is still running short-circuits with no IMAP
+  connection. PM2 restarts in the middle of a poll are safe because
+  every persistent side effect is gated by the unique
+  `(tenantId, messageId)` constraint (R-MAIL-01) — replays after the
+  restart no-op rather than duplicate.
+- **Idempotency.** The `IngestedEmail` row is upserted on
+  `(tenantId, messageId)`; the IMAP message is only marked `\Seen`
+  *after* the row plus its attachments have been committed. The PO-side
+  materialization (POEvent + POAttachment promotion) is keyed on
+  `(purchaseOrderId, sourceEmailId)` — re-running it for an already-
+  materialized email writes nothing.
+- **Attachment validation.** Email attachments share the exact same
+  magic-byte allowlist as PO uploads (PDF / JPEG / PNG / WEBP) via the
+  shared `detectMimeFromBytes()`. Anything else is recorded as an
+  `IngestedEmailAttachment` row with `skipped = true` + a non-secret
+  `skipReason` (e.g. `mime_not_allowed`, `size_exceeded`) and is NOT
+  written to disk. Accepted blobs are stored under
+  `/opt/bvisible/shared/uploads/<tenantId>/email/<ingestedEmailId>/<storageKey>`
+  with the same `0640` mode, then promoted into the per-PO directory by
+  `promoteEmailAttachmentToPo()` when the email is matched.
+- **Sanitization in the operator UI.** `/admin/email-ingestion` renders
+  the body snippet as plain text inside a `<pre>` (never `dangerouslySet
+  InnerHTML`), the subject + sender pass through React's default
+  escaping, and the original filename is the same sanitized
+  `[A-Za-z0-9._-]{1,200}` value used for PO uploads. Raw HTML bodies
+  are not stored.
+- **Allowed log fields.** `messageId`, lower-cased sender domain,
+  `tenantId`, `attachmentCount`, `matchReason`, `durationMs`,
+  `errorKind` (one of `imap_connect`, `imap_auth`, `imap_fetch`,
+  `parse_failed`, `persist_failed`). Forbidden everywhere — including
+  the `EmailIngestRun.errorMessage` column which is sanitized before
+  insert: the IMAP password, the full raw RFC822 source, attachment
+  bytes or hashes of attachment bytes paired with sender PII, and any
+  serialized `imapflow` auth object.
+- **No public attachment serving.** The email attachment download route
+  (`/api/email-ingest/[id]/attachments/[attachmentId]`) is tenant-gated
+  and ADMIN+ only. It re-runs `detectMimeFromBytes()` on the head of
+  the file on every request and refuses anything outside the allowlist.
+
 ## Server posture (already in place)
 
 - Root SSH allowed for now via key only — see `DEPLOYMENT.md` "remaining

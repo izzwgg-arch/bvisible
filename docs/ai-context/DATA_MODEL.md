@@ -3,7 +3,7 @@
 The Prisma schema lives in `packages/db/prisma/schema.prisma`. This file is the
 human-readable map. Update it whenever the schema changes.
 
-## Currently shipped (foundation + auth + estimates + purchase orders)
+## Currently shipped (foundation + auth + estimates + purchase orders + email ingestion)
 
 ```prisma
 enum Role { SUPER_ADMIN  ADMIN  USER }
@@ -110,12 +110,14 @@ enum EstimateStatus { DRAFT  SENT  APPROVED  REJECTED  FINALIZED }
 enum EstimateLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
 enum POStatus { DRAFT  SENT  ORDERED  PARTIALLY_RECEIVED  RECEIVED  CANCELED }
 enum POLineKind { MATERIAL  MACHINE  LABOR  DESIGN  INSTALL  MISC }
-enum POAttachmentKind { RECEIPT  INVOICE  VENDOR_DOC  DRAWING  OTHER }
+enum POAttachmentKind { RECEIPT  INVOICE  VENDOR_DOC  DRAWING  OTHER  EMAIL_ATTACHMENT }
 enum POEventKind {
   CREATED  CREATED_FROM_ESTIMATE  LINES_SAVED  STATUS_CHANGED
   QBO_NUMBER_ASSIGNED  VENDOR_ASSIGNED  ATTACHMENT_ADDED
-  ATTACHMENT_DELETED  NOTE_ADDED  CANCELED
+  ATTACHMENT_DELETED  NOTE_ADDED  CANCELED  VENDOR_REPLY
 }
+enum EmailIngestStatus { PENDING  MATCHED  UNMATCHED  FAILED  DISMISSED }
+enum EmailMatchReason  { QBO_NUMBER  PO_NUMBER  VENDOR_AND_RECENT  MANUAL  NONE }
 
 model Client {
   id          String    @id @default(cuid())
@@ -293,15 +295,112 @@ model POEvent {
   message         String
   metadata        Json?
   actorId         String?                                        // null for system events
+  sourceEmailId   String?                                        // non-null for VENDOR_REPLY rows
   createdAt       DateTime    @default(now())
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  actor         User?         @relation("POEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  actor         User?          @relation("POEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  sourceEmail   IngestedEmail? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
   @@index([tenantId, purchaseOrderId, createdAt])
   @@index([purchaseOrderId, createdAt])
+  @@index([sourceEmailId])
   @@map("po_events")
 }
+
+model TenantEmailInbox {
+  id                  String    @id @default(cuid())
+  tenantId            String    @unique
+  host                String
+  port                Int
+  secure              Boolean   @default(true)
+  mailbox             String    @default("INBOX")
+  username            String
+  passwordCipher      String                                      // base64(iv|tag|ciphertext); see apps/web/lib/email-ingest/crypto.ts
+  pollIntervalSeconds Int       @default(60)
+  enabled             Boolean   @default(true)
+  lastPolledAt        DateTime?
+  lastErrorAt         DateTime?
+  lastErrorMessage    String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@map("tenant_email_inboxes")
+}
+
+model IngestedEmail {
+  id                String           @id @default(cuid())
+  tenantId          String
+  messageId         String                                          // RFC 5322 Message-ID header
+  fromAddress       String
+  fromName          String?
+  toAddress         String?
+  subject           String
+  receivedAt        DateTime                                        // envelope `Date:` header
+  status            EmailIngestStatus @default(PENDING)
+  matchReason       EmailMatchReason  @default(NONE)
+  matchedPurchaseOrderId String?
+  matchedVendorId   String?
+  matchHint         String?
+  bodyTextSnippet   String?                                         // first ~2 KB of plain text, sanitized
+  hasAttachments    Boolean           @default(false)
+  attachmentCount   Int               @default(0)
+  errorMessage      String?
+  processedAt       DateTime?
+  retriedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  matchedPurchaseOrder PurchaseOrder?         @relation("MatchedPO", fields: [matchedPurchaseOrderId], references: [id], onDelete: SetNull)
+  matchedVendor     Vendor?                   @relation("MatchedVendor", fields: [matchedVendorId], references: [id], onDelete: SetNull)
+  attachments       IngestedEmailAttachment[]
+  poAttachments     POAttachment[]
+  poEvents          POEvent[]
+  @@unique([tenantId, messageId])                                   // R-MAIL-01
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, matchedPurchaseOrderId])
+  @@index([tenantId, fromAddress, createdAt])
+  @@map("ingested_emails")
+}
+
+model IngestedEmailAttachment {
+  id               String   @id @default(cuid())
+  tenantId         String
+  ingestedEmailId  String
+  storageKey       String                                            // server-generated random; bytes live under /opt/bvisible/shared/uploads/<tenantId>/email/<emailId>/<storageKey>
+  originalFilename String                                            // sanitized; display only
+  mimeType         String                                            // server-detected magic-byte
+  sizeBytes        Int
+  sha256           String                                            // hex; for dedupe + integrity
+  skipped          Boolean  @default(false)                          // true when MIME outside allowlist
+  skipReason       String?
+  createdAt        DateTime @default(now())
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ingestedEmail  IngestedEmail @relation(fields: [ingestedEmailId], references: [id], onDelete: Cascade)
+  @@index([tenantId, ingestedEmailId])
+  @@index([sha256])
+  @@map("ingested_email_attachments")
+}
+
+model EmailIngestRun {
+  id            String    @id @default(cuid())
+  tenantId      String
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  durationMs    Int?
+  scannedCount  Int       @default(0)
+  ingestedCount Int       @default(0)
+  matchedCount  Int       @default(0)
+  errorCount    Int       @default(0)
+  errorMessage  String?
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId, startedAt])
+  @@map("email_ingest_runs")
+}
 ```
+
+`POAttachment` gets a nullable `sourceEmailId` (FK SET NULL) so an
+ingested attachment can deep-link back to its source email; the
+`po_attachments_sourceEmailId_idx` index supports the reverse lookup.
 
 Notes:
 
@@ -330,6 +429,7 @@ Notes:
 | `20260513192157_auth_and_invites` | 2026-05-13 | New columns on `users` (`lastLoginAt`, `disabledAt`, `invitedAt`, `inviteAcceptedAt`); new tables `sessions`, `user_invites`, `password_reset_tokens`, `audit_logs`; partial unique index `users_email_super_admin_key`. Generated against a shadow Postgres on the server (`server-scripts/db/.shadow-migrate.sh`) so the production DB was not touched until the deploy ran `migrate deploy`. |
 | `20260513221527_estimates_clients_machines` | 2026-05-13 | New enums `EstimateStatus`, `EstimateLineKind`; new tables `clients`, `machines`, `estimates`, `estimate_line_items`. All tenant-scoped, all money in integer cents, qty in `qtyMilli`. Indexes for `(tenantId, *)` lookups and `unique(tenantId, number)` on estimates. Generated via the same shadow-Postgres workflow; `.shadow-migrate.sh` was extended with a `--append-superadmin-index` flag (default off) so it no longer hand-appends the SUPER_ADMIN partial unique index for every migration. |
 | `20260513234614_purchase_orders_and_finalize` | 2026-05-13 | New enums `POStatus`, `POLineKind`, `POAttachmentKind`, `POEventKind`; `EstimateStatus.FINALIZED` enum value; new tables `vendors`, `purchase_orders`, `po_line_items`, `po_attachments`, `po_events`. Tenant-scoped, integer cents, soft delete via `deletedAt`. Unique on `(tenantId, number)` for POs, `(tenantId, name)` for vendors. Foreign keys: `purchase_orders.estimateId → estimates(id) ON DELETE SET NULL`, `purchase_orders.vendorId → vendors(id) ON DELETE SET NULL`. Generated via shadow Postgres. |
+| `20260514005509_email_ingestion_foundation` | 2026-05-14 | New enums `EmailIngestStatus`, `EmailMatchReason`; `POAttachmentKind` gains `EMAIL_ATTACHMENT`; `POEventKind` gains `VENDOR_REPLY`. New tables `tenant_email_inboxes` (1:1 per tenant), `ingested_emails` (UNIQUE `(tenantId, messageId)` for R-MAIL-01 idempotency), `ingested_email_attachments`, `email_ingest_runs`. Adds nullable `sourceEmailId` on `po_attachments` and `po_events` (FK SET NULL → `ingested_emails(id)`). Generated via shadow Postgres; `ALTER TYPE ... ADD VALUE` is run by Postgres 16 in the same migration transaction safely. |
 
 ## Core entities (target schema)
 

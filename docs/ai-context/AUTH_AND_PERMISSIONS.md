@@ -103,6 +103,9 @@ into Prisma for the user behind the helpers.
 | `/vendors`, `/vendors/new` | protected | Tenant user. Per-tenant unique on vendor `name`. |
 | `/purchase-orders`, `/purchase-orders/new`, `/purchase-orders/[id]` | protected | Tenant user. The editor + meta panel + attachments + timeline note are read-write for both ADMIN and USER. Soft-delete is ADMIN+ only (button hidden for USER). |
 | `/api/po/[id]/attachments/[attachmentId]` | protected | Tenant user. Joins on `(tenantId, purchaseOrderId)` and refuses cross-tenant or soft-deleted POs. Returns 404 (not 403) on mismatch so the route does not leak whether the id exists in another tenant. |
+| `/admin/email-ingestion` | protected | ADMIN or SUPER_ADMIN with a tenant. Operator review surface for inbound vendor email. |
+| `/api/email-ingest/[id]/attachments/[attachmentId]` | protected | ADMIN or SUPER_ADMIN with a tenant. Tenant-gated download of an `IngestedEmailAttachment`; same magic-byte re-detection + 404-on-mismatch posture as the PO download route. |
+| `/api/internal/email-ingest/tick` | internal | NOT session-authenticated. Constant-time compare against `INGEST_TICK_SECRET` in the `x-bvisible-ingest-secret` header. Used only by the systemd timer; UFW + the `127.0.0.1` bind keep it off the public internet. |
 
 ## Server actions for auth
 
@@ -137,6 +140,9 @@ enforced by Next). Server actions get CSRF protection for free.
 | `uploadPoAttachmentAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Server-side magic-byte sniff before persisting. Audit `po_attachment_added`. |
 | `deletePoAttachmentAction` | `app/(app)/purchase-orders/[id]/actions.ts` | Tenant user. Audit `po_attachment_deleted`. |
 | `deletePurchaseOrderAction` | `app/(app)/purchase-orders/[id]/actions.ts` | ADMIN or SUPER_ADMIN. Soft delete (`deletedAt`). Audit `po_deleted`. |
+| `manualLinkEmailToPoAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN or SUPER_ADMIN with a tenant. Verifies the chosen PO is non-deleted and tenant-owned, then materializes the email onto it (idempotent on `(purchaseOrderId, sourceEmailId)`). Audit `email_ingest_manual_link`. |
+| `retryEmailAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN or SUPER_ADMIN with a tenant. Resets the row to `PENDING` so the next tick re-runs the deterministic matcher. Audit `email_ingest_retried`. |
+| `dismissEmailAction` | `app/(app)/admin/email-ingestion/actions.ts` | ADMIN or SUPER_ADMIN with a tenant. Sets the row to `DISMISSED`. Bytes on disk are retained for audit; the operator queue filters dismissed rows out. Audit `email_ingest_dismissed`. |
 
 ## Permission model
 
@@ -236,7 +242,17 @@ Every auth-relevant event writes an `AuditLog` row via
 `login_success`, `login_failure`, `logout`, `password_changed`,
 `password_reset_requested`, `password_reset_completed`,
 `invite_created`, `invite_accepted`, `user_disabled`, `user_enabled`,
-`tenant_created`, `super_admin_bootstrapped`.
+`tenant_created`, `super_admin_bootstrapped`, `client_created`,
+`estimate_created`, `estimate_saved`, `estimate_status_changed`,
+`estimate_multiplier_overridden`, `estimate_deleted`,
+`estimate_finalized`, `estimate_unfinalized`, `vendor_created`,
+`po_created`, `po_created_from_estimate`, `po_saved`,
+`po_status_changed`, `po_qbo_number_set`, `po_vendor_set`,
+`po_attachment_added`, `po_attachment_deleted`, `po_note_added`,
+`po_deleted`, `email_ingest_tick`, `email_ingest_message_ingested`,
+`email_ingest_message_matched`, `email_ingest_message_failed`,
+`email_ingest_manual_link`, `email_ingest_dismissed`,
+`email_ingest_retried`, `tenant_inbox_configured`.
 
 Rules for what goes in `metadata`:
 
