@@ -26,8 +26,96 @@ records what changed, the files touched, the risks, and the verification.
 
 **Verification**
 
-- `pnpm --filter @bvisible/web run verify:reconciliation-alerts`
-- `pnpm --filter @bvisible/web run verify:reconciliation`
+- Local / CI: `pnpm --filter @bvisible/web run verify:reconciliation-alerts`
+- Full deterministic reconciliation suite: `pnpm --filter @bvisible/web run verify:reconciliation`
+
+**Production verification runbook (target commit `b9e6f0e888d8c5c0bf298d5b5a54a8b545c18680`)**
+
+1. **Enqueue deploy** (SSH as `deploy` on `212.56.32.136`; see `DEPLOY_QUEUE.md`):
+
+   - Job JSON requires `repoUrl`, `branch`, `commitHash` (full 40-char SHA above — no floating tip).
+   - `bvisible-deploy /tmp/job.json` — **record `JOB_ID`** from the last line of stdout.
+   - Either wait for `bvisible-deploy-worker.timer` (≤30s) or run  
+     `sudo -u deploy /opt/bvisible/deploy-queue/deploy-worker.sh` once.
+   - Follow `/opt/bvisible/deploy-queue/logs/${JOB_ID}.log` until  
+     `==== deploy-once SUCCESS ====`.
+
+2. **Migration / PM2 / healthcheck** (same log + shell):
+
+   - Expect: `prisma migrate deploy` success (migration  
+     `20260518140000_spend_alert_superseded_lifecycle` applied once),  
+     `PM2 reload OK`, then healthcheck exit 0.
+   - `bash -lc 'pm2 list'` → `bvisible-web` **online**.
+   - Loopback gate: `/opt/bvisible/deploy-queue/healthcheck.sh` or  
+     `curl -fsS http://127.0.0.1:3000/api/health` →  
+     `{"status":"ok","service":"bvisible-web"}`.
+
+3. **Schema — enum + columns** (from `/opt/bvisible/app`, after  
+   `set -a; . /opt/bvisible/shared/env/.env; set +a`):
+
+   ```bash
+   docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+   SELECT e.enumlabel
+   FROM pg_enum e
+   JOIN pg_type t ON e.enumtypid = t.oid
+   WHERE t.typname = 'SpendAlertStatus'
+   ORDER BY e.enumsortorder;
+   "
+   docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+   SELECT column_name, data_type, is_nullable
+   FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'spend_alerts'
+     AND column_name IN ('identityKey','supersededAt','supersededByReconciliationId')
+   ORDER BY column_name;
+   "
+   ```
+
+   Expect enum labels: `OPEN`, `DISMISSED`, `SUPERSEDED`. Expect three rows for  
+   the new columns (`identityKey` not null after migration).
+
+4. **Reconciliation supersede** (replace `<tenant_id>` / `<po_id>`; use a PO with  
+   at least one existing reconciliation snapshot and OPEN alerts):
+
+   ```sql
+   SELECT id, status, kind, "poReconciliationId", "supersededByReconciliationId",
+          "supersededAt", "dismissedAt", "identityKey"
+   FROM spend_alerts
+   WHERE "tenantId" = '<tenant_id>' AND "purchaseOrderId" = '<po_id>'
+   ORDER BY "createdAt" DESC;
+   ```
+
+   Trigger **Recompute snapshot** on `/purchase-orders/<po_id>/reconciliation`.  
+   Re-run the query: prior OPEN rows with non-null `"poReconciliationId"` should  
+   become `SUPERSEDED` with `"supersededAt"` and `"supersededByReconciliationId"`  
+   set to the **new** reconciliation id; current problems appear as **new** OPEN  
+   rows (new `"dedupeKey"`).
+
+5. **Dismiss + rerun**: dismiss one alert in the UI; rerun reconciliation; same  
+   SQL — row stays `DISMISSED`; automation must not flip it to OPEN or insert a  
+   duplicate OPEN row for the same condition (`dedupeKey` uniqueness still applies  
+   per snapshot).
+
+6. **Replay safety**: repeat an action that uses the **same**  
+   `triggerDedupeKey` as an existing `POReconciliation` (e.g. same OCR approve  
+   batch). Runner should skip creating a second snapshot; no extra OPEN alerts  
+   from that skipped run.
+
+7. **UI**: dashboard + vendor surfaces — OPEN only; PO reconciliation detail —  
+   chips for OPEN / SUPERSEDED / DISMISSED on the spend alerts table.
+
+**Agent-run checks (deployment prep session)**
+
+- `pnpm --filter @bvisible/web run verify:reconciliation-alerts`: **passed** (8 tests).
+- Public HTTPS health (nginx hostname):  
+  `curl -fsSL -k https://vmi3270817.contaboserver.net/api/health` →  
+  `{"status":"ok","service":"bvisible-web"}` (**runtime healthy**; does **not**  
+  prove deployed Git SHA without `git rev-parse HEAD` on the server).
+
+**Gap / caveat**
+
+- **Deploy job ID, migrate output, PM2 status, and schema SQL results** must be  
+  captured by an operator with SSH to `212.56.32.136`. Automated enqueue from this  
+  Cursor environment was **not** completed (SSH connect timed out).
 
 ---
 
