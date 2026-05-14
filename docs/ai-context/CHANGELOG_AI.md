@@ -5,6 +5,65 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Vendor pricing intelligence foundation (Phase 10)
+
+**Commit message:** `feat: add vendor pricing intelligence foundation` (hash: see `git rev-parse HEAD` at deploy time).
+**Migration:** `20260514190000_vendor_pricing_intelligence`.
+**Deploy:** TBD.
+
+**Scope**
+
+Deterministic vendor pricing pipeline: after a matched vendor email
+materializes onto a PO (`materializeOnPo` transaction succeeds), the ingest
+runner invokes `runVendorPriceExtractionAfterMaterialize` inside an isolated
+try/catch. Regex extraction runs over email subject, sanitized plain-text
+snippet, and sanitized attachment filenames only — no PDF parsers, OCR,
+LLM, or embedding matching. Observations append to `VendorPriceHistory`
+(integer cents, confidence + extraction method enums, `dedupeKey` UNIQUE per
+tenant for replay safety). Catalog rows (`VendorCatalogItem` /
+`VendorItemAlias`) resolve via normalized names only. Strictly lower prices
+vs the prior history row create `VendorPriceNotification`, `POEventKind.
+VENDOR_LOWER_PRICE`, and audit metadata — operators dismiss alerts manually;
+nothing auto-reprices.
+
+Did NOT add: OCR, invoice PDF parsing, fuzzy SKU AI, auto vendor switching,
+auto PO line updates, or changes to the estimate engine.
+
+**What changed (repo)**
+
+Added:
+
+- `packages/db/prisma/migrations/20260514190000_vendor_pricing_intelligence/migration.sql` — enums/tables + `VENDOR_LOWER_PRICE` PO event kind.
+- `apps/web/lib/vendor-pricing/normalize.ts` — `normalizeVendorItemName`.
+- `apps/web/lib/vendor-pricing/extract.ts` — line/subject/filename regex extraction + money parsing.
+- `apps/web/lib/vendor-pricing/persist.ts` — catalog resolution, dedupe insert, lower-price side effects, structured log `vendor_price_extraction`.
+- `apps/web/lib/vendor-pricing/actions.ts` — `dismissVendorPriceNotificationAction`.
+- `apps/web/app/(app)/dashboard/vendor-price-alerts.tsx` — dashboard banner.
+
+Modified:
+
+- `packages/db/prisma/schema.prisma` — vendor pricing models + enums + relations.
+- `packages/db/src/index.ts` — export `VendorPriceConfidence`, `VendorPriceExtractionMethod`, related model types.
+- `apps/web/lib/email-ingest/run.ts` — post-materialize extraction hook.
+- `apps/web/lib/validators.ts`, `apps/web/lib/auth/audit.ts` — dismiss schema + audit strings.
+- `apps/web/app/(app)/dashboard/page.tsx`, `apps/web/app/(app)/vendors/page.tsx`, `apps/web/app/(app)/vendors/[id]/page.tsx`, `apps/web/app/(app)/purchase-orders/[id]/timeline-panel.tsx`.
+- `docs/ai-context/{EMAIL_INGESTION,PO_SYSTEM,DATA_MODEL,KNOWN_RULES,SECURITY_RULES,UI_SYSTEM,DEBUGGING}.md` — Phase 10 behavior.
+
+**Risks**
+
+- Regex false positives (random numbers interpreted as prices); mitigated by
+  letter-heavy item heuristic + phone-line skip + narrow patterns.
+- Comparable-price logic is "latest prior row for same catalog item" — no
+  unit/qty tier normalization yet.
+- `VendorPriceNotification` is tenant-visible on the dashboard, not per-user.
+
+**Verification**
+
+- Local: `pnpm install --frozen-lockfile`, `pnpm --filter @bvisible/db exec prisma generate`, `pnpm --filter @bvisible/web build` (green).
+- Deploy: run after push per `DEPLOY_QUEUE.md` — confirm migration apply, PM2 healthy, `/api/health`.
+
+---
+
 ## 2026-05-13 — Tenant inbox configuration UI (Phase 9)
 
 **Commit:** TBD (`feat: add tenant inbox configuration UI`).

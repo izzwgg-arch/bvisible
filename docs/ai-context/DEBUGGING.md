@@ -452,6 +452,19 @@ unmatched:
   the matcher does not look inside attachment filenames; manually link.
 - The PO is older than the 90-day window → manually link.
 
+### Vendor price extraction (Phase 10)
+
+Successful ingestion logs `vendor_price_extraction` (stdout / PM2) with
+`tenantId`, `vendorId`, `emailId`, `inserted`, `duplicates`, `skipped`,
+`candidates` — **never** raw email bodies or IMAP secrets. Failures in the
+post-materialize hook emit `vendor_price_extraction_failed` (warn) while the
+email row stays `MATCHED`.
+
+```bash
+tail -n 200 -f /opt/bvisible/shared/logs/pm2/bvisible-web.err.log \
+  | grep --line-buffered -E 'vendor_price_extraction|vendor_price_extraction_failed'
+```
+
 ### Lease / overlap visibility
 
 ```bash

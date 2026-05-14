@@ -10,6 +10,8 @@ export {
   POEventKind,
   EmailIngestStatus,
   EmailMatchReason,
+  VendorPriceConfidence,
+  VendorPriceExtractionMethod,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -32,4 +34,8 @@ export type {
   IngestedEmail,
   IngestedEmailAttachment,
   EmailIngestRun,
+  VendorCatalogItem,
+  VendorItemAlias,
+  VendorPriceHistory,
+  VendorPriceNotification,
 } from '@prisma/client';

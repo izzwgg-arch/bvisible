@@ -159,8 +159,20 @@ The look, feel, and behavior of the web app.
   PARTIALLY_RECEIVED / RECEIVED / CANCELED) live in the same six-tone
   vocabulary as the rest of the app.
 - **Vendor list** at `/vendors` is a single-table view (name, email,
-  phone, PO count, updated). New vendor form at `/vendors/new` is the
+  phone, PO count, updated). Vendor names link to `/vendors/[id]`.
+  New vendor form at `/vendors/new` is the
   standard single-column auth-card pattern.
+- **Vendor detail + pricing history** at `/vendors/[id]`: below the
+  header card, an append-only **Price history** table (newest first)
+  with extraction method, confidence, amount, optional unit, link to the
+  matched PO when the source ingested email recorded `matchedPurchaseOrderId`,
+  and a heuristic "Lower vs prior" flag comparing each row to the next
+  newer observation for the same normalized item.
+- **Dashboard vendor price alerts** (`VendorPriceAlerts` on `/dashboard`):
+  amber banner listing unread `VendorPriceNotification` rows with old/new
+  prices, vendor link, subject line, PO link when available, and a
+  **Dismiss** `<form action={dismissVendorPriceNotificationAction}>`.
+  Nothing auto-dismisses (R-NOTIF-01).
 
 ## Layout (web)
 

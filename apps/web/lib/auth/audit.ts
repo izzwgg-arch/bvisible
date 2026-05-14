@@ -44,7 +44,9 @@ export type AuditAction =
   | 'tenant_inbox_configured'
   | 'tenant_inbox_saved'
   | 'tenant_inbox_deleted'
-  | 'tenant_inbox_test_run';
+  | 'tenant_inbox_test_run'
+  | 'vendor_price_lower_detected'
+  | 'vendor_price_notification_dismissed';
 
 export interface AuditEntry {
   action: AuditAction;

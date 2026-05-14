@@ -68,7 +68,14 @@ export default async function VendorsPage({
             <tbody>
               {vendors.map((v) => (
                 <tr key={v.id} className="border-b border-[var(--color-bv-border)] last:border-b-0">
-                  <td className="px-5 py-2.5 text-[var(--color-bv-text)]">{v.name}</td>
+                  <td className="px-5 py-2.5">
+                    <Link
+                      href={`/vendors/${v.id}`}
+                      className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+                    >
+                      {v.name}
+                    </Link>
+                  </td>
                   <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">{v.email ?? '—'}</td>
                   <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">{v.phone ?? '—'}</td>
                   <td className="px-5 py-2.5 text-[var(--color-bv-muted)] tabular-nums">

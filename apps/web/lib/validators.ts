@@ -438,6 +438,10 @@ export const internalTestInboxSchema = z.object({
   password: imapPasswordSchema.optional(),
 });
 
+export const dismissVendorPriceNotificationSchema = z.object({
+  notificationId: z.string().min(1).max(60),
+});
+
 export type ManualLinkEmailInput = z.infer<typeof manualLinkEmailSchema>;
 export type RetryEmailInput = z.infer<typeof retryEmailSchema>;
 export type DismissEmailInput = z.infer<typeof dismissEmailSchema>;
@@ -445,6 +449,9 @@ export type SaveTenantInboxInput = z.infer<typeof saveTenantInboxSchema>;
 export type DeleteTenantInboxInput = z.infer<typeof deleteTenantInboxSchema>;
 export type TestInboxConnectionInput = z.infer<typeof testInboxConnectionSchema>;
 export type InternalTestInboxInput = z.infer<typeof internalTestInboxSchema>;
+export type DismissVendorPriceNotificationInput = z.infer<
+  typeof dismissVendorPriceNotificationSchema
+>;
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RequestResetInput = z.infer<typeof requestResetSchema>;

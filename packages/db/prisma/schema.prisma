@@ -107,6 +107,9 @@ enum POAttachmentKind {
 // VENDOR_REPLY is emitted by the email ingestion foundation when a
 // matched inbound email materialises onto a PO; the row also carries
 // a non-null sourceEmailId for cross-link.
+// VENDOR_LOWER_PRICE is emitted when deterministic extraction detects
+// a unit/list price strictly lower than this vendor+SKU's prior history
+// row (operational signal only — no auto-repricing). See R-VEN-03.
 enum POEventKind {
   CREATED
   CREATED_FROM_ESTIMATE
@@ -119,6 +122,21 @@ enum POEventKind {
   NOTE_ADDED
   CANCELED
   VENDOR_REPLY
+  VENDOR_LOWER_PRICE
+}
+
+// Deterministic email/snippet/filename price extraction (Phase 10).
+// Not probabilistic; values stored on VendorPriceHistory rows.
+enum VendorPriceConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum VendorPriceExtractionMethod {
+  LINE_REGEX
+  SUBJECT_REGEX
+  FILENAME_REGEX
 }
 
 // IngestedEmail.status — the per-email processing state. PENDING is the
@@ -174,6 +192,10 @@ model Tenant {
   ingestedEmails        IngestedEmail[]
   ingestedEmailAttachments IngestedEmailAttachment[]
   emailIngestRuns       EmailIngestRun[]
+  vendorCatalogItems  VendorCatalogItem[]
+  vendorItemAliases   VendorItemAlias[]
+  vendorPriceHistories VendorPriceHistory[]
+  vendorPriceNotifications VendorPriceNotification[]
 
   @@map("tenants")
 }
@@ -424,6 +446,10 @@ model Vendor {
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrders PurchaseOrder[]
   ingestedEmails IngestedEmail[] @relation("MatchedVendor")
+  catalogItems   VendorCatalogItem[]
+  itemAliases    VendorItemAlias[]
+  priceHistory   VendorPriceHistory[]
+  priceNotifications VendorPriceNotification[]
 
   @@unique([tenantId, name])
   @@index([tenantId, deletedAt])
@@ -647,6 +673,8 @@ model IngestedEmail {
   attachments       IngestedEmailAttachment[]
   poAttachments     POAttachment[]
   poEvents          POEvent[]
+  vendorPriceHistoryRows VendorPriceHistory[]
+  vendorPriceNotifications VendorPriceNotification[]
 
   @@unique([tenantId, messageId])
   @@index([tenantId, status, createdAt])
@@ -681,10 +709,107 @@ model IngestedEmailAttachment {
 
   tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ingestedEmail  IngestedEmail @relation(fields: [ingestedEmailId], references: [id], onDelete: Cascade)
+  vendorPriceHistoryRows VendorPriceHistory[]
 
   @@index([tenantId, ingestedEmailId])
   @@index([sha256])
   @@map("ingested_email_attachments")
+}
+
+// Per-vendor normalized SKU / material line label. Scoped by tenant +
+// vendor — no semantic "Item" master yet (that lands with full catalog).
+// nameNormalized is produced by apps/web/lib/vendor-pricing/normalize.ts.
+model VendorCatalogItem {
+  id               String   @id @default(cuid())
+  tenantId         String
+  vendorId         String
+  nameNormalized   String   @db.VarChar(400)
+  createdAt        DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  aliases VendorItemAlias[]
+  priceHistory VendorPriceHistory[]
+  priceNotifications VendorPriceNotification[]
+
+  @@unique([tenantId, vendorId, nameNormalized])
+  @@index([tenantId, vendorId])
+  @@map("vendor_catalog_items")
+}
+
+// Maps alternate spellings ("ij180", "IJ180CV3") to a catalog row.
+// Lookup before creating a new VendorCatalogItem (R-VEN-02-style,
+// deterministic exact match only).
+model VendorItemAlias {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  vendorId             String
+  vendorCatalogItemId  String
+  aliasNormalized      String   @db.VarChar(400)
+  createdAt            DateTime @default(now())
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, vendorId, aliasNormalized])
+  @@index([tenantId, vendorCatalogItemId])
+  @@map("vendor_item_aliases")
+}
+
+// Append-only price observations from matched vendor email extraction.
+// Idempotent replays use dedupeKey (SHA-256 hex, 64 chars) per tenant.
+model VendorPriceHistory {
+  id                   String                     @id @default(cuid())
+  tenantId             String
+  vendorId             String
+  vendorCatalogItemId  String
+  itemNameRaw          String                     @db.VarChar(500)
+  itemNameNormalized   String                     @db.VarChar(400)
+  priceCents           Int
+  unit                 String?                    @db.VarChar(40)
+  quantityMilli        Int?
+  sourceEmailId        String
+  sourceAttachmentId   String?
+  confidence           VendorPriceConfidence
+  extractionMethod     VendorPriceExtractionMethod
+  dedupeKey            String                     @db.VarChar(64)
+  createdAt            DateTime                   @default(now())
+
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor           Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem      VendorCatalogItem      @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail      IngestedEmail          @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  sourceAttachment IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, vendorCatalogItemId, createdAt])
+  @@index([tenantId, vendorId, createdAt])
+  @@index([sourceEmailId])
+  @@map("vendor_price_histories")
+}
+
+// Dashboard notification: lower price vs prior history row for the same
+// catalog item. Requires explicit dismiss — never auto-cleared (R-NOTIF-01).
+model VendorPriceNotification {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  vendorId            String
+  vendorCatalogItemId String
+  oldPriceCents       Int
+  newPriceCents       Int
+  sourceEmailId       String
+  dismissedAt         DateTime?
+  createdAt           DateTime  @default(now())
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail IngestedEmail     @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, dismissedAt, createdAt])
+  @@index([tenantId, vendorId])
+  @@map("vendor_price_notifications")
 }
 
 // Lightweight per-tick observability log. One row per (tenantId, tick)

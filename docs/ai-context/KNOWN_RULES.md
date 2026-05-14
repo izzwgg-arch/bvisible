@@ -60,14 +60,25 @@ it.
 
 ## Vendors / pricing
 
-- **R-VEN-01** "Cheapest vendor" is computed per `Item` per quantity tier from
-  the latest `VendorPrice` rows. See `VENDOR_PRICE_ENGINE.md`.
+- **R-VEN-01** Long-term "cheapest vendor" ranking still targets canonical
+  `VendorPrice` / `Item` rows (`VENDOR_PRICE_ENGINE.md`). **Phase 10** adds
+  parallel **operational** observations: `VendorCatalogItem` +
+  append-only `VendorPriceHistory` populated only by deterministic email
+  extraction (subject, body snippet, filenames). Those rows inform alerts
+  and history UI; they do not automatically overwrite PO lines or the
+  estimate engine.
 - **R-VEN-02** Vendor email matching falls back from full sender address →
   domain → registered alias. Ambiguity routes to the review queue.
-- **R-VEN-03** When an ingested document shows a **lower price** than the
-  current `VendorPrice`, the system creates a Notification that **requires
-  manual dismissal** before the price is applied.
-- **R-VEN-04** `VendorPriceHistory` is append-only.
+  Catalog linkage for extracted lines uses **deterministic** resolution only:
+  exact normalized catalog name → exact `VendorItemAlias` → create catalog row.
+- **R-VEN-03** When extraction records a **lower** price than the latest
+  prior `VendorPriceHistory` row for the same `VendorCatalogItem`, the
+  system creates a `VendorPriceNotification` that **requires manual
+  dismissal**, emits `POEventKind.VENDOR_LOWER_PRICE`, and audits the
+  event. Prices are **never** auto-applied and vendors are **never**
+  auto-switched from this signal alone.
+- **R-VEN-04** `VendorPriceHistory` is append-only (insert-only in product
+  code; no updates/deletes for repricing).
 
 ## Email ingestion
 
@@ -98,12 +109,18 @@ it.
   outside the allowlist lands as `IngestedEmailAttachment` with
   `skipped = true` + a non-secret `skipReason` and bytes are NOT
   written to disk.
+- **R-MAIL-06** After a matched email successfully materializes onto a PO,
+  deterministic vendor price extraction may run (`runVendorPriceExtractionAfterMaterialize`).
+  Failures are isolated (warn log `vendor_price_extraction_failed`); they do
+  not roll back ingestion or change `IngestedEmail` status.
 
 ## Notifications
 
-- **R-NOTIF-01** Price-change notifications never auto-dismiss. They survive
-  page reloads and remain in the bell menu until the user clicks Dismiss.
-- **R-NOTIF-02** Per-user, per-tenant. Never cross tenants.
+- **R-NOTIF-01** Vendor lower-price alerts (`VendorPriceNotification`) never
+  auto-dismiss. They remain visible on the tenant dashboard until the user
+  submits the per-row **Dismiss** control (`dismissVendorPriceNotificationAction`).
+- **R-NOTIF-02** Tenant-scoped rows only; queries always include `tenantId`.
+  Never cross tenants.
 
 ## Tenancy
 

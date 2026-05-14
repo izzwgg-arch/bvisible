@@ -1,6 +1,7 @@
 import { requireUser } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { Role } from '@bvisible/db';
+import { VendorPriceAlerts } from './vendor-price-alerts';
 
 export const metadata = { title: 'Dashboard' };
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,9 @@ export default async function DashboardPage({
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
           That page requires a tenant. Create one under Tenants first.
         </div>
+      ) : null}
+      {user.tenantId ? (
+        <VendorPriceAlerts tenantId={user.tenantId} />
       ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card title="Account" body={`Signed in as ${user.email}`} mono={user.id} />

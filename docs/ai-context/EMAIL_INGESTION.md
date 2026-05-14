@@ -27,6 +27,8 @@ runIngestForTenant(tenantId)            (apps/web/lib/email-ingest/run.ts)
    │    matchEmail(...)                  (apps/web/lib/email-ingest/match.ts)
    │    if match:
    │      materializeOnPo(...) → VENDOR_REPLY POEvent + EMAIL_ATTACHMENT POAttachments
+   │      runVendorPriceExtractionAfterMaterialize(...) (apps/web/lib/vendor-pricing/persist.ts)
+   │        → deterministic regex on subject + body snippet + filenames; see § Vendor pricing extraction
    │    mark IMAP message \Seen          ← only after row commits
    └─ release lease + log EmailIngestRun
 ```
@@ -175,7 +177,17 @@ For each `UNSEEN` message:
    - one `POAttachment` per accepted attachment with
      `kind = EMAIL_ATTACHMENT`, `sourceEmailId` set, bytes copied
      into the per-PO directory.
-7. Mark the IMAP message `\Seen`. Only happens AFTER the DB transaction
+7. **Vendor pricing extraction (Phase 10).** After the materialization
+   transaction commits successfully, the ingest runner calls
+   `runVendorPriceExtractionAfterMaterialize` in a separate `try/catch`.
+   It scans the email **subject**, stored **plain-text body snippet**
+   (`bodyTextSnippet`), and **sanitized attachment filenames** only.
+   Regex-extracted prices become append-only `VendorPriceHistory` rows
+   (integer cents, tenant-scoped, idempotent via `dedupeKey`). Failures
+   log `vendor_price_extraction_failed` and do **not** fail ingestion.
+   See `DATA_MODEL.md` and `SECURITY_RULES.md` for boundaries (no PDF
+   parsing, no OCR, no LLM).
+8. Mark the IMAP message `\Seen`. Only happens AFTER the DB transaction
    for the row commits — a crash before this point replays the message
    on the next tick, the unique constraint prevents duplicates.
 
@@ -197,7 +209,7 @@ Explicitly **not** implemented:
 - AI / LLM matching.
 - Fuzzy embeddings, probabilistic scoring.
 - Attachment filename hint matching (operator manually links instead).
-- Vendor pricing intelligence (`VendorPrice`, `VendorPriceHistory`).
+- Vendor pricing from attachment **contents** (PDF bytes, OCR, tables).
 
 ## Attachment handling
 
@@ -226,6 +238,9 @@ Explicitly **not** implemented:
 - **Materialization idempotency:** `materializeIngestedEmailOnPo()` is
   keyed on `(purchaseOrderId, sourceEmailId)`. Re-running it for an
   already-materialized email writes nothing.
+- **Vendor price history idempotency:** `VendorPriceHistory` rows use
+  unique `(tenantId, dedupeKey)` so retries after a successful insert
+  no-op instead of duplicating observations.
 - **Per-tenant lease:** `runIngestForTenant()` claims a soft lease by
   conditionally setting `TenantEmailInbox.lastPolledAt = now()`
   WHERE the previous `lastPolledAt` is older than `pollIntervalSeconds`.
@@ -286,7 +301,9 @@ paired with sender PII, and any serialized `imapflow` auth object.
   cookie. Returns `503` if the secret is unset (no silent 200), `401`
   if the comparison fails.
 - **Cross-tenant safety.** Every query against `IngestedEmail`,
-  `IngestedEmailAttachment`, `TenantEmailInbox`, and `EmailIngestRun`
+  `IngestedEmailAttachment`, `TenantEmailInbox`, `EmailIngestRun`,
+  `VendorCatalogItem`, `VendorItemAlias`, `VendorPriceHistory`, and
+  `VendorPriceNotification`
   carries `tenantId` from the resolved inbox row (or, in the operator
   UI, from `requireRole(ADMIN, SUPER_ADMIN).tenantId`).
 - **No public attachment serving.** The download route
@@ -312,11 +329,24 @@ masked to `<first>***<last>@<domain>`; the diagnostics card surfaces
 `lastPolledAt`, `lastErrorAt`, `lastErrorMessage`, status counts, and
 recent `EmailIngestRun` rows but never the cipher.
 
+## Vendor pricing extraction (deterministic)
+
+- **Inputs:** `subject`, `bodyTextSnippet` (already sanitized at parse
+  time), and `originalFilename` for each attachment row (skipped blobs
+  are ignored for filename parsing).
+- **Not inputs:** PDF/HTML bodies, image OCR, LLM, embeddings, or any
+  execution of attachment payloads.
+- **Idempotency:** each observation uses a SHA-256 `dedupeKey`; unique
+  `(tenantId, dedupeKey)` prevents duplicate history rows on replay.
+- **Lower price:** when a new row is strictly cheaper than the latest
+  prior price for the same `VendorCatalogItem`, the system creates a
+  `VendorPriceNotification` (manual dismiss), a `POEvent` of kind
+  `VENDOR_LOWER_PRICE`, and an audit row — **no auto-repricing**.
+
 ## What's intentionally NOT here yet
 
 - OCR or invoice parsing (`pdfminer`, `tesseract`, table extraction).
-- Vendor pricing intelligence (`VendorPrice`, `VendorPriceHistory`,
-  R-VEN-03 manual-dismiss notifications).
+- Parsing prices from inside PDF/image attachments.
 - Auto-marking invoices `received` / `paid`.
 - AI / LLM matching.
 - IMAP IDLE / push / Gmail API webhooks.

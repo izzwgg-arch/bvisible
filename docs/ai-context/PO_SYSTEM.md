@@ -15,10 +15,18 @@ PurchaseOrder
 └── (later) Vendor documents, receipts, price updates
 ```
 
-## What's implemented today (Phase 7 foundation)
+## What's implemented today (Phase 7 foundation + Phase 10 vendor pricing observations)
 
 - `Vendor` (minimal: name / email / phone / notes; per-tenant uniqueness on
   `(tenantId, name)`).
+- **Vendor pricing intelligence (Phase 10, observation-only):** after a matched
+  email materializes onto a PO, deterministic extraction writes
+  `VendorCatalogItem` / `VendorItemAlias` (normalized names),
+  append-only `VendorPriceHistory` (integer cents, `sourceEmailId`,
+  optional `sourceAttachmentId`), and `VendorPriceNotification` when a new
+  observation is strictly cheaper than the latest prior row for that catalog
+  item. Dashboard banner + dismiss server action; `/vendors/[id]` shows
+  history newest-first. See `EMAIL_INGESTION.md` and `DATA_MODEL.md`.
 - `PurchaseOrder` with per-tenant monotonic `number` (`PO-NNNNNN`), nullable
   `estimateId` and `vendorId`, manually-entered `qboPoNumber`,
   cached `subtotalCents`, soft delete via `deletedAt`.
@@ -30,10 +38,14 @@ PurchaseOrder
 - `POEvent` append-only timeline (kinds: `CREATED`,
   `CREATED_FROM_ESTIMATE`, `LINES_SAVED`, `STATUS_CHANGED`,
   `QBO_NUMBER_ASSIGNED`, `VENDOR_ASSIGNED`, `ATTACHMENT_ADDED`,
-  `ATTACHMENT_DELETED`, `NOTE_ADDED`, `CANCELED`, `VENDOR_REPLY`).
+  `ATTACHMENT_DELETED`, `NOTE_ADDED`, `CANCELED`, `VENDOR_REPLY`,
+  `VENDOR_LOWER_PRICE`).
   `VENDOR_REPLY` is emitted by the email ingestion pipeline; its row
   also carries a non-null `sourceEmailId` pointing to the originating
-  `IngestedEmail`.
+  `IngestedEmail`. `VENDOR_LOWER_PRICE` is emitted when deterministic
+  extraction records a strictly lower unit price than the prior
+  `VendorPriceHistory` row for the same catalog item (operational alert
+  only — no auto-repricing).
 - `EstimateStatus.FINALIZED` enum value + R-EST-04 finalize gate
   (`finalizeEstimateAction` / `unfinalizeEstimateAction`).
 - UI: `/purchase-orders`, `/purchase-orders/new`,
@@ -49,8 +61,9 @@ PurchaseOrder
 ## What's deferred (intentionally out of scope this phase)
 
 - Mobile receipt uploads (presigned URLs, JWT auth) — mobile app phase.
-- OCR / invoice parsing.
-- Vendor pricing intelligence (`VendorPrice`, `VendorPriceHistory`).
+- OCR / invoice parsing inside attachments.
+- Auto-applying extracted vendor prices to PO lines or estimates.
+- Probabilistic vendor/item matching (embeddings / fuzzy SKU resolution beyond deterministic aliases).
 - QBO API auto-fetch of PO numbers (today the user pastes manually).
 - Approval workflows beyond the simple status enum.
 - The `closed` / `reopened` gate from R-PO-03 (today attachments can

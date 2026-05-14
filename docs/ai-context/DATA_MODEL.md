@@ -3,7 +3,7 @@
 The Prisma schema lives in `packages/db/prisma/schema.prisma`. This file is the
 human-readable map. Update it whenever the schema changes.
 
-## Currently shipped (foundation + auth + estimates + purchase orders + email ingestion)
+## Currently shipped (foundation + auth + estimates + purchase orders + email ingestion + vendor pricing observations)
 
 ```prisma
 enum Role { SUPER_ADMIN  ADMIN  USER }
@@ -114,10 +114,12 @@ enum POAttachmentKind { RECEIPT  INVOICE  VENDOR_DOC  DRAWING  OTHER  EMAIL_ATTA
 enum POEventKind {
   CREATED  CREATED_FROM_ESTIMATE  LINES_SAVED  STATUS_CHANGED
   QBO_NUMBER_ASSIGNED  VENDOR_ASSIGNED  ATTACHMENT_ADDED
-  ATTACHMENT_DELETED  NOTE_ADDED  CANCELED  VENDOR_REPLY
+  ATTACHMENT_DELETED  NOTE_ADDED  CANCELED  VENDOR_REPLY  VENDOR_LOWER_PRICE
 }
 enum EmailIngestStatus { PENDING  MATCHED  UNMATCHED  FAILED  DISMISSED }
 enum EmailMatchReason  { QBO_NUMBER  PO_NUMBER  VENDOR_AND_RECENT  MANUAL  NONE }
+enum VendorPriceConfidence { HIGH  MEDIUM  LOW }
+enum VendorPriceExtractionMethod { LINE_REGEX  SUBJECT_REGEX  FILENAME_REGEX }
 
 model Client {
   id          String    @id @default(cuid())
@@ -214,6 +216,10 @@ model Vendor {
   updatedAt DateTime  @updatedAt
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrders PurchaseOrder[]
+  catalogItems   VendorCatalogItem[]
+  itemAliases    VendorItemAlias[]
+  priceHistory   VendorPriceHistory[]
+  priceNotifications VendorPriceNotification[]
   @@unique([tenantId, name])
   @@index([tenantId, deletedAt])
   @@map("vendors")
@@ -295,7 +301,7 @@ model POEvent {
   message         String
   metadata        Json?
   actorId         String?                                        // null for system events
-  sourceEmailId   String?                                        // non-null for VENDOR_REPLY rows
+  sourceEmailId   String?                                        // non-null for VENDOR_REPLY / VENDOR_LOWER_PRICE rows driven by email ingestion
   createdAt       DateTime    @default(now())
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
@@ -355,6 +361,8 @@ model IngestedEmail {
   attachments       IngestedEmailAttachment[]
   poAttachments     POAttachment[]
   poEvents          POEvent[]
+  vendorPriceHistoryRows VendorPriceHistory[]
+  vendorPriceNotifications VendorPriceNotification[]
   @@unique([tenantId, messageId])                                   // R-MAIL-01
   @@index([tenantId, status, createdAt])
   @@index([tenantId, matchedPurchaseOrderId])
@@ -376,9 +384,88 @@ model IngestedEmailAttachment {
   createdAt        DateTime @default(now())
   tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ingestedEmail  IngestedEmail @relation(fields: [ingestedEmailId], references: [id], onDelete: Cascade)
+  vendorPriceHistoryRows VendorPriceHistory[]
   @@index([tenantId, ingestedEmailId])
   @@index([sha256])
   @@map("ingested_email_attachments")
+}
+
+model VendorCatalogItem {
+  id               String   @id @default(cuid())
+  tenantId         String
+  vendorId         String
+  nameNormalized   String   @db.VarChar(400)
+  createdAt        DateTime @default(now())
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  aliases VendorItemAlias[]
+  priceHistory VendorPriceHistory[]
+  priceNotifications VendorPriceNotification[]
+  @@unique([tenantId, vendorId, nameNormalized])
+  @@index([tenantId, vendorId])
+  @@map("vendor_catalog_items")
+}
+
+model VendorItemAlias {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  vendorId             String
+  vendorCatalogItemId  String
+  aliasNormalized      String   @db.VarChar(400)
+  createdAt            DateTime @default(now())
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  @@unique([tenantId, vendorId, aliasNormalized])
+  @@index([tenantId, vendorCatalogItemId])
+  @@map("vendor_item_aliases")
+}
+
+model VendorPriceHistory {
+  id                   String                     @id @default(cuid())
+  tenantId             String
+  vendorId             String
+  vendorCatalogItemId  String
+  itemNameRaw          String                     @db.VarChar(500)
+  itemNameNormalized   String                     @db.VarChar(400)
+  priceCents           Int
+  unit                 String?                    @db.VarChar(40)
+  quantityMilli        Int?
+  sourceEmailId        String
+  sourceAttachmentId   String?
+  confidence           VendorPriceConfidence
+  extractionMethod     VendorPriceExtractionMethod
+  dedupeKey            String                     @db.VarChar(64)
+  createdAt            DateTime                   @default(now())
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor           Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem      VendorCatalogItem      @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail      IngestedEmail          @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  sourceAttachment IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, vendorCatalogItemId, createdAt])
+  @@index([tenantId, vendorId, createdAt])
+  @@index([sourceEmailId])
+  @@map("vendor_price_histories")
+}
+
+model VendorPriceNotification {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  vendorId            String
+  vendorCatalogItemId String
+  oldPriceCents       Int
+  newPriceCents       Int
+  sourceEmailId       String
+  dismissedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail IngestedEmail     @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  @@index([tenantId, dismissedAt, createdAt])
+  @@index([tenantId, vendorId])
+  @@map("vendor_price_notifications")
 }
 
 model EmailIngestRun {
@@ -430,6 +517,7 @@ Notes:
 | `20260513221527_estimates_clients_machines` | 2026-05-13 | New enums `EstimateStatus`, `EstimateLineKind`; new tables `clients`, `machines`, `estimates`, `estimate_line_items`. All tenant-scoped, all money in integer cents, qty in `qtyMilli`. Indexes for `(tenantId, *)` lookups and `unique(tenantId, number)` on estimates. Generated via the same shadow-Postgres workflow; `.shadow-migrate.sh` was extended with a `--append-superadmin-index` flag (default off) so it no longer hand-appends the SUPER_ADMIN partial unique index for every migration. |
 | `20260513234614_purchase_orders_and_finalize` | 2026-05-13 | New enums `POStatus`, `POLineKind`, `POAttachmentKind`, `POEventKind`; `EstimateStatus.FINALIZED` enum value; new tables `vendors`, `purchase_orders`, `po_line_items`, `po_attachments`, `po_events`. Tenant-scoped, integer cents, soft delete via `deletedAt`. Unique on `(tenantId, number)` for POs, `(tenantId, name)` for vendors. Foreign keys: `purchase_orders.estimateId → estimates(id) ON DELETE SET NULL`, `purchase_orders.vendorId → vendors(id) ON DELETE SET NULL`. Generated via shadow Postgres. |
 | `20260514005509_email_ingestion_foundation` | 2026-05-14 | New enums `EmailIngestStatus`, `EmailMatchReason`; `POAttachmentKind` gains `EMAIL_ATTACHMENT`; `POEventKind` gains `VENDOR_REPLY`. New tables `tenant_email_inboxes` (1:1 per tenant), `ingested_emails` (UNIQUE `(tenantId, messageId)` for R-MAIL-01 idempotency), `ingested_email_attachments`, `email_ingest_runs`. Adds nullable `sourceEmailId` on `po_attachments` and `po_events` (FK SET NULL → `ingested_emails(id)`). Generated via shadow Postgres; `ALTER TYPE ... ADD VALUE` is run by Postgres 16 in the same migration transaction safely. |
+| `20260514190000_vendor_pricing_intelligence` | 2026-05-14 | `POEventKind` gains `VENDOR_LOWER_PRICE`. New enums `VendorPriceConfidence`, `VendorPriceExtractionMethod`. New tables `vendor_catalog_items`, `vendor_item_aliases`, `vendor_price_histories` (append-only; UNIQUE `(tenantId, dedupeKey)`), `vendor_price_notifications`. Relations from `vendors`, `ingested_emails`, `ingested_email_attachments`. |
 
 ## Core entities (target schema)
 
@@ -440,12 +528,13 @@ Tenant ──< User
        │                                          └──< POAttachment
        │                                          └──< POReceipt
        │                                          └──< POEvent (timeline)
-       ├──< Vendor ──< VendorPrice ──< VendorPriceHistory
-       │            └──< VendorContact (sender email/domain matching)
-       ├──< Item   ──< ItemAlias    (vendor-specific item names)
+       ├──< Vendor ──< VendorCatalogItem ──< VendorPriceHistory
+       │            └──< VendorItemAlias
+       │            └──< VendorPriceNotification
+       ├──< Item   ──< ItemAlias    (vendor-specific item names — future master catalog)
        ├──< Machine                  (rates listed in ESTIMATE_ENGINE.md)
        ├──< IngestedEmail            (messageId unique per tenant)
-       └──< Notification             (manual-dismiss flag for price alerts)
+       └──< VendorPriceNotification (manual-dismiss lower-price alerts)
 ```
 
 ## Hard rules per table
@@ -456,9 +545,10 @@ Tenant ──< User
   duplicate processing — see `EMAIL_INGESTION.md`.
 - `PurchaseOrder.qboPoNumber` (QuickBooks PO number) is required before an
   estimate may be marked finalized — see `PO_SYSTEM.md`.
-- `VendorPrice.unitPriceCents` is **integer cents** (see `CODING_STANDARDS.md`).
-- `VendorPriceHistory` is append-only. Never `UPDATE` or `DELETE` rows; insert a
-  new row with the new price and `effectiveAt`.
+- `VendorPriceHistory.priceCents` is **integer cents** (see `CODING_STANDARDS.md`).
+- `VendorPriceHistory` is append-only. Never `UPDATE` or `DELETE` rows in app
+  code; insert a new observation with a fresh `dedupeKey` / timestamp.
+  Lower-price UX uses `VendorPriceNotification` + `POEventKind.VENDOR_LOWER_PRICE`.
 
 ## Soft delete
 

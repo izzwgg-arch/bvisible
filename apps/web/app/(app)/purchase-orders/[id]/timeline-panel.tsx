@@ -25,6 +25,7 @@ const KIND_ICON: Record<POEventKind, string> = {
   NOTE_ADDED: '✦',
   CANCELED: '⊘',
   VENDOR_REPLY: '✉',
+  VENDOR_LOWER_PRICE: '↓',
 };
 
 interface TimelinePanelProps {

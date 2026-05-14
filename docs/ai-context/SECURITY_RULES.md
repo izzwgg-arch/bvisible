@@ -233,6 +233,12 @@
   (`/api/email-ingest/[id]/attachments/[attachmentId]`) is tenant-gated
   and ADMIN+ only. It re-runs `detectMimeFromBytes()` on the head of
   the file on every request and refuses anything outside the allowlist.
+- **Vendor pricing extraction.** Parser inputs are bounded text already
+  captured during ingest (`subject`, `bodyTextSnippet`, sanitized
+  `originalFilename`). No PDF/image parsers, no execution of attachment
+  contents, no outbound LLM calls. Extracted strings are length-capped
+  before persistence; notification and timeline copy flow through the
+  same React escaping rules as the rest of the app.
 
 ## Server posture (already in place)
 

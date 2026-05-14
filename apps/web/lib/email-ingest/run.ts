@@ -16,6 +16,7 @@ import {
   promoteEmailAttachmentToPo,
   UnsupportedAttachmentError,
 } from './storage';
+import { runVendorPriceExtractionAfterMaterialize } from '@/lib/vendor-pricing/persist';
 import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -448,7 +449,7 @@ async function materializeOnPo(args: MaterializeArgs): Promise<void> {
   // per-tenant operator identity. (Future: a dedicated bot user.)
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: args.purchaseOrderId },
-    select: { createdById: true, number: true },
+    select: { createdById: true, number: true, vendorId: true },
   });
   if (!po) return;
 
@@ -547,6 +548,33 @@ async function materializeOnPo(args: MaterializeArgs): Promise<void> {
       },
     }),
   ]);
+
+  const effectiveVendorId = args.vendorId ?? po.vendorId;
+  if (effectiveVendorId) {
+    try {
+      await runVendorPriceExtractionAfterMaterialize({
+        tenantId: args.tenantId,
+        vendorId: effectiveVendorId,
+        ingestedEmailId: args.ingestedEmailId,
+        purchaseOrderId: args.purchaseOrderId,
+        actorId: po.createdById,
+        subject: args.parsed.subject,
+        bodyTextSnippet: args.parsed.bodyTextSnippet,
+        attachments: stored.attachments.map((a) => ({
+          id: a.id,
+          originalFilename: a.originalFilename,
+          skipped: false,
+        })),
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('vendor_price_extraction_failed', {
+        tenantId: args.tenantId,
+        ingestedEmailId: args.ingestedEmailId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }
 
 export function buildTimelineMessage(args: {
