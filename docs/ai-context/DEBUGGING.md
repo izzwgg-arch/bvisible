@@ -1091,8 +1091,31 @@ Expected — logout revokes `mobile_sessions`; acquire new tokens via login.
 
 ### Symptom: refresh returns 401 after success once
 
-Refresh tokens **rotate**. Always persist the latest refresh token from the
-response (`apps/mobile/lib/api.ts` does this).
+Refresh tokens **rotate** server-side. The Expo app persists the latest refresh
+pair inside `saveTokens` (`apps/mobile/lib/session.ts`) — preferring SecureStore.
+
+### Symptom: parallel requests logged everyone out
+
+Fixed posture: `/auth/refresh` runs behind a **single-flight mutex**
+(`apps/mobile/lib/refresh-lock.ts`) so simultaneous 401s do not stampede refresh.
+
+### Symptom: `upload_complete` ran twice — duplicate attachments?
+
+It should not duplicate rows: handler is idempotent (`finalize-mobile-upload.ts`).
+Optional verification:
+
+```bash
+TEST_PO_ID=<cuid> TEST_UPLOAD_COMPLETE_IDEMPOTENCY=1 bash server-scripts/db/.verify-mobile-api.sh
+```
+
+### Symptom: `mobile_pending_uploads` table growing
+
+Expired reservations (`expiresAt < now`, `completedAt` null) can accumulate if clients never finish.
+Safe retention cleanup (example monthly cron — adjust window):
+
+```bash
+$PSQL -c "DELETE FROM mobile_pending_uploads WHERE \"completedAt\" IS NULL AND \"expiresAt\" < NOW() - INTERVAL '14 days';"
+```
 
 ### Symptom: CORS / OPTIONS from Expo
 
@@ -1107,7 +1130,7 @@ On the server (with Next listening locally):
 export BOOTSTRAP_EMAIL=...
 export BOOTSTRAP_PASSWORD=...
 bash server-scripts/db/.verify-mobile-api.sh
-# Optional: TEST_PO_ID=<cuid> bash server-scripts/db/.verify-mobile-api.sh
+# Optional: TEST_PO_ID=<cuid> TEST_UPLOAD_COMPLETE_IDEMPOTENCY=1 bash server-scripts/db/.verify-mobile-api.sh
 ```
 
 ## 12. UI / sidebar / drawer / hydration

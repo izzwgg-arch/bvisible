@@ -69,6 +69,9 @@
   even if the JWT is not yet expired. Rotating opaque refresh tokens are
   stored SHA-256 hashed (`mobile_sessions.refreshTokenHash`). Implementation:
   `apps/web/lib/mobile/*`, routes under `apps/web/app/api/v1/`.
+- **Expo client token storage:** refresh material is stored with **Expo SecureStore**
+  when available (fallback AsyncStorage / migration path on older installs); access JWT remains in
+  AsyncStorage only because it is short-lived. Never log either token type — same posture as browser sessions.
 
 ## Mailer posture
 

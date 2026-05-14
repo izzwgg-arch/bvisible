@@ -57,6 +57,13 @@ it.
   bytes-on-disk MIME is re-detected on every download stream so a
   tampered DB row cannot influence what the browser receives. See
   `apps/web/lib/po/uploads.ts` and `SECURITY_RULES.md`.
+- **R-MOB-01** `POST /api/v1/uploads/complete` is **idempotent**: repeating the
+  same `uploadId` after success returns the existing attachment (`data.idempotentReplay`)
+  without inserting another `POAttachment`, duplicate timeline rows, or
+  duplicate finalize audits (`finalize-mobile-upload.ts`).
+- **R-MOB-02** Expo uploads **persist locally** in AsyncStorage (`upload-queue`)
+  when offline or partially finished; processing waits on connectivity +
+  exponential backoff (processor drains automatically — never hammer retries).
 
 ## Vendors / pricing
 

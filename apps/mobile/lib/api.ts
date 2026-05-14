@@ -5,6 +5,8 @@ import {
   saveTokens,
   clearTokens,
 } from './session';
+import { createSingleFlight } from './refresh-lock';
+import { notifyAuthFailure } from './auth-events';
 
 function baseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL;
@@ -29,6 +31,18 @@ export interface ApiFailure {
 
 export type ApiEnvelope<T> = ApiSuccess<T> | ApiFailure;
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function authHeaders(
   init: RequestInit | undefined,
   access: string | null
@@ -38,7 +52,7 @@ async function authHeaders(
   return h;
 }
 
-async function refreshPair(): Promise<boolean> {
+async function refreshPairInner(): Promise<boolean> {
   const refresh = await getRefreshToken();
   const root = baseUrl();
   if (!refresh || !root) return false;
@@ -57,6 +71,12 @@ async function refreshPair(): Promise<boolean> {
   if (!json.ok || res.status >= 400) return false;
   await saveTokens(json.data.accessToken, json.data.refreshToken);
   return true;
+}
+
+const lockedRefresh = createSingleFlight<boolean>();
+
+export async function forceRefreshTokens(): Promise<boolean> {
+  return lockedRefresh(refreshPairInner);
 }
 
 export async function apiFetch<T>(
@@ -84,19 +104,32 @@ export async function apiFetch<T>(
     const access = init?.skipAuth ? null : await getAccessToken();
     const headers = await authHeaders(init, access);
     const res = await fetch(url, { ...init, headers });
-    const json = (await res.json()) as ApiEnvelope<T>;
+    let json: ApiEnvelope<T>;
+    try {
+      json = (await res.json()) as ApiEnvelope<T>;
+    } catch {
+      json = {
+        ok: false,
+        error: { code: 'bad_json', message: `HTTP ${res.status}` },
+      };
+    }
     return { res, json };
   };
 
   let out = await doFetch();
 
-  if (
-    !init?.skipAuth &&
-    out.res.status === 401 &&
-    out.json.ok === false
-  ) {
-    const ok = await refreshPair();
-    if (ok) out = await doFetch();
+  if (!init?.skipAuth && out.res.status === 401 && out.json.ok === false) {
+    const ok = await lockedRefresh(refreshPairInner);
+    if (!ok) {
+      await clearTokens();
+      notifyAuthFailure();
+      return out;
+    }
+    out = await doFetch();
+    if (!init?.skipAuth && out.res.status === 401 && out.json.ok === false) {
+      await clearTokens();
+      notifyAuthFailure();
+    }
   }
 
   return out;
@@ -110,7 +143,11 @@ export async function apiJson<T>(
   headers.set('Accept', 'application/json');
   const { res, json } = await apiFetch<T>(path, { ...init, headers });
   if (!json.ok) {
-    throw new Error(json.error.message || `HTTP ${res.status}`);
+    throw new ApiError(
+      json.error.message || `HTTP ${res.status}`,
+      res.status,
+      json.error.code
+    );
   }
   return json.data;
 }

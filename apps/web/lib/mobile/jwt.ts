@@ -1,7 +1,7 @@
 import * as jose from 'jose';
 import { randomUUID } from 'node:crypto';
-import type { Role } from '@bvisible/db';
-import { Role as RoleEnum } from '@bvisible/db';
+import type { Role } from '@prisma/client';
+import { Role as RoleEnum } from '@prisma/client';
 import { MOBILE_ACCESS_TOKEN_TTL_SEC } from './constants';
 
 const ROLES = new Set<string>(Object.values(RoleEnum));

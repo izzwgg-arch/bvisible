@@ -45,7 +45,7 @@ conflict, 422 business-rule violation, 500 server error.
 | `/api/v1/purchase-orders/[id]` | `GET` | Bearer; PO detail + attachments + recent `POEvent`s. |
 | `/api/v1/uploads/presign` | `POST` | Bearer; JSON `{ purchaseOrderId, kind, originalFilename, declaredSizeBytes }`. Creates `mobile_pending_upload`. |
 | `/api/v1/uploads/[id]/bytes` | `PUT` | Bearer; raw body, size must match declared bytes. |
-| `/api/v1/uploads/complete` | `POST` | Bearer; JSON `{ uploadId }`; magic-byte finalize → `POAttachment` + `ATTACHMENT_ADDED`. |
+| `/api/v1/uploads/complete` | `POST` | Bearer; JSON `{ uploadId }`; magic-byte finalize → `POAttachment` + `ATTACHMENT_ADDED`. **Idempotent:** successful replays return `data.idempotentReplay: true` and the same `attachmentId` without duplicating rows or timeline events. |
 
 ### Server actions (web only)
 

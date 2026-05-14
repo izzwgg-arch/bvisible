@@ -12,7 +12,12 @@ import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { apiJson } from '../../lib/api';
-import { getAccessToken } from '../../lib/session';
+import { useUploadQueue } from '../../lib/upload-queue/context';
+import { prepareUploadFile } from '../../lib/upload-queue/prepare-file';
+import {
+  UploadQueuePanel,
+  UploadQueueSpinner,
+} from '../../components/UploadQueuePanel';
 
 type MobileAttachmentKind =
   | 'RECEIPT'
@@ -59,7 +64,11 @@ export default function PurchaseOrderDetailScreen() {
     null
   );
   const [error, setError] = useState<string | null>(null);
-  const [busyKind, setBusyKind] = useState<MobileAttachmentKind | null>(null);
+  const [pickingKind, setPickingKind] = useState<MobileAttachmentKind | null>(
+    null
+  );
+
+  const { enqueuePreparedUpload, refresh: refreshQueue } = useUploadQueue();
 
   const load = useCallback(async () => {
     if (!poId) return;
@@ -78,12 +87,13 @@ export default function PurchaseOrderDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load])
+      void refreshQueue();
+    }, [load, refreshQueue])
   );
 
-  async function pickAndUpload(kind: MobileAttachmentKind) {
-    if (!poId || busyKind) return;
-    setBusyKind(kind);
+  async function pickAndEnqueue(kind: MobileAttachmentKind) {
+    if (!poId || pickingKind) return;
+    setPickingKind(kind);
     try {
       const picked = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
@@ -91,73 +101,66 @@ export default function PurchaseOrderDetailScreen() {
       });
 
       if (picked.canceled || !picked.assets?.length) {
-        setBusyKind(null);
         return;
       }
 
       const asset = picked.assets[0];
       let sizeBytes = asset.size ?? 0;
       if (!sizeBytes) {
-        const info = await FileSystem.getInfoAsync(asset.uri);
-        sizeBytes = info.exists && typeof info.size === 'number' ? info.size : 0;
+        const info = await FileSystem.getInfoAsync(asset.uri, { size: true });
+        sizeBytes =
+          info.exists && typeof info.size === 'number' ? info.size : 0;
       }
 
       if (!sizeBytes) {
-        Alert.alert('Upload', 'Could not determine file size. Pick another file.');
-        setBusyKind(null);
+        Alert.alert(
+          'Upload',
+          'Could not determine file size. Pick another file.'
+        );
         return;
       }
+
+      const mimeType =
+        asset.mimeType ??
+        (asset.name?.toLowerCase().endsWith('.pdf')
+          ? 'application/pdf'
+          : 'image/jpeg');
 
       const originalFilename =
         asset.name?.replace(/[/\\]/g, '') || 'attachment.bin';
 
-      const presign = await apiJson<{
-        uploadId: string;
-        uploadUrl: string;
-      }>('/api/v1/uploads/presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          purchaseOrderId: poId,
-          kind,
-          originalFilename,
-          declaredSizeBytes: sizeBytes,
-        }),
+      const prepared = await prepareUploadFile({
+        localUri: asset.uri,
+        mimeType,
+        sizeBytes,
+        originalFilename,
       });
 
-      const access = await getAccessToken();
-      if (!access) throw new Error('Not signed in.');
+      const poLabel = detail?.number ?? poId;
 
-      const blob = await (await fetch(asset.uri)).blob();
-      if (blob.size !== sizeBytes) {
-        throw new Error('File size mismatch after read.');
-      }
-
-      const putRes = await fetch(presign.uploadUrl, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${access}` },
-        body: blob,
+      await enqueuePreparedUpload({
+        poId,
+        poLabel,
+        kind,
+        localUri: prepared.uri,
+        mimeType: prepared.mimeType,
+        sizeBytes: prepared.sizeBytes,
+        originalFilename: prepared.originalFilename,
       });
 
-      if (!putRes.ok) {
-        throw new Error(`Upload failed (${putRes.status}).`);
-      }
+      Alert.alert(
+        'Queued',
+        'Upload runs in the background when you have a connection. Track progress below.'
+      );
 
-      await apiJson('/api/v1/uploads/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uploadId: presign.uploadId }),
-      });
-
-      await load();
-      Alert.alert('Uploaded', 'File attached to this PO.');
+      void load();
     } catch (e) {
       Alert.alert(
-        'Upload failed',
+        'Could not queue file',
         e instanceof Error ? e.message : 'Unknown error.'
       );
     } finally {
-      setBusyKind(null);
+      setPickingKind(null);
     }
   }
 
@@ -179,6 +182,8 @@ export default function PurchaseOrderDetailScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 32 }}>
+      <UploadQueueSpinner />
+
       <View style={styles.hero}>
         <Text style={styles.po}>{detail.number}</Text>
         <Text style={styles.meta}>
@@ -191,11 +196,14 @@ export default function PurchaseOrderDetailScreen() {
         {UPLOAD_KINDS.map(({ kind, label }) => (
           <Pressable
             key={kind}
-            style={[styles.kindBtn, busyKind === kind && styles.kindBtnBusy]}
-            onPress={() => void pickAndUpload(kind)}
-            disabled={busyKind !== null}
+            style={[
+              styles.kindBtn,
+              pickingKind === kind && styles.kindBtnBusy,
+            ]}
+            onPress={() => void pickAndEnqueue(kind)}
+            disabled={pickingKind !== null}
           >
-            {busyKind === kind ? (
+            {pickingKind === kind ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.kindBtnText}>{label}</Text>
@@ -203,6 +211,8 @@ export default function PurchaseOrderDetailScreen() {
           </Pressable>
         ))}
       </View>
+
+      <UploadQueuePanel />
 
       <Text style={styles.section}>Attachments</Text>
       {detail.attachments.length === 0 ? (
@@ -233,7 +243,12 @@ export default function PurchaseOrderDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#f1f5f9', paddingHorizontal: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9' },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+  },
   hero: {
     backgroundColor: '#fff',
     borderRadius: 14,

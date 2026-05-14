@@ -42,7 +42,6 @@ STALE=$(curl -sS -o /dev/null -w "%{http_code}" -H 'Content-Type: application/js
   "$BASE/api/v1/auth/refresh")
 [[ "$STALE" == "401" ]] && green "old refresh rejected" || { red "expected 401 stale refresh got $STALE"; exit 1; }
 
-NEW_REFRESH=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"]["refreshToken"])' <<<"$REFRESH2_JSON")
 NEW_ACCESS=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"]["accessToken"])' <<<"$REFRESH2_JSON")
 
 note "4) PO list with Bearer"
@@ -69,6 +68,24 @@ if [[ -n "${TEST_PO_ID:-}" ]]; then
     -d "{\"purchaseOrderId\":\"$TEST_PO_ID\",\"kind\":\"RECEIPT\",\"originalFilename\":\"probe.pdf\",\"declaredSizeBytes\":4}" \
     "$BASE/api/v1/uploads/presign")
   echo "$PRES" | grep -q '"uploadUrl"' && green "presign OK" || { red "$PRES"; exit 1; }
+
+  if [[ "${TEST_UPLOAD_COMPLETE_IDEMPOTENCY:-}" == "1" ]]; then
+    note "6b) PUT minimal PDF bytes + POST complete twice (same attachmentId)"
+    UID=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"]["uploadId"])' <<<"$PRES")
+    UURL=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"]["uploadUrl"])' <<<"$PRES")
+    printf '%%PDF' > /tmp/bv-mobile-probe.pdf
+    curl -fsS -X PUT -H "Authorization: Bearer $ACC2" --data-binary @/tmp/bv-mobile-probe.pdf "$UURL" >/dev/null
+    C1=$(curl -sS -H "Authorization: Bearer $ACC2" -H 'Content-Type: application/json' \
+      -d "{\"uploadId\":\"$UID\"}" "$BASE/api/v1/uploads/complete")
+    C2=$(curl -sS -H "Authorization: Bearer $ACC2" -H 'Content-Type: application/json' \
+      -d "{\"uploadId\":\"$UID\"}" "$BASE/api/v1/uploads/complete")
+    A1=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"]["attachmentId"])' <<<"$C1")
+    A2=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"]["attachmentId"])' <<<"$C2")
+    R2=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["data"].get("idempotentReplay", False))' <<<"$C2")
+    echo "$C1" | grep -q '"ok":true' && echo "$C2" | grep -q '"ok":true' && [[ "$A1" == "$A2" ]] && [[ "$R2" == "True" ]] \
+      && green "double-complete idempotent OK" \
+      || { red "C1=$C1 C2=$C2"; exit 1; }
+  fi
 fi
 
 green "All mobile API smoke checks passed."

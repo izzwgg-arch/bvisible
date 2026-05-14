@@ -35,7 +35,21 @@ Expo / React Native client in `apps/mobile/`. This doc reflects what is
    (≤ 25 MB). Writes via `persistAttachmentBytes` (existing PO upload helper).
 3. `POST /api/v1/uploads/complete` — magic-byte MIME re-check; transaction:
    mark pending complete + `insertPoAttachmentAndTimelineEvent` (`ATTACHMENT_ADDED`);
-   audits `mobile_upload_*` + `po_attachment_added`.
+   audits `mobile_upload_*` + `po_attachment_added`. **Repeating complete with the
+   same `uploadId` after success is safe** (`idempotentReplay`, same `attachmentId`).
+
+### Client reliability (Expo)
+
+- **Offline queue:** picking a file enqueues work in AsyncStorage (`bv_mobile_upload_queue_v1`).
+  Jobs states: `queued` → `uploading` → removed on success, or `failed` with backoff +
+  manual **Retry**. `@react-native-community/netinfo` gates automatic draining;
+  App foreground + periodic ticks resume stalled jobs.
+- **Tokens:** refresh token prefers **Expo SecureStore** (fallback AsyncStorage on web /
+  unavailable secure enclave). Parallel `/auth/refresh` calls use a **single-flight lock**
+  (`refresh-lock.ts`). Failed refresh after a 401 clears tokens and routes to login.
+- **Large photos:** raster images may be downscaled (long edge ≤ 2048) / recompressed to JPEG
+  before upload; PDFs are never re-encoded (`prepare-file.ts`).
+- **Upload progress:** PUT uses `XMLHttpRequest` upload events for percent progress in the queue UI.
 
 Supported kinds (mobile picker): `RECEIPT`, `INSTALL_PHOTO`,
 `FIELD_DOCUMENT`, `VENDOR_INVOICE`. Allowlisted MIME: PDF, JPEG, PNG, WEBP.
@@ -48,9 +62,10 @@ Supported kinds (mobile picker): `RECEIPT`, `INSTALL_PHOTO`,
 ## Future (not shipped)
 
 - Assigned-PO-only scope, QR flow, line-level receiving.
-- Client-side photo resize, offline queue, push notifications.
+- Push notifications.
 - Magic-link-only login via ingest mailbox.
 
 ## Build
 
 - From repo root: `pnpm --filter @bvisible/mobile start` (after install).
+- Queue unit tests: `pnpm --filter @bvisible/mobile run test`.

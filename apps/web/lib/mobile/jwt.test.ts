@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { Role } from '@prisma/client';
+import { signMobileAccessToken, verifyMobileAccessToken } from './jwt';
 
 describe('mobile JWT', () => {
   beforeAll(() => {
@@ -6,9 +8,6 @@ describe('mobile JWT', () => {
   });
 
   it('sign + verify roundtrip carries tenant, role, session', async () => {
-    const { signMobileAccessToken, verifyMobileAccessToken } = await import('./jwt');
-    const { Role } = await import('@bvisible/db');
-
     const { token } = await signMobileAccessToken({
       sessionId: 'sess_cuid_test',
       userId: 'user_test',
@@ -24,7 +23,6 @@ describe('mobile JWT', () => {
   });
 
   it('rejects forged role claim', async () => {
-    const { signMobileAccessToken } = await import('./jwt');
     const secret = new TextEncoder().encode(
       'test-mobile-jwt-secret-min-32-chars!'
     );
@@ -41,7 +39,6 @@ describe('mobile JWT', () => {
       .setExpirationTime('900s')
       .sign(secret);
 
-    const { verifyMobileAccessToken } = await import('./jwt');
     await expect(verifyMobileAccessToken(bad)).rejects.toThrow();
   });
 });

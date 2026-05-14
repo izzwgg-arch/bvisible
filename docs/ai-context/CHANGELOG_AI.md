@@ -5,6 +5,49 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Mobile upload reliability + offline hardening
+
+**Migration:** none (extends mobile `/api/v1` foundation).
+**Deploy:** not run from this session.
+
+**Scope**
+
+- Idempotent `/api/v1/uploads/complete` (`finalize-mobile-upload.ts`, `data.idempotentReplay`).
+- Expo persisted upload queue + NetInfo + AppState resume + backoff + XMLHttpRequest PUT progress.
+- Refresh token prefers Expo SecureStore; parallel `/auth/refresh` single-flight mutex.
+- Auto logout callback when refresh cannot recover after HTTP 401.
+- Raster image resize/JPEG pipeline before upload (`expo-image-manipulator`); PDFs unchanged.
+
+**Files created**
+
+- `apps/web/lib/mobile/finalize-mobile-upload.ts`, `finalize-mobile-upload.test.ts`
+- `apps/mobile/lib/auth-events.ts`, `refresh-lock.ts`
+- `apps/mobile/lib/upload-queue/types.ts`, `backoff.ts`, `backoff.test.ts`, `storage.ts`, `prepare-file.ts`, `xhr-upload.ts`, `processor.ts`, `context.tsx`
+- `apps/mobile/components/UploadQueuePanel.tsx`
+- `apps/mobile/vitest.config.ts`
+
+**Files modified**
+
+- `apps/web/app/api/v1/uploads/complete/route.ts`
+- `apps/web/lib/mobile/jwt.ts`, `jwt.test.ts` — `Role` from `@prisma/client` (avoids loading Prisma in JWT unit tests); `apps/web/package.json` adds explicit `@prisma/client`; `vitest.config.ts` `testTimeout` for CI stability
+- `apps/mobile/package.json`, `apps/mobile/app/_layout.tsx`, `apps/mobile/app/purchase-order/[id].tsx`, `apps/mobile/lib/api.ts`, `apps/mobile/lib/session.ts`
+- `server-scripts/db/.verify-mobile-api.sh`
+- `docs/ai-context/{MOBILE_APP,API_STRUCTURE,SECURITY_RULES,DEBUGGING,KNOWN_RULES,CHANGELOG_AI}.md`
+- `pnpm-lock.yaml`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web exec vitest run` (full suite)
+- `pnpm --filter @bvisible/mobile run test`
+- `pnpm --filter @bvisible/web run build` with `MOBILE_JWT_SECRET` set
+
+**Risks**
+
+- Expired pending-upload rows should be pruned — see `DEBUGGING.md` §11e example SQL.
+- Image manipulate dependency major line must stay aligned with Expo SDK over time.
+
+---
+
 ## 2026-05-14 — Mobile `/api/v1` foundation (Bearer JWT + PO uploads)
 
 **Migration:** `packages/db/prisma/migrations/20260515083000_mobile_upload_foundation/migration.sql` (`POAttachmentKind` values + `mobile_sessions`, `mobile_pending_uploads`).
