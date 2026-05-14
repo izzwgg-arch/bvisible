@@ -64,20 +64,22 @@ export async function getDashboardMetrics(
     prisma.vendorPriceNotification.count({
       where: { tenantId, dismissedAt: null },
     }),
-    prisma.purchaseOrder.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        operatorMarkedReconciledAt: null,
-        reconciliations: {
-          some: {
-            status: {
-              notIn: [POReconciliationStatus.MATCHED, POReconciliationStatus.RESOLVED],
+    opts.includeOperatorMetrics
+      ? prisma.purchaseOrder.count({
+          where: {
+            tenantId,
+            deletedAt: null,
+            operatorMarkedReconciledAt: null,
+            reconciliations: {
+              some: {
+                status: {
+                  notIn: [POReconciliationStatus.MATCHED, POReconciliationStatus.RESOLVED],
+                },
+              },
             },
           },
-        },
-      },
-    }),
+        })
+      : Promise.resolve(0),
     opts.includeOperatorMetrics
       ? prisma.ocrDocument.count({
           where: {
