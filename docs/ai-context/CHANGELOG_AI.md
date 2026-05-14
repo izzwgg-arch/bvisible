@@ -20,6 +20,22 @@ records what changed, the files touched, the risks, and the verification.
 
 - `pnpm --filter @bvisible/web run verify:vendor-catalog`
 
+**Production deploy — vendor catalog intelligence rail (2026-05-14)**
+
+- **Deploy job ID:** `20260514T183407-f21f45`
+- **Deployed SHA:** `4e0755a1680767a918d52438a141e0ca17e1a445`
+- **Migration:** `20260519103000_vendor_catalog_lookup_indexes` applied successfully (`prisma migrate deploy`; `db-verify` reported latest migration name match).
+- **PM2:** `bvisible-web` **reload OK** (process online immediately after deploy).
+- **Healthcheck (deploy box):** `/opt/bvisible/deploy-queue/healthcheck.sh` passed — `{"status":"ok","service":"bvisible-web"}` after one attempt.
+- **DB / indexes (production SQL):** confirmed via `pg_indexes` rows  
+  `vendor_catalog_items_tenant_name_normalized_idx` and  
+  `vendor_item_aliases_tenant_alias_normalized_idx`; existing uniqueness indexes  
+  `vendor_catalog_items_tenantId_vendorId_nameNormalized_key` and  
+  `vendor_item_aliases_tenantId_vendorId_aliasNormalized_key` still present (**no uniqueness regression** observed).
+- **Keyboard / estimate UX:** **not browser-verified in this session** — deploy automation does not exercise the spreadsheet; keyboard semantics were unchanged in `grid-nav.ts` / `makeGridKeyHandler` for this feature (rail uses passive `onCellFocus` callbacks only). Operators should confirm Enter ↓, Shift+Enter ↑, and Tab on a real estimate after deploy.
+- **Performance:** **not measured under real typing load in this session**; implementation uses **320ms debounce** and **capped Prisma reads** per `catalog-lookup.ts`. Recommend a quick Network-tab spot check (one request burst after pause, not per keystroke).
+- **Tenant isolation:** enforced in code via `requireTenantId()` + `tenantId` on every lookup query — **not multi-tenant SQL-tested here**; optional spot-check with two tenant sessions.
+
 **Files**
 
 - `apps/web/lib/vendor-pricing/{catalog-lookup.ts,catalog-intel-types.ts,trends.ts}`
