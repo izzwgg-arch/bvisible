@@ -57,6 +57,12 @@ export default async function VendorDetailPage({
           matchedPurchaseOrderId: true,
         },
       },
+      sourcePoAttachment: {
+        select: { purchaseOrderId: true },
+      },
+      ocrLineItem: {
+        select: { ocrDocumentId: true },
+      },
     },
   });
 
@@ -84,7 +90,7 @@ export default async function VendorDetailPage({
     <>
       <PageHeader
         title={vendor.name}
-        subtitle="Vendor profile and deterministic price extraction history from matched inbound email."
+        subtitle="Vendor profile and price observation history (matched emails + approved receipt OCR)."
         actions={
           <Link
             href="/vendors"
@@ -186,14 +192,31 @@ export default async function VendorDetailPage({
                   </td>
                   <td className="max-w-[200px] px-5 py-2.5">
                     <div className="truncate text-[11px] text-[var(--color-bv-muted)]">
-                      {h.sourceEmail.subject}
+                      {h.sourceEmail?.subject ??
+                        (h.ocrLineItem
+                          ? 'Receipt OCR (approved)'
+                          : '—')}
                     </div>
-                    {h.sourceEmail.matchedPurchaseOrderId ? (
+                    {h.sourceEmail?.matchedPurchaseOrderId ? (
                       <Link
                         href={`/purchase-orders/${h.sourceEmail.matchedPurchaseOrderId}`}
                         className="text-[11px] text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
                       >
                         Open PO
+                      </Link>
+                    ) : h.sourcePoAttachment?.purchaseOrderId ? (
+                      <Link
+                        href={`/purchase-orders/${h.sourcePoAttachment.purchaseOrderId}`}
+                        className="text-[11px] text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+                      >
+                        Open PO
+                      </Link>
+                    ) : h.ocrLineItem ? (
+                      <Link
+                        href={`/admin/ocr-review/${h.ocrLineItem.ocrDocumentId}`}
+                        className="text-[11px] text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+                      >
+                        OCR record
                       </Link>
                     ) : (
                       <span className="text-[11px] text-[var(--color-bv-muted)]">—</span>
@@ -207,8 +230,9 @@ export default async function VendorDetailPage({
                     colSpan={6}
                     className="px-5 py-10 text-center text-[var(--color-bv-muted)]"
                   >
-                    No extracted prices yet. They appear when a matched vendor
-                    email contains line-like patterns (e.g. “ITEM — $12.50”).
+                    No extracted prices yet. Observations appear when matched
+                    vendor emails contain line-like patterns, or when receipt OCR
+                    rows are approved by an operator.
                   </td>
                 </tr>
               ) : null}

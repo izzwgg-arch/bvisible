@@ -12,6 +12,7 @@ export {
   EmailMatchReason,
   VendorPriceConfidence,
   VendorPriceExtractionMethod,
+  OcrJobStatus,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -40,4 +41,6 @@ export type {
   VendorPriceNotification,
   MobileSession,
   MobilePendingUpload,
+  OcrDocument,
+  OcrLineItem,
 } from '@prisma/client';

@@ -29,6 +29,14 @@ export async function VendorPriceAlerts({ tenantId }: { tenantId: string }) {
           subject: true,
         },
       },
+      sourceOcrDocument: {
+        select: {
+          id: true,
+          poAttachment: {
+            select: { purchaseOrderId: true },
+          },
+        },
+      },
     },
   });
 
@@ -42,9 +50,9 @@ export async function VendorPriceAlerts({ tenantId }: { tenantId: string }) {
             Vendor price alerts
           </h2>
           <p className="mt-1 text-[12.5px] text-amber-900">
-            A matched vendor email quoted a lower price than the last recorded
-            price for that item. Nothing is auto-updated — dismiss when
-            reviewed (R-VEN-03).
+            A lower vendor unit price was recorded (often from email extraction;
+            sometimes from receipt OCR after operator approval). Nothing is
+            auto-updated — dismiss when reviewed (R-VEN-03).
           </p>
         </div>
       </div>
@@ -74,13 +82,34 @@ export async function VendorPriceAlerts({ tenantId }: { tenantId: string }) {
                 </span>
               </div>
               <div className="mt-1 truncate text-[11px] text-amber-800">
-                Email: {r.sourceEmail.subject}
+                {r.sourceEmail ? (
+                  <>Email: {r.sourceEmail.subject}</>
+                ) : r.sourceOcrDocument ? (
+                  <>
+                    Source:{' '}
+                    <Link
+                      href={`/admin/ocr-review/${r.sourceOcrDocument.id}`}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      Receipt OCR review
+                    </Link>
+                  </>
+                ) : (
+                  <>Source: operational signal</>
+                )}
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {r.sourceEmail.matchedPurchaseOrderId ? (
+              {r.sourceEmail?.matchedPurchaseOrderId ? (
                 <Link
                   href={`/purchase-orders/${r.sourceEmail.matchedPurchaseOrderId}`}
+                  className="inline-flex rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-surface)]"
+                >
+                  View PO
+                </Link>
+              ) : r.sourceOcrDocument?.poAttachment?.purchaseOrderId ? (
+                <Link
+                  href={`/purchase-orders/${r.sourceOcrDocument.poAttachment.purchaseOrderId}`}
                   className="inline-flex rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-surface)]"
                 >
                   View PO

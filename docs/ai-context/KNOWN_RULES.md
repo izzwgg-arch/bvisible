@@ -70,10 +70,11 @@ it.
 - **R-VEN-01** Long-term "cheapest vendor" ranking still targets canonical
   `VendorPrice` / `Item` rows (`VENDOR_PRICE_ENGINE.md`). **Phase 10** adds
   parallel **operational** observations: `VendorCatalogItem` +
-  append-only `VendorPriceHistory` populated only by deterministic email
-  extraction (subject, body snippet, filenames). Those rows inform alerts
-  and history UI; they do not automatically overwrite PO lines or the
-  estimate engine.
+  append-only `VendorPriceHistory` populated by deterministic email
+  extraction (subject, body snippet, filenames). **Phase 13** adds optional
+  **`OCR_APPROVED`** rows after operators confirm local OCR suggestions — never
+  automatically from raw OCR. Those rows inform alerts and history UI; they do
+  not automatically overwrite PO lines or the estimate engine.
 - **R-VEN-02** Vendor email matching falls back from full sender address →
   domain → registered alias. Ambiguity routes to the review queue.
   Catalog linkage for extracted lines uses **deterministic** resolution only:
@@ -84,8 +85,15 @@ it.
   dismissal**, emits `POEventKind.VENDOR_LOWER_PRICE`, and audits the
   event. Prices are **never** auto-applied and vendors are **never**
   auto-switched from this signal alone.
-- **R-VEN-04** `VendorPriceHistory` is append-only (insert-only in product
-  code; no updates/deletes for repricing).
+- **R-OCR-01** Local OCR (`apps/web/lib/ocr/*`) produces **suggestions only**
+  until an ADMIN confirms on `/admin/ocr-review/*`. Automatic extraction
+  never writes `VendorPriceHistory`; approved writes use
+  `extractionMethod = OCR_APPROVED` and dedupe via `(tenantId, dedupeKey)`
+  plus unique optional `ocrLineItemId`.
+- **R-OCR-02** Each eligible `POAttachment` enqueues **at most one**
+  `OcrDocument` row (`poAttachmentId` UNIQUE). Processing runs only from the
+  internal tick (`/api/internal/ocr/tick`); bounded `attemptCount` transitions
+  to `FAILED` instead of infinite retries.
 
 ## Email ingestion
 

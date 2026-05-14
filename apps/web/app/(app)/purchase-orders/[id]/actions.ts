@@ -36,6 +36,7 @@ import {
   safeOriginalFilename,
 } from '@/lib/po/uploads';
 import { insertPoAttachmentAndTimelineEvent } from '@/lib/po/attachment-insert';
+import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import { unlink } from 'node:fs/promises';
 
 export interface SavePoState {
@@ -435,6 +436,16 @@ export async function uploadPoAttachmentAction(
       kind: kind as POAttachmentKind,
     })
   );
+
+  try {
+    await enqueueOcrJobForPoAttachment({
+      tenantId: me.tenantId,
+      poAttachmentId: created.attachmentId,
+      kind: kind as POAttachmentKind,
+    });
+  } catch {
+    // OCR enqueue must never block uploads.
+  }
 
   await writeAuditLog({
     action: 'po_attachment_added',

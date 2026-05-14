@@ -17,6 +17,7 @@ import {
   UnsupportedAttachmentError,
 } from './storage';
 import { runVendorPriceExtractionAfterMaterialize } from '@/lib/vendor-pricing/persist';
+import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -483,6 +484,15 @@ async function materializeOnPo(args: MaterializeArgs): Promise<void> {
         },
         select: { id: true },
       });
+      try {
+        await enqueueOcrJobForPoAttachment({
+          tenantId: args.tenantId,
+          poAttachmentId: row.id,
+          kind: POAttachmentKind.EMAIL_ATTACHMENT,
+        });
+      } catch {
+        /* OCR enqueue must never block ingestion */
+      }
       promoted.push({
         id: row.id,
         mimeType: att.mimeType,

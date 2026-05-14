@@ -82,7 +82,8 @@ The look, feel, and behavior of the web app.
   not hijacked — that would break caret navigation inside text inputs.
 - **Sidebar nav** for tenant users now shows
   `Dashboard / Estimates / Purchase orders / Clients / Vendors` in
-  `BASE_NAV`. ADMIN adds `Users` + `Email ingestion`; SUPER_ADMIN
+  `BASE_NAV`. ADMIN adds `Users`, `Email ingestion`, and **`Receipt OCR`**
+  (`/admin/ocr-review`); SUPER_ADMIN
   additionally adds `Tenants`, `Inboxes`, and `Email test`.
 - **Email ingestion review** at `/admin/email-ingestion` (ADMIN+):
   filterable buckets (Unmatched / Matched / Failed / Dismissed / All)
@@ -95,6 +96,9 @@ The look, feel, and behavior of the web app.
   password is **never** displayed) and a "Recent ticks" list. The
   page header includes a "Configure inbox" CTA when the viewer is
   SUPER_ADMIN.
+- **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): queue + detail views for
+  `OcrDocument` suggestions (`REVIEW_REQUIRED`), truncated OCR preview, editable line
+  picks, **Approve** (writes `VendorPriceHistory` via `OCR_APPROVED`) vs **Reject**.
 - **Per-tenant inbox config** at `/admin/tenants/[id]/email-inbox`
   (SUPER_ADMIN). Two-column layout: left card carries the form (host,
   port, mailbox, username, password, poll interval, TLS toggle,

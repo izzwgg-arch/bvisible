@@ -15,6 +15,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
+  serverExternalPackages: ['sharp', 'pdf-parse'],
   experimental: {
     // PO attachments accept up to 25 MB (see apps/web/lib/po/uploads.ts:
     // MAX_UPLOAD_BYTES). The Server Actions default body limit is 1 MB,

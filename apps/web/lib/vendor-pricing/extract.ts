@@ -48,6 +48,8 @@ function confidenceFor(
 ): VendorPriceConfidence {
   if (method === 'FILENAME_REGEX') return 'MEDIUM';
   if (method === 'SUBJECT_REGEX') return 'MEDIUM';
+  if (method === 'OCR_TEXT_REGEX') return 'LOW';
+  if (method === 'OCR_APPROVED') return 'HIGH';
   if (!HAS_LETTER.test(item)) return 'LOW';
   return 'HIGH';
 }

@@ -60,8 +60,6 @@ PurchaseOrder
 
 ## What's deferred (intentionally out of scope this phase)
 
-- Mobile receipt uploads (presigned URLs, JWT auth) — mobile app phase.
-- OCR / invoice parsing inside attachments.
 - Auto-applying extracted vendor prices to PO lines or estimates.
 - Probabilistic vendor/item matching (embeddings / fuzzy SKU resolution beyond deterministic aliases).
 - QBO API auto-fetch of PO numbers (today the user pastes manually).
@@ -156,6 +154,14 @@ Same byte storage and magic-byte rules as the web uploader. Flow:
 - `Content-Disposition: attachment; filename="..."` always set so
   rogue HTML can't render in-origin. `X-Content-Type-Options: nosniff`
   set as a backstop.
+
+### Receipt OCR (Phase 13)
+
+Eligible receipt-like attachment kinds enqueue **one** tenant-scoped
+`OcrDocument` per `POAttachment` (unique FK). Processing is asynchronous via the
+internal OCR tick (`DEBUGGING.md` §11f); operators confirm suggestions at
+`/admin/ocr-review/*` before any `VendorPriceHistory` row is written (`KNOWN_RULES.md`
+R-OCR-01).
 
 ## Vendor email ingestion (Phase 8 foundation)
 

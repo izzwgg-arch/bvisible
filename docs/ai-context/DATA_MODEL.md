@@ -119,7 +119,7 @@ enum POEventKind {
 enum EmailIngestStatus { PENDING  MATCHED  UNMATCHED  FAILED  DISMISSED }
 enum EmailMatchReason  { QBO_NUMBER  PO_NUMBER  VENDOR_AND_RECENT  MANUAL  NONE }
 enum VendorPriceConfidence { HIGH  MEDIUM  LOW }
-enum VendorPriceExtractionMethod { LINE_REGEX  SUBJECT_REGEX  FILENAME_REGEX }
+enum VendorPriceExtractionMethod { LINE_REGEX  SUBJECT_REGEX  FILENAME_REGEX  OCR_TEXT_REGEX  OCR_APPROVED }
 
 model Client {
   id          String    @id @default(cuid())
@@ -431,8 +431,10 @@ model VendorPriceHistory {
   priceCents           Int
   unit                 String?                    @db.VarChar(40)
   quantityMilli        Int?
-  sourceEmailId        String
+  sourceEmailId        String?
   sourceAttachmentId   String?
+  sourcePoAttachmentId String?
+  ocrLineItemId        String?                    @unique
   confidence           VendorPriceConfidence
   extractionMethod     VendorPriceExtractionMethod
   dedupeKey            String                     @db.VarChar(64)
@@ -440,8 +442,10 @@ model VendorPriceHistory {
   tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor           Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   catalogItem      VendorCatalogItem      @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
-  sourceEmail      IngestedEmail          @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  sourceEmail      IngestedEmail?         @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
   sourceAttachment IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
+  sourcePoAttachment POAttachment?        @relation(fields: [sourcePoAttachmentId], references: [id], onDelete: SetNull)
+  ocrLineItem      OcrLineItem?           @relation(fields: [ocrLineItemId], references: [id], onDelete: SetNull)
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, vendorCatalogItemId, createdAt])
   @@index([tenantId, vendorId, createdAt])
@@ -456,16 +460,69 @@ model VendorPriceNotification {
   vendorCatalogItemId String
   oldPriceCents       Int
   newPriceCents       Int
-  sourceEmailId       String
+  sourceEmailId       String?
+  sourceOcrDocumentId String?
   dismissedAt         DateTime?
   createdAt           DateTime  @default(now())
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
-  sourceEmail IngestedEmail     @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor             Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem        VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail        IngestedEmail?    @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
+  sourceOcrDocument  OcrDocument?      @relation(fields: [sourceOcrDocumentId], references: [id], onDelete: SetNull)
   @@index([tenantId, dismissedAt, createdAt])
   @@index([tenantId, vendorId])
   @@map("vendor_price_notifications")
+}
+
+enum OcrJobStatus { PENDING  PROCESSING  REVIEW_REQUIRED  CONFIRMED  REJECTED  FAILED }
+
+model OcrDocument {
+  id             String       @id @default(cuid())
+  tenantId       String
+  status         OcrJobStatus @default(PENDING)
+  poAttachmentId String?      @unique
+  attemptCount   Int          @default(0)
+  lastError      String?      @db.VarChar(400)
+  lockedUntil    DateTime?
+  engineLabel    String       @default("tesseract.js") @db.VarChar(80)
+  rawTextCharCount Int?
+  rawTextSnippet   String?    @db.VarChar(8000)
+  vendorNameGuess      String?   @db.VarChar(500)
+  invoiceNumberGuess   String?   @db.VarChar(120)
+  receiptNumberGuess   String?   @db.VarChar(120)
+  subtotalCentsGuess   Int?
+  taxCentsGuess        Int?
+  totalCentsGuess      Int?
+  documentDateGuess    DateTime?
+  confirmedAt    DateTime?
+  confirmedById  String?
+  rejectedAt     DateTime?
+  rejectedById   String?
+  reviewNotes    String?   @db.VarChar(2000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  poAttachment POAttachment? @relation(fields: [poAttachmentId], references: [id], onDelete: Cascade)
+  @@index([tenantId, status, createdAt])
+  @@map("ocr_documents")
+}
+
+model OcrLineItem {
+  id             String @id @default(cuid())
+  ocrDocumentId  String
+  sortOrder      Int
+  rawLineText    String @db.VarChar(2000)
+  itemLabelNormalized String? @db.VarChar(400)
+  quantityMilliGuess  Int?
+  unitPriceCentsGuess Int?
+  confidence          VendorPriceConfidence @default(LOW)
+  extractionSource    String @db.VarChar(80)
+  mappedVendorCatalogItemId String?
+  ocrDocument   OcrDocument         @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
+  mappedCatalog VendorCatalogItem? @relation(fields: [mappedVendorCatalogItemId], references: [id], onDelete: SetNull)
+  vendorPriceHistoryRow VendorPriceHistory?
+  @@index([ocrDocumentId, sortOrder])
+  @@map("ocr_line_items")
 }
 
 model EmailIngestRun {
@@ -518,6 +575,7 @@ Notes:
 | `20260513234614_purchase_orders_and_finalize` | 2026-05-13 | New enums `POStatus`, `POLineKind`, `POAttachmentKind`, `POEventKind`; `EstimateStatus.FINALIZED` enum value; new tables `vendors`, `purchase_orders`, `po_line_items`, `po_attachments`, `po_events`. Tenant-scoped, integer cents, soft delete via `deletedAt`. Unique on `(tenantId, number)` for POs, `(tenantId, name)` for vendors. Foreign keys: `purchase_orders.estimateId → estimates(id) ON DELETE SET NULL`, `purchase_orders.vendorId → vendors(id) ON DELETE SET NULL`. Generated via shadow Postgres. |
 | `20260514005509_email_ingestion_foundation` | 2026-05-14 | New enums `EmailIngestStatus`, `EmailMatchReason`; `POAttachmentKind` gains `EMAIL_ATTACHMENT`; `POEventKind` gains `VENDOR_REPLY`. New tables `tenant_email_inboxes` (1:1 per tenant), `ingested_emails` (UNIQUE `(tenantId, messageId)` for R-MAIL-01 idempotency), `ingested_email_attachments`, `email_ingest_runs`. Adds nullable `sourceEmailId` on `po_attachments` and `po_events` (FK SET NULL → `ingested_emails(id)`). Generated via shadow Postgres; `ALTER TYPE ... ADD VALUE` is run by Postgres 16 in the same migration transaction safely. |
 | `20260515083000_mobile_upload_foundation` | 2026-05-15 | `POAttachmentKind` gains `VENDOR_INVOICE`, `INSTALL_PHOTO`, `FIELD_DOCUMENT`. New tables `mobile_sessions` (rotating refresh, device metadata) and `mobile_pending_uploads` (two-phase upload → `POAttachment`). |
+| `20260516120000_ocr_receipt_foundation` | 2026-05-16 | Local OCR foundation: enum `OcrJobStatus`; tables `ocr_documents`, `ocr_line_items`; `VendorPriceExtractionMethod` gains `OCR_TEXT_REGEX`, `OCR_APPROVED`; nullable email FK on `vendor_price_histories` / `vendor_price_notifications` with optional OCR provenance (`sourcePoAttachmentId`, `ocrLineItemId`, `sourceOcrDocumentId`). |
 
 ## Core entities (target schema)
 

@@ -5,6 +5,53 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Phase 13: local OCR + receipt understanding foundation
+
+**Migration:** `packages/db/prisma/migrations/20260516120000_ocr_receipt_foundation/migration.sql`.
+**Deploy:** not run from this session.
+
+**Scope**
+
+- Tenant-scoped `OcrDocument` / `OcrLineItem` queue with bounded retries (`FAILED` after cap).
+- Local extraction: `pdf-parse`, **`tesseract` CLI** + `sharp`, optional `pdftoppm` for scanned PDFs.
+- Deterministic header guesses + `OCR_TEXT_REGEX` line candidates (`normalizeVendorItemName` reused).
+- ADMIN review UI `/admin/ocr-review/*`; **`VendorPriceHistory` only after approve** (`OCR_APPROVED`).
+- Nullable email FK on pricing rows + optional OCR provenance columns.
+- Internal tick `POST /api/internal/ocr/tick` (`OCR_TICK_SECRET` or `INGEST_TICK_SECRET` fallback).
+
+**Files created**
+
+- `packages/db/prisma/migrations/20260516120000_ocr_receipt_foundation/migration.sql`
+- `apps/web/lib/ocr/{enqueue.ts,extract-plain-text.ts,parse-receipt.ts,parse-receipt.test.ts,enqueue.test.ts,worker.ts}`
+- `apps/web/app/api/internal/ocr/tick/route.ts`
+- `apps/web/app/(app)/admin/ocr-review/{page.tsx,[id]/page.tsx,actions.ts,ocr-approval-form.tsx}`
+- `apps/web/lib/vendor-pricing/dedupe-key.test.ts`
+- `server-scripts/db/.verify-ocr-receipt-parse.sh`
+
+**Files modified**
+
+- `packages/db/prisma/schema.prisma`, `packages/db/src/index.ts`
+- `apps/web/lib/vendor-pricing/{extract.ts,persist.ts}`
+- `apps/web/lib/email-ingest/run.ts`, `apps/web/lib/mobile/finalize-mobile-upload.ts`
+- `apps/web/app/(app)/purchase-orders/[id]/actions.ts`
+- `apps/web/app/(app)/dashboard/vendor-price-alerts.tsx`, `apps/web/app/(app)/vendors/[id]/page.tsx`
+- `apps/web/components/app-shell.tsx`, `apps/web/next.config.mjs`, `apps/web/package.json`
+- `package.json` (`pnpm.onlyBuiltDependencies` for `sharp`)
+- Docs: `DATA_MODEL.md`, `API_STRUCTURE.md`, `SECURITY_RULES.md`, `DEBUGGING.md`, `KNOWN_RULES.md`, `EMAIL_INGESTION.md`, `VENDOR_PRICE_ENGINE.md`, `MOBILE_APP.md`, `PO_SYSTEM.md`, `UI_SYSTEM.md`, `pnpm-lock.yaml`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web exec vitest run`
+- `pnpm --filter @bvisible/web run build` (with `MOBILE_JWT_SECRET`)
+- `bash server-scripts/db/.verify-ocr-receipt-parse.sh`
+
+**Risks**
+
+- **`tesseract` + Poppler** must exist on the production host for image / scanned-PDF OCR.
+- OCR CPU spikes under heavy queues — keep tick concurrency low (default **3** jobs) and schedule like ingest timer.
+
+---
+
 ## 2026-05-14 — Mobile upload reliability + offline hardening
 
 **Migration:** none (extends mobile `/api/v1` foundation).

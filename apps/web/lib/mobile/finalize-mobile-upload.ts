@@ -6,6 +6,7 @@ import { open, stat, unlink } from 'node:fs/promises';
 import { jsonErr, jsonOk } from '@/lib/api/v1/envelope';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { insertPoAttachmentAndTimelineEvent } from '@/lib/po/attachment-insert';
+import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import type { MobileAuthContext } from '@/lib/mobile/require-mobile-bearer';
 import { requestMeta } from '@/lib/mobile/request-meta';
 import {
@@ -229,6 +230,16 @@ export async function finalizeMobileUploadResponse(args: {
       'Could not finalize upload. Try again.',
       409
     );
+  }
+
+  try {
+    await enqueueOcrJobForPoAttachment({
+      tenantId: pending.tenantId,
+      poAttachmentId: attachmentId,
+      kind: pending.kind,
+    });
+  } catch {
+    /* OCR enqueue must never block mobile finalize */
   }
 
   const { ipAddress, userAgent } = requestMeta(req);

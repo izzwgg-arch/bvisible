@@ -37,6 +37,7 @@ Expo / React Native client in `apps/mobile/`. This doc reflects what is
    mark pending complete + `insertPoAttachmentAndTimelineEvent` (`ATTACHMENT_ADDED`);
    audits `mobile_upload_*` + `po_attachment_added`. **Repeating complete with the
    same `uploadId` after success is safe** (`idempotentReplay`, same `attachmentId`).
+   Receipt-like kinds enqueue **async local OCR** (`apps/web/lib/ocr/enqueue.ts`) — never blocking finalize.
 
 ### Client reliability (Expo)
 

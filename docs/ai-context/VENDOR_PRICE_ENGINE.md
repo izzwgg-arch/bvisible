@@ -93,8 +93,24 @@ quantity-tier normalization yet.
   with `DATABASE_URL` set. Creates tenant slug `vendor-pricing-verify`, runs extraction,
   asserts counts + replay dedupe, deletes the tenant.
 
+## Phase 13 — local OCR receipt foundation (human-gated)
+
+- **Queue:** `OcrDocument` rows keyed by `poAttachmentId` (unique). Enqueued when
+  receipt-like `POAttachment` rows are created (web upload, mobile finalize,
+  email materialization).
+- **Worker:** internal `POST /api/internal/ocr/tick` (`apps/web/lib/ocr/worker.ts`),
+  bounded concurrency + retry cap (`R-OCR-02`). Extractors: `pdf-parse` for PDF
+  text layers; host **`tesseract` CLI** + **`sharp`** for images; optional **`pdftoppm`**
+  (Poppler) when PDF has no extractable text layer.
+- **Parsing:** header guesses (`parse-receipt.ts`) + line candidates via existing
+  `extractPricesFromTextBlob(..., OCR_TEXT_REGEX, ...)`.
+- **Human gate:** `/admin/ocr-review/*` (ADMIN+). Only **Approve** runs
+  `persistApprovedOcrPriceLines` (`extractionMethod = OCR_APPROVED`). Automatic OCR
+  never writes pricing rows.
+- **Verification (no OCR binaries):** `bash server-scripts/db/.verify-ocr-receipt-parse.sh`.
+
 ## Future / not implemented here
 
 - Canonical `VendorPrice` table + Redis cache described in older planning docs.
 - Cheapest-vendor ranking across vendors for a shared master `Item`.
-- OCR / invoice PDF parsing / AI extraction.
+- Cloud LLM extraction / semantic SKU resolution / autopilot accounting.

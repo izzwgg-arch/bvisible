@@ -1133,6 +1133,35 @@ bash server-scripts/db/.verify-mobile-api.sh
 # Optional: TEST_PO_ID=<cuid> TEST_UPLOAD_COMPLETE_IDEMPOTENCY=1 bash server-scripts/db/.verify-mobile-api.sh
 ```
 
+## 11f. Receipt OCR worker (`/api/internal/ocr/tick`)
+
+### Host packages (production)
+
+Ubuntu: install **`tesseract-ocr`** (CLI). For scanned PDFs without a text layer,
+install **`poppler-utils`** so `pdftoppm` can rasterize pages before OCR.
+
+### Manual tick (loopback)
+
+```bash
+curl -sS -X POST \
+  -H "x-bvisible-ocr-secret: $OCR_TICK_SECRET" \
+  http://127.0.0.1:3000/api/internal/ocr/tick
+```
+
+`OCR_TICK_SECRET` may match `INGEST_TICK_SECRET` when operators prefer one secret;
+the route accepts either (`SECURITY_RULES.md`).
+
+### Deterministic parse-only checks (CI / laptop)
+
+```bash
+bash server-scripts/db/.verify-ocr-receipt-parse.sh
+```
+
+### Symptom: jobs stuck `FAILED`
+
+Read `ocr_documents.lastError` (short technical message only — never raw OCR dumps).
+Confirm `tesseract` exists on `$PATH` and the attachment MIME is in the PO upload allowlist.
+
 ## 12. UI / sidebar / drawer / hydration
 
 - Hydration mismatch warnings in browser console → look for `Date.now()` /

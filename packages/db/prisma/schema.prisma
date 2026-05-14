@@ -140,6 +140,21 @@ enum VendorPriceExtractionMethod {
   LINE_REGEX
   SUBJECT_REGEX
   FILENAME_REGEX
+  /// Deterministic regex scan over locally OCR'd plain text (pre-review).
+  OCR_TEXT_REGEX
+  /// Operator-approved observation written after OCR review (source of truth path).
+  OCR_APPROVED
+}
+
+// Async OCR receipt / invoice understanding (Phase 13). OCR output is never
+// authoritative until an operator confirms — see docs/ai-context/VENDOR_PRICE_ENGINE.md.
+enum OcrJobStatus {
+  PENDING
+  PROCESSING
+  REVIEW_REQUIRED
+  CONFIRMED
+  REJECTED
+  FAILED
 }
 
 // IngestedEmail.status — the per-email processing state. PENDING is the
@@ -201,6 +216,7 @@ model Tenant {
   vendorPriceNotifications VendorPriceNotification[]
   mobileSessions       MobileSession[]
   mobilePendingUploads MobilePendingUpload[]
+  ocrDocuments         OcrDocument[]
 
   @@map("tenants")
 }
@@ -233,6 +249,8 @@ model User {
   poEventsAuthored  POEvent[]            @relation("POEventActor")
   mobileSessions    MobileSession[]
   mobilePendingUploads MobilePendingUpload[]
+  ocrDocumentsConfirmed OcrDocument[]    @relation("OcrDocumentConfirmedBy")
+  ocrDocumentsRejected  OcrDocument[]    @relation("OcrDocumentRejectedBy")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -619,6 +637,9 @@ model POAttachment {
   uploadedBy    User           @relation("POAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
   sourceEmail   IngestedEmail? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
 
+  ocrDocument OcrDocument?
+  vendorPriceHistoriesSource VendorPriceHistory[]
+
   @@index([tenantId, purchaseOrderId, createdAt])
   @@index([sourceEmailId])
   @@map("po_attachments")
@@ -788,6 +809,7 @@ model VendorCatalogItem {
   aliases VendorItemAlias[]
   priceHistory VendorPriceHistory[]
   priceNotifications VendorPriceNotification[]
+  ocrLineItemsMapped OcrLineItem[]
 
   @@unique([tenantId, vendorId, nameNormalized])
   @@index([tenantId, vendorId])
@@ -814,7 +836,8 @@ model VendorItemAlias {
   @@map("vendor_item_aliases")
 }
 
-// Append-only price observations from matched vendor email extraction.
+// Append-only price observations from matched vendor email extraction or,
+// after operator approval, from OCR'd receipts/invoices (Phase 13).
 // Idempotent replays use dedupeKey (SHA-256 hex, 64 chars) per tenant.
 model VendorPriceHistory {
   id                   String                     @id @default(cuid())
@@ -826,8 +849,13 @@ model VendorPriceHistory {
   priceCents           Int
   unit                 String?                    @db.VarChar(40)
   quantityMilli        Int?
-  sourceEmailId        String
+  /// Present for email-ingestion extractions; null for OCR-approved PO uploads.
+  sourceEmailId        String?
   sourceAttachmentId   String?
+  /// PO attachment that was OCR'd (mobile/manual/email-promoted).
+  sourcePoAttachmentId String?
+  /// When this row was created from an approved OCR line item.
+  ocrLineItemId        String?                    @unique
   confidence           VendorPriceConfidence
   extractionMethod     VendorPriceExtractionMethod
   dedupeKey            String                     @db.VarChar(64)
@@ -836,8 +864,10 @@ model VendorPriceHistory {
   tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor           Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   catalogItem      VendorCatalogItem      @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
-  sourceEmail      IngestedEmail          @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  sourceEmail      IngestedEmail?         @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
   sourceAttachment IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
+  sourcePoAttachment POAttachment?        @relation(fields: [sourcePoAttachmentId], references: [id], onDelete: SetNull)
+  ocrLineItem      OcrLineItem?           @relation(fields: [ocrLineItemId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, vendorCatalogItemId, createdAt])
@@ -855,18 +885,86 @@ model VendorPriceNotification {
   vendorCatalogItemId String
   oldPriceCents       Int
   newPriceCents       Int
-  sourceEmailId       String
+  sourceEmailId       String?
+  sourceOcrDocumentId String?
   dismissedAt         DateTime?
   createdAt           DateTime  @default(now())
 
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  catalogItem VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
-  sourceEmail IngestedEmail     @relation(fields: [sourceEmailId], references: [id], onDelete: Cascade)
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor             Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem        VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail        IngestedEmail?    @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
+  sourceOcrDocument  OcrDocument?      @relation(fields: [sourceOcrDocumentId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, dismissedAt, createdAt])
   @@index([tenantId, vendorId])
   @@map("vendor_price_notifications")
+}
+
+/// Locally OCR'd PO attachment — suggestion-only until operator confirms.
+model OcrDocument {
+  id        String @id @default(cuid())
+  tenantId  String
+  status    OcrJobStatus @default(PENDING)
+  /// One OCR job per PO attachment (replay-safe enqueue).
+  poAttachmentId String? @unique
+
+  attemptCount Int       @default(0)
+  lastError    String?   @db.VarChar(400)
+  lockedUntil  DateTime?
+  engineLabel  String    @default("tesseract.js") @db.VarChar(80)
+
+  rawTextCharCount Int?
+  /// Truncated OCR/plain-text preview for UI — never log full dumps.
+  rawTextSnippet   String? @db.VarChar(8000)
+
+  vendorNameGuess      String?   @db.VarChar(500)
+  invoiceNumberGuess   String?   @db.VarChar(120)
+  receiptNumberGuess   String?   @db.VarChar(120)
+  subtotalCentsGuess   Int?
+  taxCentsGuess        Int?
+  totalCentsGuess      Int?
+  documentDateGuess    DateTime?
+
+  confirmedAt    DateTime?
+  confirmedById  String?
+  rejectedAt     DateTime?
+  rejectedById   String?
+  reviewNotes    String?   @db.VarChar(2000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  poAttachment   POAttachment? @relation(fields: [poAttachmentId], references: [id], onDelete: Cascade)
+  confirmedBy    User?         @relation("OcrDocumentConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  rejectedBy     User?         @relation("OcrDocumentRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  lineItems      OcrLineItem[]
+  priceNotifications VendorPriceNotification[]
+
+  @@index([tenantId, status, createdAt])
+  @@map("ocr_documents")
+}
+
+/// Candidate line extracted from OCR/plain text — not pricing truth until approval.
+model OcrLineItem {
+  id             String @id @default(cuid())
+  ocrDocumentId  String
+  sortOrder      Int
+  rawLineText    String @db.VarChar(2000)
+  itemLabelNormalized String? @db.VarChar(400)
+  quantityMilliGuess  Int?
+  unitPriceCentsGuess Int?
+  confidence          VendorPriceConfidence @default(LOW)
+  extractionSource    String @db.VarChar(80)
+  mappedVendorCatalogItemId String?
+
+  ocrDocument   OcrDocument         @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
+  mappedCatalog VendorCatalogItem? @relation(fields: [mappedVendorCatalogItemId], references: [id], onDelete: SetNull)
+  vendorPriceHistoryRow VendorPriceHistory?
+
+  @@index([ocrDocumentId, sortOrder])
+  @@map("ocr_line_items")
 }
 
 // Lightweight per-tick observability log. One row per (tenantId, tick)

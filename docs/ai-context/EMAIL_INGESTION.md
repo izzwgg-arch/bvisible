@@ -273,6 +273,9 @@ Explicitly **not** implemented:
   displayed, even in masked form) and **Recent ticks** (last five
   `EmailIngestRun` rows with scanned / ingested / matched / errors /
   durationMs).
+- Promoted attachments create `POAttachment` rows as today — receipt-like kinds
+  additionally enqueue **async local OCR** (`apps/web/lib/ocr/enqueue.ts`) without
+  blocking ingestion (`DEBUGGING.md` §11f + `/admin/ocr-review`).
 
 ## Logging discipline
 

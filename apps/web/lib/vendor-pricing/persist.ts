@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import {
   POEventKind,
   Prisma,
+  VendorPriceConfidence,
+  VendorPriceExtractionMethod,
   prisma,
 } from '@bvisible/db';
 import { writeAuditLog } from '@/lib/auth/audit';
@@ -33,7 +35,7 @@ function formatLowerPriceMessage(
   ).slice(0, 900);
 }
 
-function buildDedupeKey(parts: Record<string, unknown>): string {
+export function buildDedupeKey(parts: Record<string, unknown>): string {
   const payload = JSON.stringify(parts);
   return createHash('sha256').update(payload, 'utf8').digest('hex');
 }
@@ -74,27 +76,51 @@ async function resolveCatalogItem(
   return row;
 }
 
-async function persistOneCandidate(args: {
+type ObservationSource =
+  | {
+      kind: 'email';
+      ingestedEmailId: string;
+      sourceAttachmentId: string | null;
+    }
+  | {
+      kind: 'ocr';
+      ocrDocumentId: string;
+      ocrLineItemId: string;
+      sourcePoAttachmentId: string;
+    };
+
+async function persistPriceObservation(args: {
   tenantId: string;
   vendorId: string;
-  ingestedEmailId: string;
   purchaseOrderId: string;
   actorId: string;
   candidate: ExtractedPriceCandidate;
+  source: ObservationSource;
 }): Promise<'inserted' | 'duplicate' | 'skipped'> {
   const itemNorm = normalizeVendorItemName(args.candidate.itemRaw);
   if (!itemNorm || itemNorm.length < 2) return 'skipped';
 
-  const dedupeKey = buildDedupeKey({
-    tenantId: args.tenantId,
-    emailId: args.ingestedEmailId,
-    attachmentId: args.candidate.sourceAttachmentId,
-    method: args.candidate.method,
-    ord: args.candidate.ordinal,
-    item: itemNorm,
-    price: args.candidate.priceCents,
-    unit: args.candidate.unit,
-  });
+  const dedupeKey =
+    args.source.kind === 'email'
+      ? buildDedupeKey({
+          tenantId: args.tenantId,
+          emailId: args.source.ingestedEmailId,
+          attachmentId: args.source.sourceAttachmentId,
+          method: args.candidate.method,
+          ord: args.candidate.ordinal,
+          item: itemNorm,
+          price: args.candidate.priceCents,
+          unit: args.candidate.unit,
+        })
+      : buildDedupeKey({
+          tenantId: args.tenantId,
+          ocrDocumentId: args.source.ocrDocumentId,
+          ocrLineItemId: args.source.ocrLineItemId,
+          method: args.candidate.method,
+          item: itemNorm,
+          price: args.candidate.priceCents,
+          unit: args.candidate.unit,
+        });
 
   const catalog = await resolveCatalogItem(
     args.tenantId,
@@ -111,23 +137,36 @@ async function persistOneCandidate(args: {
     select: { priceCents: true },
   });
 
+  const historyBase = {
+    tenantId: args.tenantId,
+    vendorId: args.vendorId,
+    vendorCatalogItemId: catalog.id,
+    itemNameRaw: args.candidate.itemRaw.slice(0, 500),
+    itemNameNormalized: itemNorm.slice(0, 400),
+    priceCents: args.candidate.priceCents,
+    unit: args.candidate.unit,
+    quantityMilli: args.candidate.quantityMilli,
+    confidence: args.candidate.confidence,
+    extractionMethod: args.candidate.method,
+    dedupeKey,
+  };
+
   try {
     await prisma.vendorPriceHistory.create({
-      data: {
-        tenantId: args.tenantId,
-        vendorId: args.vendorId,
-        vendorCatalogItemId: catalog.id,
-        itemNameRaw: args.candidate.itemRaw.slice(0, 500),
-        itemNameNormalized: itemNorm.slice(0, 400),
-        priceCents: args.candidate.priceCents,
-        unit: args.candidate.unit,
-        quantityMilli: args.candidate.quantityMilli,
-        sourceEmailId: args.ingestedEmailId,
-        sourceAttachmentId: args.candidate.sourceAttachmentId,
-        confidence: args.candidate.confidence,
-        extractionMethod: args.candidate.method,
-        dedupeKey,
-      },
+      data:
+        args.source.kind === 'email'
+          ? {
+              ...historyBase,
+              sourceEmailId: args.source.ingestedEmailId,
+              sourceAttachmentId: args.source.sourceAttachmentId,
+            }
+          : {
+              ...historyBase,
+              sourceEmailId: null,
+              sourceAttachmentId: null,
+              sourcePoAttachmentId: args.source.sourcePoAttachmentId,
+              ocrLineItemId: args.source.ocrLineItemId,
+            },
     });
   } catch (err) {
     if (
@@ -141,14 +180,24 @@ async function persistOneCandidate(args: {
 
   if (prev && args.candidate.priceCents < prev.priceCents) {
     await prisma.vendorPriceNotification.create({
-      data: {
-        tenantId: args.tenantId,
-        vendorId: args.vendorId,
-        vendorCatalogItemId: catalog.id,
-        oldPriceCents: prev.priceCents,
-        newPriceCents: args.candidate.priceCents,
-        sourceEmailId: args.ingestedEmailId,
-      },
+      data:
+        args.source.kind === 'email'
+          ? {
+              tenantId: args.tenantId,
+              vendorId: args.vendorId,
+              vendorCatalogItemId: catalog.id,
+              oldPriceCents: prev.priceCents,
+              newPriceCents: args.candidate.priceCents,
+              sourceEmailId: args.source.ingestedEmailId,
+            }
+          : {
+              tenantId: args.tenantId,
+              vendorId: args.vendorId,
+              vendorCatalogItemId: catalog.id,
+              oldPriceCents: prev.priceCents,
+              newPriceCents: args.candidate.priceCents,
+              sourceOcrDocumentId: args.source.ocrDocumentId,
+            },
     });
 
     await prisma.pOEvent.create({
@@ -165,11 +214,19 @@ async function persistOneCandidate(args: {
           vendorCatalogItemId: catalog.id,
           oldPriceCents: prev.priceCents,
           newPriceCents: args.candidate.priceCents,
-          sourceEmailId: args.ingestedEmailId,
+          sourceEmailId:
+            args.source.kind === 'email'
+              ? args.source.ingestedEmailId
+              : undefined,
+          sourceOcrDocumentId:
+            args.source.kind === 'ocr'
+              ? args.source.ocrDocumentId
+              : undefined,
           itemNameNormalized: itemNorm,
         },
         actorId: args.actorId,
-        sourceEmailId: args.ingestedEmailId,
+        sourceEmailId:
+          args.source.kind === 'email' ? args.source.ingestedEmailId : null,
       },
     });
 
@@ -182,12 +239,98 @@ async function persistOneCandidate(args: {
         vendorId: args.vendorId,
         oldPriceCents: prev.priceCents,
         newPriceCents: args.candidate.priceCents,
-        sourceEmailId: args.ingestedEmailId,
+        sourceEmailId:
+          args.source.kind === 'email'
+            ? args.source.ingestedEmailId
+            : undefined,
+        sourceOcrDocumentId:
+          args.source.kind === 'ocr'
+            ? args.source.ocrDocumentId
+            : undefined,
       },
     });
   }
 
   return 'inserted';
+}
+
+async function persistOneCandidate(args: {
+  tenantId: string;
+  vendorId: string;
+  ingestedEmailId: string;
+  purchaseOrderId: string;
+  actorId: string;
+  candidate: ExtractedPriceCandidate;
+}): Promise<'inserted' | 'duplicate' | 'skipped'> {
+  return persistPriceObservation({
+    tenantId: args.tenantId,
+    vendorId: args.vendorId,
+    purchaseOrderId: args.purchaseOrderId,
+    actorId: args.actorId,
+    candidate: args.candidate,
+    source: {
+      kind: 'email',
+      ingestedEmailId: args.ingestedEmailId,
+      sourceAttachmentId: args.candidate.sourceAttachmentId,
+    },
+  });
+}
+
+/**
+ * Writes operator-approved OCR line items to VendorPriceHistory (dedupe-safe).
+ * Never called automatically — only from OCR review server actions.
+ */
+export async function persistApprovedOcrPriceLines(args: {
+  tenantId: string;
+  vendorId: string;
+  purchaseOrderId: string;
+  actorId: string;
+  ocrDocumentId: string;
+  sourcePoAttachmentId: string;
+  lines: ReadonlyArray<{
+    ocrLineItemId: string;
+    itemRaw: string;
+    priceCents: number;
+    unit: string | null;
+    quantityMilli: number | null;
+  }>;
+}): Promise<{ inserted: number; duplicates: number; skipped: number }> {
+  let inserted = 0;
+  let duplicates = 0;
+  let skipped = 0;
+
+  let ord = 0;
+  for (const line of args.lines) {
+    const candidate: ExtractedPriceCandidate = {
+      itemRaw: line.itemRaw,
+      priceCents: line.priceCents,
+      unit: line.unit,
+      quantityMilli: line.quantityMilli,
+      confidence: VendorPriceConfidence.HIGH,
+      method: VendorPriceExtractionMethod.OCR_APPROVED,
+      ordinal: ord++,
+      sourceAttachmentId: null,
+    };
+
+    const r = await persistPriceObservation({
+      tenantId: args.tenantId,
+      vendorId: args.vendorId,
+      purchaseOrderId: args.purchaseOrderId,
+      actorId: args.actorId,
+      candidate,
+      source: {
+        kind: 'ocr',
+        ocrDocumentId: args.ocrDocumentId,
+        ocrLineItemId: line.ocrLineItemId,
+        sourcePoAttachmentId: args.sourcePoAttachmentId,
+      },
+    });
+    if (r === 'inserted') inserted += 1;
+    else if (r === 'duplicate') duplicates += 1;
+    else skipped += 1;
+  }
+
+  return { inserted, duplicates, skipped };
 }
 
 /**
@@ -215,7 +358,7 @@ export async function runVendorPriceExtractionAfterMaterialize(args: {
   }
   for (const line of extractPricesFromTextBlob(
     args.bodyTextSnippet,
-    'LINE_REGEX',
+    VendorPriceExtractionMethod.LINE_REGEX,
     null
   )) {
     merged.push({ ...line, ordinal: ord++ });

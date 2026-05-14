@@ -177,6 +177,11 @@
   (separate value from `INGEST_SECRET`). No session cookie, no CSRF
   token, no role check — failure returns 401 without leaking which
   half of the comparison failed.
+- **Internal OCR worker authentication.** `/api/internal/ocr/tick` mirrors the same
+  localhost-only posture as ingestion ticks. Compare `x-bvisible-ocr-secret`
+  against `OCR_TICK_SECRET`, falling back to `INGEST_TICK_SECRET` only when
+  `OCR_TICK_SECRET` is unset (single-secret installs). Returns `{ ok, data: { processed } }`.
+  Never logs raw OCR text blobs or attachment paths beyond short error codes.
 - **Internal test endpoint authentication.** `/api/internal/email-
   ingest/test` uses the same constant-time compare against
   `INGEST_TICK_SECRET`. Returns 503 when the secret is unset and 401
