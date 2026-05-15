@@ -27,9 +27,15 @@ which re-runs the same engine on the server inside one Prisma transaction.
 **Customer quote preview + send** — **`/estimates/[id]/preview`** remains an authenticated,
 tenant-scoped **staff** quote (company + bill-to + lines + total + notes/terms): same allocated-sell
 presentation as the public page; **unit costs, multipliers, and internal breakdowns are never rendered**.
-**`/quote/[token]`** is the **public, read-only** customer route (high-entropy token, SHA-256 hash only
-in `estimate_quote_links`; revoked/expired tokens show a generic error). Browser print uses `@media print`
-+ root layout. **`sendEstimateEmailAction`** (`preview/actions.ts`) verifies SMTP, **issues/rotates** a
+**`/quote/[token]`** is the **public** customer quote route (high-entropy token, SHA-256 hash only in
+`estimate_quote_links`; revoked/expired tokens show a generic error). Customers can **Accept** or **Decline**
+without logging in: **`submitPublicQuoteResponseAction`** / **`executePublicQuoteCustomerResponse`** persist
+**`respondedAt`** plus accept/decline timestamps and optional name/note on **`estimate_quote_links`**, update
+**`Estimate.status`** (accept → **`APPROVED`**, decline → **`REJECTED`**, **`FINALIZED`** blocked), append
+**`estimate_timeline_events`** (**`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`**) and **`estimate_quote_accepted`** /
+**`estimate_quote_declined`** audits **once** per first decision (replay-safe idempotency). Decision controls are
+**`print:hidden`**; the quote document stays printable. Browser print uses `@media print` + root layout.
+**`sendEstimateEmailAction`** (`preview/actions.ts`) verifies SMTP, **issues/rotates** a
 public quote link for that estimate (invalidating prior active links), sends mail with the **`/quote/...`**
 absolute URL, writes **`estimate_sent_to_client`**, and sets **`DRAFT → SENT` only after successful
 `sendMail`**; failures leave status unchanged. **`FINALIZED`** blocks this send path; **`SENT`** may be

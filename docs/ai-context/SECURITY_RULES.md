@@ -42,11 +42,7 @@
 - **`/estimates/[id]/preview`** — authenticated tenant session (staff/internal). Same customer-safe
   presentation as the public quote (allocated sell per line; **no** unit costs, multipliers, vendor/OCR
   intelligence).
-- **`/quote/[token]`** — **fully public**, read-only quote for real customers. Tokens are high-entropy;
-  the database stores **SHA-256 hashes only** (`estimate_quote_links`). Invalid, revoked, or expired
-  tokens return a **generic** error (no enumeration, no tenant leakage). Middleware sets **`Cache-Control:
-  private, no-store`**, **`X-Robots-Tag: noindex`**, and related safe headers. Successful loads bump
-  `lastViewedAt` and may write **`estimate_quote_viewed_public`** (anonymous viewer).
+- **`/quote/[token]`** — **fully public** quote + **customer decision** surface. Same presentation constraints as staff preview (sell allocation only). Tokens hashed (**SHA-256**); invalid/revoked/expired → generic error. **Accept / Decline** (`submitPublicQuoteResponseAction`) writes customer fields + **`respondedAt`** on **`estimate_quote_links`** (source of truth — do not infer decisions from **`Estimate.status`** alone), updates **`Estimate.status`** transactionally (**accept → `APPROVED`**, **decline → `REJECTED`**, **`FINALIZED`** customer responses blocked), emits **`estimate_timeline_events`** (**`QUOTE_ACCEPTED`**, **`QUOTE_DECLINED`**) + **`estimate_quote_accepted`**, **`estimate_quote_declined`** audits **only on first record** (duplicate submits same intent return success without extra rows / spam; opposite intent after a decision returns a friendly error). Truncated **`responseIp`** / **`responseUserAgent`** stored like other audit hygiene — never log raw URL tokens.
 - **`sendEstimateEmailAction`** sends the **public** `/quote/...` URL (link is rotated on each send).
   Never logs SMTP passwords; audit metadata may include recipient email + SMTP `messageId`. Never log
   raw quote tokens.

@@ -99,6 +99,9 @@ The look, feel, and behavior of the web app.
   - **Public customer link** — panel above the editor (`components/estimate/estimate-quote-link-panel.tsx`)
     manages **`/quote/[token]`** shares: generate/regenerate (optional expiry), revoke, copy URL immediately
     after a rotation (full URL is only returned at issuance — DB holds SHA-256 hash only).
+  - **Public quote page** (`app/quote/[token]/`) — customer **`QuoteDocument`** plus **`print:hidden`** Accept /
+    Decline panel (optional name + note); finalized estimates with no prior customer response show a responses-closed
+    message instead of buttons.
 - **Reusable grid keyboard helper** at
   `apps/web/lib/keyboard/grid-nav.ts` (`makeGridKeyHandler`). Any grid
   attaches a single `onKeyDown` to its root and tags cells with

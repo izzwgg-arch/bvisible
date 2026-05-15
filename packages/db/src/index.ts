@@ -19,6 +19,7 @@ export {
   POReconciliationLineResolution,
   SpendAlertKind,
   SpendAlertStatus,
+  EstimateTimelineKind,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -55,4 +56,5 @@ export type {
   ShopMaterialItem,
   ShopMaterialItemAlias,
   EstimateQuoteLink,
+  EstimateTimelineEvent,
 } from '@prisma/client';

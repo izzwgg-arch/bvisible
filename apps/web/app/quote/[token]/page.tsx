@@ -7,6 +7,7 @@ import { recordPublicQuoteView, resolvePublicQuoteByRawToken } from '@/lib/estim
 import { readRequestContext } from '@/lib/request-context';
 
 import { PublicQuoteToolbar } from './public-quote-toolbar';
+import { PublicQuoteResponsePanel } from './public-quote-response-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +81,12 @@ export default async function PublicQuotePage({
       <div className="mx-auto mb-8 flex max-w-[880px] justify-end print:hidden">
         <PublicQuoteToolbar />
       </div>
+      <PublicQuoteResponsePanel
+        rawToken={decoded}
+        canRespond={quote.canRespond}
+        responsesClosedFinalized={quote.responsesClosedFinalized}
+        customerResponse={quote.customerResponse}
+      />
       <QuoteDocument
         companyName={quote.companyName}
         estimateNumber={quote.estimateNumber}

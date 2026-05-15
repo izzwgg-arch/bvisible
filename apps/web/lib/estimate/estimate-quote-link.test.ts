@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EstimateLineKind } from '@bvisible/db';
+import { EstimateLineKind, EstimateStatus } from '@bvisible/db';
 
 import { renderEstimateQuoteEmail } from '@/lib/emails/estimate-quote';
 import {
@@ -96,16 +96,33 @@ describe('issueEstimateQuoteLink', () => {
 });
 
 function minimalValidLinkRow(
-  overrides: Partial<{ revokedAt: Date | null; expiresAt: Date | null }> = {}
+  overrides: Partial<{
+    revokedAt: Date | null;
+    expiresAt: Date | null;
+    respondedAt: Date | null;
+    acceptedAt: Date | null;
+    declinedAt: Date | null;
+    estimate: Partial<{ deletedAt: Date | null; status: EstimateStatus }>;
+  }> = {}
 ) {
+  const { estimate: estOverrides, ...linkOverrides } = overrides;
   return {
     id: 'link1',
     tenantId: 'ten1',
     estimateId: 'est1',
     revokedAt: null as Date | null,
     expiresAt: null as Date | null,
+    respondedAt: null as Date | null,
+    acceptedAt: null as Date | null,
+    declinedAt: null as Date | null,
+    acceptedByName: null as string | null,
+    acceptedNote: null as string | null,
+    declinedByName: null as string | null,
+    declinedNote: null as string | null,
+    ...linkOverrides,
     estimate: {
       deletedAt: null,
+      status: EstimateStatus.SENT,
       number: 'EST-000001',
       title: 'Sign package',
       notes: 'Please confirm colors.',
@@ -128,8 +145,8 @@ function minimalValidLinkRow(
           computedCostCents: 10_000,
         },
       ],
+      ...estOverrides,
     },
-    ...overrides,
   };
 }
 
@@ -205,6 +222,53 @@ describe('resolvePublicQuoteByRawToken', () => {
     expect(row).not.toHaveProperty('computedCostCents');
     expect(row.lineSellCents).toBeGreaterThan(0);
     expect(quote!.totalSellCents).toBe(30_000);
+    expect(quote!.canRespond).toBe(true);
+    expect(quote!.responsesClosedFinalized).toBe(false);
+    expect(quote!.customerResponse.respondedAtIso).toBeNull();
+  });
+});
+
+describe('resolvePublicQuoteByRawToken response gates', () => {
+  it('blocks customer decision when estimate is finalized and link never responded', async () => {
+    const prismaMock = {
+      estimateQuoteLink: {
+        findUnique: vi.fn().mockResolvedValue(
+          minimalValidLinkRow({
+            estimate: { status: EstimateStatus.FINALIZED },
+          })
+        ),
+      },
+    };
+    const raw = generateRawQuoteToken();
+    vi.spyOn(quoteCrypto, 'hashQuoteToken').mockReturnValue('deadbeef');
+    const quote = await resolvePublicQuoteByRawToken(prismaMock as never, raw);
+    vi.restoreAllMocks();
+    expect(quote).not.toBeNull();
+    expect(quote!.canRespond).toBe(false);
+    expect(quote!.responsesClosedFinalized).toBe(true);
+  });
+
+  it('shows accepted state from link row', async () => {
+    const acceptedAt = new Date('2026-05-02T10:00:00Z');
+    const prismaMock = {
+      estimateQuoteLink: {
+        findUnique: vi.fn().mockResolvedValue(
+          minimalValidLinkRow({
+            respondedAt: acceptedAt,
+            acceptedAt,
+            acceptedByName: 'Pat',
+            acceptedNote: 'Looks good',
+          })
+        ),
+      },
+    };
+    const raw = generateRawQuoteToken();
+    vi.spyOn(quoteCrypto, 'hashQuoteToken').mockReturnValue('deadbeef');
+    const quote = await resolvePublicQuoteByRawToken(prismaMock as never, raw);
+    vi.restoreAllMocks();
+    expect(quote!.canRespond).toBe(false);
+    expect(quote!.customerResponse.acceptedAtIso).toBe(acceptedAt.toISOString());
+    expect(quote!.customerResponse.acceptedByName).toBe('Pat');
   });
 });
 

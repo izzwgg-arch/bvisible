@@ -61,6 +61,13 @@ enum EstimateLineKind {
   MISC
 }
 
+/// Append-only estimate timeline (distinct from POEvent). Public quote
+/// accept/decline writes QUOTE_* kinds from `/quote/[token]`.
+enum EstimateTimelineKind {
+  QUOTE_ACCEPTED
+  QUOTE_DECLINED
+}
+
 /// Units for Items catalog / estimate hints (shop-facing labels).
 enum ShopCatalogUnit {
   EACH
@@ -280,7 +287,8 @@ model Tenant {
   spendAlerts          SpendAlert[]
   shopMaterialItems    ShopMaterialItem[]
   shopMaterialItemAliases ShopMaterialItemAlias[]
-  estimateQuoteLinks EstimateQuoteLink[]
+  estimateQuoteLinks       EstimateQuoteLink[]
+  estimateTimelineEvents EstimateTimelineEvent[]
 
   @@map("tenants")
 }
@@ -532,7 +540,8 @@ model Estimate {
   createdBy      User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
   lines          EstimateLineItem[]
   purchaseOrders PurchaseOrder[]
-  quoteLinks     EstimateQuoteLink[]
+  quoteLinks          EstimateQuoteLink[]
+  timelineEvents    EstimateTimelineEvent[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -588,12 +597,39 @@ model EstimateQuoteLink {
   createdById  String
   createdAt    DateTime  @default(now())
 
+  /// Customer acceptance via public quote (exclusive with decline fields below).
+  acceptedAt      DateTime?
+  acceptedByName  String?
+  acceptedNote    String?
+  declinedAt      DateTime?
+  declinedByName  String?
+  declinedNote    String?
+  /// First response timestamp (accept or decline).
+  respondedAt DateTime?
+  responseIp         String?
+  responseUserAgent  String?
+
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   estimate  Estimate  @relation(fields: [estimateId], references: [id], onDelete: Cascade)
   createdBy User      @relation("QuoteLinkCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([tenantId, estimateId])
   @@map("estimate_quote_links")
+}
+
+model EstimateTimelineEvent {
+  id         String               @id @default(cuid())
+  tenantId   String
+  estimateId String
+  kind       EstimateTimelineKind
+  metadata   Json?
+  createdAt  DateTime             @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, estimateId, createdAt])
+  @@map("estimate_timeline_events")
 }
 
 // Tenant-scoped vendor reference. Foundation only — no contacts, no

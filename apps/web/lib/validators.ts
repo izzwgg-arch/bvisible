@@ -225,6 +225,25 @@ export const revokeEstimateQuoteLinkFormSchema = z.object({
   estimateId: z.string().min(1).max(60),
 });
 
+export const submitPublicQuoteResponseSchema = z.object({
+  rawToken: z.string().min(40).max(70),
+  intent: z.enum(['accept', 'decline']),
+  customerName: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      const s = typeof v === 'string' ? v.trim() : '';
+      return s.length > 0 ? s.slice(0, 120) : null;
+    }),
+  customerNote: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => {
+      const s = typeof v === 'string' ? v.trim() : '';
+      return s.length > 0 ? s.slice(0, 2000) : null;
+    }),
+});
+
 // ---------------------------------------------------------------------
 // Vendor + purchase order foundation
 // ---------------------------------------------------------------------
@@ -521,6 +540,7 @@ export type FinalizeEstimateInput = z.infer<typeof finalizeEstimateSchema>;
 export type SendEstimateEmailInput = z.infer<typeof sendEstimateEmailSchema>;
 export type IssueEstimateQuoteLinkFormInput = z.infer<typeof issueEstimateQuoteLinkFormSchema>;
 export type RevokeEstimateQuoteLinkFormInput = z.infer<typeof revokeEstimateQuoteLinkFormSchema>;
+export type SubmitPublicQuoteResponseInput = z.infer<typeof submitPublicQuoteResponseSchema>;
 export type CreateVendorInput = z.infer<typeof createVendorSchema>;
 export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>;
 export type CreatePoFromEstimateInput = z.infer<typeof createPoFromEstimateSchema>;

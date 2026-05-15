@@ -5,6 +5,34 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Public quote customer Accept / Decline (`/quote/[token]`)
+
+**Scope**
+
+- **Schema:** `EstimateQuoteLink` gains **`acceptedAt`**, **`acceptedByName`**, **`acceptedNote`**, **`declinedAt`**, **`declinedByName`**, **`declinedNote`**, **`respondedAt`**, **`responseIp`**, **`responseUserAgent`** (customer decision source of truth); new **`EstimateTimelineEvent`** / **`estimate_timeline_events`** with **`QUOTE_ACCEPTED`**, **`QUOTE_DECLINED`** kinds + JSON metadata (public-quote indicator, truncated IP/UA).
+- **Logic:** `executePublicQuoteCustomerResponse` — single Prisma transaction updates link + estimate status (`accept` → **`APPROVED`**, `decline` → **`REJECTED`** when not already there); **`FINALIZED`** blocked; revoked/expired treated unavailable; **replay-safe** (second identical intent idempotent; opposite intent rejected without duplicate timeline/audit).
+- **Audits:** **`estimate_quote_accepted`**, **`estimate_quote_declined`** emitted **only** on first successful record (not idempotent replay).
+- **Public UI:** `PublicQuoteResponsePanel` (`print:hidden`) — optional name/note, Accept / Decline buttons; success banners for recorded decision; `submitPublicQuoteResponseAction` + `revalidatePath`.
+
+**Files**
+
+- `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/20260515143000_estimate_quote_accept_decline/migration.sql`, `packages/db/src/index.ts`
+- `apps/web/lib/estimate/{execute-public-quote-response.ts,load-public-quote.ts,public-quote-response.test.ts,estimate-quote-link.test.ts}`
+- `apps/web/app/quote/[token]/{actions.ts,public-quote-response-panel.tsx,page.tsx}`
+- `apps/web/lib/auth/audit.ts`, `apps/web/lib/validators.ts`, `apps/web/package.json`
+- `docs/ai-context/{CHANGELOG_AI.md,API_STRUCTURE.md,ESTIMATE_ENGINE.md,SECURITY_RULES.md,UI_SYSTEM.md}`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-acceptance` (**30** tests incl. customer-quote safety regressions); `pnpm --filter @bvisible/web run build`.
+- **Deploy:** run **`prisma migrate deploy`** so **`20260515143000_estimate_quote_accept_decline`** applies after prior quote-link migration.
+
+**Gaps**
+
+- No dedicated **staff estimate timeline UI** yet — events land in **`estimate_timeline_events`** + **`audit_logs`**; operators can extend the estimate page later to render `QUOTE_*` rows like PO timelines.
+
+---
+
 ## 2026-05-14 — Public estimate quote links (`/quote/[token]`)
 
 **Scope**

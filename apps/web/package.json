@@ -11,6 +11,7 @@
     "verify:reconciliation": "vitest run lib/reconciliation",
     "verify:reconciliation-alerts": "vitest run lib/reconciliation/alert-identity.test.ts lib/reconciliation/supersede-open-recon-alerts.test.ts",
     "verify:estimate-quote": "vitest run lib/estimate/customer-quote.test.ts lib/estimate/customer-quote-view.test.ts lib/estimate/send-estimate-email-status.test.ts lib/estimate/estimate-quote-link.test.ts",
+    "verify:estimate-acceptance": "vitest run lib/estimate/public-quote-response.test.ts lib/estimate/estimate-quote-link.test.ts lib/estimate/customer-quote-view.test.ts lib/estimate/customer-quote.test.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
     "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"

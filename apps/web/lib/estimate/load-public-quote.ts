@@ -1,7 +1,17 @@
-import type { PrismaClient } from '@bvisible/db';
+import { EstimateStatus, type PrismaClient } from '@bvisible/db';
 
 import { hashQuoteToken, isPlausibleQuoteToken } from '@/lib/estimate/quote-link-crypto';
 import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
+
+export type PublicQuoteCustomerResponseView = {
+  respondedAtIso: string | null;
+  acceptedAtIso: string | null;
+  declinedAtIso: string | null;
+  acceptedByName: string | null;
+  acceptedNote: string | null;
+  declinedByName: string | null;
+  declinedNote: string | null;
+};
 
 export type PublicQuotePayload = {
   linkId: string;
@@ -20,6 +30,11 @@ export type PublicQuotePayload = {
   lines: ReturnType<typeof buildCustomerQuoteLines>;
   totalSellCents: number;
   notes: string | null;
+  customerResponse: PublicQuoteCustomerResponseView;
+  /** Customer may submit accept/decline (token valid, not revoked/expired, no prior response, estimate not finalized). */
+  canRespond: boolean;
+  /** Estimate finalized before any customer response — responses stay closed. */
+  responsesClosedFinalized: boolean;
 };
 
 function formatQuoteDate(d: Date): string {
@@ -46,9 +61,17 @@ export async function resolvePublicQuoteByRawToken(
       estimateId: true,
       revokedAt: true,
       expiresAt: true,
+      respondedAt: true,
+      acceptedAt: true,
+      declinedAt: true,
+      acceptedByName: true,
+      acceptedNote: true,
+      declinedByName: true,
+      declinedNote: true,
       estimate: {
         select: {
           deletedAt: true,
+          status: true,
           number: true,
           title: true,
           notes: true,
@@ -87,6 +110,9 @@ export async function resolvePublicQuoteByRawToken(
   const e = link.estimate;
   const quoteLines = buildCustomerQuoteLines(e.lines, e.subtotalCostCents, e.finalPriceCents);
 
+  const responded = link.respondedAt !== null;
+  const finalized = e.status === EstimateStatus.FINALIZED;
+
   return {
     linkId: link.id,
     tenantId: link.tenantId,
@@ -104,6 +130,17 @@ export async function resolvePublicQuoteByRawToken(
     lines: quoteLines,
     totalSellCents: e.finalPriceCents,
     notes: e.notes,
+    customerResponse: {
+      respondedAtIso: link.respondedAt?.toISOString() ?? null,
+      acceptedAtIso: link.acceptedAt?.toISOString() ?? null,
+      declinedAtIso: link.declinedAt?.toISOString() ?? null,
+      acceptedByName: link.acceptedByName,
+      acceptedNote: link.acceptedNote,
+      declinedByName: link.declinedByName,
+      declinedNote: link.declinedNote,
+    },
+    canRespond: !responded && !finalized,
+    responsesClosedFinalized: finalized && !responded,
   };
 }
 
