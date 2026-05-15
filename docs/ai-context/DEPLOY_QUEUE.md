@@ -37,6 +37,11 @@ Owner everywhere: `deploy:deploy`.
 | `db-verify.sh` | Connects to `bvisible-db` via `docker compose exec`, confirms the `_prisma_migrations` table and the foundation tables (`tenants`, `users`) exist, prints applied migration count + latest migration name. Exit 0 only on healthy. |
 | `status.sh` | Prints running, queued, last 5 done, last 5 failed, latest log path. |
 
+After a **successful** deploy, `deploy-once.sh` copies **`server-scripts/deploy-queue/*.sh`**
+and **`server-scripts/db/db-verify.sh`** into **`/opt/bvisible/deploy-queue/`** so the
+systemd-invoked worker keeps using scripts aligned with the deployed checkout (see
+`DEBUGGING.md` — bootstrap caveat on first upgrade).
+
 Convenience symlinks installed in `/usr/local/bin`:
 
 | Command | Target |

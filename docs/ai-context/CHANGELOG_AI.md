@@ -14,7 +14,7 @@ records what changed, the files touched, the risks, and the verification.
 
 **Code / infra changes**
 
-- `server-scripts/deploy-queue/deploy-once.sh` — writes **`.bvisible-deploy-commit`** (full SHA from `git rev-parse HEAD`) beside standalone **`server.js`** before copying static assets / reload.
+- `server-scripts/deploy-queue/deploy-once.sh` — writes **`.bvisible-deploy-commit`** (full SHA from `git rev-parse HEAD`) beside standalone **`server.js`** before copying static assets / reload; **on success**, copies **`server-scripts/deploy-queue/*.sh`** and **`server-scripts/db/db-verify.sh`** into **`/opt/bvisible/deploy-queue/`** so timer-invoked workers pick up repo script changes without manual cp (**bootstrap caveat:** the **currently installed** `deploy-once.sh` on the server must be updated once — e.g. copy from checkout — before this self-sync runs).
 - `apps/web/app/api/health/route.ts` — optional JSON field **`commit`** when stamp file exists (health gate unchanged: **`status`** + **`service`** only).
 - `docs/ai-context/DEBUGGING.md` — documents **`commit`** in `/api/health`.
 

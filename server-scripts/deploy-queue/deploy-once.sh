@@ -341,5 +341,26 @@ else
   fi
 fi
 
+# Ship queue scripts from this checkout → /opt/bvisible/deploy-queue so the next
+# systemd/timer-invoked worker picks up repo changes (deploy-worker hardcodes
+# $QUEUE_ROOT/deploy-once.sh — it does not read server-scripts/ automatically).
+QUEUE_ROOT="/opt/bvisible/deploy-queue"
+SYNC_SRC="$APP_DIR/server-scripts/deploy-queue"
+if [ -d "$SYNC_SRC" ]; then
+  for f in deploy-once.sh enqueue-deploy.sh deploy-worker.sh status.sh healthcheck.sh; do
+    if [ -f "$SYNC_SRC/$f" ]; then
+      cp "$SYNC_SRC/$f" "$QUEUE_ROOT/$f"
+      chmod 755 "$QUEUE_ROOT/$f"
+      log "Refreshed $QUEUE_ROOT/$f from checkout"
+    fi
+  done
+fi
+DBVERIFY_SRC="$APP_DIR/server-scripts/db/db-verify.sh"
+if [ -f "$DBVERIFY_SRC" ]; then
+  cp "$DBVERIFY_SRC" "$QUEUE_ROOT/db-verify.sh"
+  chmod 755 "$QUEUE_ROOT/db-verify.sh"
+  log "Refreshed $QUEUE_ROOT/db-verify.sh from checkout"
+fi
+
 log "==== deploy-once SUCCESS ===="
 exit 0

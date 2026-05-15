@@ -259,6 +259,20 @@ docker system prune -f                         # safe cleanup
 Never `docker system prune --volumes` without confirming the DB volume is
 backed up.
 
+### Deploy-queue scripts vs `/opt/bvisible/app`
+
+`deploy-worker.sh` runs **`/opt/bvisible/deploy-queue/deploy-once.sh`**, not the
+copy under **`/opt/bvisible/app/server-scripts/`**. After `deploy-once.sh`
+finishes successfully, it copies **`server-scripts/deploy-queue/*.sh`** and
+**`server-scripts/db/db-verify.sh`** into **`/opt/bvisible/deploy-queue/`** so
+future timer ticks use the same revision as the repo checkout.
+
+**Bootstrap:** the **first** upgrade onto that behavior requires the **on-disk**
+`deploy-once.sh` to match the repo once (e.g. copy from a fresh clone or from
+`$APP_DIR` after `git fetch && git checkout <sha>` without going through the
+worker). Until then, infra edits under `server-scripts/deploy-queue/` only take
+effect after manual `cp` to `/opt/bvisible/deploy-queue/`.
+
 ## 6. Build failures during deploy
 
 - Look at the deploy log first: `tail -n 200 /opt/bvisible/deploy-queue/logs/<jobId>.log`.
