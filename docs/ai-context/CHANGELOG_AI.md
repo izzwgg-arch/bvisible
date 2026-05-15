@@ -78,9 +78,21 @@ records what changed, the files touched, the risks, and the verification.
 - `pnpm --filter @bvisible/web run verify:estimate-acceptance` (**30** tests)
 - `pnpm --filter @bvisible/web run build`
 
+**Production deploy — staff quote visibility (`86ea768`) (2026-05-15)**
+
+- **Deploy job ID:** `20260515T143127-ddc8a0`
+- **Deployed SHA:** `86ea768dabaf5be3a3ee937d51bdec885fa5688f`
+- **Migration (`prisma migrate deploy`):** **No pending migrations to apply**; `db-verify` reports **15** applied migrations (latest **`20260515143000_estimate_quote_accept_decline`** — unchanged from prior deploy).
+- **PM2:** `bvisible-web` **reload OK** (`startOrReload`, **online**); **`deploy-once SUCCESS`**.
+- **`/api/health`:** `{"status":"ok","service":"bvisible-web","commit":"86ea768dabaf5be3a3ee937d51bdec885fa5688f"}` *(HTTPS by raw IP may fail hostname TLS verification — use real hostname or `curl -k`)*.
+- **Server tests (`/opt/bvisible/app/apps/web`):** `pnpm --filter @bvisible/web run verify:estimate-quote` → **34/34 pass**; `pnpm --filter @bvisible/web run verify:estimate-acceptance` → **30/30 pass**.
+- **Browser (`admin@bvisible.local`):** **not run** this session — operator should confirm estimate detail/preview summary badges (**Accepted / Declined**), responder fields + timestamps, merged timeline (**single** QUOTE_* line per decision vs duplicate audit rows), dashboard quote-attention rails (**awaiting / accepted / declined**) without duplicate estimate cards, quote-link panel regenerate guard after customer response, and preview still hides internal costs.
+- **Public quote smoke (loopback `127.0.0.1:3000`):** plausible-length unknown token → HTML contains **`Quote unavailable`** substring; **`AppShell`** substring absent (**sample counts:** `1` / `0` in scripted grep).
+
 **Gaps**
 
 - Timeline cannot yet show “quote link issued” as its **own** row unless/until an audit is added for manual issuance (SMTP sends already emit **`estimate_sent_to_client`**).
+- Human staff-session QA still recommended after deploy (dashboard rows depend on real **`SENT`** + active-link combinations and timeline history).
 
 ---
 
