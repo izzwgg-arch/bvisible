@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EstimateStatus, EstimateTimelineKind } from '@bvisible/db';
 
+import type { QuoteAttentionDb } from '@/lib/dashboard/get-quote-attention';
 import {
   dedupeEstimateRowsByFirstOccurrence,
   getDashboardQuoteAttention,
@@ -26,7 +27,7 @@ describe('dashboard quote attention', () => {
     await getDashboardQuoteAttention('tenant-z', {
       estimateTimelineEvent: { findMany: findManyTimeline },
       estimate: { findMany: findManyEstimate },
-    });
+    } as unknown as QuoteAttentionDb);
 
     expect(findManyTimeline).toHaveBeenCalledTimes(2);
     for (const call of findManyTimeline.mock.calls) {
@@ -60,7 +61,7 @@ describe('dashboard quote attention', () => {
     const res = await getDashboardQuoteAttention('tenant-a', {
       estimateTimelineEvent: { findMany: findManyTimeline },
       estimate: { findMany: findManyEstimate },
-    });
+    } as unknown as QuoteAttentionDb);
 
     expect(res.awaitingCustomerResponse).toHaveLength(1);
     expect(res.awaitingCustomerResponse[0]?.estimateId).toBe('est1');
@@ -104,7 +105,7 @@ describe('dashboard quote attention', () => {
     const res = await getDashboardQuoteAttention('tenant-x', {
       estimateTimelineEvent: { findMany: findManyTimeline },
       estimate: { findMany: vi.fn().mockResolvedValue([]) },
-    });
+    } as unknown as QuoteAttentionDb);
 
     expect(res.recentlyAccepted).toHaveLength(1);
 

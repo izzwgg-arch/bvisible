@@ -5,6 +5,39 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Estimate → Invoice operational visibility
+
+**Scope**
+
+- **Prisma** — `Invoice`, `InvoiceLineItem`, `InvoiceStatus`, optional `Estimate.invoices`, **`EstimateTimelineKind.INVOICE_CREATED_FROM_ESTIMATE`**, tenant sequence **`invoice`** (INV numbering).
+- **Conversion** — `createInvoiceFromEstimateAction` (`app/(app)/invoices/actions.ts`): **`APPROVED`** estimates only, **blocks duplicates** (`@@unique([tenantId, estimateId])`), allocates **`finalPriceCents`** across lines via **`allocateEstimateSellToInvoiceLines`**, writes **`estimate_timeline_events`** + audits **`invoice_created_from_estimate`** — **no** auto-finalize, **no** auto-pay.
+- **Payment visibility** — `markInvoicePaidAction` (**`UNPAID` → `PAID`** + `paidAt`, audit **`invoice_marked_paid`**) — explicit operator toggle only.
+- **UI** — `/invoices`, `/invoices/[id]`; estimate **`EstimateFulfillmentPanel`** gains **`EstimateOperationalStepRail`**, **`EstimateRelationshipFlowStrip`**, **Create invoice** CTA ( **`APPROVED`** only, **no linked invoice** yet ), linked invoice card; invoice detail **`InvoiceEstimateOriginSection`** when sourced from an estimate (quote summary + linked PO count). Sidebar adds **Invoices**. **`DashboardEstimateInvoiceFlowSections`** (`getDashboardEstimateInvoiceFlow`) — approved estimates missing invoices, unpaid estimate-linked invoices, recently paid estimate-linked invoices.
+- **Pure libs/tests** — `estimate-invoice-fulfillment.ts` (**`deriveEstimateOperationalSteps`**, **`buildEstimateOperationalRailSteps`**), timeline merge for **`INVOICE_CREATED_FROM_ESTIMATE`**, **`verify:estimate-invoice-flow`** Vitest bundle.
+
+**Files** (representative)
+
+- `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/*invoices_from_estimates*`
+- `apps/web/app/(app)/invoices/{actions.ts,page.tsx,[id]/page.tsx}`
+- `apps/web/components/estimate/{estimate-fulfillment-panel.tsx,estimate-operational-step-rail.tsx,estimate-relationship-flow-strip.tsx,create-invoice-from-estimate-button.tsx}`
+- `apps/web/components/invoice/{invoice-estimate-origin-section.tsx,invoice-mark-paid-button.tsx}`
+- `apps/web/lib/{estimate/estimate-invoice-fulfillment.ts,invoices/*,dashboard/get-dashboard-estimate-invoice-flow.ts,...}`
+- `apps/web/app/(app)/dashboard/{page.tsx,dashboard-estimate-invoice-flow.tsx}`
+- `apps/web/app/(app)/estimates/[id]/page.tsx`, `apps/web/components/app-shell.tsx`
+- `apps/web/package.json` — **`verify:estimate-invoice-flow`**
+- `docs/ai-context/{CHANGELOG_AI.md,BILLING.md,ESTIMATE_ENGINE.md,UI_SYSTEM.md,API_STRUCTURE.md}`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-invoice-flow`
+- `pnpm --filter @bvisible/web run typecheck`
+
+**Deploy notes**
+
+- Requires **`prisma migrate deploy`** for invoice migration **before** production traffic relies on conversion UI (`@@unique` enforcement depends on schema).
+
+---
+
 ## 2026-05-15 — Production deploy verification — Estimate → PO workflow (`ef91ff6`)
 
 **Production deploy**

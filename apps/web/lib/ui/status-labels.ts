@@ -1,6 +1,7 @@
 import {
   EmailIngestStatus,
   EstimateStatus,
+  InvoiceStatus,
   OcrJobStatus,
   POReconciliationStatus,
   POStatus,
@@ -21,6 +22,19 @@ export function labelEstimateStatus(s: EstimateStatus): string {
       return 'Rejected';
     case EstimateStatus.FINALIZED:
       return 'Finalized';
+    default:
+      return String(s).replace(/_/g, ' ');
+  }
+}
+
+export function labelInvoiceStatus(s: InvoiceStatus): string {
+  switch (s) {
+    case InvoiceStatus.UNPAID:
+      return 'Unpaid';
+    case InvoiceStatus.PAID:
+      return 'Paid';
+    case InvoiceStatus.VOIDED:
+      return 'Voided';
     default:
       return String(s).replace(/_/g, ' ');
   }

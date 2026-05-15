@@ -20,6 +20,7 @@ export {
   SpendAlertKind,
   SpendAlertStatus,
   EstimateTimelineKind,
+  InvoiceStatus,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -57,4 +58,6 @@ export type {
   ShopMaterialItemAlias,
   EstimateQuoteLink,
   EstimateTimelineEvent,
+  Invoice,
+  InvoiceLineItem,
 } from '@prisma/client';

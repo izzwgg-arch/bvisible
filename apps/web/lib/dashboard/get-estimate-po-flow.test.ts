@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EstimateStatus, EstimateTimelineKind, POReconciliationStatus } from '@bvisible/db';
 
+import type { EstimatePoFlowDb } from '@/lib/dashboard/get-estimate-po-flow';
 import { getDashboardEstimatePoFlow } from '@/lib/dashboard/get-estimate-po-flow';
 
 describe('dashboard estimate PO flow', () => {
@@ -11,7 +12,7 @@ describe('dashboard estimate PO flow', () => {
     await getDashboardEstimatePoFlow('tenant-flow', {
       estimate: { findMany: findManyEstimate },
       purchaseOrder: { findMany: findManyPo },
-    });
+    } as unknown as EstimatePoFlowDb);
 
     expect(findManyEstimate).toHaveBeenCalledTimes(2);
     for (const call of findManyEstimate.mock.calls) {
@@ -84,7 +85,7 @@ describe('dashboard estimate PO flow', () => {
     const res = await getDashboardEstimatePoFlow('tenant-op', {
       estimate: { findMany: findManyEstimate },
       purchaseOrder: { findMany: findManyPo },
-    });
+    } as unknown as EstimatePoFlowDb);
 
     expect(res.estimateLinkedPoReconciliationAttention).toHaveLength(1);
     expect(res.estimateLinkedPoReconciliationAttention[0]?.poId).toBe('po-1');
@@ -110,7 +111,7 @@ describe('dashboard estimate PO flow', () => {
     const res = await getDashboardEstimatePoFlow('tenant-q', {
       estimate: { findMany: findManyEstimate },
       purchaseOrder: { findMany: findManyPo },
-    });
+    } as unknown as EstimatePoFlowDb);
 
     expect(res.acceptedAwaitingPo).toHaveLength(1);
     expect(res.acceptedAwaitingPo[0]?.estimateId).toBe('e-await');

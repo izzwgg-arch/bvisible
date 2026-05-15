@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   EstimateTimelineKind,
+  EstimateStatus,
   POAttachmentKind,
   prisma,
   Role,
@@ -12,6 +13,7 @@ import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-ra
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
 import { EstimateFulfillmentPanel } from '@/components/estimate/estimate-fulfillment-panel';
+import { EstimateRelationshipFlowStrip } from '@/components/estimate/estimate-relationship-flow-strip';
 import { EstimateTimelineSection } from '@/components/estimate/estimate-timeline-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import {
@@ -21,6 +23,10 @@ import {
   mapLinkedPoToEstimateBootstrap,
 } from '@/lib/estimate/estimate-fulfillment';
 import { EstimateEditor, type EditorBootstrap } from './editor';
+import {
+  buildEstimateOperationalRailSteps,
+  deriveEstimateOperationalSteps,
+} from '@/lib/estimate/estimate-invoice-fulfillment';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 
 export const metadata = { title: 'Estimate' };
@@ -42,6 +48,9 @@ export default async function EstimateDetailPage({
     quoteAcceptedEvent,
     vendors,
     shopCatalog,
+    linkedInvoiceRow,
+    quoteSentAudit,
+    finalizedAudit,
   ] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
@@ -131,6 +140,37 @@ export default async function EstimateDetailPage({
       take: 500,
     }),
     loadEstimateCatalogPickerRows(prisma, me.tenantId),
+    prisma.invoice.findFirst({
+      where: { tenantId: me.tenantId, estimateId: id, deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        paidAt: true,
+        createdAt: true,
+        subtotalCents: true,
+      },
+    }),
+    prisma.auditLog.findFirst({
+      where: {
+        tenantId: me.tenantId,
+        action: 'estimate_sent_to_client',
+        targetType: 'estimate',
+        targetId: id,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    }),
+    prisma.auditLog.findFirst({
+      where: {
+        tenantId: me.tenantId,
+        action: 'estimate_finalized',
+        targetType: 'estimate',
+        targetId: id,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
   ]);
 
   if (!estimate) {
@@ -170,8 +210,55 @@ export default async function EstimateDetailPage({
     linkedPoCount: linkedBootstrapRows.length,
     quoteAcceptedAt: quoteAcceptedEvent?.createdAt ?? null,
     linkedPos: linkedBootstrapRows,
+    linkedInvoice:
+      linkedInvoiceRow == null
+        ? undefined
+        : {
+            number: linkedInvoiceRow.number,
+            status: linkedInvoiceRow.status,
+            paidAt: linkedInvoiceRow.paidAt,
+          },
     now,
   });
+
+  const operationalRail = buildEstimateOperationalRailSteps({
+    estimateStatus: estimate.status,
+    linkedPoCount: linkedBootstrapRows.length,
+    linkedInvoice:
+      linkedInvoiceRow == null
+        ? null
+        : {
+            status: linkedInvoiceRow.status,
+            paidAt: linkedInvoiceRow.paidAt,
+            createdAt: linkedInvoiceRow.createdAt,
+          },
+    quoteSentAt: quoteSentAudit?.createdAt ?? null,
+    quoteAcceptedAt: quoteAcceptedEvent?.createdAt ?? null,
+    firstPoCreatedAt: linkedPosRaw[0]?.createdAt ?? null,
+    finalizedAt:
+      estimate.status === EstimateStatus.FINALIZED ? finalizedAudit?.createdAt ?? null : null,
+  });
+
+  const flowFlags = deriveEstimateOperationalSteps({
+    estimateStatus: estimate.status,
+    linkedPoCount: linkedBootstrapRows.length,
+    linkedInvoice:
+      linkedInvoiceRow == null
+        ? null
+        : { status: linkedInvoiceRow.status, paidAt: linkedInvoiceRow.paidAt },
+  });
+
+  const linkedInvoiceSnapshot =
+    linkedInvoiceRow == null
+      ? null
+      : {
+          id: linkedInvoiceRow.id,
+          number: linkedInvoiceRow.number,
+          status: linkedInvoiceRow.status,
+          paidAtIso: linkedInvoiceRow.paidAt?.toISOString() ?? null,
+          createdAtIso: linkedInvoiceRow.createdAt.toISOString(),
+          subtotalCents: linkedInvoiceRow.subtotalCents,
+        };
 
   const bootstrap: EditorBootstrap = {
     estimate: {
@@ -258,6 +345,24 @@ export default async function EstimateDetailPage({
           estimateStatus={estimate.status}
           headline={fulfillmentHeadline}
           hints={fulfillmentHints}
+          operationalSteps={operationalRail.map((s) => ({
+            key: s.key,
+            label: s.label,
+            done: s.done,
+            atIso: s.at ? s.at.toISOString() : null,
+          }))}
+          relationshipStrip={
+            <EstimateRelationshipFlowStrip
+              estimateId={estimate.id}
+              quoteDone={flowFlags.customer_approved}
+              poDone={flowFlags.po_created}
+              invoiceDone={flowFlags.invoice_created}
+              paidDone={flowFlags.invoice_paid}
+              firstPoId={linkedPosRaw[0]?.id ?? null}
+              invoiceId={linkedInvoiceRow?.id ?? null}
+            />
+          }
+          linkedInvoice={linkedInvoiceSnapshot}
           linkedPos={linkedBootstrapRows}
         />
         <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />

@@ -63,7 +63,8 @@ The look, feel, and behavior of the web app.
   recent estimates + recent POs + **`DashboardQuoteAttentionSections`** (`getDashboardQuoteAttention.ts`:
   awaiting **`SENT`** estimates that still have an active `/quote/[token]` with **no** `respondedAt`, distinct surfaces for newest **`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`** timeline hits with `/estimates/[id]` deep links) +
   **`DashboardEstimatePoFlowSections`** (`get-estimate-po-flow.ts` — approved estimates missing linked POs,
-  newest estimate-backed PO rows, approved estimates already tied to POs, estimate-linked PO recon bottlenecks using latest `POReconciliation` statuses only) + merged **attention feed** (`getDashboardOperationalFeed()` in
+  newest estimate-backed PO rows, approved estimates already tied to POs, estimate-linked PO recon bottlenecks using latest `POReconciliation` statuses only),
+  **`DashboardEstimateInvoiceFlowSections`** (`get-dashboard-estimate-invoice-flow.ts` — approved estimates missing invoices, unpaid invoices tied to approved estimates, recently paid estimate-linked invoices via **`Invoice.paidAt`**) + merged **attention feed** (`getDashboardOperationalFeed()` in
   `apps/web/lib/dashboard/get-dashboard-feed.ts`: spend alerts, vendor price rows, and for ADMIN+
   synthetic OCR queue / unmatched-email prompts when counts > 0 — still backed by DB counts,
   not fabricated rows). **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
@@ -71,7 +72,7 @@ The look, feel, and behavior of the web app.
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
-  `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO statuses)
+  `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.
 - **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`:
   - **Workflow rail** (`components/workflow/estimate-workflow-rail.tsx`) above the editor: estimate lifecycle
@@ -99,7 +100,7 @@ The look, feel, and behavior of the web app.
   - **Customer quote** — estimate detail header links to **`/estimates/[id]/preview`**
     (print/PDF via browser; send-to-customer anchor). Preview shows allocated sell
     lines only; vendor intel / editor totals rail stay on the editor route.
-  - **Staff-facing quote visibility stack** — `EstimateFulfillmentPanel.tsx` leads with fulfillment/next-step rails + anchored CTAs (`#estimate-create-po`, `/purchase-orders/new?estimateId=`) grounded on **`purchase_orders.estimateId`** + timeline acceptance timestamps (never status-alone guesses). Immediately after, **`EstimateQuoteResponseSummary.tsx`**
+  - **Staff-facing quote visibility stack** — `EstimateFulfillmentPanel.tsx` leads with **`EstimateOperationalStepRail`** + **`EstimateRelationshipFlowStrip`** (Quote→PO→Invoice→Paid) + fulfillment/next-step rails + anchored CTAs (`#estimate-create-po`, `/purchase-orders/new?estimateId=`) grounded on **`purchase_orders.estimateId`** + **`Invoice.estimateId`**, explicit **Create invoice** when **`APPROVED`** without a linked invoice, linked invoice chips — plus timeline acceptance timestamps (never status-alone guesses). Immediately after, **`EstimateQuoteResponseSummary.tsx`**
     (`apps/web/components/estimate/estimate-quote-response-summary.tsx`) keeps responders/name/note/timing states glanceable ahead of the public-link tooling.
   - **Estimate timeline (operations)** — `EstimateTimelineSection.tsx` renders chronological merges from **`estimate_timeline_events`** plus whitelist **`audit_logs`** (`estimate_sent_to_client`, public quote views, status transitions, finalize/unfinalize); duplicated Accept/Decline audits intentionally suppressed because **`QUOTE_*`** timeline rows already cover customer outcomes — avoids fake duplicates while respecting “real rows only”.
   - **Public customer link** — panel (`components/estimate/estimate-quote-link-panel.tsx`)
@@ -116,7 +117,7 @@ The look, feel, and behavior of the web app.
   Tab is left to the browser default. Arrow keys are intentionally
   not hijacked — that would break caret navigation inside text inputs.
 - **Sidebar nav** for tenant users now shows
-  `Dashboard / Estimates / Purchase orders / Clients / Vendors / Items` in
+  `Dashboard / Estimates / Purchase orders / Invoices / Clients / Vendors / Items` in
   `BASE_NAV`. ADMIN adds `Users`, `Email ingestion`, **`Receipt OCR`**
   (`/admin/ocr-review`), and **`PO reconciliation`** (`/admin/reconciliation`); SUPER_ADMIN
   additionally adds `Tenants`, `Inboxes`, and `Email test`.

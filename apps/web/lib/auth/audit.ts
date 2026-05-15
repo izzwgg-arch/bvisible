@@ -27,6 +27,8 @@ export type AuditAction =
   | 'estimate_quote_viewed_public'
   | 'estimate_quote_accepted'
   | 'estimate_quote_declined'
+  | 'invoice_created_from_estimate'
+  | 'invoice_marked_paid'
   | 'vendor_created'
   | 'po_created'
   | 'po_created_from_estimate'

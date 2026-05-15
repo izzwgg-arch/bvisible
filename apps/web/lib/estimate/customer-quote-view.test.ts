@@ -22,7 +22,7 @@ describe('buildCustomerQuoteLines', () => {
     expect(json).not.toMatch(/unitCost/i);
     expect(json).not.toMatch(/computedCost/i);
     expect(json).not.toMatch(/subtotal/i);
-    expect(rows[0].lineSellCents).toBe(300);
+    expect(rows[0]!.lineSellCents).toBe(300);
   });
 
   it('sums line sells to final total', () => {

@@ -277,6 +277,14 @@ export const createPoFromEstimateSchema = z.object({
   vendorId: nullableIdRef,
 });
 
+export const createInvoiceFromEstimateSchema = z.object({
+  estimateId: z.string().min(1).max(60),
+});
+
+export const markInvoicePaidSchema = z.object({
+  invoiceId: z.string().min(1).max(60),
+});
+
 // One row in the PO grid. Mirrors estimateLineSchema (same integer
 // units, same bounds). PO lines have no machineId — the PO is the
 // cost-side and doesn't track which machine produced what.
@@ -544,6 +552,8 @@ export type SubmitPublicQuoteResponseInput = z.infer<typeof submitPublicQuoteRes
 export type CreateVendorInput = z.infer<typeof createVendorSchema>;
 export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>;
 export type CreatePoFromEstimateInput = z.infer<typeof createPoFromEstimateSchema>;
+export type CreateInvoiceFromEstimateInput = z.infer<typeof createInvoiceFromEstimateSchema>;
+export type MarkInvoicePaidInput = z.infer<typeof markInvoicePaidSchema>;
 export type PoLineInput = z.infer<typeof poLineSchema>;
 export type SavePurchaseOrderInput = z.infer<typeof savePurchaseOrderSchema>;
 export type UpdatePoStatusInput = z.infer<typeof updatePoStatusSchema>;

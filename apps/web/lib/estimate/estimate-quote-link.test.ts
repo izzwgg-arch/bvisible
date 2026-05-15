@@ -102,6 +102,10 @@ function minimalValidLinkRow(
     respondedAt: Date | null;
     acceptedAt: Date | null;
     declinedAt: Date | null;
+    acceptedByName: string | null;
+    acceptedNote: string | null;
+    declinedByName: string | null;
+    declinedNote: string | null;
     estimate: Partial<{ deletedAt: Date | null; status: EstimateStatus }>;
   }> = {}
 ) {

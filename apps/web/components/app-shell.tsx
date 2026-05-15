@@ -8,6 +8,7 @@ const BASE_NAV: ReadonlyArray<NavItem> = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/estimates', label: 'Estimates' },
   { href: '/purchase-orders', label: 'Purchase orders' },
+  { href: '/invoices', label: 'Invoices' },
   { href: '/clients', label: 'Clients' },
   { href: '/vendors', label: 'Vendors' },
   { href: '/items', label: 'Items' },

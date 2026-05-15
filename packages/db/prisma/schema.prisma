@@ -66,6 +66,14 @@ enum EstimateLineKind {
 enum EstimateTimelineKind {
   QUOTE_ACCEPTED
   QUOTE_DECLINED
+  INVOICE_CREATED_FROM_ESTIMATE
+}
+
+/// Customer-facing invoice (sell totals). Distinct from vendor receipts on POs.
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  VOIDED
 }
 
 /// Units for Items catalog / estimate hints (shop-facing labels).
@@ -289,6 +297,8 @@ model Tenant {
   shopMaterialItemAliases ShopMaterialItemAlias[]
   estimateQuoteLinks       EstimateQuoteLink[]
   estimateTimelineEvents EstimateTimelineEvent[]
+  invoices               Invoice[]
+  invoiceLineItems       InvoiceLineItem[]
 
   @@map("tenants")
 }
@@ -329,6 +339,7 @@ model User {
   spendAlertsDismissed            SpendAlert[]             @relation("SpendAlertDismissedBy")
   spendAlertsResolvedSpend        SpendAlert[]             @relation("SpendAlertResolvedBy")
   estimateQuoteLinksCreated       EstimateQuoteLink[]      @relation("QuoteLinkCreator")
+  invoicesCreated                 Invoice[]                @relation("InvoiceCreator")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -478,6 +489,7 @@ model Client {
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   estimates Estimate[]
+  invoices  Invoice[]
 
   @@index([tenantId, companyName])
   @@index([tenantId, deletedAt])
@@ -542,12 +554,64 @@ model Estimate {
   purchaseOrders PurchaseOrder[]
   quoteLinks          EstimateQuoteLink[]
   timelineEvents    EstimateTimelineEvent[]
+  invoices          Invoice[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
   @@index([tenantId, clientId])
   @@index([tenantId, deletedAt])
   @@map("estimates")
+}
+
+/// Tenant invoice (sales). Created explicitly from an approved estimate — no auto-generation.
+model Invoice {
+  id              String        @id @default(cuid())
+  tenantId        String
+  estimateId      String?
+  clientId        String
+  number          String
+  status          InvoiceStatus @default(UNPAID)
+  /// Sum of line sell allocations at creation time (matches estimate final sell snapshot).
+  subtotalCents   Int           @default(0)
+  notes           String?
+  paidAt          DateTime?
+  createdById     String
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate  Estimate?         @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy User              @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines     InvoiceLineItem[]
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, estimateId])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, estimateId])
+  @@index([tenantId, deletedAt])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id             String           @id @default(cuid())
+  tenantId       String
+  invoiceId      String
+  sortOrder      Int              @default(0)
+  kind           EstimateLineKind
+  description    String
+  qtyMilli       Int              @default(1000)
+  lineTotalCents Int              @default(0)
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, invoiceId, sortOrder])
+  @@map("invoice_line_items")
 }
 
 // One row per line in the estimate grid. `qtyMilli` is the quantity ×

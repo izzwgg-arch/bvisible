@@ -12,12 +12,13 @@ import { Prisma } from '@bvisible/db';
 // See apps/web/lib/estimate/number.ts and apps/web/lib/po/number.ts
 // for the concrete sequence implementations.
 
-export type SequenceKind = 'estimate' | 'purchase_order';
+export type SequenceKind = 'estimate' | 'purchase_order' | 'invoice';
 
 const NAMESPACE_TAGS: Record<SequenceKind, number> = {
   // ASCII tags chosen so a `pg_locks` query is human-readable.
   estimate: 0x65737421, // "est!"
   purchase_order: 0x706f2123, // "po!#"
+  invoice: 0x696e7621, // "inv!"
 };
 
 function tenantLockKey(tenantId: string): number {

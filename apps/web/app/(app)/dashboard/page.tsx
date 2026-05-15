@@ -8,12 +8,14 @@ import { isOnboardingChecklistDismissed } from '@/lib/onboarding/dismiss-action'
 import { OnboardingChecklistCard } from '@/components/onboarding/onboarding-checklist-card';
 import { getDashboardQuoteAttention } from '@/lib/dashboard/get-quote-attention';
 import { getDashboardEstimatePoFlow } from '@/lib/dashboard/get-estimate-po-flow';
+import { getDashboardEstimateInvoiceFlow } from '@/lib/dashboard/get-dashboard-estimate-invoice-flow';
 import { VendorPriceAlerts } from './vendor-price-alerts';
 import { SpendOperationAlerts } from './reconciliation-widgets';
 import {
   DashboardQuoteAttentionSections,
 } from './dashboard-quote-attention';
 import { DashboardEstimatePoFlowSections } from './dashboard-estimate-po-flow';
+import { DashboardEstimateInvoiceFlowSections } from './dashboard-estimate-invoice-flow';
 import {
   DashboardMetricGrid,
   DashboardOperationalSections,
@@ -35,7 +37,7 @@ export default async function DashboardPage({
   const showOperator =
     user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
-  const [metrics, feed, dismissed, checklistState, quoteAttention, estimatePoFlow] =
+  const [metrics, feed, dismissed, checklistState, quoteAttention, estimatePoFlow, estimateInvoiceFlow] =
     user.tenantId != null
       ? await Promise.all([
           getDashboardMetrics(user.tenantId, {
@@ -48,8 +50,9 @@ export default async function DashboardPage({
           getOnboardingChecklistState(user.tenantId, user.role),
           getDashboardQuoteAttention(user.tenantId),
           getDashboardEstimatePoFlow(user.tenantId),
+          getDashboardEstimateInvoiceFlow(user.tenantId),
         ])
-      : [null, null, true, null, null, null];
+      : [null, null, true, null, null, null, null];
 
   const workspaceLabel = user.tenant.name;
 
@@ -93,6 +96,9 @@ export default async function DashboardPage({
           <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
           {quoteAttention ? <DashboardQuoteAttentionSections data={quoteAttention} /> : null}
           {estimatePoFlow ? <DashboardEstimatePoFlowSections data={estimatePoFlow} /> : null}
+          {estimateInvoiceFlow ? (
+            <DashboardEstimateInvoiceFlowSections data={estimateInvoiceFlow} />
+          ) : null}
           {feed ? <DashboardOperationalSections feed={feed} /> : null}
           <DashboardRecentActivity rows={metrics.recentActivity} />
         </>
