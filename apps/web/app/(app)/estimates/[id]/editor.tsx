@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EstimateLineKind, EstimateStatus, POStatus } from '@bvisible/db';
+import { EstimateLineKind, EstimateStatus, POStatus, POReconciliationStatus } from '@bvisible/db';
 import { computeEstimate, type LineInput } from '@bvisible/pricing';
 import {
   saveEstimateAction,
@@ -61,7 +61,13 @@ export interface EditorBootstrap {
     status: POStatus;
     qboPoNumber: string | null;
     subtotalCents: number;
+    createdAtIso: string;
     vendor: { id: string; name: string } | null;
+    latestReconciliationStatus: POReconciliationStatus | null;
+    receiptishAttachmentCount: number;
+    ocrPendingOrProcessingCount: number;
+    ocrNeedsReviewCount: number;
+    reconciliationNeedsAttention: boolean;
   }>;
   canDelete: boolean;
   canUnfinalize: boolean;

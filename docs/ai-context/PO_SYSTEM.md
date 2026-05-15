@@ -52,8 +52,10 @@ PurchaseOrder
   `/purchase-orders/[id]`, `/vendors`, `/vendors/new`. Spreadsheet-like
   PO line editor reusing the estimate grid primitives.
 - "Create PO from estimate" flow on the estimate editor's totals panel
-  (copies lines, preserves quantities and costs, never mutates the
-  source estimate, writes a `CREATED_FROM_ESTIMATE` POEvent).
+  (**`EstimateStatus.APPROVED` only** — sidebar mirrors `createPoFromEstimateAction`;
+  copies lines, preserves quantities and costs, never mutates the
+  source estimate, writes a `CREATED_FROM_ESTIMATE` POEvent). **`/purchase-orders/new?estimateId=`**
+  remains the explicit blank PO linker without silently cloning estimate rows.
 - Tenant-gated attachment download route at
   `/api/po/[id]/attachments/[attachmentId]` with server-side MIME
   re-detection on every stream.
@@ -82,14 +84,13 @@ PurchaseOrder
 
 ## Estimate → PO conversion
 
-- Triggered from the estimate editor's totals panel ("Create PO from
-  estimate"). Picks an optional vendor, copies every line of the
-  estimate into the new PO (kind, description, `qtyMilli`,
+- Triggered from the estimate totals sidebar (**`APPROVED` workspace only**) via anchored **`#estimate-create-po`** mirroring the server gate — **`DRAFT`/`SENT`/`REJECTED`** editors explain that fulfillment waits on acceptance rather than silently failing later.
+- Optional vendor picker, copies every estimate line into the new PO (kind, description, `qtyMilli`,
   `unitCostCents`, `sortOrder` preserved), seeds the PO's
   `subtotalCents` from the estimate's cached line costs, and writes a
   `CREATED_FROM_ESTIMATE` event.
-- Server action: `createPoFromEstimateAction` (in
-  `apps/web/app/(app)/purchase-orders/actions.ts`).
+- Server action: `createPoFromEstimateAction` **requires `EstimateStatus.APPROVED`** before allocating **`PO-NNNNNN`** (`apps/web/app/(app)/purchase-orders/actions.ts`).
+- **Link existing PO** path stays explicit (`/purchase-orders/new?estimateId=…`), storing **`purchase_orders.estimateId`** without touching estimate lines.
 - The original estimate is **not mutated**. Multiple POs per estimate
   are allowed.
 

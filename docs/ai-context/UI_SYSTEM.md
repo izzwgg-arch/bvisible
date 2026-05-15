@@ -61,7 +61,9 @@ The look, feel, and behavior of the web app.
   unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
   recent rows from `audit_logs`, plus quick actions. **Operational overview** layout:
   recent estimates + recent POs + **`DashboardQuoteAttentionSections`** (`getDashboardQuoteAttention.ts`:
-  awaiting **`SENT`** estimates that still have an active `/quote/[token]` with **no** `respondedAt`, distinct surfaces for newest **`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`** timeline hits with `/estimates/[id]` deep links) + merged **attention feed** (`getDashboardOperationalFeed()` in
+  awaiting **`SENT`** estimates that still have an active `/quote/[token]` with **no** `respondedAt`, distinct surfaces for newest **`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`** timeline hits with `/estimates/[id]` deep links) +
+  **`DashboardEstimatePoFlowSections`** (`get-estimate-po-flow.ts` — approved estimates missing linked POs,
+  newest estimate-backed PO rows, approved estimates already tied to POs, estimate-linked PO recon bottlenecks using latest `POReconciliation` statuses only) + merged **attention feed** (`getDashboardOperationalFeed()` in
   `apps/web/lib/dashboard/get-dashboard-feed.ts`: spend alerts, vendor price rows, and for ADMIN+
   synthetic OCR queue / unmatched-email prompts when counts > 0 — still backed by DB counts,
   not fabricated rows). **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
@@ -97,8 +99,8 @@ The look, feel, and behavior of the web app.
   - **Customer quote** — estimate detail header links to **`/estimates/[id]/preview`**
     (print/PDF via browser; send-to-customer anchor). Preview shows allocated sell
     lines only; vendor intel / editor totals rail stay on the editor route.
-  - **Staff-facing quote visibility stack** — `EstimateQuoteResponseSummary.tsx`
-    (`apps/web/components/estimate/estimate-quote-response-summary.tsx`) sits ahead of the public-link tooling so responders/name/note/timing states stay glanceable without digging through audits.
+  - **Staff-facing quote visibility stack** — `EstimateFulfillmentPanel.tsx` leads with fulfillment/next-step rails + anchored CTAs (`#estimate-create-po`, `/purchase-orders/new?estimateId=`) grounded on **`purchase_orders.estimateId`** + timeline acceptance timestamps (never status-alone guesses). Immediately after, **`EstimateQuoteResponseSummary.tsx`**
+    (`apps/web/components/estimate/estimate-quote-response-summary.tsx`) keeps responders/name/note/timing states glanceable ahead of the public-link tooling.
   - **Estimate timeline (operations)** — `EstimateTimelineSection.tsx` renders chronological merges from **`estimate_timeline_events`** plus whitelist **`audit_logs`** (`estimate_sent_to_client`, public quote views, status transitions, finalize/unfinalize); duplicated Accept/Decline audits intentionally suppressed because **`QUOTE_*`** timeline rows already cover customer outcomes — avoids fake duplicates while respecting “real rows only”.
   - **Public customer link** — panel (`components/estimate/estimate-quote-link-panel.tsx`)
     manages **`/quote/[token]`** shares with badges describing revoked/expired/active/responded combinations,
@@ -166,7 +168,7 @@ The look, feel, and behavior of the web app.
   "Email inbox" link to the tenant's inbox config page.
 - **Purchase order editor** at
   `apps/web/app/(app)/purchase-orders/[id]/{editor,line-grid,meta-panel,timeline-panel,attachments-panel}.tsx`:
-  - **Operational rail** (`components/workflow/po-operational-rail.tsx`) above the editor: PO lifecycle
+  - **Operational rail** (`components/workflow/po-operational-rail.tsx`) sits beneath **`PoEstimateOriginSection.tsx`** whenever `estimateId` is set (customer quote summary + deep link back to `/estimates/[id]`). The rail itself surfaces PO lifecycle
     (Draft → Sent → Ordered → Received, with partial receipts aligned to Ordered), attachment counts,
     reconciliation snapshot label, OCR receipt counts by status, inbound-email touch counts for operators,
     and **next recommended action** (upload docs, reconciliation, OCR queue, email matching).
@@ -196,13 +198,7 @@ The look, feel, and behavior of the web app.
     derived from `POEventKind` and a human-readable timestamp; inline
     "Add note" form posts to `addPoNoteAction` and re-renders the
     timeline via `revalidatePath`.
-- **Estimate totals panel** now exposes the **PO bridge**: a "Linked
-  POs" list (with a status pill per linked PO and a deep link to the PO
-  page), a "Create PO from estimate" form (optional vendor picker; submits
-  `createPoFromEstimateAction` and navigates to the new PO on success),
-  and the **Finalize / Unfinalize** buttons. Finalize is disabled with an
-  inline reason when R-EST-04 isn't satisfied (no linked PO, or no
-  qboPoNumber on any linked PO). Unfinalize only renders for ADMIN+.
+- **Estimate totals panel** exposes the **PO bridge**: anchored **Linked POs** (`#estimate-linked-pos`) showing vendor, cached PO total, short `createdAt`, status chips, plus deterministic reconciliation/receipt OCR badges when rows exist; anchored **Create PO from estimate** (`#estimate-create-po`, **`APPROVED` gate** + explanatory copy beforehand); explicit **Link existing purchase order** (`/purchase-orders/new?estimateId=`); and the **Finalize / Unfinalize** controls with R-EST-04 inline reasons. Unfinalize stays ADMIN+ only.
 - **Status pills** for both `EstimateStatus` (now including `FINALIZED`
   in slate) and `POStatus` (DRAFT / SENT / ORDERED /
   PARTIALLY_RECEIVED / RECEIVED / CANCELED) live in the same six-tone

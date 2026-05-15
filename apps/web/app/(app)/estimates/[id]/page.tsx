@@ -1,13 +1,25 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma, Role } from '@bvisible/db';
+import {
+  EstimateTimelineKind,
+  POAttachmentKind,
+  prisma,
+  Role,
+} from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-rail';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
+import { EstimateFulfillmentPanel } from '@/components/estimate/estimate-fulfillment-panel';
 import { EstimateTimelineSection } from '@/components/estimate/estimate-timeline-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
+import {
+  countReceiptOcrBuckets,
+  fulfillmentHeadlineForEstimateStatus,
+  fulfillmentOperationalHints,
+  mapLinkedPoToEstimateBootstrap,
+} from '@/lib/estimate/estimate-fulfillment';
 import { EstimateEditor, type EditorBootstrap } from './editor';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 
@@ -22,7 +34,15 @@ export default async function EstimateDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [estimate, machines, clients, linkedPos, vendors, shopCatalog] = await Promise.all([
+  const [
+    estimate,
+    machines,
+    clients,
+    linkedPosRaw,
+    quoteAcceptedEvent,
+    vendors,
+    shopCatalog,
+  ] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -72,8 +92,37 @@ export default async function EstimateDetailPage({
         status: true,
         qboPoNumber: true,
         subtotalCents: true,
+        createdAt: true,
         vendor: { select: { id: true, name: true } },
+        reconciliations: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { status: true },
+        },
+        attachments: {
+          where: {
+            kind: {
+              in: [
+                POAttachmentKind.RECEIPT,
+                POAttachmentKind.INVOICE,
+                POAttachmentKind.VENDOR_INVOICE,
+              ],
+            },
+          },
+          select: {
+            ocrDocument: { select: { status: true } },
+          },
+        },
       },
+    }),
+    prisma.estimateTimelineEvent.findFirst({
+      where: {
+        tenantId: me.tenantId,
+        estimateId: id,
+        kind: EstimateTimelineKind.QUOTE_ACCEPTED,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
     }),
     prisma.vendor.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
@@ -95,6 +144,34 @@ export default async function EstimateDetailPage({
     estimate.number,
     estimate.status
   );
+
+  const now = new Date();
+  const linkedBootstrapRows = linkedPosRaw.map((po) => {
+    const ocrStatuses = po.attachments.map((a) => a.ocrDocument?.status);
+    const { pendingOrProcessing, needsReview } = countReceiptOcrBuckets(ocrStatuses);
+    return mapLinkedPoToEstimateBootstrap({
+      id: po.id,
+      number: po.number,
+      status: po.status,
+      qboPoNumber: po.qboPoNumber,
+      subtotalCents: po.subtotalCents,
+      createdAt: po.createdAt,
+      vendor: po.vendor,
+      latestReconciliationStatus: po.reconciliations[0]?.status ?? null,
+      receiptishAttachmentCount: po.attachments.length,
+      ocrPendingOrProcessingCount: pendingOrProcessing,
+      ocrNeedsReviewCount: needsReview,
+    });
+  });
+
+  const fulfillmentHeadline = fulfillmentHeadlineForEstimateStatus(estimate.status);
+  const fulfillmentHints = fulfillmentOperationalHints({
+    estimateStatus: estimate.status,
+    linkedPoCount: linkedBootstrapRows.length,
+    quoteAcceptedAt: quoteAcceptedEvent?.createdAt ?? null,
+    linkedPos: linkedBootstrapRows,
+    now,
+  });
 
   const bootstrap: EditorBootstrap = {
     estimate: {
@@ -122,7 +199,7 @@ export default async function EstimateDetailPage({
     machines,
     clients,
     vendors,
-    linkedPos,
+    linkedPos: linkedBootstrapRows,
     canDelete: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
     canUnfinalize: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
     shopCatalog,
@@ -167,7 +244,7 @@ export default async function EstimateDetailPage({
       <EstimateWorkflowRail
         estimateNumber={estimate.number}
         status={estimate.status}
-        linkedPos={linkedPos.map((p) => ({
+        linkedPos={linkedPosRaw.map((p) => ({
           id: p.id,
           number: p.number,
           status: p.status,
@@ -176,6 +253,13 @@ export default async function EstimateDetailPage({
         }))}
       />
       <div className="mx-auto mb-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
+        <EstimateFulfillmentPanel
+          estimateId={estimate.id}
+          estimateStatus={estimate.status}
+          headline={fulfillmentHeadline}
+          hints={fulfillmentHints}
+          linkedPos={linkedBootstrapRows}
+        />
         <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
         <EstimateTimelineSection rows={quoteUi.timelineRows} />
         <EstimateQuoteLinkPanel

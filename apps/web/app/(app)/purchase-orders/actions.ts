@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { POEventKind, POLineKind, prisma } from '@bvisible/db';
+import { EstimateStatus, POEventKind, POLineKind, prisma } from '@bvisible/db';
 import {
   createPoFromEstimateSchema,
   createPurchaseOrderSchema,
@@ -128,6 +128,7 @@ export async function createPoFromEstimateAction(
     select: {
       id: true,
       number: true,
+      status: true,
       lines: {
         orderBy: [{ sortOrder: 'asc' }],
         select: {
@@ -143,6 +144,13 @@ export async function createPoFromEstimateAction(
   });
   if (!estimate) {
     return { error: 'Estimate not found.' };
+  }
+
+  if (estimate.status !== EstimateStatus.APPROVED) {
+    return {
+      error:
+        'Only accepted (Approved) estimates can convert to a purchase order. Wait for customer acceptance or set status to Approved when appropriate.',
+    };
   }
 
   if (vendorId) {

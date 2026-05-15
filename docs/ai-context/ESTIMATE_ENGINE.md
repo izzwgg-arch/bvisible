@@ -55,7 +55,9 @@ estimate-targeted **`audit_logs`** (`estimate_sent_to_client`, `estimate_quote_v
 There is **still no audit row solely for “link issued outside SMTP send”** — purely manual generations appear via link
 metadata/UI without inventing synthetic timeline bullets.
 
-The **`/dashboard`** overview surfaces **`getDashboardQuoteAttention`**: recently accepted quotes (distinct estimates by latest **`QUOTE_ACCEPTED`** timeline hit), recently declined (**`QUOTE_DECLINED`**), and **`SENT`** estimates that still have an active (`respondedAt` null, not revoked/expired) link awaiting customer response — each row links back to `/estimates/[id]` (**tenant-scoped queries only**).
+The **`/dashboard`** overview surfaces **`getDashboardQuoteAttention`**: recently accepted quotes (distinct estimates by latest **`QUOTE_ACCEPTED`** timeline hit), recently declined (**`QUOTE_DECLINED`**), and **`SENT`** estimates that still have an active (`respondedAt` null, not revoked/expired) link awaiting customer response — each row links back to `/estimates/[id]` (**tenant-scoped queries only**). **`getDashboardEstimatePoFlow`** adds an operational bridge layered purely on explicit joins: **`APPROVED`** estimates with **`purchaseOrders: none`**, newest **`purchase_orders`** rows carrying **`estimateId`**, **`APPROVED`** estimates that already have linked POs, and **`purchase_orders.estimateId`** rows whose newest **`POReconciliation`** snapshot is outside **`MATCHED`/`RESOLVED`** — deterministic helper strings only (counts/status/time deltas).
+
+Fulfillment UX beside quotes lives on **`/estimates/[id]`**: **`EstimateFulfillmentPanel`** (plus richer totals sidebar chips) reads **`QUOTE_ACCEPTED`** timestamps for operational nag lines and **`purchase_orders`** (scoped through **`estimateId`**) for receipts/OCR/reconciliation summaries using existing attachment + OCR job enums — operations staff never infer fulfillment from **`Estimate.status`** alone when PO linkage matters.
 
 **Vendor pricing intelligence (read-only)** — material rows call
 `lookupVendorCatalogIntelligence` (`apps/web/lib/vendor-pricing/catalog-lookup.ts`)

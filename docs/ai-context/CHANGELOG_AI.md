@@ -5,6 +5,43 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Estimate → PO operational handoff + dashboard fulfillment rails
+
+**Scope**
+
+- **Fulfillment panel (`EstimateFulfillmentPanel`)** on `/estimates/[id]` — status-aware headline/subcopy (Draft/Sent/Approved/Rejected/Finalized), deterministic helper lines sourced from **`QUOTE_ACCEPTED`** timestamps + explicit linked **`purchase_orders`** rows (reconciliation status + receipt-ish attachment OCR job buckets only — no OCR/reconciliation algorithm edits).
+- **Explicit PO conversion gate** — `createPoFromEstimateAction` now refuses anything except **`EstimateStatus.APPROVED`**; totals sidebar mirrors the rule (`#estimate-create-po`, optional vendor copy) and surfaces **`/purchase-orders/new?estimateId=`** for linking blank POs without silent line cloning.
+- **Bidirectional visibility** — richer linked PO rows on the estimate page + totals aside; PO detail renders **`PoEstimateOriginSection`** (embedded staff quote summary via `loadEstimateQuoteStaffUi`).
+- **Dashboard** — `getDashboardEstimatePoFlow` / `DashboardEstimatePoFlowSections` add accepted-without-PO, recent estimate-backed POs, accepted-with-PO coverage, and estimate-linked reconciliation attention lists using strict Prisma predicates (`tenantId` everywhere).
+- **Pure helpers/tests** — `lib/estimate/estimate-fulfillment.ts` + Vitest coverage for derivation & dashboard query wiring.
+
+**Files**
+
+- `apps/web/lib/estimate/{estimate-fulfillment.ts,estimate-fulfillment.test.ts}`
+- `apps/web/lib/dashboard/{get-estimate-po-flow.ts,get-estimate-po-flow.test.ts}`
+- `apps/web/components/estimate/estimate-fulfillment-panel.tsx`
+- `apps/web/components/po/po-estimate-origin-section.tsx`
+- `apps/web/app/(app)/dashboard/{page.tsx,dashboard-estimate-po-flow.tsx}`
+- `apps/web/app/(app)/estimates/[id]/{page.tsx,totals-panel.tsx,editor.tsx}`
+- `apps/web/app/(app)/purchase-orders/{actions.ts,[id]/page.tsx}`
+- `apps/web/package.json` (**`verify:estimate-quote`** adds new specs)
+- `docs/ai-context/{CHANGELOG_AI.md,ESTIMATE_ENGINE.md,PO_SYSTEM.md,UI_SYSTEM.md,API_STRUCTURE.md}`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-quote`
+- `pnpm run build`
+
+**Deploy notes**
+
+- Schema unchanged — **no migration**. Deploy is standard web build + restart after **`git push`**.
+
+**Caveats**
+
+- Operational hints intentionally avoid treating **`FINALIZED`** estimates as “awaiting PO”; dashboard columns focus on **`APPROVED`** flows plus reconciliation noise on POs that already carry **`estimateId`**.
+
+---
+
 ## 2026-05-15 — Public quote customer Accept / Decline (`/quote/[token]`)
 
 **Scope**

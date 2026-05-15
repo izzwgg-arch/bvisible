@@ -3,15 +3,14 @@ import { notFound } from 'next/navigation';
 import {
   EmailIngestStatus,
   POAttachmentKind,
-  POEventKind,
-  POLineKind,
-  POStatus,
   Role,
   prisma,
 } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { PoOperationalRail } from '@/components/workflow/po-operational-rail';
+import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-section';
+import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { PoEditor, type PoEditorBootstrap } from './editor';
 
 export const metadata = { title: 'Purchase order' };
@@ -53,7 +52,15 @@ export default async function PurchaseOrderDetailPage({
         createdAt: true,
         operatorMarkedReconciledAt: true,
         vendor: { select: { id: true, name: true } },
-        estimate: { select: { id: true, number: true, title: true } },
+        estimate: {
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            status: true,
+            client: { select: { companyName: true } },
+          },
+        },
         createdBy: { select: { name: true, email: true } },
         lines: {
           orderBy: [{ sortOrder: 'asc' }],
@@ -131,6 +138,17 @@ export default async function PurchaseOrderDetailPage({
   const receiptishCount = po.attachments.filter((a) => RECEIPTISH.includes(a.kind)).length;
   const attachmentsFromEmailCount = po.attachments.filter((a) => a.sourceEmailId != null).length;
 
+  const estimateOriginQuoteUi =
+    po.estimate != null
+      ? await loadEstimateQuoteStaffUi(
+          prisma,
+          me.tenantId,
+          po.estimate.id,
+          po.estimate.number,
+          po.estimate.status
+        )
+      : null;
+
   const bootstrap: PoEditorBootstrap = {
     po: {
       id: po.id,
@@ -141,7 +159,9 @@ export default async function PurchaseOrderDetailPage({
       subtotalCents: po.subtotalCents,
       updatedAt: po.updatedAt.toISOString(),
       vendor: po.vendor,
-      estimate: po.estimate,
+      estimate: po.estimate
+        ? { id: po.estimate.id, number: po.estimate.number, title: po.estimate.title }
+        : null,
       createdByLabel: po.createdBy.name ?? po.createdBy.email,
     },
     lines: po.lines.map((l) => ({
@@ -199,6 +219,18 @@ export default async function PurchaseOrderDetailPage({
           </div>
         }
       />
+      {estimateOriginQuoteUi != null && po.estimate != null ? (
+        <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
+          <PoEstimateOriginSection
+            estimateId={po.estimate.id}
+            estimateNumber={po.estimate.number}
+            estimateTitle={po.estimate.title}
+            clientCompanyName={po.estimate.client.companyName}
+            estimateStatus={po.estimate.status}
+            quoteSummaryProps={estimateOriginQuoteUi.quoteSummaryProps}
+          />
+        </div>
+      ) : null}
       <PoOperationalRail
         poId={po.id}
         poNumber={po.number}

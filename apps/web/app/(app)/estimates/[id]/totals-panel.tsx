@@ -4,6 +4,10 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { EstimateStatus, POStatus } from '@bvisible/db';
 import type { BreakdownByKind } from '@bvisible/pricing';
+import {
+  receiptOcrOperationalHint,
+  reconciliationGuidanceLabel,
+} from '@/lib/estimate/estimate-fulfillment';
 import { formatMoney } from '@/lib/estimate/format';
 import { NumericCell } from '@/components/grid/cell-input';
 import { parseMoney } from '@/lib/estimate/format';
@@ -103,6 +107,8 @@ export function TotalsPanel(props: TotalsPanelProps) {
 
   const isFinalized = bootstrap.estimate.status === EstimateStatus.FINALIZED;
   const linkedPos = bootstrap.linkedPos;
+  const canStartEstimatePoHandoff =
+    bootstrap.estimate.status === EstimateStatus.APPROVED && !isFinalized;
   const hasPo = linkedPos.length > 0;
   const hasQboPo = linkedPos.some((p) => !!p.qboPoNumber);
   const finalizeBlockedReason = !hasPo
@@ -208,7 +214,10 @@ export function TotalsPanel(props: TotalsPanelProps) {
         </div>
       </section>
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
+      <section
+        id="estimate-linked-pos"
+        className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]"
+      >
         <div className="flex items-center justify-between">
           <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">
             Linked POs
@@ -218,29 +227,64 @@ export function TotalsPanel(props: TotalsPanelProps) {
           </span>
         </div>
         <ul className="mt-2 flex flex-col gap-1.5 text-[12.5px]">
-          {linkedPos.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between gap-2 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1.5"
-            >
-              <div className="flex min-w-0 flex-col">
-                <Link
-                  href={`/purchase-orders/${p.id}` as never}
-                  className="font-mono text-[12px] text-[var(--color-bv-accent)] hover:underline"
-                >
-                  {p.number}
-                </Link>
-                <span className="truncate text-[11px] text-[var(--color-bv-muted)]">
-                  {p.vendor?.name ?? 'no vendor'} · QBO {p.qboPoNumber ?? '—'}
-                </span>
-              </div>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px] font-medium ${PO_STATUS_TONE[p.status]}`}
+          {linkedPos.map((p) => {
+            const reconPhrase = reconciliationGuidanceLabel(p.latestReconciliationStatus);
+            const ocrPhrase = receiptOcrOperationalHint({
+              receiptishAttachmentCount: p.receiptishAttachmentCount,
+              ocrPendingOrProcessingCount: p.ocrPendingOrProcessingCount,
+              ocrNeedsReviewCount: p.ocrNeedsReviewCount,
+            });
+            return (
+              <li
+                key={p.id}
+                className="rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1.5"
               >
-                {labelPoStatus(p.status)}
-              </span>
-            </li>
-          ))}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-col">
+                    <Link
+                      href={`/purchase-orders/${p.id}` as never}
+                      className="font-mono text-[12px] text-[var(--color-bv-accent)] hover:underline"
+                    >
+                      {p.number}
+                    </Link>
+                    <span className="truncate text-[11px] text-[var(--color-bv-muted)]">
+                      {p.vendor?.name ?? 'no vendor'} · {formatMoney(p.subtotalCents)} · QBO{' '}
+                      {p.qboPoNumber ?? '—'} · created{' '}
+                      <time dateTime={p.createdAtIso}>
+                        {new Intl.DateTimeFormat(undefined, { dateStyle: 'short' }).format(
+                          new Date(p.createdAtIso)
+                        )}
+                      </time>
+                    </span>
+                  </div>
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px] font-medium ${PO_STATUS_TONE[p.status]}`}
+                  >
+                    {labelPoStatus(p.status)}
+                  </span>
+                </div>
+                {(p.reconciliationNeedsAttention || reconPhrase || ocrPhrase) && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {p.reconciliationNeedsAttention ? (
+                      <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-amber-950">
+                        Reconciliation attention
+                      </span>
+                    ) : null}
+                    {reconPhrase ? (
+                      <span className="rounded-full border border-[var(--color-bv-border)] bg-white px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--color-bv-text)]">
+                        {reconPhrase}
+                      </span>
+                    ) : null}
+                    {ocrPhrase ? (
+                      <span className="rounded-full border border-[var(--color-bv-border)] bg-white px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--color-bv-text)]">
+                        {ocrPhrase}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+              </li>
+            );
+          })}
           {linkedPos.length === 0 ? (
             <li className="text-[12px] text-[var(--color-bv-muted)]">
               No POs yet for this estimate.
@@ -249,30 +293,49 @@ export function TotalsPanel(props: TotalsPanelProps) {
         </ul>
 
         {!isFinalized ? (
-          <div className="mt-3 flex flex-col gap-2 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3">
-            <label className="flex flex-col gap-1 text-[11.5px] text-[var(--color-bv-muted)]">
-              <span className="font-medium">Create PO from this estimate</span>
-              <select
-                value={vendorChoice}
-                onChange={(e) => setVendorChoice(e.currentTarget.value)}
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[12.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
-              >
-                <option value="">— pick vendor (optional) —</option>
-                {bootstrap.vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => onCreatePo(vendorChoice || null)}
-              disabled={poBusy}
-              className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2.5 py-1.5 text-[12.5px] font-medium text-[var(--color-bv-text)] hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {poBusy ? 'Creating PO…' : 'Create PO from estimate'}
-            </button>
+          <div
+            id="estimate-create-po"
+            className="mt-3 flex flex-col gap-2 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3"
+          >
+            {canStartEstimatePoHandoff ? (
+              <>
+                <Link
+                  href={`/purchase-orders/new?estimateId=${bootstrap.estimate.id}`}
+                  className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-surface)]"
+                >
+                  Link existing purchase order…
+                </Link>
+                <label className="flex flex-col gap-1 text-[11.5px] text-[var(--color-bv-muted)]">
+                  <span className="font-medium">Create PO from lines (copies estimate rows)</span>
+                  <select
+                    value={vendorChoice}
+                    onChange={(e) => setVendorChoice(e.currentTarget.value)}
+                    className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[12.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+                  >
+                    <option value="">— pick vendor (optional) —</option>
+                    {bootstrap.vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => onCreatePo(vendorChoice || null)}
+                  disabled={poBusy}
+                  className="inline-flex items-center justify-center rounded-[6px] bg-[var(--color-bv-accent)] px-2.5 py-1.5 text-[12.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {poBusy ? 'Creating PO…' : 'Create PO from estimate'}
+                </button>
+              </>
+            ) : (
+              <p className="text-[12px] leading-snug text-[var(--color-bv-muted)]">
+                PO creation and linking unlock when this estimate is{' '}
+                <strong className="font-medium text-[var(--color-bv-text)]">Approved</strong> (customer
+                acceptance). This keeps fulfillment aligned with explicit quote decisions.
+              </p>
+            )}
             {poMsg ? (
               <p className="text-[11.5px] text-rose-700">{poMsg}</p>
             ) : null}
