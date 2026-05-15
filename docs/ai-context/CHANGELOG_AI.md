@@ -5,6 +5,29 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Items v2 UI missing on production — RCA + `/api/health` deploy SHA
+
+**Root cause**
+
+- **Source at `9d10f2d` / `main` is not incomplete:** `items/new/page.tsx` renders `CreateShopMaterialItemForm` from `./create-item-form`, which includes line **kind**, **catalog unit**, **internal cost**, **markup**, optional **sell override**, **default qty**, notes — no legacy **Category** / **Material name** / **Default unit** strings remain under `apps/web/app/(app)/items/`. Duplicate routes/forms were ruled out (single `create-item-form.tsx`).
+- **Likely production issue:** process serving HTTP is **not** running static bundles produced from that tree — **stale Next standalone** under PM2 `cwd`, **migration-only / manual** DB drift vs runtime checkout, **wrong host**/upstream in nginx (ops checklist), or **reports referencing desired SHA while runtime never restarted from corresponding `.next`**. Requires **`git rev-parse HEAD`** at **`/opt/bvisible/app`**, **`pm2 describe bvisible-web`**, and (after next deploy) **`curl /api/health`** for **`commit`**.
+
+**Code / infra changes**
+
+- `server-scripts/deploy-queue/deploy-once.sh` — writes **`.bvisible-deploy-commit`** (full SHA from `git rev-parse HEAD`) beside standalone **`server.js`** before copying static assets / reload.
+- `apps/web/app/api/health/route.ts` — optional JSON field **`commit`** when stamp file exists (health gate unchanged: **`status`** + **`service`** only).
+- `docs/ai-context/DEBUGGING.md` — documents **`commit`** in `/api/health`.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run build` (pass, Windows workspace).
+
+**Remaining**
+
+- Redeploy **`main`** tip so production picks up stamp + health field; then confirm **`commit`** matches expected SHA and **`/items/new`** shows **Line type** / cost / markup fields in browser.
+
+---
+
 ## 2026-05-15 — Production verification — Items v2 deploy target (`9d10f2d`) — **blocked on Cursor agent**
 
 **Deploy**

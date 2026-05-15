@@ -232,6 +232,14 @@ STANDALONE_DIR="$APP_DIR/apps/web/.next/standalone/apps/web"
 if [ -f "$STANDALONE_DIR/server.js" ] && [ -f "$APP_DIR/ecosystem.config.cjs" ]; then
   log "Wiring standalone runtime at $STANDALONE_DIR"
 
+  # Stamp PM2 cwd so /api/health can expose the git SHA actually deployed (diagnoses
+  # "migration ran but UI old" when operators inspect the wrong tree or PM2 stuck).
+  if git -C "$APP_DIR" rev-parse HEAD >"$STANDALONE_DIR/.bvisible-deploy-commit" 2>/dev/null; then
+    log "Deploy commit stamp: $(tr -d '\n' <"$STANDALONE_DIR/.bvisible-deploy-commit")"
+  else
+    log "WARN: could not write .bvisible-deploy-commit beside standalone server.js"
+  fi
+
   # Note: Next traces only what is actually imported. Workspace packages
   # like @bvisible/db are bundled into .next/standalone/node_modules ONLY
   # when something under apps/web imports them. We do NOT pre-validate

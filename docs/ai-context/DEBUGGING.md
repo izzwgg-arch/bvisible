@@ -239,7 +239,11 @@ curl -fsS http://127.0.0.1:3000/api/health      # direct to Node (deploy box)
 curl -fsS https://vmi3270817.contaboserver.net/api/health   # public via Nginx
 ```
 
-Expected body: `{"status":"ok","service":"bvisible-web"}`.
+Expected body: `{"status":"ok","service":"bvisible-web"}`. After a deploy via
+`deploy-once.sh`, responses may also include **`commit`** (full git SHA written to
+`.bvisible-deploy-commit` beside standalone `server.js`) — use this when the DB
+migration looks new but the UI still matches an older release (stale PM2 cwd /
+wrong checkout).
 
 ## 5. Docker
 
