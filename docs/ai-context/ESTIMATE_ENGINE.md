@@ -12,10 +12,10 @@ qty for display only.
 | `packages/pricing/src/types.ts` | `LineKind`, `LineInput`, `EstimateInput`, `EstimateOutput`, `BreakdownByKind` | Shared shapes. |
 | `packages/pricing/src/money.ts` | `formatMoney`, `parseMoney`, `roundCents` | Display + parse helpers, banker's rounding via `Math.round`. |
 | `packages/pricing/src/qty.ts` | `qtyToMilli`, `qtyFromMilli`, `formatQty`, `parseQty` | Quantity scaling (1.5 → 1500). |
-| `packages/pricing/src/sqft.ts` | `computeSqft`, `computeTotalSqft`, `computePieceAndTotalSqftFromInches` | R-EST-02 piece + job totals (4 dp). |
-| `packages/pricing/src/sheet-goods.ts` | `sheetsNeededForCoverage`, `STANDARD_SHEET_SQ_FT` | Standard sheet billing (75% / ceil rules). |
-| `packages/pricing/src/roll-material.ts` | `computeRollSqft`, `rollUsedFraction`, `billableSqftRollMinimum` | Roll coverage + optional minimum bill fraction. |
-| `packages/pricing/src/banner.ts` | `bannerPrice({sqft, grommets})` | R-EST-03 — cents + breakdown; **$45 min on print area only**, grommets after. |
+| `packages/pricing/src/sqft.ts` | `computeSqft`, `computeTotalSqftFromPieces` | R-EST-02 per-piece + total job sq ft (4-decimal rounding). |
+| `packages/pricing/src/sheet-goods.ts` | `STANDARD_SHEET_SQ_FT`, `sheetsNeededForCoverage` | 4×8 / 5×10 nominal sheets + 75% / ceil billing rule. |
+| `packages/pricing/src/roll-material.ts` | `computeRollNominalSqft`, `rollUsedFraction`, `rollEffectiveBillableSqft`, `rollMaterialLineCostCents` | Roll width (in) × length (ft) → sq ft; optional minimum billable hook. |
+| `packages/pricing/src/banner.ts` | `bannerPrice({sqft, grommets})` | R-EST-03 — returns cents + breakdown + minimum-applied flag. |
 | `packages/pricing/src/line.ts` | `computeLineCostCents({qtyMilli, unitCostCents})` | The single per-line formula. |
 | `packages/pricing/src/estimate.ts` | `computeEstimate({multiplierMilli, designFlatCents, lines})` | The single source of truth for subtotal + final sell price. Called by the editor on every keystroke AND by `saveEstimateAction` server-side so cached totals match what the user saw. |
 | `apps/web/lib/vendor-pricing/catalog-lookup.ts` | `lookupVendorCatalogIntelligence`, `mergeOrderedCatalogItemIds` | Tenant-scoped catalog resolution: vendor rows + managed shop items/aliases + capped `OCR_APPROVED` aggregates for receipt-backed hints + managed-item pricing summaries. |
@@ -25,7 +25,7 @@ qty for display only.
 
 Run from `apps/web`:
 
-- **`pnpm --filter @bvisible/web run verify:estimate-pricing`** — `@bvisible/pricing` bucket/multiplier/math + yardage calculators (`pricing-calculators.test.ts`) + allocated customer-quote sell (`allocateLineSellCents`, `buildCustomerQuoteLines` leak guards) + catalog→grid patch helpers (`apply-catalog-to-estimate-line`) + markup helpers (`markup.ts`) + vendor observation aggregation for catalog hints (`pricing-aggregate`).
+- **`pnpm --filter @bvisible/web run verify:estimate-pricing`** — `@bvisible/pricing` bucket/multiplier/math + allocated customer-quote sell (`allocateLineSellCents`, `buildCustomerQuoteLines` leak guards) + catalog→grid patch helpers (`apply-catalog-to-estimate-line`) + markup helpers (`markup.ts`) + vendor observation aggregation for catalog hints (`pricing-aggregate`) + **pricing calculators** (`pricing-calculators.test.ts`: sq ft, sheet, roll, banner).
 - **`pnpm --filter @bvisible/web run verify:estimate-quote`** — public/staff quote links, timeline merge, dashboard quote attention, fulfillment hints (broader bundle).
 - **`pnpm --filter @bvisible/web run verify:estimate-invoice-flow`** — estimate→invoice allocation + dashboard predicates.
 
@@ -74,6 +74,8 @@ Fulfillment UX beside quotes lives on **`/estimates/[id]`**: **`EstimateFulfillm
 via `lookupVendorCatalogForEstimateAction`, debounced in the client.
 Matching uses normalized **exact** vendor-catalog keys, vendor **aliases**, tenant **ShopMaterialItem** names + **ShopMaterialItemAlias** rows, then deterministic **prefix** scans. Receipt-backed stats still read capped **`OCR_APPROVED`** histories when a primary `VendorCatalogItem` resolves. Managed-item intelligence aggregates **all** extraction methods (manual + OCR-approved + legacy regex methods) for cheapest/preferred suggestions. The rail exposes an explicit **Use this cost** control that patches **only** `unitCostCents` when clicked — never automatic mutations and never focus stealing.
 
+**Pricing helper (estimate UI)** — `pricing-helper-panel.tsx` sits beside the catalog picker. Modes: **Square footage** (in × in ÷ 144 × piece count → qty as sq ft), **Sheet goods** (32 or 50 sq ft nominal + 75% / ceil rule → qty as sheet count), **Roll material** (width in × length ft → nominal roll sq ft; optional minimum billable sq ft; qty as billed sq ft), **Banner** (`bannerPrice` → one MATERIAL line at qty 1 × computed raw cents). Each mode only patches the **currently focused grid row** when the user clicks **Apply**; typing in the helper never mutates lines.
+
 **Managed Items picker** — **Catalog items** (`catalog-item-picker.tsx`) lists active shop catalog rows. MATERIAL rows show **unit cost** that **Apply** writes (preferred vendor’s latest linked observation when set, else cheapest latest among linked vendors, else internal catalog cost). **Cheapest** and **preferred** vendor snapshots render as **read-only sub-lines** so estimators can compare without auto-switching vendors. **Sell hint** uses markup % or catalog sell override as **guidance only**; the estimate grid total still uses **`computeEstimate`** (lines + estimate multiplier). Focus any grid row, filter/search, click **Apply** to fill **description**, **line kind**, **qty**, **unit cost**, and **machine** when applicable. No hooks while typing.
 
 ## Cost components
@@ -120,50 +122,29 @@ matches the value the user sees on the editor.
 ## Square footage
 
 ```
-sqft = width_inches × height_inches / 144
+sqft_each = width_inches × height_inches / 144
+total_sqft = sqft_each × piece_count   (integer piece count; 4-decimal rounding on the product)
 ```
 
 Round to 2 decimals for display only; keep raw `sqft` to 4 decimals when
-chaining into another formula. **`computeTotalSqft`** and **`computePieceAndTotalSqftFromInches`**
-multiply identical pieces without accumulating float drift beyond that rounding.
-
-## Sheet goods (standard substrates)
-
-Nominal sizes: **4×8 → 32 sq ft**, **5×10 → 50 sq ft**.
-
-Billing (`sheetsNeededForCoverage`):
-
-- If total job sq ft is **under 75% of one sheet**, bill **exactly one** sheet.
-- Otherwise bill **`ceil(totalSqft / sheetSqft)`** full sheets.
-
-## Roll material
-
-Coverage sq ft = **`widthInches × rollLengthFeet ÷ 12`** (e.g. 54″ × 150′ → 675 sq ft).
-
-Optional **minimum bill fraction**: bill at least `fraction × rollSqft` when shops round partial rolls up (`billableSqftRollMinimum`).
+chaining into another formula.
 
 ## Banner pricing (R-EST-03)
 
 - Base rate: **$4.00 per sq ft**.
 - Overage rate: **$3.00 per sq ft** for area above **200 sq ft**.
-- Minimum charge: **$45.00** applies to **print-area material only**.
-- Grommets: **$0.50 each**, added **after** the material minimum.
+- Minimum charge: **$45.00**.
+- Grommets: **$0.50 each**.
 
 ```ts
-// Pseudocode (matches packages/pricing/src/banner.ts)
-function bannerPriceCents(sqft: number, grommets: number): number {
+function bannerPrice(sqft: number, grommets: number): number {
   const baseSqft = Math.min(sqft, 200);
   const overSqft = Math.max(0, sqft - 200);
   const material = baseSqft * 400 + overSqft * 300; // cents
-  const materialCapped = Math.max(material, 4500);
-  const grommetCost = grommets * 50;
-  return materialCapped + grommetCost;
+  const grommetCost = grommets * 50;                // cents
+  return Math.max(material + grommetCost, 4500);    // $45 minimum
 }
 ```
-
-## Estimate Pricing helper (staff UI)
-
-Collapsible **Pricing helper** on the estimate editor runs the calculators above; **Apply** patches the **focused grid row only** (no typing hooks, no focus stealing). Outputs map to Material lines as qty × unit cost except banner packaged as **qty 1 × total cents**.
 
 ## Machine rates ($ / hour)
 

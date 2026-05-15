@@ -5,30 +5,32 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-15 — Estimate Pricing helper + Phase 1 yardage calculators
+## 2026-05-23 — Estimate pricing helper + roll/sheet/sq ft calculators + item markup default
 
 **Added**
 
-- **`packages/pricing`**: `computeTotalSqft`, `computePieceAndTotalSqftFromInches` (`sqft.ts`); **`sheet-goods.ts`** (75% / ceil sheet rules); **`roll-material.ts`** (roll sq ft, used fraction, minimum bill fraction); **`banner.ts`** aligned with handoff **MAX(print material, $45) + grommets**.
-- **`pricing-helper-panel.tsx`** — collapsible estimate helper (sq ft, sheet, roll, banner) with Apply-only line patches; wired in `editor.tsx`.
-- **`pricing-calculators.test.ts`** included in **`verify:estimate-pricing`**.
+- `packages/pricing/src/roll-material.ts` — roll nominal sq ft, used fraction, minimum billable sq ft hook, line-cost helper.
+- `packages/pricing/src/sqft.ts` — `computeTotalSqftFromPieces`.
+- `packages/pricing/src/index.ts` — exports `sheet-goods` + `roll-material`.
+- `apps/web/app/(app)/estimates/[id]/pricing-helper-panel.tsx` — **Pricing helper** card (sq ft, sheet goods, roll, banner) with **Apply** to focused line only.
+- `apps/web/lib/estimate/pricing-calculators.test.ts` — Vitest coverage for sq ft total, sheet 75% rule, roll, banner minimum/overage/grommets.
 
-**UX / defaults**
+**Changed**
 
-- Totals panel clarifies **raw cost × multiplier** vs catalog markup.
-- New Item form: default markup **200%** (×3 sell hint); unit dropdown helper links SHEET/SQ FT/ROLL to Pricing helper.
+- Estimate `editor.tsx` mounts the helper; `totals-panel.tsx` clarifies default ×3 multiplier vs catalog hints.
+- Items create/edit forms: default markup **200** (≈3× sell hint), unit helper text; `ShopMaterialItem.markupPercentMilli` DB default **200000** (`20260523120000_shop_item_markup_default_3x`).
 
 **Docs**
 
-- `ESTIMATE_ENGINE.md`, `KNOWN_RULES.md` (**R-EST-03** update, **R-EST-05**, **R-EST-06**), `UI_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `CHANGELOG_AI.md`.
-
-**Risk**
-
-- Medium — pricing semantics change for **banner minimum + grommets** (material-only minimum).
+- `ESTIMATE_ENGINE.md`, `UI_SYSTEM.md`, `KNOWN_RULES.md` (**R-CAT-02**), `VENDOR_PRICE_ENGINE.md`, `DATA_MODEL.md`, `CHANGELOG_AI.md`.
 
 **Verification**
 
 - `pnpm --filter @bvisible/web run verify:estimate-pricing`, `verify:vendor-catalog`, `verify:estimate-quote`, `typecheck`.
+
+**Deploy**
+
+- Run **`prisma migrate deploy`** for migration `20260523120000_shop_item_markup_default_3x` before relying on DB-side insert defaults.
 
 ---
 

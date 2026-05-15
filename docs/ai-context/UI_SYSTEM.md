@@ -75,15 +75,15 @@ The look, feel, and behavior of the web app.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.
-- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker,pricing-helper-panel}.tsx`:
+- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`:
   - **Workflow rail** (`components/workflow/estimate-workflow-rail.tsx`) above the editor: estimate lifecycle
     (Draft → Sent → Approved → Finalized), linked PO summary + QBO gap copy, finalize gate explanation,
     and contextual **next recommended action** when something blocks progress.
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
   - **Material-row vendor intelligence** — lightweight aside card below the grid when the estimator focuses a material description or qty cell (debounced server lookups via `lookupVendorCatalogForEstimateAction`; OCR_APPROVED catalog observations only). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`.
-  - **Pricing helper** (`pricing-helper-panel.tsx`) — collapsible card between catalog search and the line grid: square footage (inch × inch × qty → total sq ft), sheet-good rounding (32 / 50 sq ft substrates), roll coverage + optional minimum bill fraction, and **banner** pricing (R-EST-03). Shows plain-English preview lines; **Apply** patches only the **focused** grid row on click (no live mutation, no keyboard navigation changes).
   - **Catalog items** (`catalog-item-picker.tsx`) — search tenant `ShopMaterialItem` rows. MATERIAL rows show **unit cost** (what **Apply** writes: preferred vendor’s latest linked snapshot when set, else cheapest latest, else internal item cost) plus read-only **cheapest** and **preferred** lines when vendor history exists. **Sell hint** uses catalog markup % or sell override as guidance only (estimate total still follows **`computeEstimate`**). **Apply** patches the focused line once per explicit click — no hooks while typing.
+  - **Pricing helper** (`pricing-helper-panel.tsx`) — compact card under the catalog: **Square footage**, **Sheet goods** (4×8 / 5×10 + 75% / ceil rule), **Roll material** (nominal roll sq ft, optional minimum billable sq ft), **Banner** (R-EST-03). Shows plain-English explanation + optional $ fields; **Apply to focused line** only (no auto-fill on keystroke). Same focus target as catalog **Apply**.
   - Grid uses `<table>` semantics (one DOM node per cell) and the shared
     cell primitives at `apps/web/components/grid/cell-input.tsx` —
     `<CellInput>` for text, `<NumericCell>` for money / qty / multiplier.

@@ -416,7 +416,7 @@ model ShopMaterialItem {
   catalogUnit         ShopCatalogUnit @default(EACH)
   customUnitLabel     String?  @db.VarChar(40)
   internalCostCents   Int      @default(0)
-  markupPercentMilli  Int      @default(0)
+  markupPercentMilli  Int      @default(200000)
   defaultSellPriceCents Int?
   defaultQtyMilli     Int      @default(1000)
   machineId           String?
@@ -636,6 +636,7 @@ Notes:
 | `20260515083000_mobile_upload_foundation` | 2026-05-15 | `POAttachmentKind` gains `VENDOR_INVOICE`, `INSTALL_PHOTO`, `FIELD_DOCUMENT`. New tables `mobile_sessions` (rotating refresh, device metadata) and `mobile_pending_uploads` (two-phase upload → `POAttachment`). |
 | `20260515120000_shop_material_items` | 2026-05-15 | Tenant **Items** catalog: tables `shop_material_items`, `shop_material_item_aliases`; `vendor_catalog_items.shopMaterialItemId` nullable FK; `VendorPriceExtractionMethod.MANUAL`; `vendor_price_histories.effectiveAt` optional economic date for manual rows. |
 | `20260515160000_shop_catalog_item_v2` | 2026-05-15 | Items **v2**: enum `ShopCatalogUnit`; `ShopMaterialItem` gains `kind` (`EstimateLineKind`), `catalogUnit`, `customUnitLabel`, `internalCostCents`, `markupPercentMilli`, `defaultSellPriceCents`, `defaultQtyMilli`, `machineId` (drops legacy `category` / `defaultUnit` via migration); `vendor_catalog_items.vendorSku`; indexes on `(tenantId, kind)`. |
+| `20260523120000_shop_item_markup_default_3x` | 2026-05-23 | `shop_material_items.markupPercentMilli` **default** → `200000` (200% above cost → catalog sell hint ≈ 3× cost for new rows; existing rows unchanged). |
 | `20260516120000_ocr_receipt_foundation` | 2026-05-16 | Local OCR foundation: enum `OcrJobStatus`; tables `ocr_documents`, `ocr_line_items`; `VendorPriceExtractionMethod` gains `OCR_TEXT_REGEX`, `OCR_APPROVED`; nullable email FK on `vendor_price_histories` / `vendor_price_notifications` with optional OCR provenance (`sourcePoAttachmentId`, `ocrLineItemId`, `sourceOcrDocumentId`). |
 
 ## Core entities (target schema)

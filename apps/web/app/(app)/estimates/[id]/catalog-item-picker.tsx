@@ -86,7 +86,7 @@ export function CatalogItemPicker({
       </h2>
       <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
         Focus a line in the grid, search the catalog, then click <strong className="text-[var(--color-bv-text)]">Apply</strong>{' '}
-        — nothing changes until you do (typing in cells is unaffected). <strong className="text-[var(--color-bv-text)]">Unit cost</strong>{' '}
+        — nothing changes until you do (typing in cells is unaffected). Use the <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> below for sq ft, sheet counts, roll usage, or banner totals. <strong className="text-[var(--color-bv-text)]">Unit cost</strong>{' '}
         is internal/vendor-only; <strong className="text-[var(--color-bv-text)]">Sell hint</strong> is catalog guidance from markup or a catalog sell override — the estimate total still uses the grid plus the estimate multiplier (default ×3 on raw cost).
       </p>
 

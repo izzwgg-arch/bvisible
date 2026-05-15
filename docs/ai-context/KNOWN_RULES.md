@@ -22,7 +22,10 @@ it.
   `saveEstimateAction`. See `ESTIMATE_ENGINE.md`.
 - **R-EST-02** Square footage uses inches: `sqft = width_in × height_in / 144`.
   Helper: `packages/pricing/src/sqft.ts`.
-- **R-EST-03** Banners: $4/sf first 200 sf, $3/sf above 200 sf; **$45 minimum applies to print-area material only**; grommets **$0.50 each added after** that minimum. Helper: `packages/pricing/src/banner.ts`. Staff **Pricing helper** applies banner totals as a Material line on explicit **Apply** (`pricing-helper-panel.tsx`).
+- **R-EST-03** Banners price at $4/sf, drop to $3/sf for the area over 200 sf,
+  $45 minimum, $0.50 per grommet. Helper: `packages/pricing/src/banner.ts`.
+  (Editor calculator UI to compose a banner line lands in the next phase;
+  the engine helper is shipped now so other surfaces can use it.)
 - **R-EST-04** An estimate cannot be **finalized** until at least one of its
   linked, non-deleted `PurchaseOrder`s has a non-null `qboPoNumber`. Enforced
   server-side by `finalizeEstimateAction`
@@ -33,8 +36,6 @@ it.
   guarantee no other code path can bypass the gate. Once an estimate is
   `FINALIZED`, status changes are blocked except via `unfinalizeEstimateAction`
   (ADMIN+). `EstimateStatus` enum: `DRAFT / SENT / APPROVED / REJECTED / FINALIZED`.
-- **R-EST-05** Sheet-good billing for nominal **32 / 50 sq ft** sheets: under **75%** of one sheet → bill **one** sheet; otherwise **`ceil(totalSqft / sheetSqft)`**. Helper: `packages/pricing/src/sheet-goods.ts`.
-- **R-EST-06** Roll coverage: **`width(in) × length(ft) ÷ 12`** sq ft; optional minimum billable fraction via `billableSqftRollMinimum` (`packages/pricing/src/roll-material.ts`).
 
 ## Purchase Orders
 
@@ -100,6 +101,7 @@ it.
   the estimator clicks **Use this cost** on the intelligence rail.
 - **R-VEN-05** Managed MATERIAL picker hints aggregate **`VendorPriceHistory`** for every **`VendorCatalogItem`** linked to the shop item. **Latest observation per vendor** orders by economic instant (`effectiveAt`, else `createdAt`), breaks ties by extraction source (**`MANUAL` > `OCR_APPROVED` > regex-derived methods**) then **`vendorCatalogItemId`**. **Cheapest among latest** breaks price ties by **`vendorId`**. **Suggested Apply unit cost** prefers the **preferred vendor’s** latest snapshot when linked; otherwise **cheapest latest**. The UI surfaces cheapest vs preferred on MATERIAL rows; **Apply** remains the only catalog auto-fill path (**R-CAT-01**).
 - **R-CAT-01** The estimate editor **Catalog items** picker applies catalog defaults (`kind`, description, unit label, unit cost, qty, markup hint) **only when the estimator clicks Apply** on a chosen row — never while typing or on debounced focus alone; grid keyboard navigation must not be stolen from `makeGridKeyHandler`.
+- **R-CAT-02** The estimate **Pricing helper** (`pricing-helper-panel.tsx`) may precompute sq ft, sheet counts, roll billable area, or banner raw cents, but **only writes the focused line when the estimator clicks Apply** on that helper — never while typing in helper fields; it shares the same focused-row target as the catalog picker and must not register a document-level keyboard handler that competes with `makeGridKeyHandler`.
 - **R-OCR-01** Local OCR (`apps/web/lib/ocr/*`) produces **suggestions only**
   until an ADMIN confirms on `/admin/ocr-review/*`. Automatic extraction
   never writes `VendorPriceHistory`; approved writes use

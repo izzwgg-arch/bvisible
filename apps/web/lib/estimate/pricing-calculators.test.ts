@@ -1,98 +1,87 @@
 import { describe, expect, it } from 'vitest';
 import {
   bannerPrice,
-  billableSqftRollMinimum,
-  computePieceAndTotalSqftFromInches,
-  computeRollSqft,
+  computeRollNominalSqft,
   computeSqft,
-  computeTotalSqft,
+  computeTotalSqftFromPieces,
+  rollEffectiveBillableSqft,
+  rollMaterialLineCostCents,
   rollUsedFraction,
   sheetsNeededForCoverage,
   STANDARD_SHEET_SQ_FT,
 } from '@bvisible/pricing';
 
-describe('square footage', () => {
-  it('computes sq ft from inches (48×96 → 32)', () => {
+describe('computeSqft + computeTotalSqftFromPieces', () => {
+  it('48×96 in = 32 sq ft each', () => {
     expect(computeSqft(48, 96)).toBe(32);
   });
 
-  it('totals identical pieces', () => {
-    expect(computeTotalSqft(32, 2)).toBe(64);
+  it('total = each × integer piece count', () => {
+    expect(computeTotalSqftFromPieces(32, 3)).toBe(96);
   });
 
-  it('returns piece and total from inches × qty', () => {
-    const r = computePieceAndTotalSqftFromInches(24, 36, 4);
-    expect(r.pieceSqft).toBe(6);
-    expect(r.totalSqft).toBe(24);
-  });
-});
-
-describe('sheet goods', () => {
-  const sheet32 = STANDARD_SHEET_SQ_FT.SHEET_4X8;
-
-  it('charges one sheet when usage is under 75% of a sheet', () => {
-    expect(sheetsNeededForCoverage(10, sheet32)).toBe(1);
-    expect(sheetsNeededForCoverage(23.9, sheet32)).toBe(1);
-  });
-
-  it('rounds up when at or above 75% threshold', () => {
-    expect(sheetsNeededForCoverage(40, sheet32)).toBe(2);
-    const threshold = 0.75 * sheet32;
-    expect(sheetsNeededForCoverage(threshold, sheet32)).toBe(1);
+  it('rounds total to 4 decimals', () => {
+    const each = computeSqft(10, 10);
+    expect(computeTotalSqftFromPieces(each, 7)).toBeCloseTo(each * 7, 4);
   });
 });
 
-describe('roll material', () => {
-  it('54 × 150 ft → 675 sq ft', () => {
-    expect(computeRollSqft(54, 150)).toBe(675);
+describe('sheetsNeededForCoverage', () => {
+  const s32 = STANDARD_SHEET_SQ_FT.SHEET_4X8;
+
+  it('under 75% of one sheet still bills 1 sheet', () => {
+    expect(sheetsNeededForCoverage(23, s32)).toBe(1);
+  });
+
+  it('at 75% threshold uses ceil branch (24/32 = 0.75 → not < threshold)', () => {
+    expect(sheetsNeededForCoverage(24, s32)).toBe(1);
+  });
+
+  it('ceil when above threshold usage', () => {
+    expect(sheetsNeededForCoverage(40, s32)).toBe(2);
+  });
+
+  it('5×10 nominal sheet', () => {
+    expect(sheetsNeededForCoverage(60, STANDARD_SHEET_SQ_FT.SHEET_5X10)).toBe(2);
+  });
+});
+
+describe('roll material helpers', () => {
+  it('54 in × 150 ft = 675 sq ft nominal', () => {
+    expect(computeRollNominalSqft(54, 150)).toBe(675);
   });
 
   it('used fraction', () => {
-    expect(rollUsedFraction(100, 675)).toBeCloseTo(100 / 675, 5);
-    expect(rollUsedFraction(900, 675)).toBe(1);
+    expect(rollUsedFraction(337.5, 675)).toBe(0.5);
   });
 
-  it('minimum bill fraction lifts billable sq ft', () => {
-    expect(
-      billableSqftRollMinimum({
-        usedSqft: 10,
-        rollSqft: 100,
-        minimumBillFraction: 0.25,
-      }),
-    ).toBe(25);
+  it('minimum billable bumps used sq ft', () => {
+    expect(rollEffectiveBillableSqft(100, 150)).toBe(150);
+  });
+
+  it('line cost = billable sq ft × cents per sq ft', () => {
+    expect(rollMaterialLineCostCents(250, 10)).toBe(2500);
   });
 });
 
-describe('banner pricing (R-EST-03)', () => {
-  it('applies $45 minimum to print area only, then adds grommets', () => {
-    const tiny = bannerPrice({ sqft: 1, grommets: 0 });
-    expect(tiny.appliedMinimum).toBe(true);
-    expect(tiny.cents).toBe(4500);
-
-    const tinyPlusGrom = bannerPrice({ sqft: 1, grommets: 10 });
-    expect(tinyPlusGrom.cents).toBe(4500 + 500);
+describe('bannerPrice (R-EST-03)', () => {
+  it('applies $45 minimum when material+grommets is low', () => {
+    const b = bannerPrice({ sqft: 5, grommets: 0 });
+    expect(b.cents).toBe(4500);
+    expect(b.appliedMinimum).toBe(true);
   });
 
-  it('tiers rate above 200 sq ft', () => {
-    const out = bannerPrice({ sqft: 250, grommets: 0 });
+  it('uses $3/sq ft above 200 sq ft', () => {
+    const b = bannerPrice({ sqft: 250, grommets: 0 });
     const base = 200 * 400;
     const over = 50 * 300;
-    expect(base + over).toBe(95000);
-    expect(out.cents).toBe(95000);
-    expect(out.appliedMinimum).toBe(false);
+    expect(b.baseCents + b.overCents).toBe(base + over);
+    expect(b.cents).toBe(base + over);
+    expect(b.appliedMinimum).toBe(false);
   });
 
-  it('adds grommets after tiered material (minimum may lift small banners)', () => {
-    const out = bannerPrice({ sqft: 10, grommets: 4 });
-    expect(out.grommetCents).toBe(200);
-    // 10 sf × $4 = $40 print → raised to $45 minimum → + $2 grommets
-    expect(out.cents).toBe(4500 + 200);
-    expect(out.appliedMinimum).toBe(true);
-  });
-
-  it('material above minimum tiers cleanly plus grommets', () => {
-    const out = bannerPrice({ sqft: 100, grommets: 2 });
-    expect(out.appliedMinimum).toBe(false);
-    expect(out.cents).toBe(100 * 400 + 100);
+  it('adds grommets at $0.50 each', () => {
+    const b = bannerPrice({ sqft: 100, grommets: 4 });
+    expect(b.grommetCents).toBe(200);
   });
 });

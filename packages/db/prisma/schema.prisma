@@ -1036,8 +1036,8 @@ model ShopMaterialItem {
   customUnitLabel     String?  @db.VarChar(40)
   internalCostCents   Int      @default(0)
   /// Markup on internal/vendor unit cost for quoting guidance, stored as percent × 1000
-  /// (30000 → 30%). Sell defaults use internal/vendor cost × (1 + markup/100000) unless overridden.
-  markupPercentMilli  Int      @default(0)
+  /// (30000 → 30%). Default 200000 = 200% above cost → catalog sell hint ≈ 3× cost unless overridden.
+  markupPercentMilli  Int      @default(200000)
   defaultSellPriceCents Int?
   defaultQtyMilli     Int      @default(1000)
   machineId           String?

@@ -6,6 +6,9 @@ export const STANDARD_SHEET_SQ_FT = {
   SHEET_5X10: 50,
 } as const;
 
+export type StandardSheetSqFt =
+  (typeof STANDARD_SHEET_SQ_FT)[keyof typeof STANDARD_SHEET_SQ_FT];
+
 /**
  * Sheets needed for a job consuming `totalSqft` on a fixed nominal sheet size:
  * - If usage is below 75% of one sheet → bill exactly **one** sheet.

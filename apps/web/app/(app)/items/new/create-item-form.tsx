@@ -77,9 +77,9 @@ export function CreateShopMaterialItemForm({
               </option>
             ))}
           </select>
-          <span className="text-[11px] leading-snug text-[var(--color-bv-muted)]">
-            SHEET / SQ FT / ROLL pair with the estimate <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> for yardage. LABOR / INSTALL default to hourly-style lines ($50 / $150 in the editor).
-          </span>
+          <p className="text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
+            SQ FT / SHEET / ROLL match how you buy material; the estimate <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> can fill sq ft, sheet count, roll usage, or banner totals on a line when you apply.
+          </p>
         </label>
       </div>
 
@@ -136,9 +136,9 @@ export function CreateShopMaterialItemForm({
             inputMode="decimal"
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
           />
-          <span className="text-[11px] leading-snug text-[var(--color-bv-muted)]">
-            Percent added above unit cost for catalog sell hints. Use <strong className="text-[var(--color-bv-text)]">200</strong> for a ×3 sell hint vs cost (same spirit as the estimate&apos;s default ×3 multiplier). Use <strong className="text-[var(--color-bv-text)]">30</strong> for roughly ×1.3.
-          </span>
+          <p className="text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
+            Default <strong className="text-[var(--color-bv-text)]">200</strong> = 200% above cost (catalog sell hint ≈ 3× cost). Use <strong className="text-[var(--color-bv-text)]">0</strong> for no markup.
+          </p>
         </label>
       </div>
 

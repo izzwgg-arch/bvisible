@@ -44,7 +44,9 @@ export function ItemDetailPricingForm({
 }) {
   const internalUsd = (item.internalCostCents / 100).toFixed(2);
   const markupPct =
-    item.markupPercentMilli === 0 ? '' : (item.markupPercentMilli / 1000).toString();
+    item.markupPercentMilli % 1000 === 0
+      ? String(item.markupPercentMilli / 1000)
+      : (item.markupPercentMilli / 1000).toFixed(3).replace(/\.?0+$/, '');
   const sellUsd =
     item.defaultSellPriceCents != null ? (item.defaultSellPriceCents / 100).toFixed(2) : '';
 
@@ -136,10 +138,13 @@ export function ItemDetailPricingForm({
         <input
           name="markupPercent"
           defaultValue={markupPct}
-          placeholder="0"
+          placeholder="200"
           inputMode="decimal"
           className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
         />
+        <p className="text-[11px] leading-snug text-[var(--color-bv-muted)]">
+          Percent above internal cost for catalog sell hints (200 ≈ triple sell vs cost). Use 0 for none. Estimate totals still use the line grid × estimate multiplier.
+        </p>
       </label>
 
       <label className="flex flex-col gap-1">
