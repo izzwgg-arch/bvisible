@@ -19,6 +19,14 @@ qty for display only.
 | `apps/web/lib/vendor-pricing/catalog-lookup.ts` | `lookupVendorCatalogIntelligence`, `mergeOrderedCatalogItemIds` | Tenant-scoped catalog resolution: vendor rows + managed shop items/aliases + capped `OCR_APPROVED` aggregates for receipt-backed hints + managed-item pricing summaries. |
 | `apps/web/lib/vendor-pricing/trends.ts` | `classifyPriceTrend`, volatility helpers | Deterministic spike / volatility classification (basis-point thresholds). |
 
+### Automated verification (Vitest)
+
+Run from `apps/web`:
+
+- **`pnpm --filter @bvisible/web run verify:estimate-pricing`** — `@bvisible/pricing` bucket/multiplier/math + allocated customer-quote sell (`allocateLineSellCents`, `buildCustomerQuoteLines` leak guards) + catalog→grid patch helpers (`apply-catalog-to-estimate-line`).
+- **`pnpm --filter @bvisible/web run verify:estimate-quote`** — public/staff quote links, timeline merge, dashboard quote attention, fulfillment hints (broader bundle).
+- **`pnpm --filter @bvisible/web run verify:estimate-invoice-flow`** — estimate→invoice allocation + dashboard predicates.
+
 The editor is `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`.
 It hydrates from RSC bootstrap data, runs `computeEstimate(...)` synchronously
 on every render, and on Save submits the entire grid to `saveEstimateAction`

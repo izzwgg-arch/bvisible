@@ -71,6 +71,7 @@ The look, feel, and behavior of the web app.
   shows a dismissible checklist whose completion state is computed from real tenant data
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
+  **Regression bundles** (operator/CI): `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.

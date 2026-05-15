@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { EstimateStatus, POEventKind, POLineKind, prisma } from '@bvisible/db';
+import { EstimateStatus, POEventKind, prisma } from '@bvisible/db';
 import {
   createPoFromEstimateSchema,
   createPurchaseOrderSchema,
@@ -11,30 +11,10 @@ import { writeAuditLog } from '@/lib/auth/audit';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { nextPoNumber } from '@/lib/po/number';
+import { mapEstimateKindToPoKind } from '@/lib/purchase-orders/map-estimate-kind-to-po-kind';
 
 export interface CreatePoState {
   error: string | null;
-}
-
-// EstimateLineKind and POLineKind are intentionally aligned 1:1; this
-// guards against future drift.
-function mapEstimateKindToPoKind(kind: string): POLineKind {
-  switch (kind) {
-    case 'MATERIAL':
-      return POLineKind.MATERIAL;
-    case 'MACHINE':
-      return POLineKind.MACHINE;
-    case 'LABOR':
-      return POLineKind.LABOR;
-    case 'DESIGN':
-      return POLineKind.DESIGN;
-    case 'INSTALL':
-      return POLineKind.INSTALL;
-    case 'MISC':
-      return POLineKind.MISC;
-    default:
-      return POLineKind.MISC;
-  }
 }
 
 // Used by the "New PO" form for blank POs.

@@ -28,6 +28,10 @@ Implementation lives in:
 
 See `DATA_MODEL.md` for column-level detail.
 
+### Automated verification
+
+Managed catalog→estimate patches (`resolveCatalogUnitCostCents`, `buildLinePatchFromCatalogSelection`) are exercised under **`pnpm --filter @bvisible/web run verify:estimate-pricing`**.
+
 ## What is extracted (Phase 10)
 
 **Allowed inputs**

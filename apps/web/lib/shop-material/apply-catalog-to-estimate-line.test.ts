@@ -69,6 +69,24 @@ describe('resolveCatalogUnitCostCents', () => {
       }),
     ).toBe(7500);
   });
+
+  it('uses internal cost for INSTALL like non-machine kinds', () => {
+    expect(
+      resolveCatalogUnitCostCents({
+        row: row({ kind: EstimateLineKind.INSTALL, internalCostCents: 4400 }),
+        machinesById: new Map(),
+      }),
+    ).toBe(4400);
+  });
+
+  it('uses internal cost for DESIGN', () => {
+    expect(
+      resolveCatalogUnitCostCents({
+        row: row({ kind: EstimateLineKind.DESIGN, internalCostCents: 15000 }),
+        machinesById: new Map(),
+      }),
+    ).toBe(15000);
+  });
 });
 
 describe('buildLinePatchFromCatalogSelection', () => {
@@ -89,6 +107,36 @@ describe('buildLinePatchFromCatalogSelection', () => {
       unitCostCents: 250,
       machineId: null,
     });
+  });
+
+  it('INSTALL catalog row carries qty + internal hourly-style cost', () => {
+    const patch = buildLinePatchFromCatalogSelection({
+      row: row({
+        name: 'Site install',
+        kind: EstimateLineKind.INSTALL,
+        defaultQtyMilli: 8000,
+        internalCostCents: 15000,
+      }),
+      machinesById: new Map(),
+    });
+    expect(patch.kind).toBe(EstimateLineKind.INSTALL);
+    expect(patch.qtyMilli).toBe(8000);
+    expect(patch.unitCostCents).toBe(15000);
+    expect(patch.machineId).toBeNull();
+  });
+
+  it('DESIGN catalog row patch', () => {
+    const patch = buildLinePatchFromCatalogSelection({
+      row: row({
+        name: 'Creative package',
+        kind: EstimateLineKind.DESIGN,
+        defaultQtyMilli: 1000,
+        internalCostCents: 24000,
+      }),
+      machinesById: new Map(),
+    });
+    expect(patch.kind).toBe(EstimateLineKind.DESIGN);
+    expect(patch.unitCostCents).toBe(24000);
   });
 });
 

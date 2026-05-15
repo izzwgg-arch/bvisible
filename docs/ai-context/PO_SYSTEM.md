@@ -33,6 +33,7 @@ PurchaseOrder
 - `POLineItem` mirroring `EstimateLineItem` (integer cents, integer
   `qtyMilli`). PO has no markup — `subtotalCents` is the sum of
   line `computedCostCents`.
+- **Regression bundle:** `pnpm --filter @bvisible/web run verify:estimate-po-flow` locks **`EstimateLineKind` → `POLineKind`** mapping (`lib/purchase-orders/map-estimate-kind-to-po-kind.ts`) plus dashboard PO-queue predicates (`get-estimate-po-flow`).
 - `POAttachment` rows + on-disk bytes under
   `/opt/bvisible/shared/uploads/<tenantId>/po/<poId>/<randomKey>.<ext>`.
 - `POEvent` append-only timeline (kinds: `CREATED`,

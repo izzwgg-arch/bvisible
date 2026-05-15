@@ -33,6 +33,14 @@ runIngestForTenant(tenantId)            (apps/web/lib/email-ingest/run.ts)
    └─ release lease + log EmailIngestRun
 ```
 
+### Verification script (schema + code anchors)
+
+From repo root (Linux/macOS/Git Bash):
+
+`bash server-scripts/db/.verify-email-ingestion-flow.sh`
+
+Confirms **`@@unique([tenantId, messageId])`** remains on `IngestedEmail` and that ingest upserts reference **`tenantId, messageId`** (deterministic grep-only gate).
+
 ## Mailbox setup (Gmail / Workspace)
 
 1. Create a dedicated user (e.g. `ingest@yourdomain.com`).

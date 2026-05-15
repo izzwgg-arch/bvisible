@@ -13,6 +13,22 @@ ssh -i $env:USERPROFILE\.ssh\cursor_bvisible deploy@212.56.32.136   # PowerShell
 ssh -i ~/.ssh/cursor_bvisible deploy@212.56.32.136                  # *nix
 ```
 
+## 0b. Core workflow regression (Vitest bundles)
+
+Run **after checkout** under `/opt/bvisible/app` (or locally):
+
+```bash
+pnpm --filter @bvisible/web run verify:estimate-pricing
+pnpm --filter @bvisible/web run verify:estimate-quote
+pnpm --filter @bvisible/web run verify:estimate-po-flow
+pnpm --filter @bvisible/web run verify:estimate-invoice-flow
+pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
+pnpm --filter @bvisible/web run typecheck
+bash server-scripts/db/.verify-email-ingestion-flow.sh
+```
+
+Do **not** treat passes as a substitute for **deploy queue healthcheck** after releasing (`§ 1`, `/api/health`).
+
 ## 1. Deploy queue — failing or stuck
 
 ### Symptom: deploys keep going to `failed/`

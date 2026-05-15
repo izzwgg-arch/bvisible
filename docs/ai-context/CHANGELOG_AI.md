@@ -5,6 +5,49 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Core workflow hardening (verification bundles + PO kind mapper)
+
+**Phase 0 (production)** — Public **`GET https://vmi3270817.contaboserver.net/api/health`** reported **`commit: 86ea768dabaf5be3a3ee937d51bdec885fa5688f`** during this session. **`HEAD`** should advance to the repo’s invoice/pricing stack (**`7fbe72a`** feature line + later doc commits) via deploy queue before treating production as current — agent SSH not available here (`deploy@212.56.32.136` key).
+
+**What shipped (narrow)**
+
+- **`pnpm --filter @bvisible/web run verify:estimate-pricing`** — `@bvisible/pricing` bucket/multiplier/design-flat scenarios + customer-quote allocation/view leak guards + extended **`apply-catalog-to-estimate-line`** coverage (INSTALL/DESIGN unit-cost paths).
+- **`pnpm --filter @bvisible/web run verify:estimate-po-flow`** — **`mapEstimateKindToPoKind`** extracted to **`lib/purchase-orders/map-estimate-kind-to-po-kind.ts`** + **`get-estimate-po-flow`** dashboard predicates (existing).
+- **`pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow`** — bundles **`lib/ocr`** + **`lib/reconciliation`** Vitest trees (supersedes ad-hoc `verify:reconciliation*` for full OCR+recon sweep).
+- **`server-scripts/db/.verify-email-ingestion-flow.sh`** — deterministic grep gate for **`IngestedEmail @@unique([tenantId, messageId])`** + ingest **`run.ts`** anchors (no AI/fuzzy matching added).
+
+**Tests added**
+
+- `apps/web/lib/estimate/estimate-pricing-engine.test.ts` (**9** cases).
+- `apps/web/lib/purchase-orders/map-estimate-kind-to-po-kind.test.ts` (**6** cases).
+- Extended `apps/web/lib/shop-material/apply-catalog-to-estimate-line.test.ts` (**+INSTALL/+DESIGN** rows).
+
+**Bugs found/fixed**
+
+- **`apply-catalog-to-estimate-line.test.ts`** had been partially corrupted during edit — restored structure + added INSTALL/DESIGN specs.
+
+**Docs**
+
+- `CHANGELOG_AI.md` (this entry), `ESTIMATE_ENGINE.md`, `VENDOR_PRICE_ENGINE.md`, `PO_SYSTEM.md`, `EMAIL_INGESTION.md`, `DEBUGGING.md` § 0b, `UI_SYSTEM.md`.
+
+**Workspace verification**
+
+- `verify:estimate-pricing` → **23/23**
+- `verify:estimate-po-flow` → **9/9**
+- `verify:ocr-reconciliation-flow` → **26/26**
+- `typecheck` → **pass**
+
+**Not executed here**
+
+- Browser/manual regression (`admin@bvisible.local`), deploy **`JOB_ID`**, **`pm2 list`**, `/opt/bvisible/app` **`git rev-parse HEAD`**, migration ledger on server — operator completes post-deploy.
+
+**Remaining risks**
+
+- Production commit drift (**`86ea768`** vs intended **`main`** tip).
+- End-to-end email/IMAP/OCR flows still need exercised environments — grep script only guards schema/code anchors.
+
+---
+
 ## 2026-05-15 — Production deploy verification — Estimate → Invoice (`7fbe72a`)
 
 **Production deploy**
