@@ -5,6 +5,36 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production repair — deploy-queue drift + Items v2 runtime (`3eb4a27`)
+
+**Pre-fix**
+
+- **`/opt/bvisible/app` HEAD:** `b3ef2f444e872b5924ab8369d532f949560059df` (Items catalog only — **not** Items v2 / `ShopCatalogUnit`).
+- **Installed `/opt/bvisible/deploy-queue/deploy-once.sh`:** stale May 14 copy (**root:root**); **no** `.bvisible-deploy-commit` / **no** queue self-sync logic.
+- **`/api/health`:** `{"status":"ok","service":"bvisible-web"}` — **no** `commit` field.
+
+**Repair**
+
+- Checked out **`3eb4a276bf9c3df68a08c978aa24d42f13727935`** under `/opt/bvisible/app`; copied **`server-scripts/deploy-queue/deploy-once.sh`** → **`/opt/bvisible/deploy-queue/deploy-once.sh`** with **`chown deploy:deploy`** / **`chmod 755`**.
+- Enqueued deploy job **`20260515T042554-25660c`** for **`3eb4a27`**; systemd/timer picked up worker; **`deploy-once`** completed successfully.
+
+**Post-fix**
+
+- **Deployed SHA:** **`3eb4a276bf9c3df68a08c978aa24d42f13727935`**
+- **Migration:** applied **`20260515160000_shop_catalog_item_v2`** (`db-verify`: **13** migrations, latest **`20260515160000_shop_catalog_item_v2`**).
+- **PM2:** `bvisible-web` **online**, **`startOrReload`** OK (fork → standalone **`server.js`**).
+- **`/api/health` (loopback + public nginx):** includes **`commit`** matching **`3eb4a27`**.
+- **Stamp file:** `/opt/bvisible/app/apps/web/.next/standalone/apps/web/.bvisible-deploy-commit` matches full SHA.
+- **Bundle grep:** **`Line type`** / **`Internal unit cost`** present under **`apps/web/.next/static/chunks`**.
+- **`pnpm --filter @bvisible/web run verify:vendor-catalog` on server:** **48/48 pass**.
+- **Self-sync:** deploy log confirms **`Refreshed`** `deploy-once.sh`, `enqueue-deploy.sh`, `deploy-worker.sh`, `status.sh`, `healthcheck.sh`, **`db-verify.sh`** from checkout.
+
+**Browser / estimate UX**
+
+- **Not automated** (requires **`admin@bvisible.local`** session). Operator should confirm **`/items/new`** field list + estimate catalog **Apply** behavior.
+
+---
+
 ## 2026-05-15 — Items v2 UI missing on production — RCA + `/api/health` deploy SHA
 
 **Root cause**
