@@ -6,8 +6,13 @@ import type {
   CatalogLookupMatchKind,
   VendorCatalogLookupResult,
 } from './catalog-intel-types';
+import { resolveManagedItemIntel } from '@/lib/shop-material/managed-intel';
 
-export type { VendorCatalogLookupResult, CatalogLookupMatchKind } from './catalog-intel-types';
+export type {
+  VendorCatalogLookupResult,
+  CatalogLookupMatchKind,
+  ManagedItemIntel,
+} from './catalog-intel-types';
 export const MAX_PREFIX_NAME_ROWS = 15;
 export const MAX_PREFIX_ALIAS_ROWS = 12;
 export const MAX_MERGED_CATALOG_IDS = 20;
@@ -35,6 +40,8 @@ export function mergeOrderedCatalogItemIds(args: {
   prefixNames: ReadonlyArray<CatalogRow>;
   exactAliasCatalogIds: ReadonlyArray<string>;
   prefixAliasCatalogIds: ReadonlyArray<string>;
+  shopNameExactCatalogRows: ReadonlyArray<CatalogRow>;
+  shopAliasExactCatalogRows: ReadonlyArray<CatalogRow>;
   maxItems: number;
 }): { orderedIds: string[]; matchKind: CatalogLookupMatchKind } {
   const seen = new Set<string>();
@@ -66,6 +73,28 @@ export function mergeOrderedCatalogItemIds(args: {
       push(id);
     }
     return { orderedIds, matchKind: 'exact_alias' };
+  }
+
+  if (args.shopNameExactCatalogRows.length > 0) {
+    const sorted = [...args.shopNameExactCatalogRows].sort((a, b) =>
+      a.nameNormalized.localeCompare(b.nameNormalized) || a.id.localeCompare(b.id),
+    );
+    for (const r of sorted) {
+      if (orderedIds.length >= args.maxItems) break;
+      push(r.id);
+    }
+    return { orderedIds, matchKind: 'shop_item_name' };
+  }
+
+  if (args.shopAliasExactCatalogRows.length > 0) {
+    const sorted = [...args.shopAliasExactCatalogRows].sort((a, b) =>
+      a.nameNormalized.localeCompare(b.nameNormalized) || a.id.localeCompare(b.id),
+    );
+    for (const r of sorted) {
+      if (orderedIds.length >= args.maxItems) break;
+      push(r.id);
+    }
+    return { orderedIds, matchKind: 'shop_item_alias' };
   }
 
   const namesSorted = [...args.prefixNames].sort((a, b) =>
@@ -110,6 +139,7 @@ function emptyResult(matchKind: CatalogLookupMatchKind): VendorCatalogLookupResu
     priceRecentlyIncreasedVsAvg: false,
     priceRecentlyIncreasedVsPrev: false,
     highVolatility: false,
+    managedItem: null,
   };
 }
 
@@ -155,12 +185,55 @@ async function resolvePrimaryCatalogItem(
     take: MAX_PREFIX_ALIAS_ROWS,
   });
 
+  const shopByName = await prisma.shopMaterialItem.findUnique({
+    where: {
+      tenantId_nameNormalized: { tenantId, nameNormalized: queryNormalized },
+    },
+    select: { id: true, nameNormalized: true },
+  });
+
+  let shopNameExactCatalogRows: CatalogRow[] = [];
+  if (shopByName) {
+    shopNameExactCatalogRows = await prisma.vendorCatalogItem.findMany({
+      where: { tenantId, shopMaterialItemId: shopByName.id },
+      select: { id: true, nameNormalized: true },
+      orderBy: { nameNormalized: 'asc' },
+      take: MAX_MERGED_CATALOG_IDS,
+    });
+  }
+
+  let shopAliasExactCatalogRows: CatalogRow[] = [];
+  let shopAliasParentNormalized: string | null = null;
+  if (shopNameExactCatalogRows.length === 0) {
+    const aliasHit = await prisma.shopMaterialItemAlias.findUnique({
+      where: {
+        tenantId_aliasNormalized: { tenantId, aliasNormalized: queryNormalized },
+      },
+      select: { shopMaterialItemId: true },
+    });
+    if (aliasHit) {
+      shopAliasExactCatalogRows = await prisma.vendorCatalogItem.findMany({
+        where: { tenantId, shopMaterialItemId: aliasHit.shopMaterialItemId },
+        select: { id: true, nameNormalized: true },
+        orderBy: { nameNormalized: 'asc' },
+        take: MAX_MERGED_CATALOG_IDS,
+      });
+      const parent = await prisma.shopMaterialItem.findFirst({
+        where: { id: aliasHit.shopMaterialItemId, tenantId },
+        select: { nameNormalized: true },
+      });
+      shopAliasParentNormalized = parent?.nameNormalized ?? null;
+    }
+  }
+
   const merged = mergeOrderedCatalogItemIds({
     queryNormalized,
     exactNames,
     prefixNames,
     exactAliasCatalogIds: exactAliasRows.map((r) => r.vendorCatalogItemId),
     prefixAliasCatalogIds: prefixAliases.map((r) => r.vendorCatalogItemId),
+    shopNameExactCatalogRows,
+    shopAliasExactCatalogRows,
     maxItems: MAX_MERGED_CATALOG_IDS,
   });
 
@@ -172,6 +245,20 @@ async function resolvePrimaryCatalogItem(
       select: { nameNormalized: true },
     });
     primaryName = row?.nameNormalized ?? null;
+  } else if (shopByName) {
+    primaryName = shopByName.nameNormalized;
+    return {
+      orderedIds: [],
+      matchKind: 'shop_item_name',
+      primaryName,
+    };
+  } else if (shopAliasParentNormalized) {
+    primaryName = shopAliasParentNormalized;
+    return {
+      orderedIds: [],
+      matchKind: 'shop_item_alias',
+      primaryName,
+    };
   }
 
   return {
@@ -218,11 +305,28 @@ export async function lookupVendorCatalogIntelligence(
     }
   }
 
+  const primaryCatalogItemId = resolved.orderedIds[0] ?? null;
+
+  const managedItem = await resolveManagedItemIntel(prisma, {
+    tenantId: input.tenantId,
+    queryNormalized: query,
+    primaryVendorCatalogItemId: primaryCatalogItemId,
+  });
+
   if (resolved.orderedIds.length === 0) {
-    return emptyResult('none');
+    if (!managedItem) {
+      return emptyResult('none');
+    }
+    return {
+      ...emptyResult(resolved.matchKind),
+      matchKind: resolved.matchKind,
+      matchedCatalogItemIds: [],
+      primaryCatalogItemId: null,
+      primaryCatalogNameNormalized: managedItem.nameNormalized,
+      managedItem,
+    };
   }
 
-  const primaryCatalogItemId = resolved.orderedIds[0] ?? null;
   if (!primaryCatalogItemId) {
     return emptyResult('none');
   }
@@ -297,5 +401,6 @@ export async function lookupVendorCatalogIntelligence(
     priceRecentlyIncreasedVsAvg: trendRecalc.priceRecentlyIncreasedVsAvg,
     priceRecentlyIncreasedVsPrev: trendRecalc.priceRecentlyIncreasedVsPrev,
     highVolatility: trendRecalc.highVolatility,
+    managedItem,
   };
 }

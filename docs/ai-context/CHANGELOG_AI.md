@@ -5,6 +5,41 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Items catalog + manual vendor pricing (`MANUAL`)
+
+**Scope**
+
+- **Schema:** `ShopMaterialItem`, `ShopMaterialItemAlias`, nullable `VendorCatalogItem.shopMaterialItemId`, `VendorPriceHistory.effectiveAt`, enum `VendorPriceExtractionMethod.MANUAL` (`20260515120000_shop_material_items`).
+- **Routes:** `/items`, `/items/new`, `/items/[id]` with sidebar **Items** link (`app-shell.tsx`).
+- **Server actions:** metadata edits, aliases, preferred vendor, active flag, manual price append (`appendManualVendorPriceForShopItem`), cautious vendor-catalog linking when normalized keys match (`items/actions.ts`).
+- **Pricing helpers:** `apps/web/lib/shop-material/*` (manual append, aggregates, managed intel resolution).
+- **Catalog lookup:** `mergeOrderedCatalogItemIds` + `resolvePrimaryCatalogItem` understand shop items/aliases; `lookupVendorCatalogIntelligence` attaches `managedItem` intel while preserving OCR-approved receipt stats for the primary vendor catalog row.
+- **Estimate UX:** vendor intelligence rail shows managed item card + optional **Use this cost** button (`vendor-catalog-intel-panel.tsx`, `editor.tsx`).
+- **Tests:** extended `catalog-lookup.test.ts`; new `pricing-aggregate.test.ts`; script `pnpm --filter @bvisible/web run verify:vendor-catalog`.
+
+**Files**
+
+- `packages/db/prisma/{schema.prisma,migrations/20260515120000_shop_material_items/migration.sql}`
+- `apps/web/{app/(app)/items/**,components/app-shell.tsx,lib/shop-material/**,lib/vendor-pricing/{catalog-lookup.ts,catalog-intel-types.ts},app/(app)/estimates/[id]/{vendor-catalog-intel-panel.tsx,editor.tsx},lib/ui/status-labels.ts,lib/auth/audit.ts,package.json}`
+- `docs/ai-context/{DATA_MODEL.md,API_STRUCTURE.md,VENDOR_PRICE_ENGINE.md,ESTIMATE_ENGINE.md,UI_SYSTEM.md,KNOWN_RULES.md,CHANGELOG_AI.md}`
+
+**Risks**
+
+- High: schema migration must run before web deploy; linking stray vendor rows is intentionally conservative (normalized key equality only).
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:vendor-catalog` (pass).
+- `pnpm --filter @bvisible/web run build` (pass).
+
+**Remaining gaps**
+
+- Item rename / destructive merges not supported (by design this phase).
+- Several native `<form action>` mutations omit inline error display (silent no-op on failure) aside from alias/manual flows using `useActionState`.
+- Deploy + authenticated browser smoke not run here post-change.
+
+---
+
 ## 2026-05-14 — Operational workflow UX (onboarding, rails, dashboard feed)
 
 **Scope**

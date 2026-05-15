@@ -126,7 +126,7 @@ enum POEventKind {
 enum EmailIngestStatus { PENDING  MATCHED  UNMATCHED  FAILED  DISMISSED }
 enum EmailMatchReason  { QBO_NUMBER  PO_NUMBER  VENDOR_AND_RECENT  MANUAL  NONE }
 enum VendorPriceConfidence { HIGH  MEDIUM  LOW }
-enum VendorPriceExtractionMethod { LINE_REGEX  SUBJECT_REGEX  FILENAME_REGEX  OCR_TEXT_REGEX  OCR_APPROVED }
+enum VendorPriceExtractionMethod { LINE_REGEX  SUBJECT_REGEX  FILENAME_REGEX  OCR_TEXT_REGEX  OCR_APPROVED  MANUAL }
 
 model Client {
   id          String    @id @default(cuid())
@@ -397,20 +397,51 @@ model IngestedEmailAttachment {
   @@map("ingested_email_attachments")
 }
 
+model ShopMaterialItem {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  name                String   @db.VarChar(400)
+  nameNormalized      String   @db.VarChar(400)
+  category            String?  @db.VarChar(120)
+  defaultUnit         String?  @db.VarChar(40)
+  notes               String?  @db.VarChar(2000)
+  preferredVendorId   String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  @@unique([tenantId, nameNormalized])
+  @@index([tenantId, isActive])
+  @@map("shop_material_items")
+}
+
+model ShopMaterialItemAlias {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  shopMaterialItemId String
+  aliasNormalized    String   @db.VarChar(400)
+  createdAt          DateTime @default(now())
+  @@unique([tenantId, aliasNormalized])
+  @@index([tenantId, shopMaterialItemId])
+  @@map("shop_material_item_aliases")
+}
+
 model VendorCatalogItem {
   id               String   @id @default(cuid())
   tenantId         String
   vendorId         String
   nameNormalized   String   @db.VarChar(400)
+  shopMaterialItemId String?
   createdAt        DateTime @default(now())
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  shopMaterialItem ShopMaterialItem? @relation(fields: [shopMaterialItemId], references: [id], onDelete: SetNull)
   aliases VendorItemAlias[]
   priceHistory VendorPriceHistory[]
   priceNotifications VendorPriceNotification[]
   @@unique([tenantId, vendorId, nameNormalized])
   @@index([tenantId, vendorId])
   @@index([tenantId, nameNormalized])
+  @@index([tenantId, shopMaterialItemId])
   @@map("vendor_catalog_items")
 }
 
@@ -447,6 +478,7 @@ model VendorPriceHistory {
   confidence           VendorPriceConfidence
   extractionMethod     VendorPriceExtractionMethod
   dedupeKey            String                     @db.VarChar(64)
+  effectiveAt          DateTime?
   createdAt            DateTime                   @default(now())
   tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor           Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -584,6 +616,7 @@ Notes:
 | `20260513234614_purchase_orders_and_finalize` | 2026-05-13 | New enums `POStatus`, `POLineKind`, `POAttachmentKind`, `POEventKind`; `EstimateStatus.FINALIZED` enum value; new tables `vendors`, `purchase_orders`, `po_line_items`, `po_attachments`, `po_events`. Tenant-scoped, integer cents, soft delete via `deletedAt`. Unique on `(tenantId, number)` for POs, `(tenantId, name)` for vendors. Foreign keys: `purchase_orders.estimateId → estimates(id) ON DELETE SET NULL`, `purchase_orders.vendorId → vendors(id) ON DELETE SET NULL`. Generated via shadow Postgres. |
 | `20260514005509_email_ingestion_foundation` | 2026-05-14 | New enums `EmailIngestStatus`, `EmailMatchReason`; `POAttachmentKind` gains `EMAIL_ATTACHMENT`; `POEventKind` gains `VENDOR_REPLY`. New tables `tenant_email_inboxes` (1:1 per tenant), `ingested_emails` (UNIQUE `(tenantId, messageId)` for R-MAIL-01 idempotency), `ingested_email_attachments`, `email_ingest_runs`. Adds nullable `sourceEmailId` on `po_attachments` and `po_events` (FK SET NULL → `ingested_emails(id)`). Generated via shadow Postgres; `ALTER TYPE ... ADD VALUE` is run by Postgres 16 in the same migration transaction safely. |
 | `20260515083000_mobile_upload_foundation` | 2026-05-15 | `POAttachmentKind` gains `VENDOR_INVOICE`, `INSTALL_PHOTO`, `FIELD_DOCUMENT`. New tables `mobile_sessions` (rotating refresh, device metadata) and `mobile_pending_uploads` (two-phase upload → `POAttachment`). |
+| `20260515120000_shop_material_items` | 2026-05-15 | Tenant **Items** catalog: tables `shop_material_items`, `shop_material_item_aliases`; `vendor_catalog_items.shopMaterialItemId` nullable FK; `VendorPriceExtractionMethod.MANUAL`; `vendor_price_histories.effectiveAt` optional economic date for manual rows. |
 | `20260516120000_ocr_receipt_foundation` | 2026-05-16 | Local OCR foundation: enum `OcrJobStatus`; tables `ocr_documents`, `ocr_line_items`; `VendorPriceExtractionMethod` gains `OCR_TEXT_REGEX`, `OCR_APPROVED`; nullable email FK on `vendor_price_histories` / `vendor_price_notifications` with optional OCR provenance (`sourcePoAttachmentId`, `ocrLineItemId`, `sourceOcrDocumentId`). |
 
 ## Core entities (target schema)
@@ -598,7 +631,8 @@ Tenant ──< User
        ├──< Vendor ──< VendorCatalogItem ──< VendorPriceHistory
        │            └──< VendorItemAlias
        │            └──< VendorPriceNotification
-       ├──< Item   ──< ItemAlias    (vendor-specific item names — future master catalog)
+       ├──< ShopMaterialItem ──< ShopMaterialItemAlias
+       │              └── (optional FK) VendorCatalogItem.shopMaterialItemId
        ├──< Machine                  (rates listed in ESTIMATE_ENGINE.md)
        ├──< IngestedEmail            (messageId unique per tenant)
        └──< VendorPriceNotification (manual-dismiss lower-price alerts)

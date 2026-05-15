@@ -16,7 +16,7 @@ qty for display only.
 | `packages/pricing/src/banner.ts` | `bannerPrice({sqft, grommets})` | R-EST-03 — returns cents + breakdown + minimum-applied flag. |
 | `packages/pricing/src/line.ts` | `computeLineCostCents({qtyMilli, unitCostCents})` | The single per-line formula. |
 | `packages/pricing/src/estimate.ts` | `computeEstimate({multiplierMilli, designFlatCents, lines})` | The single source of truth for subtotal + final sell price. Called by the editor on every keystroke AND by `saveEstimateAction` server-side so cached totals match what the user saw. |
-| `apps/web/lib/vendor-pricing/catalog-lookup.ts` | `lookupVendorCatalogIntelligence`, `mergeOrderedCatalogItemIds` | Tenant-scoped catalog resolution + capped `OCR_APPROVED` aggregates for estimate hints. |
+| `apps/web/lib/vendor-pricing/catalog-lookup.ts` | `lookupVendorCatalogIntelligence`, `mergeOrderedCatalogItemIds` | Tenant-scoped catalog resolution: vendor rows + managed shop items/aliases + capped `OCR_APPROVED` aggregates for receipt-backed hints + managed-item pricing summaries. |
 | `apps/web/lib/vendor-pricing/trends.ts` | `classifyPriceTrend`, volatility helpers | Deterministic spike / volatility classification (basis-point thresholds). |
 
 The editor is `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel}.tsx`.
@@ -27,9 +27,7 @@ which re-runs the same engine on the server inside one Prisma transaction.
 **Vendor pricing intelligence (read-only)** — material rows call
 `lookupVendorCatalogIntelligence` (`apps/web/lib/vendor-pricing/catalog-lookup.ts`)
 via `lookupVendorCatalogForEstimateAction`, debounced in the client.
-Matching uses normalized **exact** catalog keys, **alias** keys, and deterministic
-**prefix** scans only (`OCR_APPROVED` history). The rail never mutates line
-economics or steals spreadsheet focus.
+Matching uses normalized **exact** vendor-catalog keys, vendor **aliases**, tenant **ShopMaterialItem** names + **ShopMaterialItemAlias** rows, then deterministic **prefix** scans. Receipt-backed stats still read capped **`OCR_APPROVED`** histories when a primary `VendorCatalogItem` resolves. Managed-item intelligence aggregates **all** extraction methods (manual + OCR-approved + legacy regex methods) for cheapest/preferred suggestions. The rail exposes an explicit **Use this cost** control that patches **only** `unitCostCents` when clicked — never automatic mutations and never focus stealing.
 
 ## Cost components
 

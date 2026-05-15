@@ -99,7 +99,7 @@ The look, feel, and behavior of the web app.
   Tab is left to the browser default. Arrow keys are intentionally
   not hijacked — that would break caret navigation inside text inputs.
 - **Sidebar nav** for tenant users now shows
-  `Dashboard / Estimates / Purchase orders / Clients / Vendors` in
+  `Dashboard / Estimates / Purchase orders / Clients / Vendors / Items` in
   `BASE_NAV`. ADMIN adds `Users`, `Email ingestion`, **`Receipt OCR`**
   (`/admin/ocr-review`), and **`PO reconciliation`** (`/admin/reconciliation`); SUPER_ADMIN
   additionally adds `Tenants`, `Inboxes`, and `Email test`.
@@ -202,6 +202,8 @@ The look, feel, and behavior of the web app.
   matched PO when the source ingested email recorded `matchedPurchaseOrderId`,
   and a heuristic "Lower vs prior" flag comparing each row to the next
   newer observation for the same normalized item.
+- **Items catalog** (`/items`, `/items/new`, `/items/[id]`): tenant-level managed materials (`ShopMaterialItem`) with preferred vendor, inactive flag, tenant-wide aliases (`ShopMaterialItemAlias`), duplicate vendor-row warnings + cautious linking, append-only manual `VendorPriceHistory` (`MANUAL` extraction label in UI), and full history/OCR-ish tails for linked vendor catalog rows. **USER** can browse; **ADMIN+** mutates metadata, aliases, manual prices, linkage.
+- **Estimate vendor intelligence rail** (`vendor-catalog-intel-panel.tsx`): surfaces receipt-backed OCR-approved stats when a vendor catalog primary exists **and** highlights linked managed items with optional **Use this cost** (dispatched `unitCostCents` patch only — never automatic).
 - **Dashboard vendor price alerts** (`VendorPriceAlerts` on `/dashboard`):
   amber banner listing unread `VendorPriceNotification` rows with old/new
   prices, vendor link, subject line, PO link when available, and a

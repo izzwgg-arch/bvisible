@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { EstimateLineKind } from '@bvisible/db';
 import { formatMoney } from '@/lib/estimate/format';
@@ -22,6 +23,10 @@ function matchKindLabel(k: VendorCatalogLookupResult['matchKind']): string {
       return 'Alias match';
     case 'prefix':
       return 'Prefix match';
+    case 'shop_item_name':
+      return 'Shop item';
+    case 'shop_item_alias':
+      return 'Item alias';
     default:
       return '';
   }
@@ -42,7 +47,26 @@ function trendShort(t: VendorCatalogLookupResult['trendKind']): string {
   }
 }
 
-export function VendorCatalogIntelPanel({ line }: { line: DraftLine | null }) {
+function managedViaLabel(v: NonNullable<VendorCatalogLookupResult['managedItem']>['matchVia']) {
+  switch (v) {
+    case 'shop_name':
+      return 'Matched item name';
+    case 'shop_alias':
+      return 'Matched item alias';
+    case 'linked_catalog':
+      return 'Linked vendor catalog';
+    default:
+      return '';
+  }
+}
+
+export function VendorCatalogIntelPanel({
+  line,
+  onApplyManagedCost,
+}: {
+  line: DraftLine | null;
+  onApplyManagedCost?: (lineId: string, unitCostCents: number) => void;
+}) {
   const [data, setData] = useState<VendorCatalogLookupResult | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -90,14 +114,15 @@ export function VendorCatalogIntelPanel({ line }: { line: DraftLine | null }) {
         aria-label="Vendor pricing intelligence"
       >
         Focus a <strong className="text-[var(--color-bv-text)]">material</strong>{' '}
-        row (description or qty) to see OCR-backed vendor hints. Nothing here
-        changes your line — suggestions only.
+        row (description or qty) to see vendor catalog hints. Nothing here changes your line unless you explicitly apply a suggested unit cost.
       </aside>
     );
   }
 
   const trimmedDesc = line.description.trim();
   const queryTooShort = trimmedDesc.length < 2;
+
+  const suggested = data?.managedItem?.suggestedUnitCostCents ?? null;
 
   return (
     <aside
@@ -113,7 +138,12 @@ export function VendorCatalogIntelPanel({ line }: { line: DraftLine | null }) {
             Updating…
           </span>
         ) : null}
-        {data && data.matchKind !== 'none' ? (
+        {data?.managedItem ? (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
+            Managed item
+          </span>
+        ) : null}
+        {data?.primaryCatalogItemId && data.latestObservationAt ? (
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
             OCR receipts
           </span>
@@ -126,19 +156,62 @@ export function VendorCatalogIntelPanel({ line }: { line: DraftLine | null }) {
 
       {queryTooShort && !loading ? (
         <p className="text-[12px] text-[var(--color-bv-muted)]">
-          Type at least two characters in the description to scan OCR-approved
-          catalog rows (tenant-scoped).
+          Type at least two characters in the description to scan catalog rows (deterministic normalized matching).
         </p>
       ) : null}
 
-      {!queryTooShort && !loading && data && data.matchKind === 'none' ? (
+      {data?.managedItem ? (
+        <div className="mb-3 rounded-lg border border-emerald-200/90 bg-emerald-50/45 px-3 py-2.5 text-[12.5px] text-emerald-950">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900/90">
+                Catalog item
+              </p>
+              <Link
+                href={data.managedItem.detailHref as never}
+                className="mt-0.5 inline-block text-[13px] font-semibold text-emerald-950 underline-offset-2 hover:underline"
+              >
+                {data.managedItem.displayName}
+              </Link>
+              <p className="mt-1 text-[11px] text-emerald-900/80">
+                {managedViaLabel(data.managedItem.matchVia)}
+              </p>
+            </div>
+            {suggested !== null ? (
+              <div className="text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900/90">
+                  Suggested unit cost
+                </p>
+                <p className="tabular-nums text-[14px] font-bold">{formatMoney(suggested)}</p>
+                <p className="text-[10px] text-emerald-900/75">
+                  Prefers preferred vendor · else cheapest latest
+                </p>
+              </div>
+            ) : (
+              <p className="max-w-[12rem] text-[11px] leading-snug text-emerald-900/80">
+                No vendor prices recorded on this item yet — add manual pricing under Items.
+              </p>
+            )}
+          </div>
+          {onApplyManagedCost && line && suggested !== null ? (
+            <button
+              type="button"
+              className="mt-2 rounded-[8px] bg-emerald-700 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-800"
+              onClick={() => onApplyManagedCost(line.id, suggested)}
+            >
+              Use this cost on the line
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!queryTooShort && !loading && data && data.matchKind === 'none' && !data.managedItem ? (
         <p className="text-[12px] text-[var(--color-bv-muted)]">
-          No OCR-approved catalog row matches this label yet (exact, alias, or
-          prefix). Keep typing — matching is deterministic on normalized text.
+          No catalog row matches this label yet (vendor catalog or managed item). Keep typing — matching stays deterministic on normalized text.
         </p>
       ) : null}
 
-      {data && data.matchKind !== 'none' ? (
+      {data?.primaryCatalogItemId ? (
         <div className="space-y-2 text-[12.5px] leading-snug text-[var(--color-bv-text)]">
           <div className="flex flex-wrap gap-1.5">
             {matchKindLabel(data.matchKind) ? (
@@ -204,9 +277,7 @@ export function VendorCatalogIntelPanel({ line }: { line: DraftLine | null }) {
             <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11.5px] text-amber-950">
               Price recently increased
               {data.priceRecentlyIncreasedVsAvg ? ' vs 90-day average' : ''}
-              {data.priceRecentlyIncreasedVsAvg && data.priceRecentlyIncreasedVsPrev
-                ? ' · '
-                : ''}
+              {data.priceRecentlyIncreasedVsAvg && data.priceRecentlyIncreasedVsPrev ? ' · ' : ''}
               {data.priceRecentlyIncreasedVsPrev ? ' vs prior receipt' : ''}.
             </div>
           ) : null}

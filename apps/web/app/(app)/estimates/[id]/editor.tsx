@@ -406,7 +406,12 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
           onVendorIntelLineFocus={setVendorIntelLineId}
           dispatch={dispatch}
         />
-        <VendorCatalogIntelPanel line={vendorIntelLine} />
+        <VendorCatalogIntelPanel
+          line={vendorIntelLine}
+          onApplyManagedCost={(lineId, cents) =>
+            dispatch({ type: 'set-line', id: lineId, patch: { unitCostCents: cents } })
+          }
+        />
       </div>
 
       <TotalsPanel

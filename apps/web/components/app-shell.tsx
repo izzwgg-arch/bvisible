@@ -10,6 +10,7 @@ const BASE_NAV: ReadonlyArray<NavItem> = [
   { href: '/purchase-orders', label: 'Purchase orders' },
   { href: '/clients', label: 'Clients' },
   { href: '/vendors', label: 'Vendors' },
+  { href: '/items', label: 'Items' },
 ];
 
 const ADMIN_NAV: ReadonlyArray<NavItem> = [

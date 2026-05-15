@@ -74,6 +74,14 @@ handlers authenticate Bearer JWTs — no browser cookie.
 | `finalizeEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | tenant user. R-EST-04 gate: requires ≥1 linked, non-deleted PO and ≥1 of those POs to have a non-null `qboPoNumber`. Returns typed errors `not_found`, `already_finalized`, `no_linked_po`, `no_qbo_number`, `invalid`; UI maps to sanitized strings. Logs `estimate_finalized`. |
 | `unfinalizeEstimateAction` | `app/(app)/estimates/[id]/actions.ts` | ADMIN, SUPER_ADMIN. Returns the estimate to APPROVED. Logs `estimate_unfinalized`. |
 | `createVendorAction` | `app/(app)/vendors/actions.ts` | tenant user (ADMIN, USER). Per-tenant unique on `name`; conflicts return a sanitized "already exists" message. |
+| `createShopMaterialItemAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN (`requireRoleWithEffectiveCompany`). Creates `ShopMaterialItem` with deterministic `nameNormalized`; redirects to `/items/[id]`. |
+| `updateShopMaterialItemAttributesAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. Category/unit/notes only — canonical display name + normalized key are immutable after create to avoid orphaning linked `VendorCatalogItem` rows. |
+| `setShopMaterialPreferredVendorAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. |
+| `setShopMaterialActiveAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. |
+| `addShopMaterialAliasAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. Tenant-wide alias (`ShopMaterialItemAlias`); duplicates rejected via unique `(tenantId, aliasNormalized)`. |
+| `removeShopMaterialAliasAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. |
+| `appendManualShopMaterialPriceAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. Appends `VendorPriceHistory` with `extractionMethod = MANUAL`, fresh dedupe nonce; upserts/links `VendorCatalogItem` under the item's normalized key. Audits `shop_material_manual_price_recorded`. |
+| `linkVendorCatalogToShopItemAction` | `app/(app)/items/actions.ts` | ADMIN, SUPER_ADMIN. Sets `VendorCatalogItem.shopMaterialItemId` when `nameNormalized` matches and the row is not already tied to another item. |
 | `createBlankPoAction` | `app/(app)/purchase-orders/actions.ts` | tenant user. Allocates `PO-NNNNNN` per tenant via `nextPoNumber` + advisory lock inside the create transaction. Optional `estimateId` and `vendorId` are tenant-validated before the row is written. Emits a `CREATED` POEvent. |
 | `createPoFromEstimateAction` | `app/(app)/purchase-orders/actions.ts` | tenant user. Copies all estimate lines into `po_line_items`, seeds `subtotalCents` from cached estimate line costs, never mutates the source estimate, emits a `CREATED_FROM_ESTIMATE` POEvent. Returns `{ purchaseOrderId }` on success. |
 | `savePurchaseOrderAction` | `app/(app)/purchase-orders/[id]/actions.ts` | tenant user. Replaces all PO lines + meta in one transaction; recomputes `subtotalCents` server-side (integer arithmetic). Emits `LINES_SAVED`. |
@@ -116,6 +124,9 @@ client (it always comes from the session).
 | `/estimates` | protected (tenant user) | Tenant estimate list with cached cost + sell totals + status pills. |
 | `/estimates/new` | protected (tenant user) | Pick client + title; redirects to the editor. |
 | `/estimates/[id]` | protected (tenant user) | Spreadsheet-style line-item editor. Uses the reusable grid keyboard helper at `apps/web/lib/keyboard/grid-nav.ts`. Cmd/Ctrl+S saves; Enter / Shift+Enter move vertically inside the grid; per-row × / ↑ / ↓ buttons. Totals panel exposes the "Linked POs" section, "Create PO from estimate" flow, and the R-EST-04-gated Finalize button (with a sanitized blocked-reason hint when the gate refuses). |
+| `/items` | protected (tenant user) | Managed **Items** list (search + active/inactive filters + aggregate vendor hints). |
+| `/items/new` | protected (ADMIN, SUPER_ADMIN) | Create `ShopMaterialItem` (canonical normalized key allocated once). |
+| `/items/[id]` | protected (tenant user) | Item detail: aliases, preferred vendor, manual price entry (ADMIN+), append-only `VendorPriceHistory` ledger, duplicate vendor-row linking hints. |
 | `/vendors` | protected (tenant user) | Tenant vendor list + "New vendor" CTA + per-vendor PO count. |
 | `/vendors/new` | protected (tenant user) | Create-vendor form (name required; email/phone/notes optional). Per-tenant unique on name. |
 | `/purchase-orders` | protected (tenant user) | Tenant PO list with vendor + linked-estimate + QBO number + status pill + cached subtotal. |

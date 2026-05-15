@@ -19,9 +19,11 @@ Implementation lives in:
 
 | Model | Role |
 |-------|------|
-| `VendorCatalogItem` | One row per `(tenantId, vendorId, nameNormalized)`. Created when a normalized item label is seen for the first time (or resolved via `VendorItemAlias`). |
-| `VendorItemAlias` | Optional deterministic alias → catalog row (exact normalized match only today). |
-| `VendorPriceHistory` | **Append-only** observations: integer `priceCents`, optional `unit` / `quantityMilli`, `sourceEmailId`, nullable `sourceAttachmentId`, `confidence`, `extractionMethod`, `dedupeKey`. |
+| `VendorCatalogItem` | One row per `(tenantId, vendorId, nameNormalized)`. Optional nullable FK `shopMaterialItemId` ties OCR/email-created vendor rows back to a managed tenant **Item**. |
+| `ShopMaterialItem` | Tenant canonical material (`name` + unique `nameNormalized`). Holds preferred vendor + inactive flag + notes/category/unit metadata (`ITEMS` UI). |
+| `ShopMaterialItemAlias` | Tenant-wide alias → managed item (`tenantId`, `aliasNormalized` UNIQUE). Feeds deterministic estimate lookups alongside vendor aliases. |
+| `VendorItemAlias` | Optional deterministic vendor-scoped alias → catalog row (exact normalized match only today). |
+| `VendorPriceHistory` | **Append-only** observations: integer `priceCents`, optional `unit` / `quantityMilli`, `sourceEmailId`, nullable `sourceAttachmentId`, optional `effectiveAt` (manual economic date), `confidence`, `extractionMethod`, `dedupeKey`. |
 | `VendorPriceNotification` | Lower-price operational alert (manual dismiss via dashboard form). |
 
 See `DATA_MODEL.md` for column-level detail.
@@ -55,9 +57,22 @@ a second history row.
 
 1. Exact `VendorCatalogItem` match on `(tenantId, vendorId, nameNormalized)`.
 2. Else exact `VendorItemAlias.aliasNormalized` for that vendor.
-3. Else **create** a new `VendorCatalogItem`.
+3. Else exact `ShopMaterialItem.nameNormalized` at tenant scope → merge linked vendor catalog rows (if any).
+4. Else exact `ShopMaterialItemAlias.aliasNormalized` → merge linked vendor catalog rows (if any).
+5. Else deterministic normalized **prefix** scans over vendor catalog names/aliases (existing caps).
+6. Else **create** a new `VendorCatalogItem` when ingest/manual flows require it.
 
 No semantic similarity or embeddings.
+
+## Managed Items + manual pricing (`MANUAL`)
+
+Administrators maintain tenant-level **`ShopMaterialItem`** rows under `/items`.
+Manual vendor quotes append **`VendorPriceHistory`** rows with
+`extractionMethod = MANUAL`, **HIGH** confidence, a random dedupe nonce per click,
+and optional `effectiveAt` for back-dated economics (`createdAt` still reflects
+insert time). Linked `VendorCatalogItem` rows reuse the item's `nameNormalized`
+per vendor; OCR/email ingestion behavior is unchanged — manual rows simply
+participate in the same append-only ledger + estimate intelligence aggregates.
 
 ## Lower-price detection (R-VEN-03)
 

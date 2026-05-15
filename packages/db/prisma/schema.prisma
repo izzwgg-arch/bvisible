@@ -144,6 +144,8 @@ enum VendorPriceExtractionMethod {
   OCR_TEXT_REGEX
   /// Operator-approved observation written after OCR review (source of truth path).
   OCR_APPROVED
+  /// Operator-entered unit price from Items catalog (append-only history).
+  MANUAL
 }
 
 // Async OCR receipt / invoice understanding (Phase 13). OCR output is never
@@ -265,6 +267,8 @@ model Tenant {
   poReconciliations    POReconciliation[]
   poReconciliationLines POReconciliationLine[]
   spendAlerts          SpendAlert[]
+  shopMaterialItems    ShopMaterialItem[]
+  shopMaterialItemAliases ShopMaterialItemAlias[]
 
   @@map("tenants")
 }
@@ -578,6 +582,7 @@ model Vendor {
   priceHistory   VendorPriceHistory[]
   priceNotifications VendorPriceNotification[]
   spendAlerts    SpendAlert[]
+  preferredForShopMaterials ShopMaterialItem[] @relation("ShopMaterialPreferredVendor")
 
   @@unique([tenantId, name])
   @@index([tenantId, deletedAt])
@@ -856,17 +861,20 @@ model IngestedEmailAttachment {
 }
 
 // Per-vendor normalized SKU / material line label. Scoped by tenant +
-// vendor — no semantic "Item" master yet (that lands with full catalog).
+// vendor. Optionally linked to a tenant-level ShopMaterialItem for a
+// unified Items catalog UI (same normalized key within the shop item).
 // nameNormalized is produced by apps/web/lib/vendor-pricing/normalize.ts.
 model VendorCatalogItem {
   id               String   @id @default(cuid())
   tenantId         String
   vendorId         String
   nameNormalized   String   @db.VarChar(400)
+  shopMaterialItemId String?
   createdAt        DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  shopMaterialItem ShopMaterialItem? @relation(fields: [shopMaterialItemId], references: [id], onDelete: SetNull)
   aliases VendorItemAlias[]
   priceHistory VendorPriceHistory[]
   priceNotifications VendorPriceNotification[]
@@ -875,7 +883,48 @@ model VendorCatalogItem {
   @@unique([tenantId, vendorId, nameNormalized])
   @@index([tenantId, nameNormalized])
   @@index([tenantId, vendorId])
+  @@index([tenantId, shopMaterialItemId])
   @@map("vendor_catalog_items")
+}
+
+/// Tenant-level material/product definition ("Items" catalog). Links to one or more
+/// VendorCatalogItem rows (per vendor offers). Aliases are tenant-wide for deterministic lookup.
+model ShopMaterialItem {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  name                String   @db.VarChar(400)
+  nameNormalized      String   @db.VarChar(400)
+  category            String?  @db.VarChar(120)
+  defaultUnit         String?  @db.VarChar(40)
+  notes               String?  @db.VarChar(2000)
+  preferredVendorId   String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant           Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preferredVendor  Vendor? @relation("ShopMaterialPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
+  vendorCatalogLinks VendorCatalogItem[]
+  aliases          ShopMaterialItemAlias[]
+
+  @@unique([tenantId, nameNormalized])
+  @@index([tenantId, isActive])
+  @@map("shop_material_items")
+}
+
+model ShopMaterialItemAlias {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  shopMaterialItemId String
+  aliasNormalized    String   @db.VarChar(400)
+  createdAt          DateTime @default(now())
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shopItem ShopMaterialItem @relation(fields: [shopMaterialItemId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, aliasNormalized])
+  @@index([tenantId, shopMaterialItemId])
+  @@map("shop_material_item_aliases")
 }
 
 // Maps alternate spellings ("ij180", "IJ180CV3") to a catalog row.
@@ -922,6 +971,8 @@ model VendorPriceHistory {
   confidence           VendorPriceConfidence
   extractionMethod     VendorPriceExtractionMethod
   dedupeKey            String                     @db.VarChar(64)
+  /// Optional economic date for manual observations; falls back to createdAt when null.
+  effectiveAt          DateTime?
   createdAt            DateTime                   @default(now())
 
   tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)

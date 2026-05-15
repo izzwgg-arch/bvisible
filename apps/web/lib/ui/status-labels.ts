@@ -112,6 +112,8 @@ export function labelVendorPriceExtractionMethod(m: VendorPriceExtractionMethod)
       return 'Subject parse';
     case VendorPriceExtractionMethod.FILENAME_REGEX:
       return 'Filename parse';
+    case VendorPriceExtractionMethod.MANUAL:
+      return 'Manual';
     default:
       return String(m).replace(/_/g, ' ');
   }

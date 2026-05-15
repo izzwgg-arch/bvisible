@@ -4,9 +4,24 @@ export type CatalogLookupMatchKind =
   | 'none'
   | 'exact_name'
   | 'exact_alias'
-  | 'prefix';
+  | 'prefix'
+  | 'shop_item_name'
+  | 'shop_item_alias';
 
 /** Serializable payload for estimate UI (server action → client). */
+export type ManagedItemIntel = {
+  id: string;
+  displayName: string;
+  nameNormalized: string;
+  detailHref: string;
+  matchVia: 'shop_name' | 'shop_alias' | 'linked_catalog';
+  cheapestVendorName: string | null;
+  cheapestPriceCents: number | null;
+  preferredVendorName: string | null;
+  preferredLatestPriceCents: number | null;
+  suggestedUnitCostCents: number | null;
+};
+
 export type VendorCatalogLookupResult = {
   matchKind: CatalogLookupMatchKind;
   matchedCatalogItemIds: readonly string[];
@@ -27,4 +42,5 @@ export type VendorCatalogLookupResult = {
   priceRecentlyIncreasedVsAvg: boolean;
   priceRecentlyIncreasedVsPrev: boolean;
   highVolatility: boolean;
+  managedItem: ManagedItemIntel | null;
 };

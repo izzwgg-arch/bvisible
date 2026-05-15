@@ -9,6 +9,8 @@ describe('mergeOrderedCatalogItemIds', () => {
       prefixNames: [{ id: 'c2', nameNormalized: 'VINYL BLUE' }],
       exactAliasCatalogIds: ['c9'],
       prefixAliasCatalogIds: ['c8'],
+      shopNameExactCatalogRows: [],
+      shopAliasExactCatalogRows: [],
       maxItems: 10,
     });
     expect(r.matchKind).toBe('exact_name');
@@ -22,6 +24,8 @@ describe('mergeOrderedCatalogItemIds', () => {
       prefixNames: [{ id: 'c2', nameNormalized: 'IJ180CV3 WRAP' }],
       exactAliasCatalogIds: ['alias-target'],
       prefixAliasCatalogIds: [],
+      shopNameExactCatalogRows: [],
+      shopAliasExactCatalogRows: [],
       maxItems: 10,
     });
     expect(r.matchKind).toBe('exact_alias');
@@ -38,6 +42,8 @@ describe('mergeOrderedCatalogItemIds', () => {
       ],
       exactAliasCatalogIds: [],
       prefixAliasCatalogIds: ['zid', 'aid'],
+      shopNameExactCatalogRows: [],
+      shopAliasExactCatalogRows: [],
       maxItems: 10,
     });
     expect(r.matchKind).toBe('prefix');
@@ -55,6 +61,8 @@ describe('mergeOrderedCatalogItemIds', () => {
       ],
       exactAliasCatalogIds: [],
       prefixAliasCatalogIds: ['4', '5'],
+      shopNameExactCatalogRows: [],
+      shopAliasExactCatalogRows: [],
       maxItems: 3,
     });
     expect(r.orderedIds).toEqual(['1', '2', '3']);
@@ -67,9 +75,41 @@ describe('mergeOrderedCatalogItemIds', () => {
       prefixNames: [],
       exactAliasCatalogIds: [],
       prefixAliasCatalogIds: [],
+      shopNameExactCatalogRows: [],
+      shopAliasExactCatalogRows: [],
       maxItems: 5,
     });
     expect(r.matchKind).toBe('none');
     expect(r.orderedIds).toEqual([]);
+  });
+
+  it('matches shop item catalog links before prefix vendors', () => {
+    const r = mergeOrderedCatalogItemIds({
+      queryNormalized: 'ACM',
+      exactNames: [],
+      prefixNames: [{ id: 'pre', nameNormalized: 'ACM PANEL' }],
+      exactAliasCatalogIds: [],
+      prefixAliasCatalogIds: [],
+      shopNameExactCatalogRows: [{ id: 'shopv', nameNormalized: 'ACM 4X8 WHITE' }],
+      shopAliasExactCatalogRows: [],
+      maxItems: 10,
+    });
+    expect(r.matchKind).toBe('shop_item_name');
+    expect(r.orderedIds).toEqual(['shopv']);
+  });
+
+  it('uses shop alias-linked catalogs when shop name bucket is empty', () => {
+    const r = mergeOrderedCatalogItemIds({
+      queryNormalized: 'DIBOND',
+      exactNames: [],
+      prefixNames: [],
+      exactAliasCatalogIds: [],
+      prefixAliasCatalogIds: [],
+      shopNameExactCatalogRows: [],
+      shopAliasExactCatalogRows: [{ id: 'v2', nameNormalized: 'ACM 4X8 WHITE' }],
+      maxItems: 10,
+    });
+    expect(r.matchKind).toBe('shop_item_alias');
+    expect(r.orderedIds).toEqual(['v2']);
   });
 });
