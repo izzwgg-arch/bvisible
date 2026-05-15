@@ -5,6 +5,55 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production verification — Items v2 deploy target (`9d10f2d`) — **blocked on Cursor agent**
+
+**Deploy**
+
+- **Status:** Not executed from this AI session. `ssh -o BatchMode=yes deploy@212.56.32.136` failed with `Permission denied (publickey,password)` — this workspace host has no **`cursor_bvisible`** (or equivalent) key for the production **`deploy`** user; enqueue/worker must be run by an operator with SSH access (see `DEPLOYMENT.md`).
+- **Deploy job ID:** *(none — job not enqueued from agent)*
+- **Deployed SHA:** *(pending operator deploy)* — target **`9d10f2daf40d5b0c5506a6b1ed3dd5099f8ae6ef`** (short **`9d10f2d`**)
+- **Migration result:** *(pending)* — expected order: **`20260515120000_shop_material_items`** → **`20260515160000_shop_catalog_item_v2`** via `pnpm --filter @bvisible/db exec prisma migrate deploy` inside `deploy-once.sh`
+- **PM2 / healthcheck:** *(pending)* — success criteria: `startOrReload` OK; `/opt/bvisible/deploy-queue/healthcheck.sh` OK (`{"status":"ok","service":"bvisible-web"}`)
+
+**Operator enqueue (production server, user `deploy`)**
+
+```bash
+cat > /tmp/job-items-v2-9d10f2d.json <<'JSON'
+{
+  "repoUrl":     "https://github.com/izzwgg-arch/bvisible.git",
+  "branch":      "main",
+  "commitHash":  "9d10f2daf40d5b0c5506a6b1ed3dd5099f8ae6ef",
+  "services":    ["web"],
+  "requestedBy": "operator-after-cursor-blocked-ssh"
+}
+JSON
+
+bvisible-deploy /tmp/job-items-v2-9d10f2d.json
+# capture JOB_ID from last line of output
+sudo -u deploy /opt/bvisible/deploy-queue/deploy-worker.sh
+tail -f "/opt/bvisible/deploy-queue/logs/${JOB_ID}.log"
+```
+
+Post-deploy on **`/opt/bvisible/app`**: `pnpm --filter @bvisible/web run verify:vendor-catalog` (expect **48** tests). Optional: `sudo /opt/bvisible/deploy-queue/db-verify.sh` should show latest migration **`20260515160000_shop_catalog_item_v2`**.
+
+**Tests (this session — developer workstation)**
+
+- **`pnpm --filter @bvisible/web run verify:vendor-catalog`:** **48/48 pass** (vitest `lib/vendor-pricing` + `lib/shop-material`).
+
+**Browser verification (`admin@bvisible.local`)**
+
+- **Not run** from this session — requires operator login after deploy. Spot-check: `/items`, `/items/new`, MATERIAL/LABOR/MACHINE flows, detail vendor append-only history + preferred vendor, estimate **Catalog items → Apply** only (no mutation while typing), grid **Enter / Shift+Enter / Tab**, vendor intel rail + **Use this cost** only on click.
+
+**Safety / regressions**
+
+- **Not re-validated on production** without deploy. Items v2 diff does not touch OCR ingest workers, email tick, reconciliation UI, or mobile upload code paths by file scope; **`/api/health`** should be exercised via **`healthcheck.sh`** after deploy.
+
+**Remaining caveats**
+
+- Acceptance (**Items v2 usable in production**, picker Apply-only, vendor append-only) is **pending** until operator completes SSH deploy + browser checklist above; append this entry’s **Deploy job ID**, migration line from **`db-verify`**, PM2/health lines, and browser notes when done.
+
+---
+
 ## 2026-05-15 — Items v2 estimating catalog + estimate picker (`ShopCatalogUnit`)
 
 **Scope**
