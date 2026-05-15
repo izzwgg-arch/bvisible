@@ -280,6 +280,7 @@ model Tenant {
   spendAlerts          SpendAlert[]
   shopMaterialItems    ShopMaterialItem[]
   shopMaterialItemAliases ShopMaterialItemAlias[]
+  estimateQuoteLinks EstimateQuoteLink[]
 
   @@map("tenants")
 }
@@ -319,6 +320,7 @@ model User {
   poReconciliationLinesResolved   POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
   spendAlertsDismissed            SpendAlert[]             @relation("SpendAlertDismissedBy")
   spendAlertsResolvedSpend        SpendAlert[]             @relation("SpendAlertResolvedBy")
+  estimateQuoteLinksCreated       EstimateQuoteLink[]      @relation("QuoteLinkCreator")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -530,6 +532,7 @@ model Estimate {
   createdBy      User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
   lines          EstimateLineItem[]
   purchaseOrders PurchaseOrder[]
+  quoteLinks     EstimateQuoteLink[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -570,6 +573,27 @@ model EstimateLineItem {
   @@index([tenantId, estimateId, sortOrder])
   @@index([estimateId, sortOrder])
   @@map("estimate_line_items")
+}
+
+/// Public share token for customer-facing estimate quotes. Raw token is shown
+/// once at issuance; only SHA-256 hex is stored (`tokenHash`).
+model EstimateQuoteLink {
+  id           String    @id @default(cuid())
+  tenantId     String
+  estimateId   String
+  tokenHash    String    @unique
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  lastViewedAt DateTime?
+  createdById  String
+  createdAt    DateTime  @default(now())
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate  Estimate  @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("QuoteLinkCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, estimateId])
+  @@map("estimate_quote_links")
 }
 
 // Tenant-scoped vendor reference. Foundation only — no contacts, no

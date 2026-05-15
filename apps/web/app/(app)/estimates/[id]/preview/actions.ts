@@ -6,6 +6,7 @@ import { writeAuditLog } from '@/lib/auth/audit';
 import { buildAppAbsoluteUrl } from '@/lib/auth/app-origin';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { renderEstimateQuoteEmail } from '@/lib/emails/estimate-quote';
+import { issueEstimateQuoteLink } from '@/lib/estimate/quote-link-issue';
 import { statusAfterSuccessfulCustomerSend } from '@/lib/estimate/send-estimate-email-status';
 import { verifyTransport, sendMail } from '@/lib/mailer';
 import { readRequestContext } from '@/lib/request-context';
@@ -84,12 +85,21 @@ export async function sendEstimateEmailAction(
     };
   }
 
-  const previewUrl = await buildAppAbsoluteUrl(`/estimates/${estimate.id}/preview`);
+  const { rawToken } = await issueEstimateQuoteLink({
+    prisma,
+    tenantId: me.tenantId,
+    estimateId: estimate.id,
+    createdById: me.id,
+    expiresAt: null,
+  });
+
+  const quoteUrl = await buildAppAbsoluteUrl(`/quote/${encodeURIComponent(rawToken)}`);
+
   const mail = renderEstimateQuoteEmail({
     companyName: estimate.tenant.name,
     estimateNumber: estimate.number,
     title: estimate.title,
-    previewUrl,
+    quoteUrl,
     contactName: estimate.client.contactName,
   });
 
@@ -131,6 +141,7 @@ export async function sendEstimateEmailAction(
       messageId: send.result.messageId,
       statusBefore: estimate.status,
       statusAfter: nextStatus ?? estimate.status,
+      customerQuoteUrlIssued: true,
     },
   });
 

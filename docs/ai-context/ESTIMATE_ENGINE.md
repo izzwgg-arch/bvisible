@@ -24,16 +24,19 @@ It hydrates from RSC bootstrap data, runs `computeEstimate(...)` synchronously
 on every render, and on Save submits the entire grid to `saveEstimateAction`
 which re-runs the same engine on the server inside one Prisma transaction.
 
-**Customer quote preview + send** — `/estimates/[id]/preview` serves an authenticated,
-tenant-scoped **customer-facing** layout (company + bill-to + lines + total + notes/terms).
-Line **sell** amounts are **allocated** from `finalPriceCents` proportionally to cached
-`computedCostCents` (`allocateLineSellCents` / `buildCustomerQuoteLines`); **unit costs,
-multipliers, and internal breakdowns are never rendered**. Browser print uses `@media print`
-+ `print:hidden` app chrome. **`sendEstimateEmailAction`** (`preview/actions.ts`) verifies SMTP,
-sends a mail with an absolute link to the preview (still **login-required** — no public token
-URLs), writes **`estimate_sent_to_client`**, and sets **`DRAFT → SENT` only after successful
-`sendMail`**; failures leave status unchanged. **`FINALIZED`** blocks this send path; **`SENT`**
-may be **resent** without forcing another status transition.
+**Customer quote preview + send** — **`/estimates/[id]/preview`** remains an authenticated,
+tenant-scoped **staff** quote (company + bill-to + lines + total + notes/terms): same allocated-sell
+presentation as the public page; **unit costs, multipliers, and internal breakdowns are never rendered**.
+**`/quote/[token]`** is the **public, read-only** customer route (high-entropy token, SHA-256 hash only
+in `estimate_quote_links`; revoked/expired tokens show a generic error). Browser print uses `@media print`
++ root layout. **`sendEstimateEmailAction`** (`preview/actions.ts`) verifies SMTP, **issues/rotates** a
+public quote link for that estimate (invalidating prior active links), sends mail with the **`/quote/...`**
+absolute URL, writes **`estimate_sent_to_client`**, and sets **`DRAFT → SENT` only after successful
+`sendMail`**; failures leave status unchanged. **`FINALIZED`** blocks this send path; **`SENT`** may be
+**resent** without forcing another status transition (each send rotates the public URL).
+
+Estimate detail includes **Customer quote link** (`EstimateQuoteLinkPanel`): generate/regenerate (optional
+expiry), revoke, copy URL immediately after rotation (plaintext URL is not stored server-side).
 
 **Vendor pricing intelligence (read-only)** — material rows call
 `lookupVendorCatalogIntelligence` (`apps/web/lib/vendor-pricing/catalog-lookup.ts`)

@@ -24,6 +24,7 @@ export type AuditAction =
   | 'estimate_finalized'
   | 'estimate_unfinalized'
   | 'estimate_sent_to_client'
+  | 'estimate_quote_viewed_public'
   | 'vendor_created'
   | 'po_created'
   | 'po_created_from_estimate'

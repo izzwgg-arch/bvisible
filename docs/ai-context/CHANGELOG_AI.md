@@ -5,6 +5,36 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Public estimate quote links (`/quote/[token]`)
+
+**Scope**
+
+- **Schema:** `EstimateQuoteLink` / `estimate_quote_links` — `tenantId`, `estimateId`, `tokenHash` (unique SHA-256 hex), optional `expiresAt`, `revokedAt`, `lastViewedAt`, `createdById`, `createdAt`.
+- **Public route:** `app/quote/[token]/page.tsx` — read-only `QuoteDocument`; invalid/revoked/expired → generic error; `estimate_quote_viewed_public` audit + `lastViewedAt` on success.
+- **Crypto/helpers:** `quote-link-crypto.ts`, `quote-link-issue.ts`, `load-public-quote.ts`; middleware adds cache + robots + referrer headers for `/quote/*`.
+- **Staff:** `/estimates/[id]/preview` unchanged for authenticated preview; email + panel use public URL.
+- **Email:** `sendEstimateEmailAction` rotates link then sends `/quote/...` URL (`estimate-quote.ts` copy updated).
+- **UI:** `EstimateQuoteLinkPanel` on estimate detail — generate/regenerate, revoke, copy after rotation, expiry + last viewed.
+
+**Files**
+
+- `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/20260520103000_estimate_quote_links/migration.sql`, `packages/db/src/index.ts`
+- `apps/web/middleware.ts`, `apps/web/app/quote/[token]/*`, `apps/web/lib/estimate/{quote-link-crypto,quote-link-issue,load-public-quote,estimate-quote-link.test}.ts`
+- `apps/web/app/(app)/estimates/[id]/{page.tsx,estimate-quote-link-actions.ts}`, `apps/web/components/estimate/estimate-quote-link-panel.tsx`
+- `apps/web/app/(app)/estimates/[id]/preview/actions.ts`, `apps/web/lib/emails/estimate-quote.ts`, `apps/web/lib/auth/audit.ts`, `apps/web/lib/validators.ts`
+- `docs/ai-context/{ESTIMATE_ENGINE.md,SECURITY_RULES.md,API_STRUCTURE.md,UI_SYSTEM.md,CHANGELOG_AI.md}`, `apps/web/package.json`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-quote`; `pnpm --filter @bvisible/web run build`
+- Apply DB migration before deploy (`prisma migrate deploy`).
+
+**Gaps**
+
+- Copy URL requires a fresh generate/regenerate in-session (cannot reconstruct raw token from DB).
+
+---
+
 ## 2026-05-15 — Customer estimate preview + SMTP send (`DRAFT → SENT`)
 
 **Scope**

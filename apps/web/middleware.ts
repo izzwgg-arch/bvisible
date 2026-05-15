@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 // Public routes (no auth required):
 //   /             -> root redirector (server component decides)
 //   /login        /forgot      /reset/:token       /invite/:token
+//   /quote/[token] -> read-only customer estimate quote (tokenized)
 //   /api/health   /_next/...   /favicon...         /static assets
 
 const SESSION_COOKIE = 'bv_session';
@@ -46,6 +47,15 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
+function withPublicQuoteHeaders(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'private, no-store, max-age=0');
+  res.headers.set('Pragma', 'no-cache');
+  res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  res.headers.set('Referrer-Policy', 'no-referrer');
+  res.headers.set('X-Content-Type-Options', 'nosniff');
+  return res;
+}
+
 export function middleware(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
 
@@ -65,6 +75,10 @@ export function middleware(req: NextRequest): NextResponse {
   // The root path is handled by app/page.tsx, which decides redirect
   // direction based on session presence. Don't gate it here.
   if (pathname === '/') return NextResponse.next();
+
+  if (pathname === '/quote' || pathname.startsWith('/quote/')) {
+    return withPublicQuoteHeaders(NextResponse.next());
+  }
 
   if (isPublic(pathname)) return NextResponse.next();
 

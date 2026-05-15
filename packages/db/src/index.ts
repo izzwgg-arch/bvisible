@@ -54,4 +54,5 @@ export type {
   SpendAlert,
   ShopMaterialItem,
   ShopMaterialItemAlias,
+  EstimateQuoteLink,
 } from '@prisma/client';

@@ -39,14 +39,17 @@
 
 ## Customer estimate quotes
 
-- **`/estimates/[id]/preview`** requires the same **authenticated tenant session** as the editor.
-  There is **no unauthenticated public quote URL** in this phase — outbound email links to the
-  preview still require login (acceptable for internal estimator→client hand-off when clients get
-  workspace access later; tokenized public quotes remain future work).
-- The HTML omits **unit costs**, **multipliers**, **subtotal cost breakdown**, and **vendor/OCR**
-  intelligence — only customer-safe fields + **allocated sell** line amounts derived server-side.
-- **`sendEstimateEmailAction`** never logs SMTP passwords; audit metadata may include recipient
-  email + SMTP `messageId` (same posture as other mail-triggered audits).
+- **`/estimates/[id]/preview`** — authenticated tenant session (staff/internal). Same customer-safe
+  presentation as the public quote (allocated sell per line; **no** unit costs, multipliers, vendor/OCR
+  intelligence).
+- **`/quote/[token]`** — **fully public**, read-only quote for real customers. Tokens are high-entropy;
+  the database stores **SHA-256 hashes only** (`estimate_quote_links`). Invalid, revoked, or expired
+  tokens return a **generic** error (no enumeration, no tenant leakage). Middleware sets **`Cache-Control:
+  private, no-store`**, **`X-Robots-Tag: noindex`**, and related safe headers. Successful loads bump
+  `lastViewedAt` and may write **`estimate_quote_viewed_public`** (anonymous viewer).
+- **`sendEstimateEmailAction`** sends the **public** `/quote/...` URL (link is rotated on each send).
+  Never logs SMTP passwords; audit metadata may include recipient email + SMTP `messageId`. Never log
+  raw quote tokens.
 
 ## Auth posture
 

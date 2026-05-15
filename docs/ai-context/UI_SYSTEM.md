@@ -18,7 +18,8 @@ The look, feel, and behavior of the web app.
   forgot, reset, invite) and `app/(app)/*` for authenticated pages
   (dashboard, settings, admin/users, admin/tenants as **Company settings**). Edge middleware
   (`apps/web/middleware.ts`) gates the protected paths with a cookie
-  presence check; the page RSC re-validates against the DB via
+  presence check; **`/quote/*`** is allowed without a session and receives no-store / noindex headers.
+  Authenticated routes rely on the page RSC re-validating against the DB via
   `requireUser()` / `requireUserForAppShell()` for chrome that needs a resolved **company** label.
 - **App shell** at `apps/web/components/app-shell.tsx` — ~268px sidebar with
   soft shadow, grouped nav (**Workspace** vs **Administration**) via
@@ -95,6 +96,9 @@ The look, feel, and behavior of the web app.
   - **Customer quote** — estimate detail header links to **`/estimates/[id]/preview`**
     (print/PDF via browser; send-to-customer anchor). Preview shows allocated sell
     lines only; vendor intel / editor totals rail stay on the editor route.
+  - **Public customer link** — panel above the editor (`components/estimate/estimate-quote-link-panel.tsx`)
+    manages **`/quote/[token]`** shares: generate/regenerate (optional expiry), revoke, copy URL immediately
+    after a rotation (full URL is only returned at issuance — DB holds SHA-256 hash only).
 - **Reusable grid keyboard helper** at
   `apps/web/lib/keyboard/grid-nav.ts` (`makeGridKeyHandler`). Any grid
   attaches a single `onKeyDown` to its root and tags cells with

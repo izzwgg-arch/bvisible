@@ -4,6 +4,7 @@ import { prisma, Role } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-rail';
+import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { EstimateEditor, type EditorBootstrap } from './editor';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 
@@ -18,7 +19,9 @@ export default async function EstimateDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [estimate, machines, clients, linkedPos, vendors, shopCatalog] = await Promise.all([
+  const now = new Date();
+
+  const [estimate, machines, clients, linkedPos, vendors, shopCatalog, activeQuoteLink] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -78,6 +81,21 @@ export default async function EstimateDetailPage({
       take: 500,
     }),
     loadEstimateCatalogPickerRows(prisma, me.tenantId),
+    prisma.estimateQuoteLink.findFirst({
+      where: {
+        estimateId: id,
+        tenantId: me.tenantId,
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        expiresAt: true,
+        lastViewedAt: true,
+        createdAt: true,
+      },
+    }),
   ]);
 
   if (!estimate) {
@@ -163,6 +181,21 @@ export default async function EstimateDetailPage({
           vendorName: p.vendor?.name ?? null,
         }))}
       />
+      <div className="mx-auto mb-6 max-w-[1200px] px-4 lg:px-6">
+        <EstimateQuoteLinkPanel
+          estimateId={estimate.id}
+          activeLink={
+            activeQuoteLink
+              ? {
+                  id: activeQuoteLink.id,
+                  expiresAtIso: activeQuoteLink.expiresAt?.toISOString() ?? null,
+                  lastViewedAtIso: activeQuoteLink.lastViewedAt?.toISOString() ?? null,
+                  createdAtIso: activeQuoteLink.createdAt.toISOString(),
+                }
+              : null
+          }
+        />
+      </div>
       <EstimateEditor bootstrap={bootstrap} />
     </>
   );
