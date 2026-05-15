@@ -5,6 +5,48 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production deploy verification — Estimate → Invoice (`7fbe72a`)
+
+**Production deploy**
+
+- **Deploy job ID:** *(none from agent)* — `ssh -o BatchMode=yes deploy@212.56.32.136` → **`Permission denied (publickey,password)`** (this Cursor workspace has no deploy key). Operator must enqueue on the server (see payload below) and capture the **`JOB_ID`** emitted as the **final line** of `/opt/bvisible/deploy-queue/enqueue-deploy.sh`.
+- **Target commit:** **`7fbe72a17678b9b6e9a6b71f5035c3f46af28d1a`**
+- **Pre-deploy public probe (`curl.exe` from workspace):** `GET https://vmi3270817.contaboserver.net/api/health` → **`{"status":"ok","service":"bvisible-web","commit":"86ea768dabaf5be3a3ee937d51bdec885fa5688f"}`** — production is **still not** on **`7fbe72a`** until the queue finishes successfully.
+- **`prisma migrate deploy`:** Expected to apply **`20260521120000_invoices_from_estimates`** when `deploy-once.sh` runs after checkout — *(migration log line capture pending operator)*.
+- **PM2 reload / loopback healthcheck:** *(pending on server)* — success criteria: job lands in **`done/`**, log shows build + `startOrReload` (or equivalent), **`/opt/bvisible/deploy-queue/healthcheck.sh`** exits **0**.
+
+**Enqueue payload (on production host; job JSON file writable by `deploy`)**
+
+```json
+{
+  "repoUrl": "https://github.com/izzwgg-arch/bvisible.git",
+  "branch": "main",
+  "commitHash": "7fbe72a17678b9b6e9a6b71f5035c3f46af28d1a",
+  "services": ["web"],
+  "requestedBy": "operator-estimate-invoice-deploy-verify"
+}
+```
+
+Then (typical): `/opt/bvisible/deploy-queue/enqueue-deploy.sh /path/to/job.json` → note **`JOB_ID`**; run **`/opt/bvisible/deploy-queue/deploy-worker.sh`** as **`deploy`** (or wait for systemd timer); **`tail -f /opt/bvisible/deploy-queue/logs/${JOB_ID}.log`**.
+
+**Post-deploy verification (operator)**
+
+- **Public health:** `GET https://vmi3270817.contaboserver.net/api/health` → **`commit` must equal `7fbe72a17678b9b6e9a6b71f5035c3f46af28d1a`** (full SHA).
+- **On `/opt/bvisible/app`:** `pnpm --filter @bvisible/web run verify:estimate-invoice-flow` → expect **14/14**; `pnpm --filter @bvisible/web run typecheck` → **clean**.
+- **Browser (`admin@bvisible.local`):** APPROVED estimate → **Create invoice** → redirect **`/invoices/[id]`** (`INV-…`), totals vs estimate sell, linked invoice on estimate, duplicate blocked; invoice detail origin card + **Mark paid** + dashboard invoice tiles; regressions: estimate preview, public **`/quote/[token]`**, PO routes — *(not executed from agent session)*.
+
+**Workspace verification (agent, checkout `7fbe72a`)**
+
+- `pnpm --filter @bvisible/web run verify:estimate-invoice-flow` → **14/14 pass**.
+- `pnpm --filter @bvisible/web run typecheck` → **pass**.
+
+**Caveats**
+
+- Production **acceptance is incomplete** until health **`commit`** matches **`7fbe72a`**, migration output confirms **`20260521120000_invoices_from_estimates`**, and operator-signed browser checks complete.
+- Invoice conversion remains unusable against prod DB until that migration is applied (schema/enums/tables).
+
+---
+
 ## 2026-05-15 — Estimate → Invoice operational visibility
 
 **Scope**
