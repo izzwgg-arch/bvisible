@@ -28,10 +28,21 @@ records what changed, the files touched, the risks, and the verification.
 
 - `pnpm --filter @bvisible/web run build` (pass).
 
+**Production deploy — operational workflow UX (2026-05-15)**
+
+- **Deploy job ID:** `20260515T014723-88e720`
+- **Deployed SHA:** `512875e89e5f311e199fa494893126d61dd3244a` (same as short ref `512875e`).
+- **Migration:** `prisma migrate deploy` — **no pending migrations** (11 applied; latest `20260519103000_vendor_catalog_lookup_indexes`).
+- **PM2:** `bvisible-web` **reload OK** (`startOrReload`), process **online** after deploy.
+- **Healthcheck (deploy box):** `/opt/bvisible/deploy-queue/healthcheck.sh` passed — `{"status":"ok","service":"bvisible-web"}` from `127.0.0.1:3000`.
+- **Public health:** `https://vmi3270817.contaboserver.net/api/health` returns `{"status":"ok","service":"bvisible-web"}` (verified post-deploy via curl).
+- **Logged-in browser verification (`admin@bvisible.local`):** **not run in this session** — no password available here to exercise `/dashboard`, nav, workflow rails, or console after authentication.
+- **Visual / UX spot-check:** deferred to operator walkthrough; recommend confirming onboarding card, recent lists, operational attention strip, and estimate/PO rails against production data.
+
 **Remaining gaps**
 
-- Deploy and logged-in browser smoke not run in this session.
 - Attention feed rows for OCR/inbox are summary cards when counts exist (not per-document lists).
+- Operator should complete a full authenticated smoke (dashboard + admin nav + one estimate/PO detail) and note any rough edges.
 
 ---
 
