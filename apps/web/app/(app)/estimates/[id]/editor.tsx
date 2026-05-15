@@ -18,6 +18,7 @@ import { LineGrid } from './line-grid';
 import { TotalsPanel } from './totals-panel';
 import { VendorCatalogIntelPanel } from './vendor-catalog-intel-panel';
 import { CatalogItemPicker } from './catalog-item-picker';
+import { PricingHelperPanel } from './pricing-helper-panel';
 import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import {
   defaultDescription,
@@ -416,6 +417,7 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
           lines={state.lines}
           dispatch={dispatch}
         />
+        <PricingHelperPanel activeLineId={catalogLineId} lines={state.lines} dispatch={dispatch} />
         <LineGrid
           lines={state.lines}
           machines={bootstrap.machines}

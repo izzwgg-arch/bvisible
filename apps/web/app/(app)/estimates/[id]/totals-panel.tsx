@@ -184,6 +184,9 @@ export function TotalsPanel(props: TotalsPanelProps) {
               Override active (default ×3.000). Logged in audit trail on save.
             </p>
           ) : null}
+          <p className="text-[11px] leading-snug text-[var(--color-bv-muted)]">
+            Final customer sell is raw cost × this multiplier (default ×3). Item-catalog markup is guidance for the catalog picker only — it does not replace this estimate-wide rule.
+          </p>
         </div>
 
         <div className="mt-4 rounded-[8px] border border-[var(--color-bv-accent)]/30 bg-[var(--color-bv-accent)]/5 p-3">

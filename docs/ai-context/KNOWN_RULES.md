@@ -22,10 +22,7 @@ it.
   `saveEstimateAction`. See `ESTIMATE_ENGINE.md`.
 - **R-EST-02** Square footage uses inches: `sqft = width_in × height_in / 144`.
   Helper: `packages/pricing/src/sqft.ts`.
-- **R-EST-03** Banners price at $4/sf, drop to $3/sf for the area over 200 sf,
-  $45 minimum, $0.50 per grommet. Helper: `packages/pricing/src/banner.ts`.
-  (Editor calculator UI to compose a banner line lands in the next phase;
-  the engine helper is shipped now so other surfaces can use it.)
+- **R-EST-03** Banners: $4/sf first 200 sf, $3/sf above 200 sf; **$45 minimum applies to print-area material only**; grommets **$0.50 each added after** that minimum. Helper: `packages/pricing/src/banner.ts`. Staff **Pricing helper** applies banner totals as a Material line on explicit **Apply** (`pricing-helper-panel.tsx`).
 - **R-EST-04** An estimate cannot be **finalized** until at least one of its
   linked, non-deleted `PurchaseOrder`s has a non-null `qboPoNumber`. Enforced
   server-side by `finalizeEstimateAction`
@@ -36,6 +33,8 @@ it.
   guarantee no other code path can bypass the gate. Once an estimate is
   `FINALIZED`, status changes are blocked except via `unfinalizeEstimateAction`
   (ADMIN+). `EstimateStatus` enum: `DRAFT / SENT / APPROVED / REJECTED / FINALIZED`.
+- **R-EST-05** Sheet-good billing for nominal **32 / 50 sq ft** sheets: under **75%** of one sheet → bill **one** sheet; otherwise **`ceil(totalSqft / sheetSqft)`**. Helper: `packages/pricing/src/sheet-goods.ts`.
+- **R-EST-06** Roll coverage: **`width(in) × length(ft) ÷ 12`** sq ft; optional minimum billable fraction via `billableSqftRollMinimum` (`packages/pricing/src/roll-material.ts`).
 
 ## Purchase Orders
 

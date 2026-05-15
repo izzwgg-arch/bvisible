@@ -77,6 +77,9 @@ export function CreateShopMaterialItemForm({
               </option>
             ))}
           </select>
+          <span className="text-[11px] leading-snug text-[var(--color-bv-muted)]">
+            SHEET / SQ FT / ROLL pair with the estimate <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> for yardage. LABOR / INSTALL default to hourly-style lines ($50 / $150 in the editor).
+          </span>
         </label>
       </div>
 
@@ -128,11 +131,14 @@ export function CreateShopMaterialItemForm({
           </span>
           <input
             name="markupPercent"
-            defaultValue="0"
-            placeholder="30"
+            defaultValue="200"
+            placeholder="200"
             inputMode="decimal"
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
           />
+          <span className="text-[11px] leading-snug text-[var(--color-bv-muted)]">
+            Percent added above unit cost for catalog sell hints. Use <strong className="text-[var(--color-bv-text)]">200</strong> for a ×3 sell hint vs cost (same spirit as the estimate&apos;s default ×3 multiplier). Use <strong className="text-[var(--color-bv-text)]">30</strong> for roughly ×1.3.
+          </span>
         </label>
       </div>
 

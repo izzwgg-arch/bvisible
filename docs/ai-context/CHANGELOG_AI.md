@@ -5,6 +5,33 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Estimate Pricing helper + Phase 1 yardage calculators
+
+**Added**
+
+- **`packages/pricing`**: `computeTotalSqft`, `computePieceAndTotalSqftFromInches` (`sqft.ts`); **`sheet-goods.ts`** (75% / ceil sheet rules); **`roll-material.ts`** (roll sq ft, used fraction, minimum bill fraction); **`banner.ts`** aligned with handoff **MAX(print material, $45) + grommets**.
+- **`pricing-helper-panel.tsx`** — collapsible estimate helper (sq ft, sheet, roll, banner) with Apply-only line patches; wired in `editor.tsx`.
+- **`pricing-calculators.test.ts`** included in **`verify:estimate-pricing`**.
+
+**UX / defaults**
+
+- Totals panel clarifies **raw cost × multiplier** vs catalog markup.
+- New Item form: default markup **200%** (×3 sell hint); unit dropdown helper links SHEET/SQ FT/ROLL to Pricing helper.
+
+**Docs**
+
+- `ESTIMATE_ENGINE.md`, `KNOWN_RULES.md` (**R-EST-03** update, **R-EST-05**, **R-EST-06**), `UI_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `CHANGELOG_AI.md`.
+
+**Risk**
+
+- Medium — pricing semantics change for **banner minimum + grommets** (material-only minimum).
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-pricing`, `verify:vendor-catalog`, `verify:estimate-quote`, `typecheck`.
+
+---
+
 ## 2026-05-14 — Estimate catalog vendor aggregation + pricing docs/tests
 
 **Changed**

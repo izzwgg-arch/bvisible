@@ -4,9 +4,8 @@
 //   $0.50 / grommet
 //   $45.00 minimum charge
 //
-// Returns integer cents. The editor uses this to fill in qty + unit
-// cost for a single MATERIAL line via the "Banner calculator" button;
-// it does not store anything banner-specific on the line itself.
+// Returns integer cents. The estimate Pricing helper applies results as
+// one MATERIAL line (qty 1 × computed unit cost) only when the user clicks Apply.
 
 import { roundCents } from './money';
 
@@ -45,9 +44,11 @@ export function bannerPrice(input: BannerInput): BannerOutput {
   const overCents = roundCents(overSqft * RATE_OVER_PER_SQFT_CENTS);
   const grommetCents = grommets * GROMMET_CENTS;
 
-  const computed = baseCents + overCents + grommetCents;
-  const appliedMinimum = computed < MINIMUM_CENTS;
-  const cents = appliedMinimum ? MINIMUM_CENTS : computed;
+  // Handoff: MAX(area × tiered rate, $45) + grommets — minimum applies to print area only.
+  const computedMaterial = baseCents + overCents;
+  const appliedMinimum = computedMaterial < MINIMUM_CENTS;
+  const materialCents = appliedMinimum ? MINIMUM_CENTS : computedMaterial;
+  const cents = materialCents + grommetCents;
 
   return { cents, baseCents, overCents, grommetCents, appliedMinimum };
 }
