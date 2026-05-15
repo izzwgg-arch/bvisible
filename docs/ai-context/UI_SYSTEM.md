@@ -92,6 +92,9 @@ The look, feel, and behavior of the web app.
     note appears when the multiplier deviates from the default 3.000×.
   - Save button is the primary CTA in the totals panel, disabled until
     the editor is dirty. `Cmd/Ctrl+S` anywhere inside the editor saves.
+  - **Customer quote** — estimate detail header links to **`/estimates/[id]/preview`**
+    (print/PDF via browser; send-to-customer anchor). Preview shows allocated sell
+    lines only; vendor intel / editor totals rail stay on the editor route.
 - **Reusable grid keyboard helper** at
   `apps/web/lib/keyboard/grid-nav.ts` (`makeGridKeyHandler`). Any grid
   attaches a single `onKeyDown` to its root and tags cells with

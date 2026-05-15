@@ -124,12 +124,32 @@ export default async function EstimateDetailPage({
           estimate.createdBy.name ?? estimate.createdBy.email
         }`}
         actions={
-          <Link
-            href="/estimates"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-          >
-            Back to estimates
-          </Link>
+          <>
+            <Link
+              href={`/estimates/${estimate.id}/preview`}
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Preview quote
+            </Link>
+            <Link
+              href={`/estimates/${estimate.id}/preview`}
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Print / PDF
+            </Link>
+            <Link
+              href={`/estimates/${estimate.id}/preview#customer-send`}
+              className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
+            >
+              Send to customer
+            </Link>
+            <Link
+              href="/estimates"
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Back to estimates
+            </Link>
+          </>
         }
       />
       <EstimateWorkflowRail

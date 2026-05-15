@@ -75,8 +75,8 @@ export function AppShell({
   const workspaceTitle = workspaceHeaderLabel(user.role, user.tenant?.name ?? null);
 
   return (
-    <div className="grid min-h-screen grid-cols-[268px_1fr] bg-[var(--color-bv-bg)]">
-      <aside className="flex flex-col border-r border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-6 shadow-[2px_0_24px_rgba(15,23,42,0.04)]">
+    <div className="grid min-h-screen grid-cols-[268px_1fr] bg-[var(--color-bv-bg)] print:block">
+      <aside className="flex flex-col border-r border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-6 shadow-[2px_0_24px_rgba(15,23,42,0.04)] print:hidden">
         <Brand className="px-2 pb-8" />
         <NavLinks sections={navSections} />
         <UserMenu
@@ -88,7 +88,7 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-col">
-        <header className="flex items-center justify-between border-b border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]/95 px-8 py-4 backdrop-blur-sm">
+        <header className="flex items-center justify-between border-b border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]/95 px-8 py-4 backdrop-blur-sm print:hidden">
           <div className="flex flex-col gap-0.5">
             <span className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
               B Visible
@@ -96,7 +96,7 @@ export function AppShell({
             <span className="text-[12.5px] text-[var(--color-bv-muted)]">{workspaceTitle}</span>
           </div>
         </header>
-        <main className="flex-1 px-8 py-8">{children}</main>
+        <main className="flex-1 px-8 py-8 print:px-0 print:py-0">{children}</main>
       </div>
     </div>
   );

@@ -5,6 +5,30 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Customer estimate preview + SMTP send (`DRAFT → SENT`)
+
+**Scope**
+
+- **Route:** `/estimates/[id]/preview` — tenant-scoped quote layout; print hides app chrome (`print:hidden` on `AppShell`, print body background in `globals.css`).
+- **Pricing presentation:** `allocateLineSellCents` + `buildCustomerQuoteLines` allocate `finalPriceCents` across lines proportionally to cached `computedCostCents` without rendering internal unit costs.
+- **Email:** `sendEstimateEmailAction` — `verifyTransport` + `sendMail`, preview URL from `buildAppAbsoluteUrl`. **`DRAFT → SENT` only after SMTP success**; **`FINALIZED`** blocked; **resent from `SENT`** leaves status. Audit **`estimate_sent_to_client`**.
+- **UI:** Estimate detail header: Preview quote, Print/PDF, Send to customer, Back.
+
+**Files**
+
+- `apps/web/app/(app)/estimates/[id]/preview/*`, `apps/web/lib/estimate/*`, `apps/web/lib/auth/app-origin.ts`, `apps/web/lib/emails/estimate-quote.ts`, `apps/web/lib/auth/audit.ts`, `apps/web/lib/validators.ts`, `apps/web/app/(app)/estimates/[id]/page.tsx`, `apps/web/components/app-shell.tsx`, `apps/web/app/globals.css`, `apps/web/package.json`
+- `docs/ai-context/{ESTIMATE_ENGINE.md,API_STRUCTURE.md,UI_SYSTEM.md,SECURITY_RULES.md,CHANGELOG_AI.md}`
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-quote` (7 tests); `pnpm run build` in `apps/web`.
+
+**Gaps**
+
+- No anonymous/token **public** quote URLs yet; email link expects authenticated workspace access.
+
+---
+
 ## 2026-05-15 — Production repair — deploy-queue drift + Items v2 runtime (`3eb4a27`)
 
 **Pre-fix**

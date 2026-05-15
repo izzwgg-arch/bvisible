@@ -37,6 +37,17 @@
    structural ids — never raw OCR dumps (`SECURITY_RULES.md` posture mirrors
    truncated OCR previews elsewhere).
 
+## Customer estimate quotes
+
+- **`/estimates/[id]/preview`** requires the same **authenticated tenant session** as the editor.
+  There is **no unauthenticated public quote URL** in this phase — outbound email links to the
+  preview still require login (acceptable for internal estimator→client hand-off when clients get
+  workspace access later; tokenized public quotes remain future work).
+- The HTML omits **unit costs**, **multipliers**, **subtotal cost breakdown**, and **vendor/OCR**
+  intelligence — only customer-safe fields + **allocated sell** line amounts derived server-side.
+- **`sendEstimateEmailAction`** never logs SMTP passwords; audit metadata may include recipient
+  email + SMTP `messageId` (same posture as other mail-triggered audits).
+
 ## Auth posture
 
 - **Argon2id** for password hashes via `@node-rs/argon2` (memoryCost

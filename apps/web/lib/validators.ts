@@ -211,6 +211,10 @@ export const finalizeEstimateSchema = z.object({
   estimateId: z.string().min(1).max(60),
 });
 
+export const sendEstimateEmailSchema = z.object({
+  estimateId: z.string().min(1).max(60),
+});
+
 // ---------------------------------------------------------------------
 // Vendor + purchase order foundation
 // ---------------------------------------------------------------------
@@ -504,6 +508,7 @@ export type EstimateLineInput = z.infer<typeof estimateLineSchema>;
 export type SaveEstimateInput = z.infer<typeof saveEstimateSchema>;
 export type UpdateEstimateStatusInput = z.infer<typeof updateEstimateStatusSchema>;
 export type FinalizeEstimateInput = z.infer<typeof finalizeEstimateSchema>;
+export type SendEstimateEmailInput = z.infer<typeof sendEstimateEmailSchema>;
 export type CreateVendorInput = z.infer<typeof createVendorSchema>;
 export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>;
 export type CreatePoFromEstimateInput = z.infer<typeof createPoFromEstimateSchema>;
