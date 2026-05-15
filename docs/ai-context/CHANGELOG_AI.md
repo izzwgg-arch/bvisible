@@ -5,9 +5,79 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production catch-up: stale **86ea768** → **577eede** (invoice migration unblock)
+
+**Phase 0 (pre-deploy)**
+
+- Loopback **`GET http://127.0.0.1:3000/api/health`** → **`commit: 86ea768dabaf5be3a3ee937d51bdec885fa5688f`**.
+- **`/opt/bvisible/app`** git **`HEAD`** (`sudo -u deploy git --git-dir=/opt/bvisible/app/.git rev-parse HEAD`) → **`86ea768dabaf5be3a3ee937d51bdec885fa5688f`**.
+- **Note:** `sudo -u deploy bash -lc 'cd /opt/bvisible/app && git …'` can mis-resolve cwd on this host; prefer `git --git-dir=/opt/bvisible/app/.git` or `bash -c` without `-l` in automation.
+
+**Target vs shipped**
+
+- **Requested tip:** **`fe2b1d7184d80cd969574f33c54f82df9ccadfff`** — at enqueue time **`origin/main`** matched this SHA.
+- **Blocker:** migration **`20260521120000_invoices_from_estimates`** failed (**SQL trailing comma** after last invoices column; then missing **`PRIMARY KEY ("id")`** before **`invoice_line_items`** foreign keys).
+- **Follow-on commits on `main`:** **`fbde6cd`** (comma fix), **`9c33555`** (invoices PK), **`577eede`** (**`verify:vendor-catalog`** script for the operator checklist).
+- **Final production / `origin/main`:** **`577eede3507880a3d0087d5c4c5a0a8e29de2cbb`**.
+
+**Deploy queue**
+
+| Job ID | Result | Notes |
+|--------|--------|-------|
+| **`20260515T175433-988970`** | failed (**rc=10**) | Checkout **`fe2b1d7`**; **`prisma migrate deploy`** → **P3018** syntax error. Log under **`/opt/bvisible/deploy-queue/logs/`**. |
+| **`20260515T180102-47e893`** | failed (**rc=10**) | Checkout **`fbde6cd`**; migration → **42830** (FK targets **`invoices`** without unique/PK). |
+| **`20260515T180617-520916`** | **SUCCESS → `done/`** | Checkout **`9c33555`**; migration applied; **`db-verify`** OK; PM2 reload OK; healthcheck OK. |
+| **`20260515T181142-c9b883`** | **SUCCESS → `done/`** | Checkout **`577eede`**; no pending migrations; PM2 reload OK; healthcheck OK. |
+
+**DB recovery**
+
+- **`prisma migrate resolve --rolled-back "20260521120000_invoices_from_estimates"`** after each failed attempt so **`migrate deploy`** could retry.
+
+**Post-deploy health**
+
+- Loopback + public **`GET https://vmi3270817.contaboserver.net/api/health`** → **`{"status":"ok","service":"bvisible-web","commit":"577eede3507880a3d0087d5c4c5a0a8e29de2cbb"}`**.
+
+**PM2**
+
+- From deploy log: **`bvisible-web`** **online**, fork, user **`deploy`**, **`reloadProcessId`** OK.
+
+**Server verification suite (`/opt/bvisible/app`)**
+
+| Command | Result |
+|---------|--------|
+| **`verify:estimate-pricing`** | **23/23** |
+| **`verify:estimate-quote`** | **47/47** |
+| **`verify:estimate-acceptance`** | **30/30** |
+| **`verify:estimate-po-flow`** | **9/9** |
+| **`verify:estimate-invoice-flow`** | **14/14** |
+| **`verify:vendor-catalog`** | **10/10** |
+| **`verify:ocr-reconciliation-flow`** | **26/26** |
+| **`typecheck`** | pass |
+| **`bash server-scripts/db/.verify-email-ingestion-flow.sh`** | pass |
+
+**Browser smoke (`admin@bvisible.local`)**
+
+- Not run in this agent session (no browser harness). Recommended quick manual pass: dashboard, items, estimate editor + catalog apply-on-click, public **`/quote/[token]`**, accept/decline, PO + invoice from approved estimate, PO/invoice detail, admin OCR / email ingestion / reconciliation.
+
+**Files**
+
+- **`packages/db/prisma/migrations/20260521120000_invoices_from_estimates/migration.sql`** — PostgreSQL-valid DDL only (deploy blocker fixes).
+- **`apps/web/package.json`** — **`verify:vendor-catalog`** alias.
+
+**Caveats**
+
+- **`fe2b1d7` alone is not deployable** without these migration fixes.
+- Failed jobs remain under **`deploy-queue/failed/`** with logs.
+
+**Next hardening slice**
+
+- Minimal logged-in route smoke automation (Playwright or scripted session) against prod/staging for the checklist above.
+
+---
+
 ## 2026-05-15 — Core workflow hardening (verification bundles + PO kind mapper)
 
-**Phase 0 (production)** — Public **`GET https://vmi3270817.contaboserver.net/api/health`** reported **`commit: 86ea768dabaf5be3a3ee937d51bdec885fa5688f`** during this session. **`HEAD`** should advance to the repo’s invoice/pricing stack (**`7fbe72a`** feature line + later doc commits) via deploy queue before treating production as current — agent SSH not available here (`deploy@212.56.32.136` key).
+**Phase 0 (production)** — Earlier in the day, public **`GET https://vmi3270817.contaboserver.net/api/health`** still showed **`86ea768…`** until the production catch-up entry above landed (**`577eede…`**).
 
 **What shipped (narrow)**
 
