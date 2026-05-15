@@ -5,6 +5,33 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Playwright `smoke:core` (logged-in workflow + public quote)
+
+**Added**
+
+- **`pnpm --filter @bvisible/web run smoke:core`** — Chromium smoke (`apps/web/smoke/core-workflow.spec.ts`) gated by **`BVISIBLE_BASE_URL`**, **`BVISIBLE_ADMIN_EMAIL`**, **`BVISIBLE_ADMIN_PASSWORD`**.
+- **`apps/web/playwright.config.ts`** — single-worker serial smoke; **screenshots / video / trace off** so public quote URLs are not persisted by default.
+- **Docs** — `DEBUGGING.md` § **0c** (runbook).
+
+**Scope**
+
+- Dashboard/workspace label, authenticated route smoke (items, clients, vendors, estimates, POs, invoices, admin email/OCR/reconciliation), **`SMOKE-`** client/item/estimate reuse, estimate editor **catalog Apply-on-click**, preview → issue quote link → anonymous **`/quote/[token]`** (no app shell) → accept when offered → PO + invoice linkage assertions.
+
+**Not covered**
+
+- Email send, OCR extraction quality, reconciliation pairing logic, multi-tenant switching, mobile.
+
+**Files**
+
+- `apps/web/playwright.config.ts`, `apps/web/smoke/core-workflow.spec.ts`, `apps/web/package.json`, `.gitignore`, `pnpm-lock.yaml`, `docs/ai-context/DEBUGGING.md`, `docs/ai-context/CHANGELOG_AI.md`.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run smoke:core` without env vars → fails fast with **`[smoke:core] Missing required environment variable: BVISIBLE_ADMIN_EMAIL`** (password never printed).
+- Full smoke against prod/staging was **not** run here (no credentials in the agent environment).
+
+---
+
 ## 2026-05-15 — Production catch-up: stale **86ea768** → **577eede** (invoice migration unblock)
 
 **Phase 0 (pre-deploy)**

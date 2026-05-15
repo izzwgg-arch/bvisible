@@ -17,6 +17,7 @@
     "verify:ocr-reconciliation-flow": "vitest run lib/ocr lib/reconciliation",
     "verify:estimate-acceptance": "vitest run lib/estimate/public-quote-response.test.ts lib/estimate/estimate-quote-link.test.ts lib/estimate/customer-quote-view.test.ts lib/estimate/customer-quote.test.ts",
     "verify:vendor-catalog": "vitest run lib/shop-material/apply-catalog-to-estimate-line.test.ts",
+    "smoke:core": "playwright test smoke/core-workflow.spec.ts --config=playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
     "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"
@@ -40,6 +41,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.18.4",

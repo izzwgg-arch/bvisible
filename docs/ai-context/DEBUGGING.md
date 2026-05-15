@@ -29,6 +29,33 @@ bash server-scripts/db/.verify-email-ingestion-flow.sh
 
 Do **not** treat passes as a substitute for **deploy queue healthcheck** after releasing (`§ 1`, `/api/health`).
 
+## 0c. Logged-in browser smoke (Playwright)
+
+After deploy (or against local `pnpm dev`), exercise the **staff UI + public quote** once with Playwright.
+
+**Required env (never commit `.env` with passwords):**
+
+- `BVISIBLE_BASE_URL` — e.g. `https://vmi3270817.contaboserver.net` or `http://127.0.0.1:3000`
+- `BVISIBLE_ADMIN_EMAIL`
+- `BVISIBLE_ADMIN_PASSWORD`
+
+**One-time browser binaries** (per machine):
+
+```bash
+pnpm --filter @bvisible/web exec playwright install chromium
+```
+
+**Run smoke:**
+
+```bash
+cd apps/web   # or stay at repo root:
+pnpm --filter @bvisible/web run smoke:core
+```
+
+The suite creates/reuses rows prefixed **`SMOKE-`** (`SMOKE-Client`, `SMOKE-CatalogItem`, estimate title **`SMOKE-CoreWorkflow`**). Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default so quote URLs are less likely to be persisted.
+
+If **`SMOKE-CoreWorkflow`** is **FINALIZED** or **REJECTED**, reset or delete that estimate and re-run.
+
 ## 1. Deploy queue — failing or stuck
 
 ### Symptom: deploys keep going to `failed/`

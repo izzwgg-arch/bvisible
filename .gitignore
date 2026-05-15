@@ -4,6 +4,10 @@
 .env.local
 .env.*.local
 
+# Playwright (web smoke — URLs/tokens must not land in artifacts)
+apps/web/playwright-report/
+apps/web/test-results/
+
 # Keys & credentials
 *.pem
 *.key
