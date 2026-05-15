@@ -1,10 +1,35 @@
 'use client';
 
 import { useActionState } from 'react';
+import { EstimateLineKind, ShopCatalogUnit } from '@bvisible/db';
 import { FormError } from '@/components/auth/form-error';
+import { kindLabel } from '@/lib/estimate/format';
 import { createShopMaterialItemAction, type ShopMaterialActionState } from '../actions';
 
-export function CreateShopMaterialItemForm() {
+const KINDS: EstimateLineKind[] = [
+  EstimateLineKind.MATERIAL,
+  EstimateLineKind.LABOR,
+  EstimateLineKind.MACHINE,
+  EstimateLineKind.DESIGN,
+  EstimateLineKind.INSTALL,
+  EstimateLineKind.MISC,
+];
+
+const UNITS: ShopCatalogUnit[] = [
+  ShopCatalogUnit.EACH,
+  ShopCatalogUnit.SHEET,
+  ShopCatalogUnit.SQ_FT,
+  ShopCatalogUnit.HOUR,
+  ShopCatalogUnit.LINEAR_FT,
+  ShopCatalogUnit.ROLL,
+  ShopCatalogUnit.CUSTOM,
+];
+
+export function CreateShopMaterialItemForm({
+  machines,
+}: {
+  machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
+}) {
   const initial: ShopMaterialActionState = { error: null };
   const [state, action, pending] = useActionState(createShopMaterialItemAction, initial);
 
@@ -12,7 +37,7 @@ export function CreateShopMaterialItemForm() {
     <form action={action} className="flex flex-col gap-4">
       <FormError message={state.error} />
       <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Material name</span>
+        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Item name</span>
         <input
           name="name"
           required
@@ -21,32 +46,132 @@ export function CreateShopMaterialItemForm() {
           className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
         />
       </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Line type</span>
+          <select
+            name="kind"
+            required
+            defaultValue={EstimateLineKind.MATERIAL}
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
+          >
+            {KINDS.map((k) => (
+              <option key={k} value={k}>
+                {kindLabel(k)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Unit</span>
+          <select
+            name="catalogUnit"
+            required
+            defaultValue={ShopCatalogUnit.EACH}
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
+          >
+            {UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Category (optional)</span>
+        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+          Custom unit label (when unit = CUSTOM)
+        </span>
         <input
-          name="category"
-          maxLength={120}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
-        />
-      </label>
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Default unit (optional)</span>
-        <input
-          name="defaultUnit"
+          name="customUnitLabel"
           maxLength={40}
-          placeholder="sheet, sqft, roll…"
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+          placeholder="Only when needed"
+          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
         />
       </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+          Default machine (MACHINE rows only)
+        </span>
+        <select
+          name="machineId"
+          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
+        >
+          <option value="">— optional —</option>
+          {machines.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+            Internal unit cost (USD)
+          </span>
+          <input
+            name="internalCostUsd"
+            required
+            placeholder="0.00"
+            inputMode="decimal"
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+            Markup % (quoting guidance)
+          </span>
+          <input
+            name="markupPercent"
+            defaultValue="0"
+            placeholder="30"
+            inputMode="decimal"
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+            Default sell (USD override, optional)
+          </span>
+          <input
+            name="defaultSellUsd"
+            placeholder="Leave blank to derive from cost + markup"
+            inputMode="decimal"
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+            Default quantity
+          </span>
+          <input
+            name="defaultQty"
+            defaultValue="1"
+            placeholder="1"
+            inputMode="decimal"
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+          />
+        </label>
+      </div>
+
       <label className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Notes (optional)</span>
         <textarea
           name="notes"
           rows={3}
           maxLength={2000}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
         />
       </label>
+
       <button
         type="submit"
         disabled={pending}

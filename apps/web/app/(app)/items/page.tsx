@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { prisma, Role, type VendorPriceExtractionMethod } from '@bvisible/db';
+import { prisma, Role, EstimateLineKind, type VendorPriceExtractionMethod } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
-import { formatMoney } from '@/lib/estimate/format';
+import { formatMoney, kindLabel } from '@/lib/estimate/format';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { labelVendorPriceExtractionMethod } from '@/lib/ui/status-labels';
+import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
 
 export const metadata = { title: 'Items' };
 export const dynamic = 'force-dynamic';
@@ -100,9 +101,11 @@ export default async function ItemsPage({
       id: true,
       name: true,
       nameNormalized: true,
+      kind: true,
       isActive: true,
-      category: true,
-      defaultUnit: true,
+      internalCostCents: true,
+      markupPercentMilli: true,
+      defaultSellPriceCents: true,
       updatedAt: true,
       preferredVendor: { select: { name: true } },
       _count: { select: { aliases: true, vendorCatalogLinks: true } },
@@ -129,7 +132,7 @@ export default async function ItemsPage({
     <>
       <PageHeader
         title="Items"
-        subtitle="Managed materials with vendor pricing — deterministic catalog matching for estimates."
+        subtitle="Estimating catalog — internal cost, markup, vendor intelligence for materials, estimate picker integration."
         actions={
           canManage ? (
             <Link
@@ -180,8 +183,8 @@ export default async function ItemsPage({
           title="No items yet"
           description={
             canManage
-              ? 'Define shop materials here so vendor pricing and estimate hints stay organized.'
-              : 'Your admin team can publish managed materials so estimates reference consistent pricing.'
+              ? 'Define catalog lines here — materials link to vendor pricing; labor/machine/install use internal rates.'
+              : 'Your admin team can publish catalog items for consistent estimating.'
           }
           primaryAction={
             canManage ? { label: 'Create item', href: '/items/new' } : undefined
@@ -190,14 +193,18 @@ export default async function ItemsPage({
       ) : (
         <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-[13px]">
+            <table className="w-full min-w-[1180px] text-[13px]">
               <thead>
                 <tr className="border-b border-[var(--color-bv-border)] text-left text-[11px] uppercase tracking-wider text-[var(--color-bv-muted)]">
                   <th className="px-4 py-2 font-medium">Item</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 font-medium">Latest price</th>
+                  <th className="px-4 py-2 font-medium">Type</th>
+                  <th className="px-4 py-2 font-medium">Internal</th>
+                  <th className="px-4 py-2 font-medium">Sell hint</th>
+                  <th className="px-4 py-2 font-medium">Markup</th>
+                  <th className="px-4 py-2 font-medium">Latest vendor</th>
                   <th className="px-4 py-2 font-medium">Cheapest</th>
                   <th className="px-4 py-2 font-medium">Preferred</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
                   <th className="px-4 py-2 font-medium">Vendors</th>
                   <th className="px-4 py-2 font-medium">Aliases</th>
                   <th className="px-4 py-2 font-medium">Updated</th>
@@ -206,6 +213,20 @@ export default async function ItemsPage({
               <tbody>
                 {items.map((it) => {
                   const s = summarizeLinks(it.vendorCatalogLinks);
+                  const basis =
+                    it.kind === EstimateLineKind.MATERIAL && s.latestPriceCents !== null
+                      ? s.latestPriceCents
+                      : it.internalCostCents;
+                  const sellHint =
+                    it.defaultSellPriceCents ??
+                    sellPriceFromCostAndMarkup(basis, it.markupPercentMilli);
+                  const mkLabel =
+                    it.markupPercentMilli === 0
+                      ? '—'
+                      : `${(it.markupPercentMilli / 1000).toLocaleString(undefined, {
+                          maximumFractionDigits: 3,
+                        })}%`;
+
                   return (
                     <tr key={it.id} className="border-b border-[var(--color-bv-border)] last:border-b-0">
                       <td className="px-4 py-2.5 align-top">
@@ -215,23 +236,17 @@ export default async function ItemsPage({
                         <div className="mt-0.5 font-mono text-[10px] text-[var(--color-bv-muted)]">
                           {it.nameNormalized}
                         </div>
-                        {it.category ? (
-                          <div className="mt-1 text-[11px] text-[var(--color-bv-muted)]">{it.category}</div>
-                        ) : null}
                       </td>
-                      <td className="px-4 py-2.5 align-top">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                            it.isActive
-                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
-                              : 'border border-slate-200 bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          {it.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-2.5 align-top text-[12px]">{kindLabel(it.kind)}</td>
                       <td className="px-4 py-2.5 align-top tabular-nums">
-                        {s.latestPriceCents !== null ? (
+                        {formatMoney(it.internalCostCents)}
+                      </td>
+                      <td className="px-4 py-2.5 align-top tabular-nums font-medium">
+                        {formatMoney(sellHint)}
+                      </td>
+                      <td className="px-4 py-2.5 align-top tabular-nums text-[12px]">{mkLabel}</td>
+                      <td className="px-4 py-2.5 align-top tabular-nums">
+                        {it.kind === EstimateLineKind.MATERIAL && s.latestPriceCents !== null ? (
                           <>
                             <div className="font-medium">{formatMoney(s.latestPriceCents)}</div>
                             <div className="text-[11px] text-[var(--color-bv-muted)]">
@@ -243,7 +258,9 @@ export default async function ItemsPage({
                         )}
                       </td>
                       <td className="px-4 py-2.5 align-top">
-                        {s.cheapestVendor && s.cheapestCents !== null ? (
+                        {it.kind === EstimateLineKind.MATERIAL &&
+                        s.cheapestVendor &&
+                        s.cheapestCents !== null ? (
                           <>
                             <div className="font-medium tabular-nums">{formatMoney(s.cheapestCents)}</div>
                             <div className="text-[11px] text-[var(--color-bv-muted)]">{s.cheapestVendor}</div>
@@ -253,9 +270,24 @@ export default async function ItemsPage({
                         )}
                       </td>
                       <td className="px-4 py-2.5 align-top text-[12px]">
-                        {it.preferredVendor?.name ?? (
+                        {it.kind === EstimateLineKind.MATERIAL ? (
+                          it.preferredVendor?.name ?? (
+                            <span className="text-[var(--color-bv-muted)]">—</span>
+                          )
+                        ) : (
                           <span className="text-[var(--color-bv-muted)]">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-2.5 align-top">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                            it.isActive
+                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
+                              : 'border border-slate-200 bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          {it.isActive ? 'Active' : 'Inactive'}
+                        </span>
                       </td>
                       <td className="px-4 py-2.5 align-top tabular-nums">{it._count.vendorCatalogLinks}</td>
                       <td className="px-4 py-2.5 align-top tabular-nums">{it._count.aliases}</td>

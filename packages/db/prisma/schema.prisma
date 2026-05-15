@@ -61,6 +61,17 @@ enum EstimateLineKind {
   MISC
 }
 
+/// Units for Items catalog / estimate hints (shop-facing labels).
+enum ShopCatalogUnit {
+  EACH
+  SHEET
+  SQ_FT
+  HOUR
+  LINEAR_FT
+  ROLL
+  CUSTOM
+}
+
 // Purchase order lifecycle. Kept deliberately small for the foundation:
 // no approvals, no PARTIAL_RECEIVED splits across line items, no
 // vendor-side acceptance state. POEvent rows tell the full story.
@@ -478,6 +489,7 @@ model Machine {
 
   tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lines  EstimateLineItem[]
+  shopMaterialItems ShopMaterialItem[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -870,6 +882,7 @@ model VendorCatalogItem {
   vendorId         String
   nameNormalized   String   @db.VarChar(400)
   shopMaterialItemId String?
+  vendorSku        String?  @db.VarChar(120)
   createdAt        DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -887,15 +900,23 @@ model VendorCatalogItem {
   @@map("vendor_catalog_items")
 }
 
-/// Tenant-level material/product definition ("Items" catalog). Links to one or more
-/// VendorCatalogItem rows (per vendor offers). Aliases are tenant-wide for deterministic lookup.
+/// Tenant-level estimating catalog item ("Items"). Links to VendorCatalogItem rows
+/// for MATERIAL vendor pricing. Other kinds use internalCostCents / machine defaults.
 model ShopMaterialItem {
   id                  String   @id @default(cuid())
   tenantId            String
   name                String   @db.VarChar(400)
   nameNormalized      String   @db.VarChar(400)
-  category            String?  @db.VarChar(120)
-  defaultUnit         String?  @db.VarChar(40)
+  kind                EstimateLineKind @default(MATERIAL)
+  catalogUnit         ShopCatalogUnit @default(EACH)
+  customUnitLabel     String?  @db.VarChar(40)
+  internalCostCents   Int      @default(0)
+  /// Markup on internal/vendor unit cost for quoting guidance, stored as percent × 1000
+  /// (30000 → 30%). Sell defaults use internal/vendor cost × (1 + markup/100000) unless overridden.
+  markupPercentMilli  Int      @default(0)
+  defaultSellPriceCents Int?
+  defaultQtyMilli     Int      @default(1000)
+  machineId           String?
   notes               String?  @db.VarChar(2000)
   preferredVendorId   String?
   isActive            Boolean  @default(true)
@@ -904,11 +925,14 @@ model ShopMaterialItem {
 
   tenant           Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   preferredVendor  Vendor? @relation("ShopMaterialPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
+  machine          Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
   vendorCatalogLinks VendorCatalogItem[]
   aliases          ShopMaterialItemAlias[]
 
   @@unique([tenantId, nameNormalized])
   @@index([tenantId, isActive])
+  @@index([tenantId, kind])
+  @@index([tenantId, machineId])
   @@map("shop_material_items")
 }
 

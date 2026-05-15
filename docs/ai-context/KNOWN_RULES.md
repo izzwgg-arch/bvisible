@@ -95,10 +95,11 @@ it.
   event. Prices are **never** auto-applied and vendors are **never**
   auto-switched from this signal alone.
 - **R-VEN-04** Operators may append **`MANUAL`** `VendorPriceHistory` rows from `/items`
-  (ADMIN/SUPER_ADMIN). Rows are append-only with unique `dedupeKey`, optional
+  for **`ShopMaterialItem` rows where `kind = MATERIAL`** (ADMIN/SUPER_ADMIN). Rows are append-only with unique `dedupeKey`, optional
   `effectiveAt`, audited via `shop_material_manual_price_recorded`. Manual pricing
   never mutates PO lines or estimates automatically — estimate editors only change if
   the estimator clicks **Use this cost** on the intelligence rail.
+- **R-CAT-01** The estimate editor **Catalog items** picker applies catalog defaults (`kind`, description, unit label, unit cost, qty, markup hint) **only when the estimator clicks Apply** on a chosen row — never while typing or on debounced focus alone; grid keyboard navigation must not be stolen from `makeGridKeyHandler`.
 - **R-OCR-01** Local OCR (`apps/web/lib/ocr/*`) produces **suggestions only**
   until an ADMIN confirms on `/admin/ocr-review/*`. Automatic extraction
   never writes `VendorPriceHistory`; approved writes use

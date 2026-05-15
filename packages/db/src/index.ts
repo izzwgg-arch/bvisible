@@ -4,6 +4,7 @@ export {
   Role,
   EstimateStatus,
   EstimateLineKind,
+  ShopCatalogUnit,
   POStatus,
   POLineKind,
   POAttachmentKind,
@@ -51,4 +52,6 @@ export type {
   POReconciliation,
   POReconciliationLine,
   SpendAlert,
+  ShopMaterialItem,
+  ShopMaterialItemAlias,
 } from '@prisma/client';

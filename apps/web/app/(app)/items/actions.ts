@@ -1,17 +1,36 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { Prisma, Role, prisma } from '@bvisible/db';
+import {
+  EstimateLineKind,
+  Prisma,
+  Role,
+  ShopCatalogUnit,
+  prisma,
+} from '@bvisible/db';
 import { revalidatePath } from 'next/cache';
+import { parseQty } from '@bvisible/pricing';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { appendManualVendorPriceForShopItem } from '@/lib/shop-material/append-manual-price';
 import { parseUsdToCents } from '@/lib/shop-material/money';
+import { parseMarkupPercentToMilli } from '@/lib/shop-material/markup';
 
 async function requireAdminScoped() {
   return requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
+}
+
+const KIND_SET = new Set<string>(Object.values(EstimateLineKind));
+const UNIT_SET = new Set<string>(Object.values(ShopCatalogUnit));
+
+function parseKind(raw: string): EstimateLineKind | null {
+  return KIND_SET.has(raw) ? (raw as EstimateLineKind) : null;
+}
+
+function parseCatalogUnit(raw: string): ShopCatalogUnit | null {
+  return UNIT_SET.has(raw) ? (raw as ShopCatalogUnit) : null;
 }
 
 export type ShopMaterialActionState = { error: string | null };
@@ -24,13 +43,62 @@ export async function createShopMaterialItemAction(
   const ctx = await readRequestContext();
 
   const name = String(formData.get('name') ?? '').trim();
-  const category = String(formData.get('category') ?? '').trim() || null;
-  const defaultUnit = String(formData.get('defaultUnit') ?? '').trim() || null;
+  const kind = parseKind(String(formData.get('kind') ?? ''));
+  const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
+  const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
   const notes = String(formData.get('notes') ?? '').trim() || null;
+
+  const internalUsd = String(formData.get('internalCostUsd') ?? '');
+  const markupRaw = String(formData.get('markupPercent') ?? '');
+  const sellUsdRaw = String(formData.get('defaultSellUsd') ?? '').trim();
+  const defaultQtyRaw = String(formData.get('defaultQty') ?? '');
+  const machineIdRaw = String(formData.get('machineId') ?? '').trim() || null;
 
   const nameNormalized = normalizeVendorItemName(name);
   if (nameNormalized.length < 2) {
-    return { error: 'Enter a material name (at least two meaningful characters).' };
+    return { error: 'Enter an item name (at least two meaningful characters).' };
+  }
+  if (!kind) {
+    return { error: 'Choose a valid line type.' };
+  }
+  if (!catalogUnit) {
+    return { error: 'Choose a unit.' };
+  }
+  if (catalogUnit === ShopCatalogUnit.CUSTOM && !(customUnitLabel && customUnitLabel.length > 0)) {
+    return { error: 'Add a custom unit label when unit is Custom.' };
+  }
+
+  const internalCostCents = parseUsdToCents(internalUsd);
+  if (internalCostCents === null || internalCostCents < 0) {
+    return { error: 'Enter a valid internal cost (USD).' };
+  }
+
+  const markupPercentMilli = parseMarkupPercentToMilli(markupRaw);
+  if (markupPercentMilli === null) {
+    return { error: 'Enter a valid markup percent.' };
+  }
+
+  let defaultSellPriceCents: number | null = null;
+  if (sellUsdRaw !== '') {
+    const sc = parseUsdToCents(sellUsdRaw);
+    if (sc === null || sc < 0) {
+      return { error: 'Enter a valid default sell price or leave blank.' };
+    }
+    defaultSellPriceCents = sc;
+  }
+
+  const defaultQtyMilli = parseQty(defaultQtyRaw === '' ? '1' : defaultQtyRaw);
+  if (defaultQtyMilli === null || defaultQtyMilli <= 0) {
+    return { error: 'Enter a positive default quantity.' };
+  }
+
+  let machineId: string | null = null;
+  if (kind === EstimateLineKind.MACHINE && machineIdRaw) {
+    const m = await prisma.machine.findFirst({
+      where: { id: machineIdRaw, tenantId: me.tenantId, isActive: true },
+      select: { id: true },
+    });
+    machineId = m?.id ?? null;
   }
 
   try {
@@ -39,8 +107,15 @@ export async function createShopMaterialItemAction(
         tenantId: me.tenantId,
         name: name.slice(0, 400),
         nameNormalized,
-        category: category?.slice(0, 120) ?? null,
-        defaultUnit: defaultUnit?.slice(0, 40) ?? null,
+        kind,
+        catalogUnit,
+        customUnitLabel:
+          catalogUnit === ShopCatalogUnit.CUSTOM ? customUnitLabel?.slice(0, 40) ?? null : null,
+        internalCostCents,
+        markupPercentMilli,
+        defaultSellPriceCents,
+        defaultQtyMilli,
+        machineId,
         notes: notes?.slice(0, 2000) ?? null,
       },
       select: { id: true },
@@ -54,7 +129,7 @@ export async function createShopMaterialItemAction(
       targetId: row.id,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
-      metadata: { nameNormalized },
+      metadata: { nameNormalized, kind },
     });
 
     redirect(`/items/${row.id}`);
@@ -71,21 +146,64 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
   const ctx = await readRequestContext();
 
   const id = String(formData.get('id') ?? '').trim();
-  const category = String(formData.get('category') ?? '').trim() || null;
-  const defaultUnit = String(formData.get('defaultUnit') ?? '').trim() || null;
+  const kind = parseKind(String(formData.get('kind') ?? ''));
+  const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
+  const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
   const notes = String(formData.get('notes') ?? '').trim() || null;
+
+  const internalUsd = String(formData.get('internalCostUsd') ?? '');
+  const markupRaw = String(formData.get('markupPercent') ?? '');
+  const sellUsdRaw = String(formData.get('defaultSellUsd') ?? '').trim();
+  const defaultQtyRaw = String(formData.get('defaultQty') ?? '');
+  const machineIdRaw = String(formData.get('machineId') ?? '').trim() || null;
 
   const existing = await prisma.shopMaterialItem.findFirst({
     where: { id, tenantId: me.tenantId },
     select: { id: true },
   });
-  if (!existing) return;
+  if (!existing || !kind || !catalogUnit) return;
+
+  if (catalogUnit === ShopCatalogUnit.CUSTOM && !(customUnitLabel && customUnitLabel.length > 0)) {
+    return;
+  }
+
+  const internalCostCents = parseUsdToCents(internalUsd);
+  if (internalCostCents === null || internalCostCents < 0) return;
+
+  const markupPercentMilli = parseMarkupPercentToMilli(markupRaw);
+  if (markupPercentMilli === null) return;
+
+  let defaultSellPriceCents: number | null = null;
+  if (sellUsdRaw !== '') {
+    const sc = parseUsdToCents(sellUsdRaw);
+    if (sc === null || sc < 0) return;
+    defaultSellPriceCents = sc;
+  }
+
+  const defaultQtyMilli = parseQty(defaultQtyRaw === '' ? '1' : defaultQtyRaw);
+  if (defaultQtyMilli === null || defaultQtyMilli <= 0) return;
+
+  let machineId: string | null = null;
+  if (kind === EstimateLineKind.MACHINE && machineIdRaw) {
+    const m = await prisma.machine.findFirst({
+      where: { id: machineIdRaw, tenantId: me.tenantId, isActive: true },
+      select: { id: true },
+    });
+    machineId = m?.id ?? null;
+  }
 
   await prisma.shopMaterialItem.update({
     where: { id },
     data: {
-      category: category?.slice(0, 120) ?? null,
-      defaultUnit: defaultUnit?.slice(0, 40) ?? null,
+      kind,
+      catalogUnit,
+      customUnitLabel:
+        catalogUnit === ShopCatalogUnit.CUSTOM ? customUnitLabel?.slice(0, 40) ?? null : null,
+      internalCostCents,
+      markupPercentMilli,
+      defaultSellPriceCents,
+      defaultQtyMilli,
+      machineId: kind === EstimateLineKind.MACHINE ? machineId : null,
       notes: notes?.slice(0, 2000) ?? null,
     },
   });
@@ -98,7 +216,18 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
     targetId: id,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
-    metadata: { fields: ['category', 'defaultUnit', 'notes'] },
+    metadata: {
+      fields: [
+        'kind',
+        'catalogUnit',
+        'internalCostCents',
+        'markupPercentMilli',
+        'defaultSellPriceCents',
+        'defaultQtyMilli',
+        'machineId',
+        'notes',
+      ],
+    },
   });
 
   revalidatePath(`/items/${id}`);
@@ -274,6 +403,7 @@ export async function appendManualShopMaterialPriceAction(
   const unit = String(formData.get('unit') ?? '').trim() || null;
   const note = String(formData.get('note') ?? '').trim() || null;
   const effectiveRaw = String(formData.get('effectiveAt') ?? '').trim();
+  const vendorSku = String(formData.get('vendorSku') ?? '').trim() || null;
 
   const priceCents = parseUsdToCents(priceRaw);
   if (priceCents === null) {
@@ -297,6 +427,7 @@ export async function appendManualShopMaterialPriceAction(
     unit: unit?.slice(0, 40) ?? null,
     note: note?.slice(0, 500) ?? null,
     effectiveAt,
+    vendorSku,
   });
 
   if (!ins.ok) {
@@ -332,9 +463,9 @@ export async function linkVendorCatalogToShopItemAction(formData: FormData): Pro
 
   const shop = await prisma.shopMaterialItem.findFirst({
     where: { id: shopMaterialItemId, tenantId: me.tenantId },
-    select: { id: true, nameNormalized: true },
+    select: { id: true, nameNormalized: true, kind: true },
   });
-  if (!shop) return;
+  if (!shop || shop.kind !== EstimateLineKind.MATERIAL) return;
 
   const cat = await prisma.vendorCatalogItem.findFirst({
     where: { id: vendorCatalogItemId, tenantId: me.tenantId },

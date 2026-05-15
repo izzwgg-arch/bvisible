@@ -20,7 +20,7 @@ Implementation lives in:
 | Model | Role |
 |-------|------|
 | `VendorCatalogItem` | One row per `(tenantId, vendorId, nameNormalized)`. Optional nullable FK `shopMaterialItemId` ties OCR/email-created vendor rows back to a managed tenant **Item**. |
-| `ShopMaterialItem` | Tenant canonical material (`name` + unique `nameNormalized`). Holds preferred vendor + inactive flag + notes/category/unit metadata (`ITEMS` UI). |
+| `ShopMaterialItem` | Tenant estimating catalog row (`name` + unique `nameNormalized`). Stores `kind` (`EstimateLineKind`), `ShopCatalogUnit`, internal cost, markup (`markupPercentMilli`), optional sell override, default qty/`machineId`, preferred vendor + inactive flag — vendor pricing intelligence applies when `kind = MATERIAL`. |
 | `ShopMaterialItemAlias` | Tenant-wide alias → managed item (`tenantId`, `aliasNormalized` UNIQUE). Feeds deterministic estimate lookups alongside vendor aliases. |
 | `VendorItemAlias` | Optional deterministic vendor-scoped alias → catalog row (exact normalized match only today). |
 | `VendorPriceHistory` | **Append-only** observations: integer `priceCents`, optional `unit` / `quantityMilli`, `sourceEmailId`, nullable `sourceAttachmentId`, optional `effectiveAt` (manual economic date), `confidence`, `extractionMethod`, `dedupeKey`. |

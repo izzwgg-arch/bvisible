@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@bvisible/db';
+import { EstimateLineKind } from '@bvisible/db';
 import type { ManagedItemIntel } from '@/lib/vendor-pricing/catalog-intel-types';
 import {
   cheapestAmongLatest,
@@ -26,6 +27,8 @@ export async function resolveManagedItemIntel(
       id: true,
       name: true,
       nameNormalized: true,
+      kind: true,
+      internalCostCents: true,
       preferredVendorId: true,
       preferredVendor: { select: { name: true } },
     },
@@ -49,6 +52,8 @@ export async function resolveManagedItemIntel(
           id: true,
           name: true,
           nameNormalized: true,
+          kind: true,
+          internalCostCents: true,
           preferredVendorId: true,
           preferredVendor: { select: { name: true } },
         },
@@ -69,6 +74,8 @@ export async function resolveManagedItemIntel(
           id: true,
           name: true,
           nameNormalized: true,
+          kind: true,
+          internalCostCents: true,
           preferredVendorId: true,
           preferredVendor: { select: { name: true } },
         },
@@ -78,6 +85,22 @@ export async function resolveManagedItemIntel(
   }
 
   if (!shop) return null;
+
+  if (shop.kind !== EstimateLineKind.MATERIAL) {
+    return {
+      id: shop.id,
+      displayName: shop.name,
+      nameNormalized: shop.nameNormalized,
+      detailHref: `/items/${shop.id}`,
+      matchVia,
+      cheapestVendorName: null,
+      cheapestPriceCents: null,
+      preferredVendorName: shop.preferredVendor?.name ?? null,
+      preferredLatestPriceCents: null,
+      suggestedUnitCostCents:
+        shop.internalCostCents > 0 ? shop.internalCostCents : null,
+    };
+  }
 
   const links = await prisma.vendorCatalogItem.findMany({
     where: { tenantId: args.tenantId, shopMaterialItemId: shop.id },

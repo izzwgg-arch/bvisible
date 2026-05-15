@@ -42,11 +42,11 @@ export function ShopAliasForm({ shopMaterialItemId }: { shopMaterialItemId: stri
 export function ManualVendorPriceForm({
   shopMaterialItemId,
   vendors,
-  defaultUnit,
+  catalogUnitHint,
 }: {
   shopMaterialItemId: string;
   vendors: ReadonlyArray<{ id: string; name: string }>;
-  defaultUnit: string | null;
+  catalogUnitHint: string;
 }) {
   const initial: ShopMaterialActionState = { error: null };
   const [state, action, pending] = useActionState(appendManualShopMaterialPriceAction, initial);
@@ -93,7 +93,7 @@ export function ManualVendorPriceForm({
           </span>
           <input
             name="unit"
-            defaultValue={defaultUnit ?? ''}
+            defaultValue={catalogUnitHint}
             maxLength={40}
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px] outline-none focus:border-[var(--color-bv-accent)]"
           />
@@ -109,6 +109,17 @@ export function ManualVendorPriceForm({
           />
         </label>
       </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+          Vendor SKU (optional)
+        </span>
+        <input
+          name="vendorSku"
+          maxLength={120}
+          placeholder="Stored on vendor catalog row"
+          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px] outline-none focus:border-[var(--color-bv-accent)]"
+        />
+      </label>
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
           Note (optional)

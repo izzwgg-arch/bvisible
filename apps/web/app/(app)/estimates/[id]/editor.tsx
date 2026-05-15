@@ -17,6 +17,8 @@ import { createPoFromEstimateAction } from '../../purchase-orders/actions';
 import { LineGrid } from './line-grid';
 import { TotalsPanel } from './totals-panel';
 import { VendorCatalogIntelPanel } from './vendor-catalog-intel-panel';
+import { CatalogItemPicker } from './catalog-item-picker';
+import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import {
   defaultDescription,
   defaultUnitCostCents,
@@ -63,6 +65,7 @@ export interface EditorBootstrap {
   }>;
   canDelete: boolean;
   canUnfinalize: boolean;
+  shopCatalog: ReadonlyArray<EstimateCatalogPickerRow>;
 }
 
 export interface DraftLine {
@@ -86,7 +89,7 @@ interface EditorState {
   baselineHash: string;
 }
 
-type Action =
+export type Action =
   | { type: 'set-meta'; field: 'title' | 'notes'; value: string }
   | { type: 'set-multiplier'; value: number }
   | { type: 'set-design-flat'; value: number }
@@ -209,6 +212,7 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
 export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
   const [state, dispatch] = useReducer(reducer, bootstrap, initialFromBootstrap);
   const [vendorIntelLineId, setVendorIntelLineId] = useState<string | null>(null);
+  const [catalogLineId, setCatalogLineId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveEstimateState>({ error: null });
   const [saving, setSaving] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -399,11 +403,19 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
           notes={state.notes}
           dispatch={dispatch}
         />
+        <CatalogItemPicker
+          catalog={bootstrap.shopCatalog}
+          machines={bootstrap.machines}
+          activeLineId={catalogLineId}
+          lines={state.lines}
+          dispatch={dispatch}
+        />
         <LineGrid
           lines={state.lines}
           machines={bootstrap.machines}
           lineCosts={computed.lineCosts}
           onVendorIntelLineFocus={setVendorIntelLineId}
+          onAnyLineFocus={setCatalogLineId}
           dispatch={dispatch}
         />
         <VendorCatalogIntelPanel

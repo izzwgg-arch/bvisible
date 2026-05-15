@@ -1,4 +1,9 @@
-import { Prisma, VendorPriceConfidence, VendorPriceExtractionMethod } from '@bvisible/db';
+import {
+  EstimateLineKind,
+  Prisma,
+  VendorPriceConfidence,
+  VendorPriceExtractionMethod,
+} from '@bvisible/db';
 import type { PrismaClient } from '@bvisible/db';
 import { buildDedupeKey } from '@/lib/vendor-pricing/persist';
 import { randomUUID } from 'node:crypto';
@@ -13,6 +18,7 @@ export async function appendManualVendorPriceForShopItem(
     unit: string | null;
     note: string | null;
     effectiveAt: Date | null;
+    vendorSku?: string | null;
   },
 ): Promise<
   | { ok: true; vendorCatalogItemId: string; vendorPriceHistoryId: string }
@@ -24,10 +30,17 @@ export async function appendManualVendorPriceForShopItem(
 
   const shop = await prisma.shopMaterialItem.findFirst({
     where: { id: args.shopMaterialItemId, tenantId: args.tenantId },
-    select: { id: true, name: true, nameNormalized: true, isActive: true },
+    select: { id: true, name: true, nameNormalized: true, isActive: true, kind: true },
   });
   if (!shop) return { ok: false, code: 'NOT_FOUND', message: 'Item not found.' };
   if (!shop.isActive) return { ok: false, code: 'INVALID', message: 'Item is inactive.' };
+  if (shop.kind !== EstimateLineKind.MATERIAL) {
+    return {
+      ok: false,
+      code: 'INVALID',
+      message: 'Vendor pricing rows apply only to MATERIAL catalog items.',
+    };
+  }
 
   const vendor = await prisma.vendor.findFirst({
     where: { id: args.vendorId, tenantId: args.tenantId, deletedAt: null },
@@ -108,6 +121,14 @@ export async function appendManualVendorPriceForShopItem(
       },
       select: { id: true },
     });
+    const sku = args.vendorSku?.trim();
+    if (sku) {
+      await prisma.vendorCatalogItem.update({
+        where: { id: catalogId },
+        data: { vendorSku: sku.slice(0, 120) },
+      });
+    }
+
     return { ok: true, vendorCatalogItemId: catalogId, vendorPriceHistoryId: hist.id };
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {

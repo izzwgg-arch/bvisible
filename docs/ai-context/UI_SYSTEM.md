@@ -69,13 +69,14 @@ The look, feel, and behavior of the web app.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO statuses)
   so lists and admin grids read like operations software, not raw enum strings.
-- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel}.tsx`:
+- **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`:
   - **Workflow rail** (`components/workflow/estimate-workflow-rail.tsx`) above the editor: estimate lifecycle
     (Draft → Sent → Approved → Finalized), linked PO summary + QBO gap copy, finalize gate explanation,
     and contextual **next recommended action** when something blocks progress.
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
   - **Material-row vendor intelligence** — lightweight aside card below the grid when the estimator focuses a material description or qty cell (debounced server lookups via `lookupVendorCatalogForEstimateAction`; OCR_APPROVED catalog observations only). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`.
+  - **Catalog items** (`catalog-item-picker.tsx`) — search tenant `ShopMaterialItem` rows; **Apply** patches the focused line (`kind`, description, unit label, unit cost, qty defaults, markup hint) once per explicit click — no hooks while typing.
   - Grid uses `<table>` semantics (one DOM node per cell) and the shared
     cell primitives at `apps/web/components/grid/cell-input.tsx` —
     `<CellInput>` for text, `<NumericCell>` for money / qty / multiplier.
@@ -202,7 +203,7 @@ The look, feel, and behavior of the web app.
   matched PO when the source ingested email recorded `matchedPurchaseOrderId`,
   and a heuristic "Lower vs prior" flag comparing each row to the next
   newer observation for the same normalized item.
-- **Items catalog** (`/items`, `/items/new`, `/items/[id]`): tenant-level managed materials (`ShopMaterialItem`) with preferred vendor, inactive flag, tenant-wide aliases (`ShopMaterialItemAlias`), duplicate vendor-row warnings + cautious linking, append-only manual `VendorPriceHistory` (`MANUAL` extraction label in UI), and full history/OCR-ish tails for linked vendor catalog rows. **USER** can browse; **ADMIN+** mutates metadata, aliases, manual prices, linkage.
+- **Items catalog** (`/items`, `/items/new`, `/items/[id]`): tenant estimating catalog (`ShopMaterialItem`) — `EstimateLineKind`, `ShopCatalogUnit`, internal cost / markup / optional sell override, default qty + optional machine pointer (`machineId`), preferred vendor, inactive flag; aliases (`ShopMaterialItemAlias`). **MANUAL** vendor pricing + linkage applies when `kind = MATERIAL` (append-only `VendorPriceHistory`, optional `vendorSku`). List/new/detail surface pricing settings, vendor grid, aliases, history & guidance. **USER** can browse; **ADMIN+** mutates catalog + MATERIAL vendor rows.
 - **Estimate vendor intelligence rail** (`vendor-catalog-intel-panel.tsx`): surfaces receipt-backed OCR-approved stats when a vendor catalog primary exists **and** highlights linked managed items with optional **Use this cost** (dispatched `unitCostCents` patch only — never automatic).
 - **Dashboard vendor price alerts** (`VendorPriceAlerts` on `/dashboard`):
   amber banner listing unread `VendorPriceNotification` rows with old/new

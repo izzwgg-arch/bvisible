@@ -19,7 +19,7 @@ qty for display only.
 | `apps/web/lib/vendor-pricing/catalog-lookup.ts` | `lookupVendorCatalogIntelligence`, `mergeOrderedCatalogItemIds` | Tenant-scoped catalog resolution: vendor rows + managed shop items/aliases + capped `OCR_APPROVED` aggregates for receipt-backed hints + managed-item pricing summaries. |
 | `apps/web/lib/vendor-pricing/trends.ts` | `classifyPriceTrend`, volatility helpers | Deterministic spike / volatility classification (basis-point thresholds). |
 
-The editor is `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel}.tsx`.
+The editor is `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`.
 It hydrates from RSC bootstrap data, runs `computeEstimate(...)` synchronously
 on every render, and on Save submits the entire grid to `saveEstimateAction`
 which re-runs the same engine on the server inside one Prisma transaction.
@@ -28,6 +28,8 @@ which re-runs the same engine on the server inside one Prisma transaction.
 `lookupVendorCatalogIntelligence` (`apps/web/lib/vendor-pricing/catalog-lookup.ts`)
 via `lookupVendorCatalogForEstimateAction`, debounced in the client.
 Matching uses normalized **exact** vendor-catalog keys, vendor **aliases**, tenant **ShopMaterialItem** names + **ShopMaterialItemAlias** rows, then deterministic **prefix** scans. Receipt-backed stats still read capped **`OCR_APPROVED`** histories when a primary `VendorCatalogItem` resolves. Managed-item intelligence aggregates **all** extraction methods (manual + OCR-approved + legacy regex methods) for cheapest/preferred suggestions. The rail exposes an explicit **Use this cost** control that patches **only** `unitCostCents` when clicked — never automatic mutations and never focus stealing.
+
+**Managed Items picker** — **Catalog items** (`catalog-item-picker.tsx`) lists active shop catalog rows with MATERIAL vendor cost hints. Focus any grid row, filter/search, click **Apply** to fill **description**, **line kind**, **qty**, **unit cost** (vendor-preferred/cheapest/internal basis via `apply-catalog-to-estimate-line.ts`), and **machine** when applicable. No hooks while typing; keyboard grid navigation unchanged.
 
 ## Cost components
 

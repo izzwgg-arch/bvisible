@@ -5,6 +5,33 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Items v2 estimating catalog + estimate picker (`ShopCatalogUnit`)
+
+**Scope**
+
+- **Schema:** `ShopCatalogUnit`; `ShopMaterialItem` v2 (`kind`, unit, internal cost, markup milli, optional sell override, default qty, `machineId`, preferred vendor); `VendorCatalogItem.vendorSku` (`20260515160000_shop_catalog_item_v2`).
+- **Libs:** `markup.ts`, `apply-catalog-to-estimate-line.ts`, `estimate-catalog-bootstrap.ts`, MATERIAL-only `append-manual-price.ts` + SKU on catalog append; `managed-intel` resolves kind/internal cost.
+- **Routes/UI:** `/items` list columns; `/items/new` full form; `/items/[id]` pricing + vendor grid + aliases + history; estimate editor `catalog-item-picker` + parallel catalog bootstrap load.
+- **Tests:** markup, apply-catalog, vendor manual append, picker integration tests under web verify script.
+
+**Files**
+
+- `packages/db/prisma/{schema.prisma,migrations/20260515160000_shop_catalog_item_v2/migration.sql}`
+- `packages/db/src/index.ts`
+- `apps/web/app/(app)/items/**`, `apps/web/app/(app)/estimates/[id]/{editor.tsx,line-grid.tsx,catalog-item-picker.tsx,page.tsx}`
+- `apps/web/lib/shop-material/**`
+- `docs/ai-context/{DATA_MODEL.md,API_STRUCTURE.md,VENDOR_PRICE_ENGINE.md,ESTIMATE_ENGINE.md,UI_SYSTEM.md,KNOWN_RULES.md,CHANGELOG_AI.md}`
+
+**Risks**
+
+- High: migration order (`20260515120000` then `20260515160000`); non-MATERIAL items skip manual vendor append server-side.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:vendor-catalog` + `pnpm --filter @bvisible/web run build` (run post-merge).
+
+---
+
 ## 2026-05-15 — Items catalog + manual vendor pricing (`MANUAL`)
 
 **Scope**

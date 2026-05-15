@@ -1,18 +1,20 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma, Role, VendorPriceExtractionMethod } from '@bvisible/db';
+import { prisma, Role, VendorPriceExtractionMethod, EstimateLineKind } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
-import { formatMoney } from '@/lib/estimate/format';
+import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
 import { labelVendorPriceExtractionMethod } from '@/lib/ui/status-labels';
+import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
+import { formatCatalogUnitDisplay } from '@/lib/shop-material/catalog-unit-display';
 import {
   linkVendorCatalogToShopItemAction,
   removeShopMaterialAliasAction,
   setShopMaterialActiveAction,
   setShopMaterialPreferredVendorAction,
-  updateShopMaterialItemAttributesAction,
 } from '../actions';
 import { ManualVendorPriceForm, ShopAliasForm } from './item-admin-forms';
+import { ItemDetailPricingForm } from './item-detail-pricing-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,8 +29,14 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       id: true,
       name: true,
       nameNormalized: true,
-      category: true,
-      defaultUnit: true,
+      kind: true,
+      catalogUnit: true,
+      customUnitLabel: true,
+      internalCostCents: true,
+      markupPercentMilli: true,
+      defaultSellPriceCents: true,
+      defaultQtyMilli: true,
+      machineId: true,
       notes: true,
       isActive: true,
       preferredVendorId: true,
@@ -42,6 +50,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         select: {
           id: true,
           vendorId: true,
+          vendorSku: true,
           vendor: { select: { name: true } },
           priceHistory: {
             orderBy: { createdAt: 'desc' },
@@ -106,26 +115,37 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           },
         });
 
-  const strayCatalogRows = await prisma.vendorCatalogItem.findMany({
-    where: {
-      tenantId: me.tenantId,
-      nameNormalized: item.nameNormalized,
-      OR: [{ shopMaterialItemId: null }, { shopMaterialItemId: { not: item.id } }],
-    },
-    select: {
-      id: true,
-      shopMaterialItemId: true,
-      vendor: { select: { name: true } },
-    },
-    take: 12,
-  });
+  const strayCatalogRows =
+    item.kind === EstimateLineKind.MATERIAL
+      ? await prisma.vendorCatalogItem.findMany({
+          where: {
+            tenantId: me.tenantId,
+            nameNormalized: item.nameNormalized,
+            OR: [{ shopMaterialItemId: null }, { shopMaterialItemId: { not: item.id } }],
+          },
+          select: {
+            id: true,
+            shopMaterialItemId: true,
+            vendor: { select: { name: true } },
+          },
+          take: 12,
+        })
+      : [];
 
-  const vendors = await prisma.vendor.findMany({
-    where: { tenantId: me.tenantId, deletedAt: null },
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true },
-    take: 400,
-  });
+  const [vendors, machines] = await Promise.all([
+    prisma.vendor.findMany({
+      where: { tenantId: me.tenantId, deletedAt: null },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+      take: 400,
+    }),
+    prisma.machine.findMany({
+      where: { tenantId: me.tenantId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+      take: 200,
+    }),
+  ]);
 
   let cheapest: { vendor: string; cents: number } | null = null;
   for (const link of item.vendorCatalogLinks) {
@@ -141,11 +161,21 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       ? item.vendorCatalogLinks.find((l) => l.vendorId === item.preferredVendorId)?.priceHistory[0]
       : undefined;
 
+  const costBasisForSellHint =
+    item.kind === EstimateLineKind.MATERIAL && prefLatest
+      ? prefLatest.priceCents
+      : item.kind === EstimateLineKind.MATERIAL && cheapest
+        ? cheapest.cents
+        : item.internalCostCents;
+  const sellHint =
+    item.defaultSellPriceCents ??
+    sellPriceFromCostAndMarkup(costBasisForSellHint, item.markupPercentMilli);
+
   return (
     <>
       <PageHeader
         title={item.name}
-        subtitle={`Normalized catalog key: ${item.nameNormalized}`}
+        subtitle={`${kindLabel(item.kind)} · normalized key: ${item.nameNormalized}`}
         actions={
           <Link
             href="/items"
@@ -211,17 +241,51 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
               Pricing overview
             </h2>
-            <dl className="mt-3 grid gap-2 text-[13px] sm:grid-cols-2">
+            <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-2">
               <div>
-                <dt className="text-[var(--color-bv-muted)]">Cheapest current vendor</dt>
+                <dt className="text-[var(--color-bv-muted)]">Line type</dt>
+                <dd className="font-medium">{kindLabel(item.kind)}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-bv-muted)]">Catalog unit</dt>
                 <dd className="font-medium">
-                  {cheapest ? `${cheapest.vendor} · ${formatMoney(cheapest.cents)}` : '—'}
+                  {formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-bv-muted)]">Internal unit cost</dt>
+                <dd className="font-medium tabular-nums">{formatMoney(item.internalCostCents)}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-bv-muted)]">Markup</dt>
+                <dd className="font-medium tabular-nums">
+                  {item.markupPercentMilli === 0
+                    ? '—'
+                    : `${(item.markupPercentMilli / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })}%`}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-bv-muted)]">Sell hint (guidance)</dt>
+                <dd className="font-medium tabular-nums text-emerald-900">{formatMoney(sellHint)}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-bv-muted)]">Default qty</dt>
+                <dd className="font-medium tabular-nums">{formatQty(item.defaultQtyMilli)}</dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-bv-muted)]">Cheapest vendor (MATERIAL)</dt>
+                <dd className="font-medium">
+                  {item.kind === EstimateLineKind.MATERIAL && cheapest
+                    ? `${cheapest.vendor} · ${formatMoney(cheapest.cents)}`
+                    : '—'}
                 </dd>
               </div>
               <div>
                 <dt className="text-[var(--color-bv-muted)]">Preferred vendor latest</dt>
                 <dd className="font-medium">
-                  {item.preferredVendor ? (
+                  {item.kind !== EstimateLineKind.MATERIAL ? (
+                    '—'
+                  ) : item.preferredVendor ? (
                     prefLatest ? (
                       `${formatMoney(prefLatest.priceCents)} (${labelVendorPriceExtractionMethod(prefLatest.extractionMethod)})`
                     ) : (
@@ -249,6 +313,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                   <thead>
                     <tr className="border-b border-[var(--color-bv-border)] text-left text-[11px] uppercase tracking-wide text-[var(--color-bv-muted)]">
                       <th className="py-2 pr-3 font-medium">Vendor</th>
+                      <th className="py-2 pr-3 font-medium">SKU</th>
                       <th className="py-2 pr-3 font-medium">Latest price</th>
                       <th className="py-2 font-medium">Source</th>
                     </tr>
@@ -265,6 +330,9 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                             >
                               {link.vendor.name}
                             </Link>
+                          </td>
+                          <td className="py-2 pr-3 font-mono text-[11px] text-[var(--color-bv-muted)]">
+                            {link.vendorSku ?? '—'}
                           </td>
                           <td className="py-2 pr-3 tabular-nums">
                             {h ? (
@@ -360,61 +428,23 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         <aside className="flex flex-col gap-5">
           <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Details
+              Pricing & details
             </h2>
             {canManage ? (
-              <form action={updateShopMaterialItemAttributesAction} className="mt-3 flex flex-col gap-3">
-                <input type="hidden" name="id" value={item.id} />
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-                    Category
-                  </span>
-                  <input
-                    name="category"
-                    defaultValue={item.category ?? ''}
-                    maxLength={120}
-                    className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-                    Default unit
-                  </span>
-                  <input
-                    name="defaultUnit"
-                    defaultValue={item.defaultUnit ?? ''}
-                    maxLength={40}
-                    className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-                    Notes
-                  </span>
-                  <textarea
-                    name="notes"
-                    defaultValue={item.notes ?? ''}
-                    rows={3}
-                    maxLength={2000}
-                    className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
-                  />
-                </label>
-                <button
-                  type="submit"
-                  className="rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-2 text-[13px] font-medium text-[var(--color-bv-accent-foreground)]"
-                >
-                  Save details
-                </button>
-              </form>
+              <ItemDetailPricingForm item={item} machines={machines} />
             ) : (
               <dl className="mt-3 space-y-2 text-[13px]">
                 <div>
-                  <dt className="text-[var(--color-bv-muted)]">Category</dt>
-                  <dd>{item.category ?? '—'}</dd>
+                  <dt className="text-[var(--color-bv-muted)]">Type</dt>
+                  <dd>{kindLabel(item.kind)}</dd>
                 </div>
                 <div>
-                  <dt className="text-[var(--color-bv-muted)]">Default unit</dt>
-                  <dd>{item.defaultUnit ?? '—'}</dd>
+                  <dt className="text-[var(--color-bv-muted)]">Unit</dt>
+                  <dd>{formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--color-bv-muted)]">Internal cost</dt>
+                  <dd>{formatMoney(item.internalCostCents)}</dd>
                 </div>
                 <div>
                   <dt className="text-[var(--color-bv-muted)]">Notes</dt>
@@ -428,7 +458,11 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
               Preferred vendor
             </h2>
-            {canManage ? (
+            {item.kind !== EstimateLineKind.MATERIAL ? (
+              <p className="mt-3 text-[12px] text-[var(--color-bv-muted)]">
+                Vendor preference applies to MATERIAL catalog items (vendor pricing intelligence).
+              </p>
+            ) : canManage ? (
               <form action={setShopMaterialPreferredVendorAction} className="mt-3 flex flex-col gap-2">
                 <input type="hidden" name="id" value={item.id} />
                 <select
@@ -512,7 +546,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             ) : null}
           </section>
 
-          {canManage ? (
+          {canManage && item.kind === EstimateLineKind.MATERIAL ? (
             <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
               <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
                 Manual vendor price
@@ -521,15 +555,16 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                 <ManualVendorPriceForm
                   shopMaterialItemId={item.id}
                   vendors={vendors}
-                  defaultUnit={item.defaultUnit}
+                  catalogUnitHint={formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}
                 />
               </div>
             </section>
           ) : null}
 
           <section className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-3 text-[12px] text-[var(--color-bv-muted)]">
-            Estimate lines that normalize to this item show a managed badge in vendor intelligence; unit cost never changes unless you click{' '}
-            <strong className="text-[var(--color-bv-text)]">Use this cost</strong>.
+            Use this item from an open estimate: focus a grid row, search under <strong className="text-[var(--color-bv-text)]">Catalog items</strong>, then click{' '}
+            <strong className="text-[var(--color-bv-text)]">Apply</strong> — description, line kind, qty, and unit cost fill only on that click (no typing hooks). MATERIAL rows still show vendor intelligence + optional{' '}
+            <strong className="text-[var(--color-bv-text)]">Use this cost</strong> for OCR/email-derived observations.
           </section>
         </aside>
       </div>

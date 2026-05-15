@@ -5,6 +5,7 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-rail';
 import { EstimateEditor, type EditorBootstrap } from './editor';
+import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 
 export const metadata = { title: 'Estimate' };
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,7 @@ export default async function EstimateDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [estimate, machines, clients, linkedPos, vendors] = await Promise.all([
+  const [estimate, machines, clients, linkedPos, vendors, shopCatalog] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -76,6 +77,7 @@ export default async function EstimateDetailPage({
       select: { id: true, name: true },
       take: 500,
     }),
+    loadEstimateCatalogPickerRows(prisma, me.tenantId),
   ]);
 
   if (!estimate) {
@@ -111,6 +113,7 @@ export default async function EstimateDetailPage({
     linkedPos,
     canDelete: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
     canUnfinalize: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
+    shopCatalog,
   };
 
   return (

@@ -397,13 +397,29 @@ model IngestedEmailAttachment {
   @@map("ingested_email_attachments")
 }
 
+enum ShopCatalogUnit {
+  EACH
+  SHEET
+  SQ_FT
+  HOUR
+  LINEAR_FT
+  ROLL
+  CUSTOM
+}
+
 model ShopMaterialItem {
   id                  String   @id @default(cuid())
   tenantId            String
   name                String   @db.VarChar(400)
   nameNormalized      String   @db.VarChar(400)
-  category            String?  @db.VarChar(120)
-  defaultUnit         String?  @db.VarChar(40)
+  kind                EstimateLineKind @default(MATERIAL)
+  catalogUnit         ShopCatalogUnit @default(EACH)
+  customUnitLabel     String?  @db.VarChar(40)
+  internalCostCents   Int      @default(0)
+  markupPercentMilli  Int      @default(0)
+  defaultSellPriceCents Int?
+  defaultQtyMilli     Int      @default(1000)
+  machineId           String?
   notes               String?  @db.VarChar(2000)
   preferredVendorId   String?
   isActive            Boolean  @default(true)
@@ -411,6 +427,7 @@ model ShopMaterialItem {
   updatedAt           DateTime @updatedAt
   @@unique([tenantId, nameNormalized])
   @@index([tenantId, isActive])
+  @@index([tenantId, kind])
   @@map("shop_material_items")
 }
 
@@ -431,6 +448,7 @@ model VendorCatalogItem {
   vendorId         String
   nameNormalized   String   @db.VarChar(400)
   shopMaterialItemId String?
+  vendorSku        String?  @db.VarChar(120)
   createdAt        DateTime @default(now())
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -617,6 +635,7 @@ Notes:
 | `20260514005509_email_ingestion_foundation` | 2026-05-14 | New enums `EmailIngestStatus`, `EmailMatchReason`; `POAttachmentKind` gains `EMAIL_ATTACHMENT`; `POEventKind` gains `VENDOR_REPLY`. New tables `tenant_email_inboxes` (1:1 per tenant), `ingested_emails` (UNIQUE `(tenantId, messageId)` for R-MAIL-01 idempotency), `ingested_email_attachments`, `email_ingest_runs`. Adds nullable `sourceEmailId` on `po_attachments` and `po_events` (FK SET NULL → `ingested_emails(id)`). Generated via shadow Postgres; `ALTER TYPE ... ADD VALUE` is run by Postgres 16 in the same migration transaction safely. |
 | `20260515083000_mobile_upload_foundation` | 2026-05-15 | `POAttachmentKind` gains `VENDOR_INVOICE`, `INSTALL_PHOTO`, `FIELD_DOCUMENT`. New tables `mobile_sessions` (rotating refresh, device metadata) and `mobile_pending_uploads` (two-phase upload → `POAttachment`). |
 | `20260515120000_shop_material_items` | 2026-05-15 | Tenant **Items** catalog: tables `shop_material_items`, `shop_material_item_aliases`; `vendor_catalog_items.shopMaterialItemId` nullable FK; `VendorPriceExtractionMethod.MANUAL`; `vendor_price_histories.effectiveAt` optional economic date for manual rows. |
+| `20260515160000_shop_catalog_item_v2` | 2026-05-15 | Items **v2**: enum `ShopCatalogUnit`; `ShopMaterialItem` gains `kind` (`EstimateLineKind`), `catalogUnit`, `customUnitLabel`, `internalCostCents`, `markupPercentMilli`, `defaultSellPriceCents`, `defaultQtyMilli`, `machineId` (drops legacy `category` / `defaultUnit` via migration); `vendor_catalog_items.vendorSku`; indexes on `(tenantId, kind)`. |
 | `20260516120000_ocr_receipt_foundation` | 2026-05-16 | Local OCR foundation: enum `OcrJobStatus`; tables `ocr_documents`, `ocr_line_items`; `VendorPriceExtractionMethod` gains `OCR_TEXT_REGEX`, `OCR_APPROVED`; nullable email FK on `vendor_price_histories` / `vendor_price_notifications` with optional OCR provenance (`sourcePoAttachmentId`, `ocrLineItemId`, `sourceOcrDocumentId`). |
 
 ## Core entities (target schema)

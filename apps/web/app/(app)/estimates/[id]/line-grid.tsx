@@ -12,6 +12,7 @@ import {
 } from '@/lib/estimate/format';
 import { makeGridKeyHandler } from '@/lib/keyboard/grid-nav';
 import type { DraftLine } from './editor';
+import type { Action } from './editor';
 
 const GRID_NAME = 'estimate-lines';
 
@@ -30,17 +31,9 @@ interface LineGridProps {
   lineCosts: Record<string, number>;
   /** MATERIAL rows report id; other kinds pass null so the intel rail resets. */
   onVendorIntelLineFocus?: (lineId: string | null) => void;
-  dispatch: React.Dispatch<
-    | { type: 'add-line'; kind: EstimateLineKind }
-    | { type: 'remove-line'; id: string }
-    | { type: 'move-line'; id: string; dir: -1 | 1 }
-    | { type: 'set-line'; id: string; patch: Partial<DraftLine> }
-    | { type: 'pick-machine'; id: string; machineId: string | null; ratePerHourCents: number | null }
-    | { type: 'set-meta'; field: 'title' | 'notes'; value: string }
-    | { type: 'set-multiplier'; value: number }
-    | { type: 'set-design-flat'; value: number }
-    | { type: 'reset-baseline'; hash: string }
-  >;
+  /** Any focused line — drives catalog Apply target without touching vendor OCR intel rules. */
+  onAnyLineFocus?: (lineId: string) => void;
+  dispatch: React.Dispatch<Action>;
 }
 
 export function LineGrid({
@@ -48,6 +41,7 @@ export function LineGrid({
   machines,
   lineCosts,
   onVendorIntelLineFocus,
+  onAnyLineFocus,
   dispatch,
 }: LineGridProps) {
   const machinesById = useMemo(
@@ -113,6 +107,11 @@ export function LineGrid({
                   onVendorIntelLineFocus?.(
                     line.kind === EstimateLineKind.MATERIAL ? line.id : null,
                   );
+                const reportLineFocus = () => onAnyLineFocus?.(line.id);
+                const reportBoth = () => {
+                  reportIntelFocus();
+                  reportLineFocus();
+                };
                 return (
                   <tr
                     key={line.id}
@@ -121,6 +120,7 @@ export function LineGrid({
                     <td className="px-1 py-0.5 align-middle">
                       <select
                         value={line.kind}
+                        onFocus={reportBoth}
                         onChange={(e) =>
                           dispatch({
                             type: 'set-line',
@@ -155,7 +155,7 @@ export function LineGrid({
                             patch: { description: v },
                           })
                         }
-                        onCellFocus={reportIntelFocus}
+                        onCellFocus={reportBoth}
                         ariaLabel={`Row ${idx + 1} description`}
                         cellRow={idx}
                         cellCol="description"
@@ -168,6 +168,7 @@ export function LineGrid({
                       {isMachine ? (
                         <select
                           value={line.machineId ?? ''}
+                          onFocus={reportBoth}
                           onChange={(e) => {
                             const id = e.currentTarget.value || null;
                             const machine = id ? machinesById.get(id) ?? null : null;
@@ -203,7 +204,7 @@ export function LineGrid({
                             patch: { qtyMilli: v },
                           })
                         }
-                        onCellFocus={reportIntelFocus}
+                        onCellFocus={reportBoth}
                         format={formatQty}
                         parse={parseQty}
                         ariaLabel={`Row ${idx + 1} quantity`}
@@ -228,6 +229,7 @@ export function LineGrid({
                         cellRow={idx}
                         cellCol="unit"
                         cellGrid={GRID_NAME}
+                        onCellFocus={reportBoth}
                       />
                     </td>
                     <td className="px-3 py-1.5 text-right font-medium tabular-nums text-[var(--color-bv-text)]">
