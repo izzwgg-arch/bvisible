@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react';
 import { EstimateLineKind } from '@bvisible/db';
 import {
   buildLinePatchFromCatalogSelection,
+  catalogPickerCostBasisCents,
+  catalogPickerSellHintCents,
   type EstimateCatalogPickerRow,
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
-import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
 import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
 import type { Action, DraftLine } from './editor';
 
@@ -84,7 +85,9 @@ export function CatalogItemPicker({
         Catalog items
       </h2>
       <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-        Focus a line in the grid, search the catalog, then click <strong className="text-[var(--color-bv-text)]">Apply</strong> — nothing changes until you do (typing in cells is unaffected).
+        Focus a line in the grid, search the catalog, then click <strong className="text-[var(--color-bv-text)]">Apply</strong>{' '}
+        — nothing changes until you do (typing in cells is unaffected). <strong className="text-[var(--color-bv-text)]">Unit cost</strong>{' '}
+        is internal/vendor-only; <strong className="text-[var(--color-bv-text)]">Sell hint</strong> is catalog guidance from markup or a catalog sell override — the estimate total still uses the grid plus the estimate multiplier (default ×3 on raw cost).
       </p>
 
       <div className="mt-3 space-y-2">
@@ -122,8 +125,12 @@ export function CatalogItemPicker({
               <tr>
                 <th className="px-2 py-2 font-medium">Item</th>
                 <th className="px-2 py-2 font-medium">Type</th>
-                <th className="px-2 py-2 font-medium text-right">Basis</th>
-                <th className="px-2 py-2 font-medium text-right">Sell hint</th>
+                <th className="px-2 py-2 font-medium text-right" title="Internal or vendor unit cost written when you Apply">
+                  Unit cost
+                </th>
+                <th className="px-2 py-2 font-medium text-right" title="Catalog guidance only; estimate sell uses line totals × estimate multiplier">
+                  Sell hint
+                </th>
                 <th className="px-2 py-2 font-medium text-right">Qty</th>
                 <th className="px-2 py-2 font-medium"></th>
               </tr>
@@ -137,13 +144,12 @@ export function CatalogItemPicker({
                 </tr>
               ) : (
                 filtered.slice(0, 80).map((row) => {
-                  const basisCents =
-                    row.kind === EstimateLineKind.MATERIAL
-                      ? (row.suggestedVendorCostCents ?? row.internalCostCents)
-                      : buildLinePatchFromCatalogSelection({ row, machinesById }).unitCostCents;
-                  const sellHint =
-                    row.defaultSellPriceCents ??
-                    sellPriceFromCostAndMarkup(basisCents, row.markupPercentMilli);
+                  const basisCents = catalogPickerCostBasisCents({ row, machinesById });
+                  const sellHint = catalogPickerSellHintCents({ row, machinesById });
+                  const showVendorHints =
+                    row.kind === EstimateLineKind.MATERIAL &&
+                    (row.catalogCheapestVendorCostCents !== null ||
+                      (row.preferredVendorId && row.catalogPreferredVendorName));
                   return (
                     <tr key={row.id} className="border-t border-[var(--color-bv-border)]">
                       <td className="px-2 py-2 align-top">
@@ -153,10 +159,39 @@ export function CatalogItemPicker({
                         {kindLabel(row.kind)}
                       </td>
                       <td className="px-2 py-2 align-top text-right tabular-nums">
-                        {formatMoney(basisCents)}
+                        <div>{formatMoney(basisCents)}</div>
+                        {showVendorHints ? (
+                          <div className="mt-1 space-y-0.5 text-[10px] font-normal leading-snug text-[var(--color-bv-muted)]">
+                            {row.catalogCheapestVendorCostCents !== null && row.catalogCheapestVendorName ? (
+                              <div title="Lowest latest linked vendor unit cost (informational; Apply still uses the column above)">
+                                Cheapest: {row.catalogCheapestVendorName} · {formatMoney(row.catalogCheapestVendorCostCents)}
+                              </div>
+                            ) : null}
+                            {row.preferredVendorId && row.catalogPreferredVendorName ? (
+                              <div title="Preferred supplier on the item record">
+                                Preferred: {row.catalogPreferredVendorName}
+                                {row.catalogPreferredVendorCostCents !== null
+                                  ? ` · ${formatMoney(row.catalogPreferredVendorCostCents)}`
+                                  : ' · no linked vendor price'}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-2 py-2 align-top text-right tabular-nums text-emerald-900">
                         {formatMoney(sellHint)}
+                        {row.defaultSellPriceCents !== null && row.defaultSellPriceCents !== undefined ? (
+                          <div className="mt-1 text-[10px] font-normal text-[var(--color-bv-muted)]">
+                            Catalog sell override (not markup × cost)
+                          </div>
+                        ) : row.markupPercentMilli !== 0 ? (
+                          <div className="mt-1 text-[10px] font-normal text-[var(--color-bv-muted)]">
+                            Markup on unit cost: {(row.markupPercentMilli / 1000).toLocaleString(undefined, {
+                              maximumFractionDigits: 3,
+                            })}
+                            %
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-2 py-2 align-top text-right tabular-nums">
                         {formatQty(row.defaultQtyMilli)}

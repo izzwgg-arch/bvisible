@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLinePatchFromCatalogSelection,
   catalogKindToEstimateLineKind,
+  catalogPickerSellHintCents,
   resolveCatalogUnitCostCents,
   type EstimateCatalogPickerRow,
 } from './apply-catalog-to-estimate-line';
@@ -22,6 +23,10 @@ function row(partial: Partial<EstimateCatalogPickerRow>): EstimateCatalogPickerR
     machineId: null,
     preferredVendorId: null,
     suggestedVendorCostCents: null,
+    catalogPreferredVendorCostCents: null,
+    catalogPreferredVendorName: null,
+    catalogCheapestVendorCostCents: null,
+    catalogCheapestVendorName: null,
     ...partial,
   };
 }
@@ -137,6 +142,59 @@ describe('buildLinePatchFromCatalogSelection', () => {
     });
     expect(patch.kind).toBe(EstimateLineKind.DESIGN);
     expect(patch.unitCostCents).toBe(24000);
+  });
+});
+
+describe('catalogPickerSellHintCents', () => {
+  const machines = new Map<string, { ratePerHourCents: number }>();
+
+  it('uses default ×3-equivalent markup when markupPercentMilli is 200000 (200% above cost)', () => {
+    expect(
+      catalogPickerSellHintCents({
+        row: row({ internalCostCents: 10_000, markupPercentMilli: 200_000 }),
+        machinesById: machines,
+      }),
+    ).toBe(30_000);
+  });
+
+  it('item-level markup % derives sell from resolved unit cost basis', () => {
+    expect(
+      catalogPickerSellHintCents({
+        row: row({
+          internalCostCents: 500,
+          suggestedVendorCostCents: 800,
+          markupPercentMilli: 50_000,
+        }),
+        machinesById: machines,
+      }),
+    ).toBe(1200);
+  });
+
+  it('explicit catalog sell override wins over markup', () => {
+    expect(
+      catalogPickerSellHintCents({
+        row: row({
+          internalCostCents: 100,
+          markupPercentMilli: 200_000,
+          defaultSellPriceCents: 999,
+        }),
+        machinesById: machines,
+      }),
+    ).toBe(999);
+  });
+
+  it('uses machine hourly rate as basis for MACHINE rows', () => {
+    expect(
+      catalogPickerSellHintCents({
+        row: row({
+          kind: EstimateLineKind.MACHINE,
+          machineId: 'm1',
+          internalCostCents: 1,
+          markupPercentMilli: 0,
+        }),
+        machinesById: new Map([['m1', { ratePerHourCents: 12_000 }]]),
+      }),
+    ).toBe(12_000);
   });
 });
 

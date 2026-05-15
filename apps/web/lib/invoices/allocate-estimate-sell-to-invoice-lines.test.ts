@@ -7,7 +7,7 @@ describe('allocateEstimateSellToInvoiceLines', () => {
     expect(allocateEstimateSellToInvoiceLines({ finalPriceCents: 10_000, lines: [] })).toEqual([]);
   });
 
-  it('sums allocated cents to finalPriceCents for proportional weights', () => {
+  it('allocates sell total (finalPriceCents), not raw cost sum', () => {
     const totals = allocateEstimateSellToInvoiceLines({
       finalPriceCents: 10_000,
       lines: [{ computedCostCents: 100 }, { computedCostCents: 300 }],

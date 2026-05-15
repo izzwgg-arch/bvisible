@@ -10,6 +10,20 @@ export type PriceObservationRow = {
   extractionMethod: VendorPriceExtractionMethod;
 };
 
+/** Higher wins when observation instant + createdAt tie (MANUAL > OCR_APPROVED > regex OCR > …). */
+const EXTRACTION_METHOD_RANK: Record<VendorPriceExtractionMethod, number> = {
+  LINE_REGEX: 0,
+  SUBJECT_REGEX: 1,
+  FILENAME_REGEX: 2,
+  OCR_TEXT_REGEX: 3,
+  OCR_APPROVED: 4,
+  MANUAL: 5,
+};
+
+export function extractionMethodRank(method: VendorPriceExtractionMethod): number {
+  return EXTRACTION_METHOD_RANK[method] ?? 0;
+}
+
 /** Stable ordering key for “latest” comparisons — manual economic date wins when set. */
 export function observationInstant(row: {
   effectiveAt: Date | null;
@@ -20,7 +34,21 @@ export function observationInstant(row: {
   return row.createdAt.getTime();
 }
 
-/** Latest row per vendor by observationInstant (tie-break newer createdAt). */
+/** True when candidate should replace current as the “latest” observation for this vendor. */
+export function latestObservationCompare(candidate: PriceObservationRow, current: PriceObservationRow): boolean {
+  const tNew = observationInstant(candidate);
+  const tPrev = observationInstant(current);
+  if (tNew !== tPrev) return tNew > tPrev;
+  const cNew = candidate.createdAt.getTime();
+  const cPrev = current.createdAt.getTime();
+  if (cNew !== cPrev) return cNew > cPrev;
+  const mNew = extractionMethodRank(candidate.extractionMethod);
+  const mPrev = extractionMethodRank(current.extractionMethod);
+  if (mNew !== mPrev) return mNew > mPrev;
+  return candidate.vendorCatalogItemId < current.vendorCatalogItemId;
+}
+
+/** Latest row per vendor by observationInstant; ties break on newer createdAt, then extraction source, then catalog id. */
 export function latestObservationPerVendor(
   rows: ReadonlyArray<PriceObservationRow>,
 ): Map<string, PriceObservationRow> {
@@ -31,9 +59,7 @@ export function latestObservationPerVendor(
       byVendor.set(r.vendorId, r);
       continue;
     }
-    const tNew = observationInstant(r);
-    const tPrev = observationInstant(prev);
-    if (tNew > tPrev || (tNew === tPrev && r.createdAt.getTime() > prev.createdAt.getTime())) {
+    if (latestObservationCompare(r, prev)) {
       byVendor.set(r.vendorId, r);
     }
   }
@@ -45,7 +71,12 @@ export function cheapestAmongLatest(
 ): PriceObservationRow | null {
   let best: PriceObservationRow | null = null;
   for (const r of latestByVendor.values()) {
-    if (!best || r.priceCents < best.priceCents) best = r;
+    if (!best) {
+      best = r;
+      continue;
+    }
+    if (r.priceCents < best.priceCents) best = r;
+    else if (r.priceCents === best.priceCents && r.vendorId < best.vendorId) best = r;
   }
   return best;
 }

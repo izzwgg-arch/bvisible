@@ -54,6 +54,17 @@ describe('@bvisible/pricing computeEstimate', () => {
     expect(out.finalPriceCents).toBe(180000);
   });
 
+  it('INSTALL uses qtyMilli × unitCostCents only (installers not modeled per-line)', () => {
+    /** Business doc uses hours × installers × rate; engine stores one composite hourly unit cost in unitCostCents. */
+    const out = computeEstimate({
+      multiplierMilli: DEFAULT_MULT,
+      designFlatCents: 0,
+      lines: [line('i', 'INSTALL', 8000, 15000)],
+    });
+    expect(out.breakdown.installCents).toBe(120000);
+    expect(out.finalPriceCents).toBe(360000);
+  });
+
   it('mixed kinds land in correct buckets', () => {
     const out = computeEstimate({
       multiplierMilli: DEFAULT_MULT,
@@ -69,6 +80,18 @@ describe('@bvisible/pricing computeEstimate', () => {
     expect(out.breakdown.installCents).toBe(3000);
     expect(out.subtotalCostCents).toBe(6000);
     expect(out.finalPriceCents).toBe(18000);
+  });
+
+  it('cached totals are deterministic across repeated computeEstimate calls', () => {
+    const input = {
+      multiplierMilli: DEFAULT_MULT,
+      designFlatCents: 12456,
+      lines: [
+        line('a', 'MATERIAL', 3333, 701),
+        line('b', 'MACHINE', 2500, 9876),
+      ],
+    };
+    expect(computeEstimate(input)).toEqual(computeEstimate(input));
   });
 
   it('install line + misc line', () => {
@@ -94,6 +117,16 @@ describe('@bvisible/pricing computeEstimate', () => {
     expect(out.breakdown.designCents).toBe(15000 + 5000);
     expect(out.subtotalCostCents).toBe(20000);
     expect(out.finalPriceCents).toBe(60000);
+  });
+
+  it('misc-only manual-style line uses qty × unit cost and misc bucket', () => {
+    const out = computeEstimate({
+      multiplierMilli: DEFAULT_MULT,
+      designFlatCents: 0,
+      lines: [line('u', 'MISC', 1000, 12_345)],
+    });
+    expect(out.breakdown.miscCents).toBe(12345);
+    expect(out.finalPriceCents).toBe(37035);
   });
 
   it('explicit multiplier override changes sell only', () => {

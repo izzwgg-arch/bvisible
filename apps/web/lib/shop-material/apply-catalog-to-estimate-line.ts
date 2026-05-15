@@ -1,5 +1,6 @@
 import { EstimateLineKind } from '@bvisible/db';
 import type { ShopCatalogUnit } from '@bvisible/db';
+import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
 
 /** Serialized estimate picker row (server → client JSON). */
 export type EstimateCatalogPickerRow = {
@@ -15,7 +16,14 @@ export type EstimateCatalogPickerRow = {
   defaultQtyMilli: number;
   machineId: string | null;
   preferredVendorId: string | null;
+  /** Unit cost suggested for Apply (preferred latest when linked, else cheapest latest among vendors). */
   suggestedVendorCostCents: number | null;
+  /** MATERIAL + vendor history: preferred vendor’s latest linked observation (display-only). */
+  catalogPreferredVendorCostCents: number | null;
+  catalogPreferredVendorName: string | null;
+  /** MATERIAL + vendor history: lowest latest unit cost among vendors (display-only). */
+  catalogCheapestVendorCostCents: number | null;
+  catalogCheapestVendorName: string | null;
 };
 
 export type MachineRateLookup = ReadonlyMap<string, { ratePerHourCents: number }>;
@@ -39,6 +47,27 @@ export function resolveCatalogUnitCostCents(args: {
   }
 
   return Math.max(0, row.internalCostCents);
+}
+
+/** Basis used for the picker “Sell hint” column (matches unit cost Apply uses, before item sell override). */
+export function catalogPickerCostBasisCents(args: {
+  row: EstimateCatalogPickerRow;
+  machinesById: MachineRateLookup;
+}): number {
+  return resolveCatalogUnitCostCents(args);
+}
+
+/** Sell guidance in the catalog picker: explicit catalog override wins, else cost × (1 + markup%). */
+export function catalogPickerSellHintCents(args: {
+  row: EstimateCatalogPickerRow;
+  machinesById: MachineRateLookup;
+}): number {
+  const { row } = args;
+  if (row.defaultSellPriceCents !== null && row.defaultSellPriceCents !== undefined) {
+    return Math.max(0, row.defaultSellPriceCents);
+  }
+  const basis = catalogPickerCostBasisCents(args);
+  return sellPriceFromCostAndMarkup(basis, row.markupPercentMilli);
 }
 
 /** Patch applied only when the user explicitly picks a catalog row (no typing hooks). */

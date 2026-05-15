@@ -9,6 +9,9 @@ describe('sellPriceFromCostAndMarkup', () => {
   it('applies 30% markup', () => {
     expect(sellPriceFromCostAndMarkup(10000, 30000)).toBe(13000);
   });
+  it('200% markup (stored milli) equals ×3 sell vs cost — matches default estimate economics wording', () => {
+    expect(sellPriceFromCostAndMarkup(10000, 200000)).toBe(30000);
+  });
   it('handles zero markup', () => {
     expect(sellPriceFromCostAndMarkup(14500, 0)).toBe(14500);
   });

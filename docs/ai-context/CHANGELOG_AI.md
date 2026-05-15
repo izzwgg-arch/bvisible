@@ -5,6 +5,32 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Estimate catalog vendor aggregation + pricing docs/tests
+
+**Changed**
+
+- Deterministic **latest-per-vendor** tie-breaks (`effectiveAt`/`createdAt`, then **`MANUAL` > `OCR_APPROVED` > regex**, then `vendorCatalogItemId`) and **cheapest-among-latest** price ties (`vendorId`) in `pricing-aggregate.ts`.
+- Catalog picker rows carry **preferred vs cheapest** display metadata from `estimate-catalog-bootstrap.ts`; UI sub-lines + column tooltips in `catalog-item-picker.tsx`.
+- **`catalogPickerSellHintCents`** unifies sell-hint math with **`resolveCatalogUnitCostCents`** (fixes MACHINE basis previously inconsistent vs Apply).
+
+**Tests / verification**
+
+- Extended **`verify:estimate-pricing`** with `markup.test.ts`, `pricing-aggregate.test.ts`, catalog sell-hint tests, quote JSON leak guards (`vendor`/`internalCost`), install/misc/engine coverage.
+
+**Docs**
+
+- `ESTIMATE_ENGINE.md` (install limitation, catalog hint vs multiplier), `VENDOR_PRICE_ENGINE.md`, `KNOWN_RULES.md` (**R-VEN-05**), `UI_SYSTEM.md`.
+
+**Risk**
+
+- Medium — touches estimate catalog hydration path only (no OCR/email/reconciliation changes).
+
+**Files**
+
+- `apps/web/lib/shop-material/pricing-aggregate.ts`, `pricing-aggregate.test.ts`, `apply-catalog-to-estimate-line.ts`, `apply-catalog-to-estimate-line.test.ts`, `estimate-catalog-bootstrap.ts`, `markup.test.ts`, `app/(app)/estimates/[id]/catalog-item-picker.tsx`, `lib/estimate/estimate-pricing-engine.test.ts`, `lib/estimate/customer-quote-view.test.ts`, `lib/invoices/allocate-estimate-sell-to-invoice-lines.test.ts`, `apps/web/package.json`, `docs/ai-context/*.md` (listed above + this file).
+
+---
+
 ## 2026-05-15 — Playwright `smoke:core` (logged-in workflow + public quote)
 
 **Added**

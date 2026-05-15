@@ -23,7 +23,7 @@ qty for display only.
 
 Run from `apps/web`:
 
-- **`pnpm --filter @bvisible/web run verify:estimate-pricing`** — `@bvisible/pricing` bucket/multiplier/math + allocated customer-quote sell (`allocateLineSellCents`, `buildCustomerQuoteLines` leak guards) + catalog→grid patch helpers (`apply-catalog-to-estimate-line`).
+- **`pnpm --filter @bvisible/web run verify:estimate-pricing`** — `@bvisible/pricing` bucket/multiplier/math + allocated customer-quote sell (`allocateLineSellCents`, `buildCustomerQuoteLines` leak guards) + catalog→grid patch helpers (`apply-catalog-to-estimate-line`) + markup helpers (`markup.ts`) + vendor observation aggregation for catalog hints (`pricing-aggregate`).
 - **`pnpm --filter @bvisible/web run verify:estimate-quote`** — public/staff quote links, timeline merge, dashboard quote attention, fulfillment hints (broader bundle).
 - **`pnpm --filter @bvisible/web run verify:estimate-invoice-flow`** — estimate→invoice allocation + dashboard predicates.
 
@@ -72,20 +72,33 @@ Fulfillment UX beside quotes lives on **`/estimates/[id]`**: **`EstimateFulfillm
 via `lookupVendorCatalogForEstimateAction`, debounced in the client.
 Matching uses normalized **exact** vendor-catalog keys, vendor **aliases**, tenant **ShopMaterialItem** names + **ShopMaterialItemAlias** rows, then deterministic **prefix** scans. Receipt-backed stats still read capped **`OCR_APPROVED`** histories when a primary `VendorCatalogItem` resolves. Managed-item intelligence aggregates **all** extraction methods (manual + OCR-approved + legacy regex methods) for cheapest/preferred suggestions. The rail exposes an explicit **Use this cost** control that patches **only** `unitCostCents` when clicked — never automatic mutations and never focus stealing.
 
-**Managed Items picker** — **Catalog items** (`catalog-item-picker.tsx`) lists active shop catalog rows with MATERIAL vendor cost hints. Focus any grid row, filter/search, click **Apply** to fill **description**, **line kind**, **qty**, **unit cost** (vendor-preferred/cheapest/internal basis via `apply-catalog-to-estimate-line.ts`), and **machine** when applicable. No hooks while typing; keyboard grid navigation unchanged.
+**Managed Items picker** — **Catalog items** (`catalog-item-picker.tsx`) lists active shop catalog rows. MATERIAL rows show **unit cost** that **Apply** writes (preferred vendor’s latest linked observation when set, else cheapest latest among linked vendors, else internal catalog cost). **Cheapest** and **preferred** vendor snapshots render as **read-only sub-lines** so estimators can compare without auto-switching vendors. **Sell hint** uses markup % or catalog sell override as **guidance only**; the estimate grid total still uses **`computeEstimate`** (lines + estimate multiplier). Focus any grid row, filter/search, click **Apply** to fill **description**, **line kind**, **qty**, **unit cost**, and **machine** when applicable. No hooks while typing.
 
 ## Cost components
 
+How **`packages/pricing`** implements raw cost today:
+
 ```
-Materials  = unit_cost × quantity
-Machines   = hours × machine_rate
-Shop labor = hours × 50
-Design     = 150  (flat per estimate; may be waived)
-Install    = hours × installers × 150
-Misc       = sum of any ad-hoc lines
+Materials  = unit_cost × quantity      (qtyMilli × unitCostCents / 1000)
+Machines   = hours × machine_rate      (same line helper; MACHINE rows use hourly unit cost)
+Shop labor = hours × labor_rate        (LABOR unitCostCents is the hourly shop rate)
+Design     = Σ DESIGN lines + flat fee (Estimate.designFlatCents, default $150)
+Install    = hours × composite_rate    (single unitCostCents × qtyMilli — see limitation below)
+Misc       = sum of MISC lines
 
 Raw cost   = Materials + Machines + Shop labor + Design + Install + Misc
 ```
+
+**Install limitation:** Spreadsheet rules often use **hours × installers × hourly rate**. The live estimate engine does **not** store installers separately on `EstimateLineItem` — only **`qtyMilli`** and **`unitCostCents`**. Treat **`qtyMilli`** as job-hours (scaled ×1000), **`unitCostCents`** as **$/hour already multiplied by installer count** when needed, or fold installers into quantity before entry.
+
+## Catalog sell hints vs estimate sell total
+
+| Mechanism | Applies to |
+|---|---|
+| `ShopMaterialItem.markupPercentMilli`, `defaultSellPriceCents` | **Catalog items** picker **Sell hint** column only (guidance when choosing Apply targets). |
+| `Estimate.multiplierMilli` | **`computeEstimate`**: applies to **entire raw cost subtotal** after line math + design flat (default **×3**, R-EST-01). |
+
+Customer-facing quotes and invoices show **allocated sell** from **`finalPriceCents`** — never internal costs or vendor detail.
 
 ## Sell price
 

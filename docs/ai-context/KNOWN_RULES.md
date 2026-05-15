@@ -99,6 +99,7 @@ it.
   `effectiveAt`, audited via `shop_material_manual_price_recorded`. Manual pricing
   never mutates PO lines or estimates automatically — estimate editors only change if
   the estimator clicks **Use this cost** on the intelligence rail.
+- **R-VEN-05** Managed MATERIAL picker hints aggregate **`VendorPriceHistory`** for every **`VendorCatalogItem`** linked to the shop item. **Latest observation per vendor** orders by economic instant (`effectiveAt`, else `createdAt`), breaks ties by extraction source (**`MANUAL` > `OCR_APPROVED` > regex-derived methods**) then **`vendorCatalogItemId`**. **Cheapest among latest** breaks price ties by **`vendorId`**. **Suggested Apply unit cost** prefers the **preferred vendor’s** latest snapshot when linked; otherwise **cheapest latest**. The UI surfaces cheapest vs preferred on MATERIAL rows; **Apply** remains the only catalog auto-fill path (**R-CAT-01**).
 - **R-CAT-01** The estimate editor **Catalog items** picker applies catalog defaults (`kind`, description, unit label, unit cost, qty, markup hint) **only when the estimator clicks Apply** on a chosen row — never while typing or on debounced focus alone; grid keyboard navigation must not be stolen from `makeGridKeyHandler`.
 - **R-OCR-01** Local OCR (`apps/web/lib/ocr/*`) produces **suggestions only**
   until an ADMIN confirms on `/admin/ocr-review/*`. Automatic extraction

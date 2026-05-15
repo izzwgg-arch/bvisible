@@ -22,6 +22,9 @@ describe('buildCustomerQuoteLines', () => {
     expect(json).not.toMatch(/unitCost/i);
     expect(json).not.toMatch(/computedCost/i);
     expect(json).not.toMatch(/subtotal/i);
+    expect(json).not.toMatch(/vendor/i);
+    expect(json).not.toMatch(/preferredVendor/i);
+    expect(json).not.toMatch(/internalCost/i);
     expect(rows[0]!.lineSellCents).toBe(300);
   });
 

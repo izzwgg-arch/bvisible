@@ -82,7 +82,7 @@ The look, feel, and behavior of the web app.
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
   - **Material-row vendor intelligence** — lightweight aside card below the grid when the estimator focuses a material description or qty cell (debounced server lookups via `lookupVendorCatalogForEstimateAction`; OCR_APPROVED catalog observations only). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`.
-  - **Catalog items** (`catalog-item-picker.tsx`) — search tenant `ShopMaterialItem` rows; **Apply** patches the focused line (`kind`, description, unit label, unit cost, qty defaults, markup hint) once per explicit click — no hooks while typing.
+  - **Catalog items** (`catalog-item-picker.tsx`) — search tenant `ShopMaterialItem` rows. MATERIAL rows show **unit cost** (what **Apply** writes: preferred vendor’s latest linked snapshot when set, else cheapest latest, else internal item cost) plus read-only **cheapest** and **preferred** lines when vendor history exists. **Sell hint** uses catalog markup % or sell override as guidance only (estimate total still follows **`computeEstimate`**). **Apply** patches the focused line once per explicit click — no hooks while typing.
   - Grid uses `<table>` semantics (one DOM node per cell) and the shared
     cell primitives at `apps/web/components/grid/cell-input.tsx` —
     `<CellInput>` for text, `<NumericCell>` for money / qty / multiplier.

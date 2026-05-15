@@ -1,7 +1,9 @@
 import type { PrismaClient } from '@bvisible/db';
 import { EstimateLineKind } from '@bvisible/db';
 import {
+  cheapestAmongLatest,
   latestObservationPerVendor,
+  preferredVendorLatest,
   suggestedUnitCostCents,
   type PriceObservationRow,
 } from '@/lib/shop-material/pricing-aggregate';
@@ -31,6 +33,7 @@ export async function loadEstimateCatalogPickerRows(
       defaultQtyMilli: true,
       machineId: true,
       preferredVendorId: true,
+      preferredVendor: { select: { name: true } },
       vendorCatalogLinks: { select: { id: true } },
     },
   });
@@ -51,6 +54,10 @@ export async function loadEstimateCatalogPickerRows(
       machineId: it.machineId,
       preferredVendorId: it.preferredVendorId,
       suggestedVendorCostCents: null,
+      catalogPreferredVendorCostCents: null,
+      catalogPreferredVendorName: it.preferredVendor?.name ?? null,
+      catalogCheapestVendorCostCents: null,
+      catalogCheapestVendorName: null,
     }));
   }
 
@@ -87,6 +94,10 @@ export async function loadEstimateCatalogPickerRows(
 
   return items.map((it) => {
     let suggestedVendorCostCents: number | null = null;
+    let catalogPreferredVendorCostCents: number | null = null;
+    let catalogCheapestVendorCostCents: number | null = null;
+    let catalogCheapestVendorName: string | null = null;
+
     if (it.kind === EstimateLineKind.MATERIAL && it.vendorCatalogLinks.length > 0) {
       const flat: PriceObservationRow[] = [];
       for (const link of it.vendorCatalogLinks) {
@@ -98,6 +109,11 @@ export async function loadEstimateCatalogPickerRows(
         preferredVendorId: it.preferredVendorId,
         latestByVendor,
       });
+      const prefObs = preferredVendorLatest(it.preferredVendorId, latestByVendor);
+      catalogPreferredVendorCostCents = prefObs?.priceCents ?? null;
+      const cheap = cheapestAmongLatest(latestByVendor);
+      catalogCheapestVendorCostCents = cheap?.priceCents ?? null;
+      catalogCheapestVendorName = cheap?.vendorName ?? null;
     }
 
     return {
@@ -114,6 +130,10 @@ export async function loadEstimateCatalogPickerRows(
       machineId: it.machineId,
       preferredVendorId: it.preferredVendorId,
       suggestedVendorCostCents,
+      catalogPreferredVendorCostCents,
+      catalogPreferredVendorName: it.preferredVendor?.name ?? null,
+      catalogCheapestVendorCostCents,
+      catalogCheapestVendorName,
     };
   });
 }

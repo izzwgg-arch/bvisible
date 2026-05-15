@@ -30,7 +30,7 @@ See `DATA_MODEL.md` for column-level detail.
 
 ### Automated verification
 
-Managed catalog→estimate patches (`resolveCatalogUnitCostCents`, `buildLinePatchFromCatalogSelection`) are exercised under **`pnpm --filter @bvisible/web run verify:estimate-pricing`**.
+Managed catalog→estimate patches (`resolveCatalogUnitCostCents`, `buildLinePatchFromCatalogSelection`) and **deterministic vendor aggregation** for the estimate picker (`apps/web/lib/shop-material/pricing-aggregate.ts`: latest per vendor, cheapest among latest, preferred-vs-cheapest display metadata via `estimate-catalog-bootstrap.ts`) are exercised under **`pnpm --filter @bvisible/web run verify:estimate-pricing`** (includes `pricing-aggregate.test.ts`).
 
 ## What is extracted (Phase 10)
 
@@ -149,8 +149,19 @@ quantity-tier normalization yet.
 - UX + actions: `apps/web/lib/reconciliation/actions.ts`; surfaces documented in
   `PO_SYSTEM.md` + `UI_SYSTEM.md`.
 
+## Managed MATERIAL aggregation (estimate catalog picker)
+
+For **`ShopMaterialItem`** rows with **`kind = MATERIAL`** and linked **`VendorCatalogItem`** IDs, the estimate editor hydrates picker rows via **`loadEstimateCatalogPickerRows`** (`apps/web/lib/shop-material/estimate-catalog-bootstrap.ts`), which merges **`VendorPriceHistory`** across all linked catalog IDs.
+
+Rules (**`pricing-aggregate.ts`**, deterministic):
+
+1. **Latest per vendor:** prefer larger **`effectiveAt`** when present; otherwise **`createdAt`**. When those tie, prefer **`MANUAL`** over **`OCR_APPROVED`** over regex-derived methods; final tie-break **`vendorCatalogItemId`** lexicographic ascending.
+2. **Cheapest among latest:** minimum **`priceCents`** among vendors’ latest rows; price ties break on **`vendorId`** ascending.
+3. **Suggested unit cost for Apply:** preferred vendor’s latest observation when that vendor has history; otherwise global cheapest among latest. **Never** mutates the grid without **Apply** or explicit rail **Use this cost**.
+
+These hints differ from vendor-intelligence rail matching (`catalog-lookup.ts`), which resolves rows by normalized keys for an existing estimate line description.
+
 ## Future / not implemented here
 
 - Canonical `VendorPrice` table + Redis cache described in older planning docs.
-- Cheapest-vendor ranking across vendors for a shared master `Item`.
 - Cloud LLM extraction / semantic SKU resolution / autopilot accounting.
