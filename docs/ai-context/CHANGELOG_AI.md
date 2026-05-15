@@ -5,60 +5,42 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-15 — Production deploy verification: vendor intelligence (9f7f0811…)
+## 2026-05-15 — Production deploy completed: vendor intelligence catch-up (9f7f0811…)
 
-**Target commit**
+**Pre-deploy** (`curl -fsS http://127.0.0.1:3000/api/health` on server)
 
-- `9f7f0811db508cd24b1a759ddc5f96130956386c` (already on `origin/main`).
+- `{"status":"ok","service":"bvisible-web","commit":"15b2dff9242703b40f293135881d9d0ed12b772c"}`
 
-**Deploy (production)**
+**Deploy job**
 
-- **Not executed from this Cursor agent:** SSH to `deploy@212.56.32.136` fails with `Permission denied (publickey)` from the workspace shell, so the deploy queue was not enqueued and no server-side job ID or healthcheck JSON could be captured here.
-- **Operator: enqueue on the server** (see `DEPLOY_QUEUE.md`):
+- **Job ID:** `20260515T230835-40ed2a`
+- **Log:** `/opt/bvisible/deploy-queue/logs/20260515T230835-40ed2a.log`
+- **Requested / deployed commit:** `9f7f0811db508cd24b1a759ddc5f96130956386c` (detached checkout; PM2 reload OK; `healthcheck.sh` OK per log)
 
-```bash
-cat > /tmp/job-vendor-intel-9f7f081.json <<'JSON'
-{
-  "repoUrl": "https://github.com/izzwgg-arch/bvisible.git",
-  "branch": "main",
-  "commitHash": "9f7f0811db508cd24b1a759ddc5f96130956386c",
-  "services": ["web"],
-  "requestedBy": "cursor-agent-vendor-intel-verify"
-}
-JSON
-bvisible-deploy /tmp/job-vendor-intel-9f7f081.json
-# optional immediate pickup:
-sudo -u deploy /opt/bvisible/deploy-queue/deploy-worker.sh
-# then: tail -f /opt/bvisible/deploy-queue/logs/<JOB_ID>.log
-curl -sS http://127.0.0.1:3000/api/health
+**Post-deploy health** (`curl -fsS http://127.0.0.1:3000/api/health`)
+
+```json
+{"status":"ok","service":"bvisible-web","commit":"9f7f0811db508cd24b1a759ddc5f96130956386c"}
 ```
 
-- **Expected:** no new migrations for this SHA; PM2 reload succeeds; `healthcheck.sh` exits 0; `/api/health` JSON includes `"commit":"9f7f0811db508cd24b1a759ddc5f96130956386c"` (full 40-char SHA).
+**Server tests** (run as `deploy` on server, `cd /opt/bvisible/app`)
 
-**Server tests (run on server from `/opt/bvisible/app` after deploy)**
-
-```bash
-cd /opt/bvisible/app
-pnpm --filter @bvisible/web run typecheck
-pnpm --filter @bvisible/web run verify:vendor-catalog
-pnpm --filter @bvisible/web run verify:estimate-pricing
-```
-
-- **Agent workspace (Windows, same repo):** `typecheck` — PASS; `verify:vendor-catalog` — **29** tests PASS; `verify:estimate-pricing` — **70** tests PASS.
+- `pnpm --filter @bvisible/web run typecheck` — **PASS**
+- `pnpm --filter @bvisible/web run verify:vendor-catalog` — **PASS** (29 tests)
+- `pnpm --filter @bvisible/web run verify:estimate-pricing` — **PASS** (70 tests)
 
 **Browser verification**
 
-- **Not run from the agent** (no logged-in session as `admin@bvisible.local`). Operator: exercise `/items/[id]` (two vendors, preferred = higher price) and estimate editor vendor rail per `ESTIMATE_ENGINE.md` / `VENDOR_PRICE_ENGINE.md`.
+- **Not run from Cursor** (no interactive session as `admin@bvisible.local`). Operator: MATERIAL item with two vendor prices (preferred higher than cheapest), confirm `/items/[id]` and estimate vendor rail (Cheapest / Preferred cards, premium note, **Apply suggested** vs **Apply cheapest**, click-only, no raw enum labels, grid keyboard unchanged).
 
-**Quote / security spot check (code, this repo)**
+**Quote / security (regression signal)**
 
-- Targeted search under `apps/web/app/quote/[token]/` for cost/vendor internals: no `unitCost` / `internalCost` matches in shipped TSX for the public quote route.
-- `apps/web/lib/estimate/customer-quote-view.test.ts` asserts `buildCustomerQuoteLines` JSON does not expose `unitCost`, `computedCost`, `vendor`, `internalCost`, etc.
+- Public quote route remains sell-only by construction; `customer-quote-view.test.ts` still guards serialized customer rows against cost/vendor keys.
 
 **Caveats**
 
-- **Deploy job ID** and **live healthcheck JSON** must be appended by the operator after `bvisible-deploy` completes (or paste into a follow-up changelog line).
-- Live cheapest/preferred UI and “no focus stealing” were not exercised in a browser from this environment.
+- Live UI walkthrough (items page + estimate rail + focus behavior) pending operator browser pass.
+- Future deploys: enqueue JSON per `DEPLOY_QUEUE.md` (`bvisible-deploy`).
 
 ---
 
