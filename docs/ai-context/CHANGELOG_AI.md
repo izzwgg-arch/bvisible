@@ -32,11 +32,47 @@ records what changed, the files touched, the risks, and the verification.
 - `pnpm --filter @bvisible/web run verify:vendor-catalog` (pass).
 - `pnpm --filter @bvisible/web run build` (pass).
 
+**Production deploy — Items catalog (`b3ef2f4`) (verification session 2026-05-14)**
+
+- **Deploy job ID:** Not obtained — Cursor agent environment cannot authenticate to production (`ssh deploy@212.56.32.136` → `Permission denied (publickey)`). Operator must enqueue and paste `JOB_ID` from `bvisible-deploy` output.
+- **Deployed SHA:** Not confirmed on the server from this session. Target commit (full): `b3ef2f444e872b5924ab8369d532f949560059df` (short `b3ef2f4`).
+- **Migration `20260515120000_shop_material_items`:** Not verified on production DB here. After deploy, confirm via deploy log (`prisma migrate deploy`) or `pnpm --filter @bvisible/db exec prisma migrate status` on `/opt/bvisible/app` with `.env` loaded.
+- **PM2:** Not observed from this session (no SSH). Expect `startOrReload` success and `bvisible-web` online when deploy completes per `DEPLOY_QUEUE.md`.
+- **Healthcheck (deploy box):** Not run from agent post-deploy. **Public probe only:** `GET https://vmi3270817.contaboserver.net/api/health` returned `{"status":"ok","service":"bvisible-web"}` during this session — does **not** prove the active release is `b3ef2f4` or that the shop-material migration applied.
+- **`pnpm --filter @bvisible/web run verify:vendor-catalog` (developer machine, repo checkout):** **38/38 pass** (same gate as production app package tests).
+- **Prisma client:** Generated during `pnpm install` / build on each deploy machine; not separately audited here for production.
+- **Browser verification (`admin@bvisible.local`):** **Not run** in this session — operator should follow checklist: `/items`, `/items/new`, create item, aliases, manual multi-vendor prices, cheapest/preferred display, history append-only; estimate line rail + optional **Use this cost** only on click; sidebar **Items**; keyboard navigation unchanged on estimate grid.
+- **Safety posture (static):** This release does not alter OCR parsing, reconciliation flows, or email ingestion workers; price history remains append-only in application code; no deploy-side fake data scripts were run from this session.
+
+**Operator — enqueue target SHA (from server as `deploy`)**
+
+```bash
+cat > /tmp/job-items-catalog.json <<'JSON'
+{
+  "repoUrl":     "https://github.com/izzwgg-arch/bvisible.git",
+  "branch":      "main",
+  "commitHash":  "b3ef2f444e872b5924ab8369d532f949560059df",
+  "services":    ["web"],
+  "requestedBy": "operator-items-catalog-verify"
+}
+JSON
+bvisible-deploy /tmp/job-items-catalog.json
+sudo -u deploy /opt/bvisible/deploy-queue/deploy-worker.sh
+bvisible-status
+```
+
+Post-deploy on server (app tree):
+
+```bash
+cd /opt/bvisible/app && pnpm --filter @bvisible/web run verify:vendor-catalog
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
 **Remaining gaps**
 
 - Item rename / destructive merges not supported (by design this phase).
 - Several native `<form action>` mutations omit inline error display (silent no-op on failure) aside from alias/manual flows using `useActionState`.
-- Deploy + authenticated browser smoke not run here post-change.
+- **Production** deploy log, migration confirmation on DB, PM2 status, deploy-box healthcheck, and logged-in browser smoke require operator completion with SSH + credentials (blocked in this agent session).
 
 ---
 
