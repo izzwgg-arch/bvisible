@@ -5,6 +5,42 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production deploy verification — Estimate → PO workflow (`ef91ff6`)
+
+**Production deploy**
+
+- **Deploy job ID:** *(not obtained — SSH from Cursor workspace to `deploy@vmi3270817.contaboserver.net` returned `Permission denied (publickey)`. Operator must enqueue on the deploy host; `bvisible-deploy job.json` prints **`JOB_ID`** as its final line.)*
+- **Deployed SHA (production):** *(pending)* — **pre-deploy public probe:** `GET https://vmi3270817.contaboserver.net/api/health` returned **`{"status":"ok","service":"bvisible-web","commit":"86ea768dabaf5be3a3ee937d51bdec885fa5688f"}`** — still **not** **`ef91ff6db0df75dc85ec6dfaa1c16d5015f49648`**.
+- **Migrations:** none expected for this release (schema unchanged in `ef91ff6`).
+- **PM2 / healthcheck:** *(pending on server)* — success = `deploy-once.sh` exits 0, log shows `startOrReload`, `/opt/bvisible/deploy-queue/healthcheck.sh` OK.
+
+**Enqueue payload (run as `deploy` on server)**
+
+```json
+{
+  "repoUrl": "https://github.com/izzwgg-arch/bvisible.git",
+  "branch": "main",
+  "commitHash": "ef91ff6db0df75dc85ec6dfaa1c16d5015f49648",
+  "services": ["web"],
+  "requestedBy": "cursor-agent-estimate-po-verify"
+}
+```
+
+Then: `sudo -u deploy /opt/bvisible/deploy-queue/deploy-worker.sh` (or wait for timer), `tail -f /opt/bvisible/deploy-queue/logs/<JOB_ID>.log`.
+
+**Verification**
+
+- **Workspace (`ef91ff6`, this machine):** `pnpm --filter @bvisible/web run verify:estimate-quote` → **46/46 pass**.
+- **Production server:** `pnpm --filter @bvisible/web run verify:estimate-quote` under `/opt/bvisible/app` → *(pending operator)*.
+- **Production `/api/health` JSON with `commit`:** *(pending)* — must equal **`ef91ff6db0df75dc85ec6dfaa1c16d5015f49648`** after deploy.
+- **Browser (`admin@bvisible.local`):** dashboard fulfillment tiles, estimate DRAFT/SENT/APPROVED flows, PO origin card, quote regressions → *(not run this session — needs login)*.
+
+**Caveats**
+
+- Acceptance for **production** is incomplete until health shows **`ef91ff6`** and operator completes browser + server Vitest on the deploy box.
+
+---
+
 ## 2026-05-14 — Estimate → PO operational handoff + dashboard fulfillment rails
 
 **Scope**
