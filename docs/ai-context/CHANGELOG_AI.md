@@ -5,6 +5,63 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production deploy verification: vendor intelligence (9f7f0811…)
+
+**Target commit**
+
+- `9f7f0811db508cd24b1a759ddc5f96130956386c` (already on `origin/main`).
+
+**Deploy (production)**
+
+- **Not executed from this Cursor agent:** SSH to `deploy@212.56.32.136` fails with `Permission denied (publickey)` from the workspace shell, so the deploy queue was not enqueued and no server-side job ID or healthcheck JSON could be captured here.
+- **Operator: enqueue on the server** (see `DEPLOY_QUEUE.md`):
+
+```bash
+cat > /tmp/job-vendor-intel-9f7f081.json <<'JSON'
+{
+  "repoUrl": "https://github.com/izzwgg-arch/bvisible.git",
+  "branch": "main",
+  "commitHash": "9f7f0811db508cd24b1a759ddc5f96130956386c",
+  "services": ["web"],
+  "requestedBy": "cursor-agent-vendor-intel-verify"
+}
+JSON
+bvisible-deploy /tmp/job-vendor-intel-9f7f081.json
+# optional immediate pickup:
+sudo -u deploy /opt/bvisible/deploy-queue/deploy-worker.sh
+# then: tail -f /opt/bvisible/deploy-queue/logs/<JOB_ID>.log
+curl -sS http://127.0.0.1:3000/api/health
+```
+
+- **Expected:** no new migrations for this SHA; PM2 reload succeeds; `healthcheck.sh` exits 0; `/api/health` JSON includes `"commit":"9f7f0811db508cd24b1a759ddc5f96130956386c"` (full 40-char SHA).
+
+**Server tests (run on server from `/opt/bvisible/app` after deploy)**
+
+```bash
+cd /opt/bvisible/app
+pnpm --filter @bvisible/web run typecheck
+pnpm --filter @bvisible/web run verify:vendor-catalog
+pnpm --filter @bvisible/web run verify:estimate-pricing
+```
+
+- **Agent workspace (Windows, same repo):** `typecheck` — PASS; `verify:vendor-catalog` — **29** tests PASS; `verify:estimate-pricing` — **70** tests PASS.
+
+**Browser verification**
+
+- **Not run from the agent** (no logged-in session as `admin@bvisible.local`). Operator: exercise `/items/[id]` (two vendors, preferred = higher price) and estimate editor vendor rail per `ESTIMATE_ENGINE.md` / `VENDOR_PRICE_ENGINE.md`.
+
+**Quote / security spot check (code, this repo)**
+
+- Targeted search under `apps/web/app/quote/[token]/` for cost/vendor internals: no `unitCost` / `internalCost` matches in shipped TSX for the public quote route.
+- `apps/web/lib/estimate/customer-quote-view.test.ts` asserts `buildCustomerQuoteLines` JSON does not expose `unitCost`, `computedCost`, `vendor`, `internalCost`, etc.
+
+**Caveats**
+
+- **Deploy job ID** and **live healthcheck JSON** must be appended by the operator after `bvisible-deploy` completes (or paste into a follow-up changelog line).
+- Live cheapest/preferred UI and “no focus stealing” were not exercised in a browser from this environment.
+
+---
+
 ## 2026-05-14 — Vendor pricing intelligence: deterministic cheapest + estimate/item UI
 
 **Changed**
