@@ -27,6 +27,17 @@ records what changed, the files touched, the risks, and the verification.
 - `pnpm --filter @bvisible/web run verify:estimate-acceptance` (**30** tests incl. customer-quote safety regressions); `pnpm --filter @bvisible/web run build`.
 - **Deploy:** run **`prisma migrate deploy`** so **`20260515143000_estimate_quote_accept_decline`** applies after prior quote-link migration.
 
+**Production deploy — public quote Accept / Decline (`2342e4f`) (2026-05-15)**
+
+- **Deploy job ID:** `20260515T065426-6f88d3`
+- **Deployed SHA:** `2342e4fd51096b4ef9bf430c78e9b0d3a9323c25`
+- **Migration (`prisma migrate deploy`):** Applied **`20260515143000_estimate_quote_accept_decline`**; `db-verify` reports **15** applied migrations (latest **`20260515143000_estimate_quote_accept_decline`**).
+- **PM2:** `bvisible-web` **online** (`exec cwd` → **`/opt/bvisible/app/apps/web/.next/standalone/apps/web`**, script **`server.js`**); reload succeeded as part of deploy worker (**deploy-once** SUCCESS).
+- **`/api/health`:** `{"status":"ok","service":"bvisible-web","commit":"2342e4fd51096b4ef9bf430c78e9b0d3a9323c25"}` *(HTTPS by raw IP may fail TLS hostname verification — use the site hostname or `-k` for smoke checks)*.
+- **Server tests (`/opt/bvisible/app`):** `pnpm --filter @bvisible/web run verify:estimate-acceptance` → **30/30 pass**
+- **Browser (logged-out `/quote/[token]`):** **not run** this session — operator should exercise Accept + Decline on **two** fresh links (or regenerate between paths), confirm success banners, refresh persistence, staff **`APPROVED` / `REJECTED`**, **replay idempotency** (no duplicate timeline/audit), **FINALIZED** blocked, **revoked/expired** unavailable, **opposite action** after response blocked, **invalid token** generic unavailable page, **print** hides response controls, and **no internal/vendor/OCR/admin chrome**.
+- **DB snapshot (`psql` via `docker compose exec`, 2026-05-15):** Postgres enum **`EstimateTimelineKind`** includes **`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`**. Row counts at snapshot: **`estimate_timeline_events`** total **0** (no timeline rows yet in this DB); **`estimate_quote_links`** with **`respondedAt` populated:** **0**; **`audit_logs`** rows where **`action`** is **`estimate_quote_accepted`** / **`estimate_quote_declined`:** **0** — consistent with **no production customer submit** exercised yet. Row-level “exactly once per first response” still needs a **before/after** around a real Accept/Decline.
+
 **Gaps**
 
 - No dedicated **staff estimate timeline UI** yet — events land in **`estimate_timeline_events`** + **`audit_logs`**; operators can extend the estimate page later to render `QUOTE_*` rows like PO timelines.
