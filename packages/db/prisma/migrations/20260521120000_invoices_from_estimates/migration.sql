@@ -17,7 +17,9 @@ CREATE TABLE "invoices" (
     "createdById" TEXT NOT NULL,
     "deletedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "invoices_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE "invoice_line_items" (
