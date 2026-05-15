@@ -1,12 +1,52 @@
 import type { PrismaClient } from '@bvisible/db';
 import { EstimateLineKind } from '@bvisible/db';
-import type { ManagedItemIntel } from '@/lib/vendor-pricing/catalog-intel-types';
+import type { ManagedItemIntel, ManagedVendorLatestRow } from '@/lib/vendor-pricing/catalog-intel-types';
 import {
   cheapestAmongLatest,
   latestObservationPerVendor,
   type PriceObservationRow,
   suggestedUnitCostCents,
 } from '@/lib/shop-material/pricing-aggregate';
+import { classifyPriceTrendForVendorHistory } from '@/lib/vendor-pricing/trends';
+import {
+  labelVendorPriceConfidenceProduct,
+  labelVendorPriceSourceProduct,
+} from '@/lib/vendor-pricing/vendor-price-source-label';
+
+function emptyManagedExtensions(shop: {
+  preferredVendorId: string | null;
+}): Pick<
+  ManagedItemIntel,
+  | 'preferredVendorId'
+  | 'cheapestVendorId'
+  | 'vendorLatestRows'
+  | 'preferredPremiumVsCheapestCents'
+  | 'cheapestPriceTrend'
+  | 'preferredPriceTrend'
+> {
+  return {
+    preferredVendorId: shop.preferredVendorId,
+    cheapestVendorId: null,
+    vendorLatestRows: [],
+    preferredPremiumVsCheapestCents: null,
+    cheapestPriceTrend: null,
+    preferredPriceTrend: null,
+  };
+}
+
+function vendorTrendFromHistories(
+  histories: ReadonlyArray<{
+    vendorId: string;
+    priceCents: number;
+    createdAt: Date;
+    effectiveAt: Date | null;
+  }>,
+  vendorId: string,
+): ManagedItemIntel['cheapestPriceTrend'] {
+  const slice = histories.filter((h) => h.vendorId === vendorId);
+  if (slice.length === 0) return null;
+  return classifyPriceTrendForVendorHistory(slice);
+}
 
 export async function resolveManagedItemIntel(
   prisma: PrismaClient,
@@ -99,6 +139,7 @@ export async function resolveManagedItemIntel(
       preferredLatestPriceCents: null,
       suggestedUnitCostCents:
         shop.internalCostCents > 0 ? shop.internalCostCents : null,
+      ...emptyManagedExtensions(shop),
     };
   }
 
@@ -119,6 +160,7 @@ export async function resolveManagedItemIntel(
       preferredVendorName: shop.preferredVendor?.name ?? null,
       preferredLatestPriceCents: null,
       suggestedUnitCostCents: null,
+      ...emptyManagedExtensions(shop),
     };
   }
 
@@ -133,6 +175,7 @@ export async function resolveManagedItemIntel(
       createdAt: true,
       effectiveAt: true,
       extractionMethod: true,
+      confidence: true,
       vendor: { select: { name: true } },
     },
   });
@@ -145,12 +188,47 @@ export async function resolveManagedItemIntel(
     createdAt: h.createdAt,
     effectiveAt: h.effectiveAt,
     extractionMethod: h.extractionMethod,
+    confidence: h.confidence,
   }));
 
   const latestByVendor = latestObservationPerVendor(obs);
-  const cheapest = cheapestAmongLatest(latestByVendor);
+  const cheapest = cheapestAmongLatest(latestByVendor, {
+    preferredVendorId: shop.preferredVendorId,
+  });
   const pref =
     shop.preferredVendorId != null ? latestByVendor.get(shop.preferredVendorId) : undefined;
+
+  const suggested = suggestedUnitCostCents({
+    preferredVendorId: shop.preferredVendorId,
+    latestByVendor,
+  });
+
+  let preferredPremiumVsCheapestCents: number | null = null;
+  if (pref && cheapest && pref.priceCents > cheapest.priceCents) {
+    preferredPremiumVsCheapestCents = pref.priceCents - cheapest.priceCents;
+  }
+
+  const vendorLatestRows: ManagedVendorLatestRow[] = [...latestByVendor.values()]
+    .sort((a, b) => a.vendorName.localeCompare(b.vendorName) || a.vendorId.localeCompare(b.vendorId))
+    .map((r) => {
+      const when = r.effectiveAt ?? r.createdAt;
+      return {
+        vendorId: r.vendorId,
+        vendorName: r.vendorName,
+        priceCents: r.priceCents,
+        updatedAtIso: when.toISOString(),
+        sourceLabel: labelVendorPriceSourceProduct(r.extractionMethod),
+        confidenceLabel: labelVendorPriceConfidenceProduct(r.confidence ?? null),
+      };
+    });
+
+  const cheapestPriceTrend = cheapest
+    ? vendorTrendFromHistories(histories, cheapest.vendorId)
+    : null;
+  const preferredPriceTrend =
+    shop.preferredVendorId != null
+      ? vendorTrendFromHistories(histories, shop.preferredVendorId)
+      : null;
 
   return {
     id: shop.id,
@@ -158,13 +236,16 @@ export async function resolveManagedItemIntel(
     nameNormalized: shop.nameNormalized,
     detailHref: `/items/${shop.id}`,
     matchVia,
+    preferredVendorId: shop.preferredVendorId,
+    cheapestVendorId: cheapest?.vendorId ?? null,
     cheapestVendorName: cheapest?.vendorName ?? null,
     cheapestPriceCents: cheapest?.priceCents ?? null,
     preferredVendorName: shop.preferredVendor?.name ?? null,
     preferredLatestPriceCents: pref?.priceCents ?? null,
-    suggestedUnitCostCents: suggestedUnitCostCents({
-      preferredVendorId: shop.preferredVendorId,
-      latestByVendor,
-    }),
+    preferredPremiumVsCheapestCents,
+    suggestedUnitCostCents: suggested,
+    vendorLatestRows,
+    cheapestPriceTrend,
+    preferredPriceTrend,
   };
 }

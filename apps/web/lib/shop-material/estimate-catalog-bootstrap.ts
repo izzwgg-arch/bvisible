@@ -111,7 +111,9 @@ export async function loadEstimateCatalogPickerRows(
       });
       const prefObs = preferredVendorLatest(it.preferredVendorId, latestByVendor);
       catalogPreferredVendorCostCents = prefObs?.priceCents ?? null;
-      const cheap = cheapestAmongLatest(latestByVendor);
+      const cheap = cheapestAmongLatest(latestByVendor, {
+        preferredVendorId: it.preferredVendorId,
+      });
       catalogCheapestVendorCostCents = cheap?.priceCents ?? null;
       catalogCheapestVendorName = cheap?.vendorName ?? null;
     }

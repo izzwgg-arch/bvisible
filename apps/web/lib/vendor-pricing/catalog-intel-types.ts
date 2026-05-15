@@ -8,6 +8,21 @@ export type CatalogLookupMatchKind =
   | 'shop_item_name'
   | 'shop_item_alias';
 
+export type ManagedVendorLatestRow = {
+  vendorId: string;
+  vendorName: string;
+  priceCents: number;
+  updatedAtIso: string;
+  sourceLabel: string;
+  confidenceLabel: string | null;
+};
+
+export type ManagedPriceTrendFlags = {
+  priceRecentlyIncreasedVsAvg: boolean;
+  priceRecentlyIncreasedVsPrev: boolean;
+  highVolatility: boolean;
+};
+
 /** Serializable payload for estimate UI (server action → client). */
 export type ManagedItemIntel = {
   id: string;
@@ -15,11 +30,18 @@ export type ManagedItemIntel = {
   nameNormalized: string;
   detailHref: string;
   matchVia: 'shop_name' | 'shop_alias' | 'linked_catalog';
+  preferredVendorId: string | null;
+  cheapestVendorId: string | null;
   cheapestVendorName: string | null;
   cheapestPriceCents: number | null;
   preferredVendorName: string | null;
   preferredLatestPriceCents: number | null;
+  /** When preferred latest is higher than deterministic cheapest latest. */
+  preferredPremiumVsCheapestCents: number | null;
   suggestedUnitCostCents: number | null;
+  vendorLatestRows: readonly ManagedVendorLatestRow[];
+  cheapestPriceTrend: ManagedPriceTrendFlags | null;
+  preferredPriceTrend: ManagedPriceTrendFlags | null;
 };
 
 export type VendorCatalogLookupResult = {

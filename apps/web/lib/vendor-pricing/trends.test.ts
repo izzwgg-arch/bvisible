@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyPriceTrend,
+  classifyPriceTrendForVendorHistory,
   coefficientOfVariationRatio,
   DEFAULT_HIGH_VOLATILITY_CV_BPS,
   DEFAULT_SPIKE_VS_AVG_BPS,
@@ -69,5 +70,27 @@ describe('classifyPriceTrend', () => {
       windowPrices90dCents: prices,
     });
     expect(r.highVolatility).toBe(true);
+  });
+});
+
+describe('classifyPriceTrendForVendorHistory', () => {
+  const nowMs = new Date('2026-04-15T12:00:00Z').getTime();
+
+  it('flags strictly more than +10% vs prior observation in vendor series', () => {
+    const rows = [
+      { priceCents: 121, createdAt: new Date('2026-04-01T12:00:00Z'), effectiveAt: null },
+      { priceCents: 100, createdAt: new Date('2026-03-01T12:00:00Z'), effectiveAt: null },
+    ];
+    const r = classifyPriceTrendForVendorHistory(rows, { nowMs });
+    expect(r.priceRecentlyIncreasedVsPrev).toBe(true);
+  });
+
+  it('does not flag when prior jump is exactly +10%', () => {
+    const rows = [
+      { priceCents: 110, createdAt: new Date('2026-04-01T12:00:00Z'), effectiveAt: null },
+      { priceCents: 100, createdAt: new Date('2026-03-01T12:00:00Z'), effectiveAt: null },
+    ];
+    const r = classifyPriceTrendForVendorHistory(rows, { nowMs });
+    expect(r.priceRecentlyIncreasedVsPrev).toBe(false);
   });
 });

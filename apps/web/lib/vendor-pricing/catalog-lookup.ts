@@ -7,6 +7,12 @@ import type {
   VendorCatalogLookupResult,
 } from './catalog-intel-types';
 import { resolveManagedItemIntel } from '@/lib/shop-material/managed-intel';
+import {
+  cheapestAmongLatest,
+  latestObservationPerVendor,
+  observationInstant,
+  type PriceObservationRow,
+} from '@/lib/shop-material/pricing-aggregate';
 
 export type {
   VendorCatalogLookupResult,
@@ -17,7 +23,6 @@ export const MAX_PREFIX_NAME_ROWS = 15;
 export const MAX_PREFIX_ALIAS_ROWS = 12;
 export const MAX_MERGED_CATALOG_IDS = 20;
 export const WINDOW_DAYS = 90;
-export const VENDOR_LATEST_SCAN_ROWS = 100;
 export const WINDOW_PRICE_ROWS_CAP = 400;
 export const MAIN_HISTORY_ROW_CAP = 500;
 export const MIN_NORMALIZED_QUERY_LEN = 2;
@@ -342,6 +347,7 @@ export async function lookupVendorCatalogIntelligence(
     select: {
       priceCents: true,
       createdAt: true,
+      effectiveAt: true,
       vendorId: true,
       sourcePoAttachmentId: true,
       vendor: { select: { name: true } },
@@ -353,21 +359,28 @@ export async function lookupVendorCatalogIntelligence(
 
   const sinceMs = Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const windowRows = histDesc
-    .filter((r) => r.createdAt.getTime() >= sinceMs)
+    .filter(
+      (r) =>
+        observationInstant({ effectiveAt: r.effectiveAt, createdAt: r.createdAt }) >= sinceMs,
+    )
     .slice(0, WINDOW_PRICE_ROWS_CAP);
 
   const windowPrices = windowRows.map((r) => r.priceCents);
   const avg90 = meanCents(windowPrices);
 
-  const rankingScan = histDesc.slice(0, VENDOR_LATEST_SCAN_ROWS);
-  const latestByVendor = new Map<string, (typeof histDesc)[number]>();
-  for (const r of rankingScan) {
-    if (!latestByVendor.has(r.vendorId)) latestByVendor.set(r.vendorId, r);
-  }
-  let cheapest: (typeof histDesc)[number] | null = null;
-  for (const r of latestByVendor.values()) {
-    if (!cheapest || r.priceCents < cheapest.priceCents) cheapest = r;
-  }
+  const obsRows: PriceObservationRow[] = histDesc.map((r) => ({
+    vendorId: r.vendorId,
+    vendorName: r.vendor.name,
+    vendorCatalogItemId: primaryCatalogItemId,
+    priceCents: r.priceCents,
+    createdAt: r.createdAt,
+    effectiveAt: r.effectiveAt,
+    extractionMethod: VendorPriceExtractionMethod.OCR_APPROVED,
+  }));
+  const latestByVendorOcr = latestObservationPerVendor(obsRows);
+  const cheapestRow = cheapestAmongLatest(latestByVendorOcr, {
+    preferredVendorId: managedItem?.preferredVendorId ?? null,
+  });
 
   const lastPoRow =
     histDesc.find((r) => r.sourcePoAttachmentId !== null) ?? null;
@@ -387,10 +400,13 @@ export async function lookupVendorCatalogIntelligence(
     primaryCatalogItemId,
     primaryCatalogNameNormalized: resolved.primaryName,
     latestPriceCents: latestGlobal?.priceCents ?? null,
-    latestObservationAt: latestGlobal?.createdAt.toISOString() ?? null,
+    latestObservationAt:
+      latestGlobal != null
+        ? (latestGlobal.effectiveAt ?? latestGlobal.createdAt).toISOString()
+        : null,
     previousPriceCents: previousGlobal?.priceCents ?? null,
-    cheapestVendorName: cheapest?.vendor.name ?? null,
-    cheapestPriceCents: cheapest?.priceCents ?? null,
+    cheapestVendorName: cheapestRow?.vendorName ?? null,
+    cheapestPriceCents: cheapestRow?.priceCents ?? null,
     avg90PriceCents: avg90,
     observationCount90d: windowRows.length,
     vendorCount90d,

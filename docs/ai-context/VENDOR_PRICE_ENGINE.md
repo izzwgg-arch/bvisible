@@ -30,7 +30,15 @@ See `DATA_MODEL.md` for column-level detail.
 
 ### Automated verification
 
-Managed catalog→estimate patches (`resolveCatalogUnitCostCents`, `buildLinePatchFromCatalogSelection`) and **deterministic vendor aggregation** for the estimate picker (`apps/web/lib/shop-material/pricing-aggregate.ts`: latest per vendor, cheapest among latest, preferred-vs-cheapest display metadata via `estimate-catalog-bootstrap.ts`) are exercised under **`pnpm --filter @bvisible/web run verify:estimate-pricing`** (includes `pricing-aggregate.test.ts`).
+Managed catalog→estimate patches (`resolveCatalogUnitCostCents`, `buildLinePatchFromCatalogSelection`) and **deterministic vendor aggregation** for the estimate picker (`apps/web/lib/shop-material/pricing-aggregate.ts`: latest per vendor, cheapest among latest with **preferred tie among equal minimum prices**, then **newest observation instant**, then **vendor name** / `vendorId`; preferred-vs-cheapest display metadata via `estimate-catalog-bootstrap.ts`) are exercised under **`pnpm --filter @bvisible/web run verify:estimate-pricing`** (includes `pricing-aggregate.test.ts`, `trends.test.ts`) and **`pnpm --filter @bvisible/web run verify:vendor-catalog`** (includes `pricing-aggregate`, `vendor-price-source-label`, `apply-catalog-to-estimate-line`).
+
+### Cheapest vendor + operator copy (managed items)
+
+- **Latest per vendor** uses `latestObservationPerVendor` on merged `VendorPriceHistory` for all `VendorCatalogItem` rows linked to the shop item (same tie-break as above).
+- **Cheapest among those latest rows** = minimum `priceCents`; ties resolve in order: **preferred vendor id when it is among the tied minima**, else **newer `effectiveAt ?? createdAt`**, else **`vendorName` localeCompare**, else **`vendorId`**.
+- **Suggested unit cost** still prefers **preferred vendor’s latest** when that snapshot exists; it does **not** silently replace the numeric “cheapest” display — UI shows both.
+- **Human-readable source labels** (not raw Prisma enum strings) map through `apps/web/lib/vendor-pricing/vendor-price-source-label.ts` (**Manual**, **OCR verified**, **Email text**, **Filename**, **OCR text (unverified)**, **Unknown**) plus optional **confidence** copy (**High / Medium / Lower confidence**).
+- **Per-vendor trend** for managed surfaces uses `classifyPriceTrendForVendorHistory` in `trends.ts` (90d window on that vendor’s merged history; **>10%** spike vs prior observation uses `DEFAULT_SPIKE_VS_PREV_BPS = 1000`).
 
 ## What is extracted (Phase 10)
 

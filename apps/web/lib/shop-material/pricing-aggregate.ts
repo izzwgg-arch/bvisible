@@ -1,4 +1,4 @@
-import type { VendorPriceExtractionMethod } from '@bvisible/db';
+import type { VendorPriceConfidence, VendorPriceExtractionMethod } from '@bvisible/db';
 
 export type PriceObservationRow = {
   vendorId: string;
@@ -8,6 +8,7 @@ export type PriceObservationRow = {
   createdAt: Date;
   effectiveAt: Date | null;
   extractionMethod: VendorPriceExtractionMethod;
+  confidence?: VendorPriceConfidence | null;
 };
 
 /** Higher wins when observation instant + createdAt tie (MANUAL > OCR_APPROVED > regex OCR > …). */
@@ -66,19 +67,52 @@ export function latestObservationPerVendor(
   return byVendor;
 }
 
+export type CheapestAmongLatestOptions = {
+  /** When multiple vendors share the minimum latest price, prefer this vendor id if it is among the ties. */
+  preferredVendorId?: string | null;
+};
+
+/**
+ * Cheapest vendor = MIN(latest price per vendor). Tie-break (deterministic):
+ * 1) preferred vendor when it is tied at the minimum
+ * 2) most recent observation instant (effectiveAt else createdAt)
+ * 3) vendor name (localeCompare)
+ */
 export function cheapestAmongLatest(
   latestByVendor: Map<string, PriceObservationRow>,
+  opts?: CheapestAmongLatestOptions,
 ): PriceObservationRow | null {
-  let best: PriceObservationRow | null = null;
+  if (latestByVendor.size === 0) return null;
+  let minPrice = Infinity;
   for (const r of latestByVendor.values()) {
-    if (!best) {
-      best = r;
-      continue;
-    }
-    if (r.priceCents < best.priceCents) best = r;
-    else if (r.priceCents === best.priceCents && r.vendorId < best.vendorId) best = r;
+    if (r.priceCents < minPrice) minPrice = r.priceCents;
   }
-  return best;
+  if (!Number.isFinite(minPrice)) return null;
+
+  const atMin: PriceObservationRow[] = [];
+  for (const r of latestByVendor.values()) {
+    if (r.priceCents === minPrice) atMin.push(r);
+  }
+  if (atMin.length === 1) return atMin[0]!;
+
+  const preferredId = opts?.preferredVendorId;
+  if (preferredId) {
+    const prefHit = atMin.find((r) => r.vendorId === preferredId);
+    if (prefHit) return prefHit;
+  }
+
+  atMin.sort((a, b) => {
+    const ta = observationInstant(a);
+    const tb = observationInstant(b);
+    if (tb !== ta) return tb - ta;
+    const ca = a.createdAt.getTime();
+    const cb = b.createdAt.getTime();
+    if (cb !== ca) return cb - ca;
+    const nameCmp = a.vendorName.localeCompare(b.vendorName);
+    if (nameCmp !== 0) return nameCmp;
+    return a.vendorId.localeCompare(b.vendorId);
+  });
+  return atMin[0] ?? null;
 }
 
 export function preferredVendorLatest(
@@ -96,6 +130,8 @@ export function suggestedUnitCostCents(args: {
 }): number | null {
   const pref = preferredVendorLatest(args.preferredVendorId, args.latestByVendor);
   if (pref) return pref.priceCents;
-  const cheap = cheapestAmongLatest(args.latestByVendor);
+  const cheap = cheapestAmongLatest(args.latestByVendor, {
+    preferredVendorId: args.preferredVendorId,
+  });
   return cheap?.priceCents ?? null;
 }

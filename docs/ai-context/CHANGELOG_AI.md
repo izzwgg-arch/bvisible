@@ -5,6 +5,37 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Vendor pricing intelligence: deterministic cheapest + estimate/item UI
+
+**Changed**
+
+- `pricing-aggregate.ts` — `cheapestAmongLatest` tie-break: preferred vendor among equal minima, then newer `effectiveAt ?? createdAt`, then vendor name, then vendor id; `suggestedUnitCostCents` unchanged (preferred latest else cheapest).
+- `trends.ts` — `DEFAULT_SPIKE_VS_PREV_BPS` raised to **10%**; added `classifyPriceTrendForVendorHistory` for single-vendor merged series.
+- `managed-intel.ts`, `catalog-intel-types.ts` — serializable `vendorLatestRows`, `preferredPremiumVsCheapestCents`, per-vendor trend flags, `cheapestVendorId`, `preferredVendorId` on managed intel.
+- `catalog-lookup.ts` — OCR path cheapest uses `latestObservationPerVendor` over full capped history + `effectiveAt` on 90d window and “latest at” display; respects managed preferred id on price ties.
+- `estimate-catalog-bootstrap.ts` — passes preferred vendor into cheapest selection.
+- `vendor-catalog-intel-panel.tsx` — cheapest/preferred cards, comparison table, dual Apply buttons, user-facing trend copy.
+- `items/[id]/page.tsx` — merged latest-per-vendor vendor table (when MATERIAL + history), source/confidence columns, overview premium note, history uses product labels.
+- `vendor-price-source-label.ts` (+ tests) — operator-facing source + confidence strings.
+- `package.json` (`@bvisible/web`) — `verify:vendor-catalog` includes aggregate + label tests; `verify:estimate-pricing` includes `trends.test.ts`.
+- (Same-day earlier catalog work still in tree: **catalog-item-picker** cheapest/preferred sub-lines + **catalogPickerSellHintCents** — superseded **cheapest tie-break** text now matches R-VEN-05 / `pricing-aggregate`.)
+
+**Docs**
+
+- `VENDOR_PRICE_ENGINE.md`, `ESTIMATE_ENGINE.md`, `UI_SYSTEM.md`, `KNOWN_RULES.md` (R-VEN-04/05).
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run typecheck`
+- `pnpm --filter @bvisible/web run verify:vendor-catalog`
+- `pnpm --filter @bvisible/web run verify:estimate-pricing`
+
+**Deploy**
+
+- No migration. Deploy is code-only after commit is on `origin`.
+
+---
+
 ## 2026-05-15 — Production deploy: Pricing helper + `20260523120000_shop_item_markup_default_3x`
 
 **Deploy job**
@@ -69,32 +100,6 @@ records what changed, the files touched, the risks, and the verification.
 **Deploy**
 
 - Run **`prisma migrate deploy`** for migration `20260523120000_shop_item_markup_default_3x` before relying on DB-side insert defaults.
-
----
-
-## 2026-05-14 — Estimate catalog vendor aggregation + pricing docs/tests
-
-**Changed**
-
-- Deterministic **latest-per-vendor** tie-breaks (`effectiveAt`/`createdAt`, then **`MANUAL` > `OCR_APPROVED` > regex**, then `vendorCatalogItemId`) and **cheapest-among-latest** price ties (`vendorId`) in `pricing-aggregate.ts`.
-- Catalog picker rows carry **preferred vs cheapest** display metadata from `estimate-catalog-bootstrap.ts`; UI sub-lines + column tooltips in `catalog-item-picker.tsx`.
-- **`catalogPickerSellHintCents`** unifies sell-hint math with **`resolveCatalogUnitCostCents`** (fixes MACHINE basis previously inconsistent vs Apply).
-
-**Tests / verification**
-
-- Extended **`verify:estimate-pricing`** with `markup.test.ts`, `pricing-aggregate.test.ts`, catalog sell-hint tests, quote JSON leak guards (`vendor`/`internalCost`), install/misc/engine coverage.
-
-**Docs**
-
-- `ESTIMATE_ENGINE.md` (install limitation, catalog hint vs multiplier), `VENDOR_PRICE_ENGINE.md`, `KNOWN_RULES.md` (**R-VEN-05**), `UI_SYSTEM.md`.
-
-**Risk**
-
-- Medium — touches estimate catalog hydration path only (no OCR/email/reconciliation changes).
-
-**Files**
-
-- `apps/web/lib/shop-material/pricing-aggregate.ts`, `pricing-aggregate.test.ts`, `apply-catalog-to-estimate-line.ts`, `apply-catalog-to-estimate-line.test.ts`, `estimate-catalog-bootstrap.ts`, `markup.test.ts`, `app/(app)/estimates/[id]/catalog-item-picker.tsx`, `lib/estimate/estimate-pricing-engine.test.ts`, `lib/estimate/customer-quote-view.test.ts`, `lib/invoices/allocate-estimate-sell-to-invoice-lines.test.ts`, `apps/web/package.json`, `docs/ai-context/*.md` (listed above + this file).
 
 ---
 

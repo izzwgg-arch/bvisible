@@ -1,7 +1,9 @@
 /** Deterministic trend / volatility helpers (integer cents). No ML. */
 
+import { observationInstant } from '@/lib/shop-material/pricing-aggregate';
+
 export const DEFAULT_SPIKE_VS_AVG_BPS = 1000; // 10%
-export const DEFAULT_SPIKE_VS_PREV_BPS = 500; // 5%
+export const DEFAULT_SPIKE_VS_PREV_BPS = 1000; // 10% (operator “recent jump” threshold)
 export const DEFAULT_HIGH_VOLATILITY_CV_BPS = 1500; // coefficient of variation >= 15%
 
 export type TrendKind =
@@ -132,4 +134,43 @@ export function classifyPriceTrend(args: {
     priceRecentlyIncreasedVsPrev,
     highVolatility,
   };
+}
+
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** Trend / volatility for one vendor’s own history rows (any catalog links merged). */
+export function classifyPriceTrendForVendorHistory(
+  rows: ReadonlyArray<{ priceCents: number; createdAt: Date; effectiveAt: Date | null }>,
+  args?: { nowMs?: number },
+): {
+  trendKind: TrendKind;
+  priceRecentlyIncreasedVsAvg: boolean;
+  priceRecentlyIncreasedVsPrev: boolean;
+  highVolatility: boolean;
+} {
+  if (rows.length === 0) {
+    return {
+      trendKind: 'unknown',
+      priceRecentlyIncreasedVsAvg: false,
+      priceRecentlyIncreasedVsPrev: false,
+      highVolatility: false,
+    };
+  }
+  const nowMs = args?.nowMs ?? Date.now();
+  const since = nowMs - NINETY_DAYS_MS;
+  const sorted = [...rows].sort(
+    (a, b) => observationInstant(b) - observationInstant(a),
+  );
+  const latest = sorted[0]!;
+  const previous = sorted[1] ?? null;
+  const windowPrices = sorted
+    .filter((r) => observationInstant(r) >= since)
+    .map((r) => r.priceCents);
+  const avg90 = meanCents(windowPrices);
+  return classifyPriceTrend({
+    latestCents: latest.priceCents,
+    previousCents: previous?.priceCents ?? null,
+    avg90Cents: avg90,
+    windowPrices90dCents: windowPrices,
+  });
 }

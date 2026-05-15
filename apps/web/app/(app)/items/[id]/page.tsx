@@ -4,9 +4,18 @@ import { prisma, Role, VendorPriceExtractionMethod, EstimateLineKind } from '@bv
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
-import { labelVendorPriceExtractionMethod } from '@/lib/ui/status-labels';
 import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
 import { formatCatalogUnitDisplay } from '@/lib/shop-material/catalog-unit-display';
+import {
+  cheapestAmongLatest,
+  latestObservationPerVendor,
+  type PriceObservationRow,
+} from '@/lib/shop-material/pricing-aggregate';
+import { classifyPriceTrendForVendorHistory } from '@/lib/vendor-pricing/trends';
+import {
+  labelVendorPriceConfidenceProduct,
+  labelVendorPriceSourceProduct,
+} from '@/lib/vendor-pricing/vendor-price-source-label';
 import {
   linkVendorCatalogToShopItemAction,
   removeShopMaterialAliasAction,
@@ -60,6 +69,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
               createdAt: true,
               effectiveAt: true,
               extractionMethod: true,
+              confidence: true,
             },
           },
         },
@@ -85,6 +95,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             createdAt: true,
             effectiveAt: true,
             extractionMethod: true,
+            confidence: true,
             itemNameRaw: true,
             vendor: { select: { name: true } },
           },
@@ -114,6 +125,48 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             vendor: { select: { name: true } },
           },
         });
+
+  let intelLatestByVendor = new Map<string, PriceObservationRow>();
+  let intelCheapest: PriceObservationRow | null = null;
+  let intelHistoriesForTrend: ReadonlyArray<{
+    vendorId: string;
+    priceCents: number;
+    createdAt: Date;
+    effectiveAt: Date | null;
+  }> = [];
+
+  if (item.kind === EstimateLineKind.MATERIAL && catalogIds.length > 0) {
+    const intelRows = await prisma.vendorPriceHistory.findMany({
+      where: { tenantId: me.tenantId, vendorCatalogItemId: { in: catalogIds } },
+      orderBy: { createdAt: 'desc' },
+      take: 1500,
+      select: {
+        vendorId: true,
+        vendorCatalogItemId: true,
+        priceCents: true,
+        createdAt: true,
+        effectiveAt: true,
+        extractionMethod: true,
+        confidence: true,
+        vendor: { select: { name: true } },
+      },
+    });
+    intelHistoriesForTrend = intelRows;
+    const obs: PriceObservationRow[] = intelRows.map((h) => ({
+      vendorId: h.vendorId,
+      vendorName: h.vendor.name,
+      vendorCatalogItemId: h.vendorCatalogItemId,
+      priceCents: h.priceCents,
+      createdAt: h.createdAt,
+      effectiveAt: h.effectiveAt,
+      extractionMethod: h.extractionMethod,
+      confidence: h.confidence,
+    }));
+    intelLatestByVendor = latestObservationPerVendor(obs);
+    intelCheapest = cheapestAmongLatest(intelLatestByVendor, {
+      preferredVendorId: item.preferredVendorId,
+    });
+  }
 
   const strayCatalogRows =
     item.kind === EstimateLineKind.MATERIAL
@@ -147,25 +200,34 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     }),
   ]);
 
-  let cheapest: { vendor: string; cents: number } | null = null;
-  for (const link of item.vendorCatalogLinks) {
-    const h = link.priceHistory[0];
-    if (!h) continue;
-    if (!cheapest || h.priceCents < cheapest.cents) {
-      cheapest = { vendor: link.vendor.name, cents: h.priceCents };
-    }
-  }
-
-  const prefLatest =
-    item.preferredVendorId != null
-      ? item.vendorCatalogLinks.find((l) => l.vendorId === item.preferredVendorId)?.priceHistory[0]
+  const prefLatestObservation =
+    item.kind === EstimateLineKind.MATERIAL && item.preferredVendorId != null
+      ? intelLatestByVendor.get(item.preferredVendorId)
       : undefined;
 
+  const cheapestDisplay =
+    intelCheapest != null
+      ? {
+          vendorId: intelCheapest.vendorId,
+          vendor: intelCheapest.vendorName,
+          cents: intelCheapest.priceCents,
+        }
+      : null;
+
+  const vendorAggregatedRows =
+    item.kind === EstimateLineKind.MATERIAL
+      ? [...intelLatestByVendor.values()].sort(
+          (a, b) => a.vendorName.localeCompare(b.vendorName) || a.vendorId.localeCompare(b.vendorId),
+        )
+      : [];
+  const useAggregatedVendorTable =
+    item.kind === EstimateLineKind.MATERIAL && vendorAggregatedRows.length > 0;
+
   const costBasisForSellHint =
-    item.kind === EstimateLineKind.MATERIAL && prefLatest
-      ? prefLatest.priceCents
-      : item.kind === EstimateLineKind.MATERIAL && cheapest
-        ? cheapest.cents
+    item.kind === EstimateLineKind.MATERIAL && prefLatestObservation
+      ? prefLatestObservation.priceCents
+      : item.kind === EstimateLineKind.MATERIAL && cheapestDisplay
+        ? cheapestDisplay.cents
         : item.internalCostCents;
   const sellHint =
     item.defaultSellPriceCents ??
@@ -275,8 +337,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
               <div>
                 <dt className="text-[var(--color-bv-muted)]">Cheapest vendor (MATERIAL)</dt>
                 <dd className="font-medium">
-                  {item.kind === EstimateLineKind.MATERIAL && cheapest
-                    ? `${cheapest.vendor} · ${formatMoney(cheapest.cents)}`
+                  {item.kind === EstimateLineKind.MATERIAL && cheapestDisplay
+                    ? `${cheapestDisplay.vendor} · ${formatMoney(cheapestDisplay.cents)}`
                     : '—'}
                 </dd>
               </div>
@@ -286,8 +348,17 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                   {item.kind !== EstimateLineKind.MATERIAL ? (
                     '—'
                   ) : item.preferredVendor ? (
-                    prefLatest ? (
-                      `${formatMoney(prefLatest.priceCents)} (${labelVendorPriceExtractionMethod(prefLatest.extractionMethod)})`
+                    prefLatestObservation ? (
+                      <>
+                        {formatMoney(prefLatestObservation.priceCents)} ·{' '}
+                        {labelVendorPriceSourceProduct(prefLatestObservation.extractionMethod)}
+                        {labelVendorPriceConfidenceProduct(prefLatestObservation.confidence ?? null) ? (
+                          <span className="text-[var(--color-bv-muted)]">
+                            {' '}
+                            · {labelVendorPriceConfidenceProduct(prefLatestObservation.confidence ?? null)}
+                          </span>
+                        ) : null}
+                      </>
                     ) : (
                       'No observations yet'
                     )
@@ -296,6 +367,22 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                   )}
                 </dd>
               </div>
+              {item.kind === EstimateLineKind.MATERIAL &&
+              item.preferredVendor &&
+              prefLatestObservation &&
+              cheapestDisplay &&
+              prefLatestObservation.priceCents > cheapestDisplay.cents ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-[var(--color-bv-muted)]">Preferred vs cheapest</dt>
+                  <dd className="text-[12.5px] text-[var(--color-bv-text)]">
+                    Preferred vendor is{' '}
+                    <span className="font-semibold tabular-nums">
+                      {formatMoney(prefLatestObservation.priceCents - cheapestDisplay.cents)}
+                    </span>{' '}
+                    higher than cheapest.
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </section>
 
@@ -315,43 +402,114 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                       <th className="py-2 pr-3 font-medium">Vendor</th>
                       <th className="py-2 pr-3 font-medium">SKU</th>
                       <th className="py-2 pr-3 font-medium">Latest price</th>
-                      <th className="py-2 font-medium">Source</th>
+                      <th className="py-2 pr-3 font-medium">Source</th>
+                      <th className="py-2 pr-3 font-medium">Confidence</th>
+                      <th className="py-2 font-medium">Note</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {item.vendorCatalogLinks.map((link) => {
-                      const h = link.priceHistory[0];
-                      return (
-                        <tr key={link.id} className="border-b border-[var(--color-bv-border)] last:border-b-0">
-                          <td className="py-2 pr-3">
-                            <Link
-                              href={`/vendors/${link.vendorId}`}
-                              className="font-medium text-[var(--color-bv-accent)]"
+                    {useAggregatedVendorTable
+                      ? vendorAggregatedRows.map((row) => {
+                          const trend = classifyPriceTrendForVendorHistory(
+                            intelHistoriesForTrend.filter((h) => h.vendorId === row.vendorId),
+                          );
+                          const skuLabels = item.vendorCatalogLinks
+                            .filter((l) => l.vendorId === row.vendorId)
+                            .map((l) => l.vendorSku)
+                            .filter((s): s is string => Boolean(s));
+                          const skuCell = skuLabels.length === 0 ? '—' : skuLabels.join(', ');
+                          const when = row.effectiveAt ?? row.createdAt;
+                          let note: string = '—';
+                          if (trend.highVolatility) note = 'Price has varied recently';
+                          else if (
+                            trend.priceRecentlyIncreasedVsAvg ||
+                            trend.priceRecentlyIncreasedVsPrev
+                          ) {
+                            note = 'Price increased recently';
+                          }
+                          const isCheap = intelCheapest?.vendorId === row.vendorId;
+                          const isPref = item.preferredVendorId === row.vendorId;
+                          return (
+                            <tr
+                              key={row.vendorId}
+                              className="border-b border-[var(--color-bv-border)] last:border-b-0"
                             >
-                              {link.vendor.name}
-                            </Link>
-                          </td>
-                          <td className="py-2 pr-3 font-mono text-[11px] text-[var(--color-bv-muted)]">
-                            {link.vendorSku ?? '—'}
-                          </td>
-                          <td className="py-2 pr-3 tabular-nums">
-                            {h ? (
-                              <>
-                                {formatMoney(h.priceCents)}
+                              <td className="py-2 pr-3">
+                                <Link
+                                  href={`/vendors/${row.vendorId}`}
+                                  className="font-medium text-[var(--color-bv-accent)]"
+                                >
+                                  {row.vendorName}
+                                </Link>
+                                <span className="ml-1 flex flex-wrap gap-1">
+                                  {isCheap ? (
+                                    <span className="rounded bg-emerald-800/10 px-1 py-0 text-[9px] font-bold uppercase text-emerald-950">
+                                      Cheapest
+                                    </span>
+                                  ) : null}
+                                  {isPref ? (
+                                    <span className="rounded bg-indigo-600/10 px-1 py-0 text-[9px] font-bold uppercase text-indigo-950">
+                                      Preferred
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3 font-mono text-[11px] text-[var(--color-bv-muted)]">
+                                {skuCell}
+                              </td>
+                              <td className="py-2 pr-3 tabular-nums">
+                                {formatMoney(row.priceCents)}
                                 <div className="text-[11px] text-[var(--color-bv-muted)]">
-                                  {(h.effectiveAt ?? h.createdAt).toISOString().slice(0, 10)}
+                                  {when.toISOString().slice(0, 10)}
                                 </div>
-                              </>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="py-2 text-[12px]">
-                            {h ? labelVendorPriceExtractionMethod(h.extractionMethod) : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                              </td>
+                              <td className="py-2 pr-3 text-[12px]">
+                                {labelVendorPriceSourceProduct(row.extractionMethod)}
+                              </td>
+                              <td className="py-2 pr-3 text-[12px] text-[var(--color-bv-muted)]">
+                                {labelVendorPriceConfidenceProduct(row.confidence ?? null) ?? '—'}
+                              </td>
+                              <td className="py-2 text-[11px] text-[var(--color-bv-muted)]">{note}</td>
+                            </tr>
+                          );
+                        })
+                      : item.vendorCatalogLinks.map((link) => {
+                          const h = link.priceHistory[0];
+                          return (
+                            <tr key={link.id} className="border-b border-[var(--color-bv-border)] last:border-b-0">
+                              <td className="py-2 pr-3">
+                                <Link
+                                  href={`/vendors/${link.vendorId}`}
+                                  className="font-medium text-[var(--color-bv-accent)]"
+                                >
+                                  {link.vendor.name}
+                                </Link>
+                              </td>
+                              <td className="py-2 pr-3 font-mono text-[11px] text-[var(--color-bv-muted)]">
+                                {link.vendorSku ?? '—'}
+                              </td>
+                              <td className="py-2 pr-3 tabular-nums">
+                                {h ? (
+                                  <>
+                                    {formatMoney(h.priceCents)}
+                                    <div className="text-[11px] text-[var(--color-bv-muted)]">
+                                      {(h.effectiveAt ?? h.createdAt).toISOString().slice(0, 10)}
+                                    </div>
+                                  </>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className="py-2 pr-3 text-[12px]">
+                                {h ? labelVendorPriceSourceProduct(h.extractionMethod) : '—'}
+                              </td>
+                              <td className="py-2 pr-3 text-[12px] text-[var(--color-bv-muted)]">
+                                {h ? labelVendorPriceConfidenceProduct(h.confidence ?? null) ?? '—' : '—'}
+                              </td>
+                              <td className="py-2 text-[11px] text-[var(--color-bv-muted)]">—</td>
+                            </tr>
+                          );
+                        })}
                   </tbody>
                 </table>
               </div>
@@ -372,7 +530,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                       <th className="py-2 pr-2 font-medium">When</th>
                       <th className="py-2 pr-2 font-medium">Vendor</th>
                       <th className="py-2 pr-2 font-medium">Price</th>
-                      <th className="py-2 pr-2 font-medium">Src</th>
+                      <th className="py-2 pr-2 font-medium">Source</th>
+                      <th className="py-2 pr-2 font-medium">Confidence</th>
                       <th className="py-2 font-medium">Note</th>
                     </tr>
                   </thead>
@@ -389,7 +548,10 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                             <span className="font-normal text-[var(--color-bv-muted)]"> / {h.unit}</span>
                           ) : null}
                         </td>
-                        <td className="py-2 pr-2">{labelVendorPriceExtractionMethod(h.extractionMethod)}</td>
+                        <td className="py-2 pr-2">{labelVendorPriceSourceProduct(h.extractionMethod)}</td>
+                        <td className="py-2 pr-2 text-[var(--color-bv-muted)]">
+                          {labelVendorPriceConfidenceProduct(h.confidence ?? null) ?? '—'}
+                        </td>
                         <td className="py-2 text-[11px] text-[var(--color-bv-muted)]">{h.itemNameRaw}</td>
                       </tr>
                     ))}
@@ -415,7 +577,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                     <span className="font-medium">{r.vendor.name}</span>
                     <span className="tabular-nums">{formatMoney(r.priceCents)}</span>
                     <span className="text-[11px] text-[var(--color-bv-muted)]">
-                      {labelVendorPriceExtractionMethod(r.extractionMethod)} ·{' '}
+                      {labelVendorPriceSourceProduct(r.extractionMethod)} ·{' '}
                       {r.createdAt.toISOString().slice(0, 16).replace('T', ' ')}
                     </span>
                   </li>

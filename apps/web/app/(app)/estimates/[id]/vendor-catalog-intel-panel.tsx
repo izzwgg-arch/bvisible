@@ -5,7 +5,10 @@ import { useEffect, useState } from 'react';
 import { EstimateLineKind } from '@bvisible/db';
 import { formatMoney } from '@/lib/estimate/format';
 import { lookupVendorCatalogForEstimateAction } from '@/lib/estimate/vendor-catalog-intel-action';
-import type { VendorCatalogLookupResult } from '@/lib/vendor-pricing/catalog-intel-types';
+import type {
+  ManagedPriceTrendFlags,
+  VendorCatalogLookupResult,
+} from '@/lib/vendor-pricing/catalog-intel-types';
 import type { DraftLine } from './editor';
 
 const DEBOUNCE_MS = 320;
@@ -58,6 +61,18 @@ function managedViaLabel(v: NonNullable<VendorCatalogLookupResult['managedItem']
     default:
       return '';
   }
+}
+
+function managedTrendLines(flags: ManagedPriceTrendFlags | null | undefined): string[] {
+  if (!flags) return [];
+  const lines: string[] = [];
+  if (flags.priceRecentlyIncreasedVsAvg || flags.priceRecentlyIncreasedVsPrev) {
+    lines.push('Price increased recently');
+  }
+  if (flags.highVolatility) {
+    lines.push('Price has varied recently');
+  }
+  return lines;
 }
 
 export function VendorCatalogIntelPanel({
@@ -122,7 +137,15 @@ export function VendorCatalogIntelPanel({
   const trimmedDesc = line.description.trim();
   const queryTooShort = trimmedDesc.length < 2;
 
-  const suggested = data?.managedItem?.suggestedUnitCostCents ?? null;
+  const managed = data?.managedItem ?? null;
+  const suggested = managed?.suggestedUnitCostCents ?? null;
+  const cheapestCents = managed?.cheapestPriceCents ?? null;
+  const showCheapestApply =
+    onApplyManagedCost &&
+    line &&
+    cheapestCents !== null &&
+    suggested !== null &&
+    cheapestCents < suggested;
 
   return (
     <aside
@@ -138,7 +161,7 @@ export function VendorCatalogIntelPanel({
             Updating…
           </span>
         ) : null}
-        {data?.managedItem ? (
+        {managed ? (
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
             Managed item
           </span>
@@ -160,48 +183,152 @@ export function VendorCatalogIntelPanel({
         </p>
       ) : null}
 
-      {data?.managedItem ? (
-        <div className="mb-3 rounded-lg border border-emerald-200/90 bg-emerald-50/45 px-3 py-2.5 text-[12.5px] text-emerald-950">
+      {managed ? (
+        <div className="mb-3 space-y-2 rounded-lg border border-emerald-200/90 bg-emerald-50/45 px-3 py-2.5 text-[12.5px] text-emerald-950">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900/90">
                 Catalog item
               </p>
               <Link
-                href={data.managedItem.detailHref as never}
+                href={managed.detailHref as never}
                 className="mt-0.5 inline-block text-[13px] font-semibold text-emerald-950 underline-offset-2 hover:underline"
               >
-                {data.managedItem.displayName}
+                {managed.displayName}
               </Link>
-              <p className="mt-1 text-[11px] text-emerald-900/80">
-                {managedViaLabel(data.managedItem.matchVia)}
-              </p>
+              <p className="mt-1 text-[11px] text-emerald-900/80">{managedViaLabel(managed.matchVia)}</p>
             </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border border-emerald-200/80 bg-white/55 px-2.5 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-900/85">Cheapest vendor</p>
+              <p className="mt-0.5 text-[13px] font-semibold tabular-nums">
+                {managed.cheapestVendorName ?? '—'}
+                {cheapestCents !== null ? (
+                  <span className="ml-1 text-emerald-950">{formatMoney(cheapestCents)}</span>
+                ) : null}
+              </p>
+              {managedTrendLines(managed.cheapestPriceTrend).map((t) => (
+                <p key={t} className="mt-1 text-[10.5px] leading-snug text-amber-900/95">
+                  {t}
+                </p>
+              ))}
+            </div>
+            <div className="rounded-md border border-emerald-200/80 bg-white/55 px-2.5 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-900/85">Preferred vendor</p>
+              <p className="mt-0.5 text-[13px] font-semibold">
+                {managed.preferredVendorName ?? <span className="text-emerald-900/75">Not set</span>}
+              </p>
+              {managed.preferredVendorName ? (
+                <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-emerald-950">
+                  {managed.preferredLatestPriceCents !== null
+                    ? formatMoney(managed.preferredLatestPriceCents)
+                    : 'No latest price'}
+                </p>
+              ) : null}
+              {managedTrendLines(managed.preferredPriceTrend).map((t) => (
+                <p key={`p-${t}`} className="mt-1 text-[10.5px] leading-snug text-amber-900/95">
+                  {t}
+                </p>
+              ))}
+            </div>
+          </div>
+
+          {managed.preferredPremiumVsCheapestCents != null && managed.preferredPremiumVsCheapestCents > 0 ? (
+            <p className="rounded-md border border-slate-200/90 bg-white/50 px-2 py-1.5 text-[11px] text-emerald-950/95">
+              Preferred vendor is{' '}
+              <span className="font-semibold tabular-nums">
+                {formatMoney(managed.preferredPremiumVsCheapestCents)}
+              </span>{' '}
+              higher than cheapest.
+            </p>
+          ) : null}
+
+          {managed.vendorLatestRows.length > 0 ? (
+            <div className="overflow-x-auto rounded-md border border-emerald-200/70 bg-white/40">
+              <table className="w-full min-w-[320px] text-[11.5px]">
+                <thead>
+                  <tr className="border-b border-emerald-200/80 text-left text-[10px] font-semibold uppercase tracking-wide text-emerald-900/80">
+                    <th className="px-2 py-1.5">Vendor</th>
+                    <th className="px-2 py-1.5">Latest</th>
+                    <th className="px-2 py-1.5">Updated</th>
+                    <th className="px-2 py-1.5">Source</th>
+                    <th className="px-2 py-1.5">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {managed.vendorLatestRows.map((r) => {
+                    const isCheap =
+                      managed.cheapestVendorId !== null && r.vendorId === managed.cheapestVendorId;
+                    const isPref = managed.preferredVendorId === r.vendorId;
+                    return (
+                      <tr key={r.vendorId} className="border-b border-emerald-100/90 last:border-b-0">
+                        <td className="px-2 py-1.5">
+                          <span className="font-medium">{r.vendorName}</span>
+                          <span className="ml-1 flex flex-wrap gap-1">
+                            {isCheap ? (
+                              <span className="rounded bg-emerald-800/10 px-1 py-0 text-[9px] font-bold uppercase text-emerald-950">
+                                Cheapest
+                              </span>
+                            ) : null}
+                            {isPref ? (
+                              <span className="rounded bg-indigo-600/10 px-1 py-0 text-[9px] font-bold uppercase text-indigo-950">
+                                Preferred
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 tabular-nums font-medium">{formatMoney(r.priceCents)}</td>
+                        <td className="px-2 py-1.5 tabular-nums text-[var(--color-bv-muted)]">
+                          {fmtTs(r.updatedAtIso)}
+                        </td>
+                        <td className="px-2 py-1.5">{r.sourceLabel}</td>
+                        <td className="px-2 py-1.5 text-[var(--color-bv-muted)]">{r.confidenceLabel ?? '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2 border-t border-emerald-200/70 pt-2">
             {suggested !== null ? (
-              <div className="text-right">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900/90">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-900/85">
                   Suggested unit cost
                 </p>
                 <p className="tabular-nums text-[14px] font-bold">{formatMoney(suggested)}</p>
-                <p className="text-[10px] text-emerald-900/75">
-                  Prefers preferred vendor · else cheapest latest
-                </p>
+                <p className="text-[10px] text-emerald-900/75">Preferred latest when set · else cheapest latest</p>
               </div>
             ) : (
-              <p className="max-w-[12rem] text-[11px] leading-snug text-emerald-900/80">
+              <p className="text-[11px] leading-snug text-emerald-900/80">
                 No vendor prices recorded on this item yet — add manual pricing under Items.
               </p>
             )}
           </div>
-          {onApplyManagedCost && line && suggested !== null ? (
-            <button
-              type="button"
-              className="mt-2 rounded-[8px] bg-emerald-700 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-800"
-              onClick={() => onApplyManagedCost(line.id, suggested)}
-            >
-              Use this cost on the line
-            </button>
-          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            {onApplyManagedCost && line && suggested !== null ? (
+              <button
+                type="button"
+                className="rounded-[8px] bg-emerald-700 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-800"
+                onClick={() => onApplyManagedCost(line.id, suggested)}
+              >
+                Apply suggested cost
+              </button>
+            ) : null}
+            {showCheapestApply && cheapestCents !== null ? (
+              <button
+                type="button"
+                className="rounded-[8px] border border-emerald-800/30 bg-white px-3 py-1.5 text-[12px] font-semibold text-emerald-950 shadow-sm hover:bg-emerald-50"
+                onClick={() => onApplyManagedCost!(line!.id, cheapestCents)}
+              >
+                Apply cheapest vendor cost
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -242,17 +369,13 @@ export function VendorCatalogIntelPanel({
             <dt className="text-[var(--color-bv-muted)]">90d avg</dt>
             <dd className="tabular-nums">
               {data.avg90PriceCents !== null ? formatMoney(data.avg90PriceCents) : '—'}{' '}
-              <span className="text-[var(--color-bv-muted)]">
-                ({data.observationCount90d} obs)
-              </span>
+              <span className="text-[var(--color-bv-muted)]">({data.observationCount90d} obs)</span>
             </dd>
             <dt className="text-[var(--color-bv-muted)]">Cheapest</dt>
             <dd>
               {data.cheapestVendorName ?? '—'}
               {data.cheapestPriceCents !== null ? (
-                <span className="ml-1 tabular-nums font-medium">
-                  {formatMoney(data.cheapestPriceCents)}
-                </span>
+                <span className="ml-1 tabular-nums font-medium">{formatMoney(data.cheapestPriceCents)}</span>
               ) : null}
             </dd>
             <dt className="text-[var(--color-bv-muted)]">Vendors (90d)</dt>
@@ -268,17 +391,20 @@ export function VendorCatalogIntelPanel({
               ) : null}
             </dd>
             <dt className="text-[var(--color-bv-muted)]">Last OCR receipt</dt>
-            <dd className="tabular-nums text-[var(--color-bv-muted)]">
-              {fmtTs(data.lastOcrReceiptAt)}
-            </dd>
+            <dd className="tabular-nums text-[var(--color-bv-muted)]">{fmtTs(data.lastOcrReceiptAt)}</dd>
           </dl>
 
-          {(data.priceRecentlyIncreasedVsAvg || data.priceRecentlyIncreasedVsPrev) ? (
+          {data.priceRecentlyIncreasedVsAvg || data.priceRecentlyIncreasedVsPrev ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11.5px] text-amber-950">
-              Price recently increased
-              {data.priceRecentlyIncreasedVsAvg ? ' vs 90-day average' : ''}
+              Price increased recently
+              {data.priceRecentlyIncreasedVsAvg ? ' (vs 90-day average)' : ''}
               {data.priceRecentlyIncreasedVsAvg && data.priceRecentlyIncreasedVsPrev ? ' · ' : ''}
-              {data.priceRecentlyIncreasedVsPrev ? ' vs prior receipt' : ''}.
+              {data.priceRecentlyIncreasedVsPrev ? ' (vs prior observation)' : ''}
+            </div>
+          ) : null}
+          {data.highVolatility ? (
+            <div className="rounded-md border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-[11.5px] text-amber-950">
+              Price has varied recently
             </div>
           ) : null}
 

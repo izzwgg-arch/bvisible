@@ -143,12 +143,57 @@ describe('cheapestAmongLatest', () => {
     expect(c?.priceCents).toBe(100);
   });
 
-  it('when prices tie, prefers lexicographically smaller vendorId', () => {
+  it('when prices tie, prefers preferred vendor when it shares the minimum', () => {
+    const inst = new Date('2026-02-01T00:00:00Z');
     const map = new Map<string, PriceObservationRow>([
-      ['zz', obs({ vendorId: 'zz', priceCents: 50 })],
-      ['aa', obs({ vendorId: 'aa', priceCents: 50 })],
+      ['v-lo', obs({ vendorId: 'v-lo', vendorName: 'LowCo', priceCents: 50, effectiveAt: inst })],
+      ['v-hi', obs({ vendorId: 'v-hi', vendorName: 'HiCo', priceCents: 50, effectiveAt: inst })],
     ]);
-    expect(cheapestAmongLatest(map)?.vendorId).toBe('aa');
+    expect(cheapestAmongLatest(map, { preferredVendorId: 'v-hi' })?.vendorId).toBe('v-hi');
+  });
+
+  it('when prices tie without preferred among ties, picks newer observation instant', () => {
+    const map = new Map<string, PriceObservationRow>([
+      [
+        'v-old',
+        obs({
+          vendorId: 'v-old',
+          vendorName: 'Zebra',
+          priceCents: 50,
+          effectiveAt: new Date('2026-01-01'),
+        }),
+      ],
+      [
+        'v-new',
+        obs({
+          vendorId: 'v-new',
+          vendorName: 'Acme',
+          priceCents: 50,
+          effectiveAt: new Date('2026-03-01'),
+        }),
+      ],
+    ]);
+    expect(cheapestAmongLatest(map)?.vendorId).toBe('v-new');
+  });
+
+  it('when instant ties, breaks ties by vendor name then vendor id', () => {
+    const inst = new Date('2026-02-01T00:00:00Z');
+    const created = new Date('2026-01-05T00:00:00Z');
+    const map = new Map<string, PriceObservationRow>([
+      ['b', obs({ vendorId: 'b', vendorName: 'Zed', priceCents: 50, effectiveAt: inst, createdAt: created })],
+      ['a', obs({ vendorId: 'a', vendorName: 'Amy', priceCents: 50, effectiveAt: inst, createdAt: created })],
+    ]);
+    expect(cheapestAmongLatest(map)?.vendorName).toBe('Amy');
+  });
+
+  it('when vendor name ties, breaks ties by vendorId', () => {
+    const inst = new Date('2026-02-01T00:00:00Z');
+    const created = new Date('2026-01-05T00:00:00Z');
+    const map = new Map<string, PriceObservationRow>([
+      ['z', obs({ vendorId: 'z', vendorName: 'Dup', priceCents: 50, effectiveAt: inst, createdAt: created })],
+      ['a', obs({ vendorId: 'a', vendorName: 'Dup', priceCents: 50, effectiveAt: inst, createdAt: created })],
+    ]);
+    expect(cheapestAmongLatest(map)?.vendorId).toBe('a');
   });
 });
 
