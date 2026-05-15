@@ -23,6 +23,18 @@ records what changed, the files touched, the risks, and the verification.
 
 - `pnpm --filter @bvisible/web run verify:estimate-quote` (7 tests); `pnpm run build` in `apps/web`.
 
+**Production deploy — customer estimate quote (`9d0742a`) (2026-05-15)**
+
+- **Deploy job ID:** `20260515T051235-a0e015`
+- **Deployed SHA:** `9d0742a49d118b21a477c85f73c1010d03067432`
+- **Migration:** `prisma migrate deploy` — **No pending migrations to apply**
+- **PM2:** `bvisible-web` **online** (`startOrReload` OK)
+- **`/api/health` (loopback + public nginx):** `{"status":"ok","service":"bvisible-web","commit":"9d0742a49d118b21a477c85f73c1010d03067432"}`
+- **Server tests (`/opt/bvisible/app`):** `pnpm --filter @bvisible/web run verify:estimate-quote` → **7/7 pass**
+- **Browser (`admin@bvisible.local`):** **not run** this session — spot-check `/estimates/[id]/preview`, print preview (chrome hidden), detail CTAs, SMTP send / safe failure + status transition
+- **SMTP:** **not exercised** from this session — use `/settings/email-test` or preview **Send estimate email** with a client email on file; expect verify failure → **no `SENT`** transition when SMTP misconfigured
+- **Caveat:** Quote link in email remains **auth-required** (no public token URLs yet)
+
 **Gaps**
 
 - No anonymous/token **public** quote URLs yet; email link expects authenticated workspace access.
