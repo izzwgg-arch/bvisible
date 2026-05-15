@@ -16,6 +16,7 @@
     "verify:estimate-invoice-flow": "vitest run lib/invoices/allocate-estimate-sell-to-invoice-lines.test.ts lib/estimate/estimate-invoice-fulfillment.test.ts lib/dashboard/get-dashboard-estimate-invoice-flow.test.ts lib/estimate/estimate-quote-timeline.test.ts",
     "verify:ocr-reconciliation-flow": "vitest run lib/ocr lib/reconciliation",
     "verify:estimate-acceptance": "vitest run lib/estimate/public-quote-response.test.ts lib/estimate/estimate-quote-link.test.ts lib/estimate/customer-quote-view.test.ts lib/estimate/customer-quote.test.ts",
+    "verify:vendor-catalog": "vitest run lib/shop-material/apply-catalog-to-estimate-line.test.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
     "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"
