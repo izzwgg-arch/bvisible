@@ -5,6 +5,36 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-14 — Operational workflow UX (onboarding, rails, dashboard feed)
+
+**Scope**
+
+- **Onboarding:** dismissible first-session checklist card on `/dashboard`, driven only by real tenant queries (`lib/onboarding/checklist-data.ts`) — clients, vendors, enabled inbox, estimates, POs, receipt/invoice-style attachments. Dismissal persisted via httpOnly cookie (`lib/onboarding/dismiss-action.ts`, component `components/onboarding/onboarding-checklist-card.tsx`). No simulated completion.
+- **Estimate detail:** `EstimateWorkflowRail` — lifecycle strip, linked PO + finalize/QBO guidance, contextual next-action panel (`components/workflow/estimate-workflow-rail.tsx`).
+- **PO detail:** `PoOperationalRail` — lifecycle (incl. partial → ordered step), attachment/reconciliation/OCR/email summaries, operator next actions (`components/workflow/po-operational-rail.tsx`); attachments panel exposes `#po-attachments` anchor.
+- **Dashboard:** recent estimates + recent POs + merged operational attention feed (`lib/dashboard/get-dashboard-feed.ts`); layout polish in `dashboard-widgets.tsx` / `page.tsx`.
+- **Presentation labels:** `lib/ui/status-labels.ts` maps enums to operational wording in lists/admin surfaces (DB enums unchanged).
+
+**Files**
+
+- `apps/web/{components/{onboarding/,workflow/},lib/{dashboard/get-dashboard-feed.ts,onboarding/,ui/status-labels.ts},app/(app)/dashboard/{page.tsx,dashboard-widgets.tsx},app/(app)/estimates/{page.tsx,[id]/{page.tsx,totals-panel.tsx}},app/(app)/purchase-orders/{page.tsx,[id]/{page.tsx,attachments-panel.tsx,meta-panel.tsx}},app/(app)/admin/{ocr-review/page.tsx,email-ingestion/review-table.tsx}}`
+- `docs/ai-context/{UI_SYSTEM.md,CHANGELOG_AI.md}`
+
+**Risks**
+
+- Medium: extra parallel reads on dashboard and PO detail pages; all tenant-scoped as before.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run build` (pass).
+
+**Remaining gaps**
+
+- Deploy and logged-in browser smoke not run in this session.
+- Attention feed rows for OCR/inbox are summary cards when counts exist (not per-document lists).
+
+---
+
 ## 2026-05-14 — Dashboard + app shell SaaS polish
 
 **Scope**

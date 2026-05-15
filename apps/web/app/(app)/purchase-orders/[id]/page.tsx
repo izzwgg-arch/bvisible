@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
+  EmailIngestStatus,
   POAttachmentKind,
   POEventKind,
   POLineKind,
@@ -10,10 +11,17 @@ import {
 } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { PoOperationalRail } from '@/components/workflow/po-operational-rail';
 import { PoEditor, type PoEditorBootstrap } from './editor';
 
 export const metadata = { title: 'Purchase order' };
 export const dynamic = 'force-dynamic';
+
+const RECEIPTISH: POAttachmentKind[] = [
+  POAttachmentKind.RECEIPT,
+  POAttachmentKind.INVOICE,
+  POAttachmentKind.VENDOR_INVOICE,
+];
 
 export default async function PurchaseOrderDetailPage({
   params,
@@ -23,7 +31,15 @@ export default async function PurchaseOrderDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [po, vendors, events] = await Promise.all([
+  const [
+    po,
+    vendors,
+    events,
+    latestReconciliation,
+    ocrDocs,
+    emailsTouchingPo,
+    matchedEmailsCount,
+  ] = await Promise.all([
     prisma.purchaseOrder.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -35,6 +51,7 @@ export default async function PurchaseOrderDetailPage({
         subtotalCents: true,
         updatedAt: true,
         createdAt: true,
+        operatorMarkedReconciledAt: true,
         vendor: { select: { id: true, name: true } },
         estimate: { select: { id: true, number: true, title: true } },
         createdBy: { select: { name: true, email: true } },
@@ -82,11 +99,37 @@ export default async function PurchaseOrderDetailPage({
         actor: { select: { name: true, email: true } },
       },
     }),
+    prisma.pOReconciliation.findFirst({
+      where: { tenantId: me.tenantId, purchaseOrderId: id },
+      orderBy: { createdAt: 'desc' },
+      select: { status: true, createdAt: true },
+    }),
+    prisma.ocrDocument.findMany({
+      where: {
+        tenantId: me.tenantId,
+        poAttachment: { purchaseOrderId: id },
+      },
+      select: { id: true, status: true },
+    }),
+    prisma.ingestedEmail.count({
+      where: { tenantId: me.tenantId, matchedPurchaseOrderId: id },
+    }),
+    prisma.ingestedEmail.count({
+      where: {
+        tenantId: me.tenantId,
+        matchedPurchaseOrderId: id,
+        status: EmailIngestStatus.MATCHED,
+      },
+    }),
   ]);
 
   if (!po) {
     notFound();
   }
+
+  const attachmentTotal = po.attachments.length;
+  const receiptishCount = po.attachments.filter((a) => RECEIPTISH.includes(a.kind)).length;
+  const attachmentsFromEmailCount = po.attachments.filter((a) => a.sourceEmailId != null).length;
 
   const bootstrap: PoEditorBootstrap = {
     po: {
@@ -155,6 +198,20 @@ export default async function PurchaseOrderDetailPage({
             </Link>
           </div>
         }
+      />
+      <PoOperationalRail
+        poId={po.id}
+        poNumber={po.number}
+        status={po.status}
+        attachmentTotal={attachmentTotal}
+        receiptishCount={receiptishCount}
+        attachmentsFromEmailCount={attachmentsFromEmailCount}
+        latestReconciliation={latestReconciliation}
+        operatorMarkedReconciledAt={po.operatorMarkedReconciledAt}
+        ocrDocuments={ocrDocs}
+        emailsTouchingPo={emailsTouchingPo}
+        matchedEmailsCount={matchedEmailsCount}
+        role={me.role}
       />
       <PoEditor bootstrap={bootstrap} />
     </>

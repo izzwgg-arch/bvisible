@@ -7,6 +7,7 @@ import {
   EmailIngestStatus,
   EmailMatchReason,
 } from '@bvisible/db';
+import { labelEmailIngestStatus } from '@/lib/ui/status-labels';
 import {
   dismissEmailAction,
   manualLinkEmailToPoAction,
@@ -53,11 +54,26 @@ export interface ReviewTableProps {
 }
 
 const STATUS_LABELS: Record<EmailIngestStatus, { label: string; className: string }> = {
-  PENDING: { label: 'Pending', className: 'border-amber-200 bg-amber-50 text-amber-800' },
-  UNMATCHED: { label: 'Unmatched', className: 'border-amber-200 bg-amber-50 text-amber-800' },
-  MATCHED: { label: 'Matched', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  FAILED: { label: 'Failed', className: 'border-rose-200 bg-rose-50 text-rose-700' },
-  DISMISSED: { label: 'Dismissed', className: 'border-slate-200 bg-slate-50 text-slate-600' },
+  PENDING: {
+    label: labelEmailIngestStatus(EmailIngestStatus.PENDING),
+    className: 'border-amber-200 bg-amber-50 text-amber-800',
+  },
+  UNMATCHED: {
+    label: labelEmailIngestStatus(EmailIngestStatus.UNMATCHED),
+    className: 'border-amber-200 bg-amber-50 text-amber-800',
+  },
+  MATCHED: {
+    label: labelEmailIngestStatus(EmailIngestStatus.MATCHED),
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  FAILED: {
+    label: labelEmailIngestStatus(EmailIngestStatus.FAILED),
+    className: 'border-rose-200 bg-rose-50 text-rose-700',
+  },
+  DISMISSED: {
+    label: labelEmailIngestStatus(EmailIngestStatus.DISMISSED),
+    className: 'border-slate-200 bg-slate-50 text-slate-600',
+  },
 };
 
 function formatBytes(n: number): string {

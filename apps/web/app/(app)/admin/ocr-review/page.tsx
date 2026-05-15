@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { OcrJobStatus, prisma, Role } from '@bvisible/db';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { labelOcrJobStatus } from '@/lib/ui/status-labels';
 import { EmptyState } from '@/components/app/empty-state';
 
 export const metadata = { title: 'Receipt OCR review' };
@@ -111,7 +112,7 @@ export default async function OcrReviewIndexPage({
                   key={d.id}
                   className="border-t border-[var(--color-bv-border)] hover:bg-[var(--color-bv-bg)]"
                 >
-                  <td className="px-4 py-3 font-medium">{d.status}</td>
+                  <td className="px-4 py-3 font-medium">{labelOcrJobStatus(d.status)}</td>
                   <td className="px-4 py-3">
                     {d.poAttachment ? (
                       <Link

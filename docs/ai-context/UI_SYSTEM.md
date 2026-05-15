@@ -58,9 +58,21 @@ The look, feel, and behavior of the web app.
   via `getDashboardMetrics()` in `apps/web/lib/dashboard/get-dashboard-metrics.ts`: open estimates,
   open POs, vendor price notifications (`dismissedAt: null`), pending OCR queue (ADMIN+),
   unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
-  recent rows from `audit_logs`, plus quick actions and first-run guidance when the workspace is empty.
+  recent rows from `audit_logs`, plus quick actions. **Operational overview** layout:
+  recent estimates + recent POs + merged **attention feed** (`getDashboardOperationalFeed()` in
+  `apps/web/lib/dashboard/get-dashboard-feed.ts`: spend alerts, vendor price rows, and for ADMIN+
+  synthetic OCR queue / unmatched-email prompts when counts > 0 — still backed by DB counts,
+  not fabricated rows). **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
+  shows a dismissible checklist whose completion state is computed from real tenant data
+  (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
+- **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
+  `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO statuses)
+  so lists and admin grids read like operations software, not raw enum strings.
 - **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel}.tsx`:
+  - **Workflow rail** (`components/workflow/estimate-workflow-rail.tsx`) above the editor: estimate lifecycle
+    (Draft → Sent → Approved → Finalized), linked PO summary + QBO gap copy, finalize gate explanation,
+    and contextual **next recommended action** when something blocks progress.
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
   - **Material-row vendor intelligence** — lightweight aside card below the grid when the estimator focuses a material description or qty cell (debounced server lookups via `lookupVendorCatalogForEstimateAction`; OCR_APPROVED catalog observations only). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`.
@@ -139,6 +151,10 @@ The look, feel, and behavior of the web app.
   "Email inbox" link to the tenant's inbox config page.
 - **Purchase order editor** at
   `apps/web/app/(app)/purchase-orders/[id]/{editor,line-grid,meta-panel,timeline-panel,attachments-panel}.tsx`:
+  - **Operational rail** (`components/workflow/po-operational-rail.tsx`) above the editor: PO lifecycle
+    (Draft → Sent → Ordered → Received, with partial receipts aligned to Ordered), attachment counts,
+    reconciliation snapshot label, OCR receipt counts by status, inbound-email touch counts for operators,
+    and **next recommended action** (upload docs, reconciliation, OCR queue, email matching).
   - Same two-column layout as the estimate editor: line grid + notes +
     attachments + timeline on the left, sticky meta panel (320px) on the
     right.

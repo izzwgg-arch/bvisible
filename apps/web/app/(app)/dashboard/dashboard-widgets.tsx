@@ -1,56 +1,134 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Role } from '@bvisible/db';
+import { EstimateStatus, POStatus, Role } from '@bvisible/db';
 import type { DashboardAuditRow, DashboardMetrics } from '@/lib/dashboard/get-dashboard-metrics';
+import type { AttentionFeedKind, DashboardOperationalFeed } from '@/lib/dashboard/get-dashboard-feed';
+import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
 
-export function DashboardFirstRunGuide({
-  metrics,
-}: {
-  metrics: Pick<DashboardMetrics, 'clientCount' | 'openEstimates' | 'openPurchaseOrders'>;
-}) {
-  const quiet =
-    metrics.clientCount === 0 &&
-    metrics.openEstimates === 0 &&
-    metrics.openPurchaseOrders === 0;
-
-  if (!quiet) return null;
-
+export function DashboardOperationalSections({ feed }: { feed: DashboardOperationalFeed }) {
   return (
-    <section className="mb-8 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-gradient-to-br from-[var(--color-bv-surface)] to-[var(--color-bv-bg)] p-6 shadow-[var(--shadow-bv-card)]">
-      <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-        Welcome — let&apos;s set up your workspace
-      </h2>
-      <ol className="mt-4 list-decimal space-y-2 pl-5 text-[13.5px] leading-relaxed text-[var(--color-bv-muted)]">
-        <li>
-          <Link
-            href="/clients/new"
-            className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
-          >
-            Create a client
-          </Link>{' '}
-          — every estimate is tied to a customer record.
-        </li>
-        <li>
-          <Link
-            href="/vendors/new"
-            className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
-          >
-            Add vendors
-          </Link>{' '}
-          you buy from (needed for purchase orders and price tracking).
-        </li>
-        <li>
-          Start an{' '}
-          <Link
-            href="/estimates/new"
-            className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
-          >
-            estimate
-          </Link>{' '}
-          once you have at least one client.
-        </li>
-      </ol>
-    </section>
+    <div className="mb-10 grid gap-8 xl:grid-cols-2">
+      <section>
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
+          Recent estimates
+        </h2>
+        {feed.recentEstimates.length === 0 ? (
+          <EmptyRail>No estimates yet.</EmptyRail>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {feed.recentEstimates.map((e) => (
+              <li key={e.id}>
+                <Link
+                  href={`/estimates/${e.id}` as never}
+                  className="flex items-start justify-between gap-3 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-[var(--color-bv-bg)]"
+                >
+                  <div className="min-w-0">
+                    <span className="font-mono text-[13px] font-semibold text-[var(--color-bv-accent)]">
+                      {e.number}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[13px] text-[var(--color-bv-text)]">{e.title}</span>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
+                    {labelEstimateStatus(e.status as EstimateStatus)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
+          Recent purchase orders
+        </h2>
+        {feed.recentPurchaseOrders.length === 0 ? (
+          <EmptyRail>No purchase orders yet.</EmptyRail>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {feed.recentPurchaseOrders.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/purchase-orders/${p.id}` as never}
+                  className="flex items-start justify-between gap-3 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-[var(--color-bv-bg)]"
+                >
+                  <div className="min-w-0">
+                    <span className="font-mono text-[13px] font-semibold text-[var(--color-bv-accent)]">
+                      {p.number}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[var(--color-bv-muted)]">
+                      {p.vendorName ?? 'No vendor'}
+                    </span>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
+                    {labelPoStatus(p.status as POStatus)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="xl:col-span-2">
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
+          Operational attention
+        </h2>
+        {feed.attentionItems.length === 0 ? (
+          <EmptyRail>Nothing needs attention in your queues right now.</EmptyRail>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {feed.attentionItems.map((item, idx) => (
+              <li key={`${item.kind}-${idx}-${item.href}`}>
+                <Link
+                  href={item.href as never}
+                  className="block rounded-[10px] border border-amber-200/90 bg-amber-50/50 px-4 py-3 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-amber-50"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[13.5px] font-semibold text-amber-950">{item.title}</span>
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                      {attentionKindLabel(item.kind)}
+                    </span>
+                  </div>
+                  {item.subtitle ? (
+                    <p className="mt-1 text-[12.5px] leading-snug text-amber-950/85">{item.subtitle}</p>
+                  ) : null}
+                  <time
+                    dateTime={item.createdAt.toISOString()}
+                    className="mt-2 block text-[11px] text-amber-900/70 tabular-nums"
+                  >
+                    {formatShortTime(item.createdAt)}
+                  </time>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function attentionKindLabel(kind: AttentionFeedKind): string {
+  switch (kind) {
+    case 'spend':
+      return 'Spend';
+    case 'vendor_price':
+      return 'Pricing';
+    case 'ocr_queue':
+      return 'OCR';
+    case 'email_inbox':
+      return 'Inbox';
+    default:
+      return 'Ops';
+  }
+}
+
+function EmptyRail({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-8 text-center text-[13px] text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
+      {children}
+    </div>
   );
 }
 
@@ -178,7 +256,7 @@ export function DashboardMetricGrid({
   });
 
   return (
-    <section className="mb-8">
+    <section className="mb-10">
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
         At a glance
       </h2>
@@ -240,14 +318,13 @@ function MetricCard({
 
 export function DashboardRecentActivity({ rows }: { rows: DashboardAuditRow[] }) {
   return (
-    <section className="mb-8">
+    <section className="mb-10">
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-        Recent activity
+        Audit timeline
       </h2>
       {rows.length === 0 ? (
         <div className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-5 py-8 text-[13.5px] text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
-          No audit events yet for this workspace. Actions on estimates, POs, and admin tools will
-          appear here.
+          Nothing logged yet. Saves, status moves, and admin actions will roll up here automatically.
         </div>
       ) : (
         <ul className="divide-y divide-[var(--color-bv-border)] overflow-hidden rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">

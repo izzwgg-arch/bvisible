@@ -2,11 +2,15 @@ import { requireUserForAppShell } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { Role } from '@bvisible/db';
 import { getDashboardMetrics } from '@/lib/dashboard/get-dashboard-metrics';
+import { getDashboardOperationalFeed } from '@/lib/dashboard/get-dashboard-feed';
+import { getOnboardingChecklistState } from '@/lib/onboarding/checklist-data';
+import { isOnboardingChecklistDismissed } from '@/lib/onboarding/dismiss-action';
+import { OnboardingChecklistCard } from '@/components/onboarding/onboarding-checklist-card';
 import { VendorPriceAlerts } from './vendor-price-alerts';
 import { SpendOperationAlerts } from './reconciliation-widgets';
 import {
-  DashboardFirstRunGuide,
   DashboardMetricGrid,
+  DashboardOperationalSections,
   DashboardQuickActions,
   DashboardRecentActivity,
 } from './dashboard-widgets';
@@ -25,20 +29,32 @@ export default async function DashboardPage({
   const showOperator =
     user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
-  const metrics =
+  const [metrics, feed, dismissed, checklistState] =
     user.tenantId != null
-      ? await getDashboardMetrics(user.tenantId, {
-          includeOperatorMetrics: showOperator,
-        })
-      : null;
+      ? await Promise.all([
+          getDashboardMetrics(user.tenantId, {
+            includeOperatorMetrics: showOperator,
+          }),
+          getDashboardOperationalFeed(user.tenantId, {
+            includeOperatorAttention: showOperator,
+          }),
+          isOnboardingChecklistDismissed(),
+          getOnboardingChecklistState(user.tenantId, user.role),
+        ])
+      : [null, null, true, null];
 
   const workspaceLabel = user.tenant.name;
+
+  const showOnboarding =
+    checklistState != null &&
+    !dismissed &&
+    checklistState.completedCount < checklistState.totalSteps;
 
   return (
     <>
       <PageHeader
         title={greeting(user.name, user.email)}
-        subtitle={`${workspaceLabel} · priorities and shortcuts`}
+        subtitle={`${workspaceLabel} · operational overview`}
       />
       {error === 'forbidden' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
@@ -59,11 +75,15 @@ export default async function DashboardPage({
         </div>
       ) : null}
 
+      {showOnboarding && checklistState ? (
+        <OnboardingChecklistCard state={checklistState} role={user.role} />
+      ) : null}
+
       {metrics ? (
         <>
-          <DashboardFirstRunGuide metrics={metrics} />
           <DashboardQuickActions role={user.role} hasClients={metrics.clientCount > 0} />
           <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
+          {feed ? <DashboardOperationalSections feed={feed} /> : null}
           <DashboardRecentActivity rows={metrics.recentActivity} />
         </>
       ) : null}

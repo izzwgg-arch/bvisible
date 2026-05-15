@@ -4,6 +4,7 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney } from '@/lib/estimate/format';
+import { labelPoStatus } from '@/lib/ui/status-labels';
 
 export const metadata = { title: 'Purchase orders' };
 export const dynamic = 'force-dynamic';
@@ -160,7 +161,7 @@ function StatusPill({ status }: { status: POStatus }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11.5px] font-medium ${STATUS_TONE[status]}`}
     >
-      {status.replace('_', ' ')}
+      {labelPoStatus(status)}
     </span>
   );
 }

@@ -121,7 +121,10 @@ export function PoAttachmentsPanel({
   }
 
   return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+    <section
+      id="po-attachments"
+      className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
+    >
       <div className="flex items-center justify-between border-b border-[var(--color-bv-border)] px-5 py-3">
         <h2 className="text-[14.5px] font-semibold tracking-tight text-[var(--color-bv-text)]">
           Attachments

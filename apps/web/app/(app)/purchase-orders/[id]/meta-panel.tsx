@@ -7,6 +7,7 @@ import { POStatus } from '@bvisible/db';
 import { formatMoney } from '@/lib/estimate/format';
 import { setPoQboNumberAction, setPoVendorAction, type SavePoState } from './actions';
 import type { PoEditorBootstrap } from './editor';
+import { labelPoStatus } from '@/lib/ui/status-labels';
 
 const STATUS_OPTIONS: ReadonlyArray<POStatus> = [
   POStatus.DRAFT,
@@ -134,8 +135,7 @@ export function PoMetaPanel(props: MetaPanelProps) {
       <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
         <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">QuickBooks PO #</h3>
         <p className="mt-1 text-[11.5px] text-[var(--color-bv-muted)]">
-          Enter the number QuickBooks gave this PO. Required before the linked
-          estimate can be finalized (R-EST-04).
+          Required before this estimate can close — matches the QuickBooks PO issued to the vendor.
         </p>
         <div className="mt-2 flex items-center gap-2">
           <input
@@ -217,7 +217,7 @@ export function PoMetaPanel(props: MetaPanelProps) {
                     : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)] hover:bg-[var(--color-bv-surface)]'
                 } disabled:cursor-not-allowed`}
               >
-                {s.replace('_', ' ')}
+                {labelPoStatus(s)}
               </button>
             );
           })}

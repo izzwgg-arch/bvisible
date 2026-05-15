@@ -9,6 +9,7 @@ import { NumericCell } from '@/components/grid/cell-input';
 import { parseMoney } from '@/lib/estimate/format';
 import type { SaveEstimateState } from './actions';
 import type { EditorBootstrap } from './editor';
+import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
 
 const DEFAULT_MULTIPLIER_MILLI = 3000;
 
@@ -236,7 +237,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
               <span
                 className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10.5px] font-medium ${PO_STATUS_TONE[p.status]}`}
               >
-                {p.status.replace('_', ' ')}
+                {labelPoStatus(p.status)}
               </span>
             </li>
           ))}
@@ -288,7 +289,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 title={finalizeBlockedReason ?? undefined}
                 className="inline-flex items-center justify-center rounded-[8px] bg-violet-600 px-3.5 py-2 text-[13px] font-medium text-white shadow-sm hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
               >
-                {finalizeBusy ? 'Finalizing…' : 'Finalize estimate (R-EST-04)'}
+                {finalizeBusy ? 'Finalizing…' : 'Finalize estimate'}
               </button>
               {finalizeBlockedReason ? (
                 <p className="text-[11.5px] text-[var(--color-bv-muted)]">
@@ -341,7 +342,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
                     : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)] hover:bg-[var(--color-bv-surface)]'
                 } disabled:cursor-not-allowed`}
               >
-                {s}
+                {labelEstimateStatus(s)}
               </button>
             );
           })}

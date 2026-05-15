@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { prisma, Role } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-rail';
 import { EstimateEditor, type EditorBootstrap } from './editor';
 
 export const metadata = { title: 'Estimate' };
@@ -127,6 +128,17 @@ export default async function EstimateDetailPage({
             Back to estimates
           </Link>
         }
+      />
+      <EstimateWorkflowRail
+        estimateNumber={estimate.number}
+        status={estimate.status}
+        linkedPos={linkedPos.map((p) => ({
+          id: p.id,
+          number: p.number,
+          status: p.status,
+          qboPoNumber: p.qboPoNumber,
+          vendorName: p.vendor?.name ?? null,
+        }))}
       />
       <EstimateEditor bootstrap={bootstrap} />
     </>
