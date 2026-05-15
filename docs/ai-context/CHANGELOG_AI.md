@@ -29,9 +29,23 @@ records what changed, the files touched, the risks, and the verification.
 - `pnpm --filter @bvisible/web run verify:estimate-quote`; `pnpm --filter @bvisible/web run build`
 - Apply DB migration before deploy (`prisma migrate deploy`).
 
+**Production deploy — public quote links (`282e8cf`) (2026-05-15)**
+
+- **Deploy job ID:** `20260515T062453-9ac54c`
+- **Deployed SHA:** `282e8cfa550fc7fe7cfc591543c488e05403d911`
+- **Migration (`prisma migrate deploy`):** Applied **`20260520103000_estimate_quote_links`**; `db-verify` reports **14** applied migrations (latest **`20260520103000_estimate_quote_links`**).
+- **PM2:** `bvisible-web` **reload OK** (`startOrReload`, process **online** after deploy).
+- **`/api/health` (loopback via deploy healthcheck + public nginx):** `{"status":"ok","service":"bvisible-web","commit":"282e8cfa550fc7fe7cfc591543c488e05403d911"}`
+- **Server tests (`/opt/bvisible/app`):** `pnpm --filter @bvisible/web run verify:estimate-quote` → **18/18 pass**
+- **Public quote (curl automation, no login):** GET **`/quote/`** + plausible-length unknown token → **200** with generic **“Quote unavailable”** HTML (no estimate enumeration copy). Response headers include **`cache-control: private, no-store`**, **`x-robots-tag: noindex, nofollow`** (middleware + metadata robots).
+- **Protected preview:** GET **`/estimates/…/preview`** without session → **307** to **`/login?next=…`** (still staff-only).
+- **Browser (`admin@bvisible.local`):** **not run** this session — operator should confirm generate/copy/incognito quote view, print/PDF, revoke/regenerate rotation, and UI lacks sidebar/admin/vendor/OCR chrome on `/quote/[token]`.
+- **SMTP / send estimate email:** **not exercised** this session — confirm with **`/settings/email-test`** or preview **Send estimate email** (expect **`/quote/…`** in message body when SMTP succeeds; **`DRAFT → SENT`** only after success).
+
 **Gaps**
 
 - Copy URL requires a fresh generate/regenerate in-session (cannot reconstruct raw token from DB).
+- Logged-in **estimate detail → public link → email** paths still need human confirmation on production when convenient.
 
 ---
 
