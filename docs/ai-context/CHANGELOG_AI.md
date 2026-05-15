@@ -5,6 +5,44 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-15 — Production deploy: Pricing helper + `20260523120000_shop_item_markup_default_3x`
+
+**Deploy job**
+
+- **Job ID:** `20260515T215638-d7792a`
+- **Requested SHA:** `15b2dff9242703b40f293135881d9d0ed12b772c` (deployed; `RESULT=done`)
+- **Log:** `/opt/bvisible/deploy-queue/logs/20260515T215638-d7792a.log`
+
+**Migration**
+
+- `prisma migrate deploy` applied **`20260523120000_shop_item_markup_default_3x`** (`shop_material_items.markupPercentMilli` default → `200000`).
+- **db-verify:** 17 migrations applied; latest name **`20260523120000_shop_item_markup_default_3x`**.
+
+**Healthcheck**
+
+- `http://127.0.0.1:3000/api/health` → `{"status":"ok","service":"bvisible-web","commit":"15b2dff9242703b40f293135881d9d0ed12b772c"}` (after PM2 reload).
+
+**Server tests** (run as `deploy` from `/opt/bvisible/app` with `DATABASE_URL` from `/opt/bvisible/shared/env/.env`)
+
+- `pnpm --filter @bvisible/web run verify:estimate-pricing` — **PASS** (58 tests)
+- `pnpm --filter @bvisible/web run verify:vendor-catalog` — **PASS** (14 tests)
+- `pnpm --filter @bvisible/web run verify:estimate-quote` — **PASS** (47 tests)
+- `pnpm --filter @bvisible/web run typecheck` — **PASS**
+
+**Browser verification**
+
+- **Not run from the agent** (no interactive session as `admin@bvisible.local`). Operator checklist: estimate editor → focus line → **Pricing helper** modes (sq ft / sheet / roll / banner); typing must not change grid until **Apply**; Enter ↓ / Shift+Enter ↑ / Tab unchanged; `/items/new` default markup **200**; quote preview/public still sell-only.
+
+**Formula spot-check (local / same code as prod)**
+
+- 3 ft × 8 ft face = 36 in × 96 in → **24 sq ft**; banner + **8 grommets** → **$100.00** raw line (`bannerPrice` + `computeSqft`).
+
+**Caveats**
+
+- `prisma migrate status` from an ad-hoc shell needs `DATABASE_URL` sourced; deploy pipeline already ran migrate + db-verify successfully.
+
+---
+
 ## 2026-05-23 — Estimate pricing helper + roll/sheet/sq ft calculators + item markup default
 
 **Added**
