@@ -4,9 +4,12 @@ import { prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
+import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { QuoteDocument } from './quote-document';
 import { QuotePreviewToolbar } from './quote-preview-toolbar';
 import { SendEstimateEmailForm } from './send-estimate-form';
+import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
+import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 
 export const metadata = { title: 'Estimate quote' };
 export const dynamic = 'force-dynamic';
@@ -62,6 +65,14 @@ export default async function EstimatePreviewPage({
     notFound();
   }
 
+  const quoteUi = await loadEstimateQuoteStaffUi(
+    prisma,
+    me.tenantId,
+    estimate.id,
+    estimate.number,
+    estimate.status
+  );
+
   const quoteLines = buildCustomerQuoteLines(
     estimate.lines,
     estimate.subtotalCostCents,
@@ -88,6 +99,19 @@ export default async function EstimatePreviewPage({
       </div>
 
       <QuotePreviewToolbar backHref={backHref} />
+
+      <div className="mx-auto mb-8 flex max-w-[880px] flex-col gap-4 px-4 print:hidden">
+        <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
+        <EstimateQuoteLinkPanel
+          estimateId={estimate.id}
+          estimateStatus={estimate.status}
+          quoteLinkRowsDesc={quoteUi.quoteLinkRows}
+          activeLink={quoteUi.quotePanelProps.activeLink}
+          phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
+          disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
+          regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
+        />
+      </div>
 
       <QuoteDocument
         companyName={estimate.tenant.name}

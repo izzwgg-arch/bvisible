@@ -60,7 +60,8 @@ The look, feel, and behavior of the web app.
   open POs, vendor price notifications (`dismissedAt: null`), pending OCR queue (ADMIN+),
   unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
   recent rows from `audit_logs`, plus quick actions. **Operational overview** layout:
-  recent estimates + recent POs + merged **attention feed** (`getDashboardOperationalFeed()` in
+  recent estimates + recent POs + **`DashboardQuoteAttentionSections`** (`getDashboardQuoteAttention.ts`:
+  awaiting **`SENT`** estimates that still have an active `/quote/[token]` with **no** `respondedAt`, distinct surfaces for newest **`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`** timeline hits with `/estimates/[id]` deep links) + merged **attention feed** (`getDashboardOperationalFeed()` in
   `apps/web/lib/dashboard/get-dashboard-feed.ts`: spend alerts, vendor price rows, and for ADMIN+
   synthetic OCR queue / unmatched-email prompts when counts > 0 — still backed by DB counts,
   not fabricated rows). **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
@@ -96,9 +97,12 @@ The look, feel, and behavior of the web app.
   - **Customer quote** — estimate detail header links to **`/estimates/[id]/preview`**
     (print/PDF via browser; send-to-customer anchor). Preview shows allocated sell
     lines only; vendor intel / editor totals rail stay on the editor route.
-  - **Public customer link** — panel above the editor (`components/estimate/estimate-quote-link-panel.tsx`)
-    manages **`/quote/[token]`** shares: generate/regenerate (optional expiry), revoke, copy URL immediately
-    after a rotation (full URL is only returned at issuance — DB holds SHA-256 hash only).
+  - **Staff-facing quote visibility stack** — `EstimateQuoteResponseSummary.tsx`
+    (`apps/web/components/estimate/estimate-quote-response-summary.tsx`) sits ahead of the public-link tooling so responders/name/note/timing states stay glanceable without digging through audits.
+  - **Estimate timeline (operations)** — `EstimateTimelineSection.tsx` renders chronological merges from **`estimate_timeline_events`** plus whitelist **`audit_logs`** (`estimate_sent_to_client`, public quote views, status transitions, finalize/unfinalize); duplicated Accept/Decline audits intentionally suppressed because **`QUOTE_*`** timeline rows already cover customer outcomes — avoids fake duplicates while respecting “real rows only”.
+  - **Public customer link** — panel (`components/estimate/estimate-quote-link-panel.tsx`)
+    manages **`/quote/[token]`** shares with badges describing revoked/expired/active/responded combinations,
+    clearer revoke/regenerate affordances (full URL still returned once per issuance — DB holds SHA-256 hash only).
   - **Public quote page** (`app/quote/[token]/`) — customer **`QuoteDocument`** plus **`print:hidden`** Accept /
     Decline panel (optional name + note); finalized estimates with no prior customer response show a responses-closed
     message instead of buttons.

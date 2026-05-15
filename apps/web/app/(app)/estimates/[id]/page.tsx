@@ -5,6 +5,9 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-rail';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
+import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
+import { EstimateTimelineSection } from '@/components/estimate/estimate-timeline-section';
+import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { EstimateEditor, type EditorBootstrap } from './editor';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 
@@ -19,9 +22,7 @@ export default async function EstimateDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const now = new Date();
-
-  const [estimate, machines, clients, linkedPos, vendors, shopCatalog, activeQuoteLink] = await Promise.all([
+  const [estimate, machines, clients, linkedPos, vendors, shopCatalog] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -81,26 +82,19 @@ export default async function EstimateDetailPage({
       take: 500,
     }),
     loadEstimateCatalogPickerRows(prisma, me.tenantId),
-    prisma.estimateQuoteLink.findFirst({
-      where: {
-        estimateId: id,
-        tenantId: me.tenantId,
-        revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        expiresAt: true,
-        lastViewedAt: true,
-        createdAt: true,
-      },
-    }),
   ]);
 
   if (!estimate) {
     notFound();
   }
+
+  const quoteUi = await loadEstimateQuoteStaffUi(
+    prisma,
+    me.tenantId,
+    estimate.id,
+    estimate.number,
+    estimate.status
+  );
 
   const bootstrap: EditorBootstrap = {
     estimate: {
@@ -181,19 +175,17 @@ export default async function EstimateDetailPage({
           vendorName: p.vendor?.name ?? null,
         }))}
       />
-      <div className="mx-auto mb-6 max-w-[1200px] px-4 lg:px-6">
+      <div className="mx-auto mb-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
+        <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
+        <EstimateTimelineSection rows={quoteUi.timelineRows} />
         <EstimateQuoteLinkPanel
           estimateId={estimate.id}
-          activeLink={
-            activeQuoteLink
-              ? {
-                  id: activeQuoteLink.id,
-                  expiresAtIso: activeQuoteLink.expiresAt?.toISOString() ?? null,
-                  lastViewedAtIso: activeQuoteLink.lastViewedAt?.toISOString() ?? null,
-                  createdAtIso: activeQuoteLink.createdAt.toISOString(),
-                }
-              : null
-          }
+          estimateStatus={estimate.status}
+          quoteLinkRowsDesc={quoteUi.quoteLinkRows}
+          activeLink={quoteUi.quotePanelProps.activeLink}
+          phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
+          disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
+          regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
         />
       </div>
       <EstimateEditor bootstrap={bootstrap} />

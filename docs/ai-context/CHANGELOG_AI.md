@@ -47,7 +47,40 @@ records what changed, the files touched, the risks, and the verification.
 
 **Gaps**
 
-- No dedicated **staff estimate timeline UI** yet — events land in **`estimate_timeline_events`** + **`audit_logs`**; operators can extend the estimate page later to render `QUOTE_*` rows like PO timelines.
+- Pure **manual** “generate link” rotations still lack a dedicated **`estimate_quote_link_issued`** audit/timeline row — timeline relies on **`estimate_sent_to_client`**, **`QUOTE_*`**, **`estimate_quote_viewed_public`**, **`estimate_status_changed`**, **`estimate_finalized`**, **`estimate_unfinalized`** only so we never fabricate issuance bullets.
+
+---
+
+## 2026-05-15 — Staff quote response visibility (`/estimates/[id]`, `/dashboard`)
+
+**Scope**
+
+- **Staff estimate chrome:** `EstimateQuoteResponseSummary` surfaces newest-link lifecycle (**Not issued / Awaiting / Accepted / Declined / Revoked / Expired**), responder attribution + notes, `respondedAt`, issuance/expiry, last public view, and whether an active URL exists (`buildQuoteStaffSummary`, `quote-link-staff-summary.ts`).
+- **Read-only timeline:** merges chronological **`estimate_timeline_events`** (**`QUOTE_ACCEPTED`**, **`QUOTE_DECLINED`**) with whitelist **`audit_logs`** targeting the estimate (`estimate_sent_to_client`, **`estimate_quote_viewed_public`**, **`estimate_status_changed`**, **`estimate_finalized`**, **`estimate_unfinalized`**) while **excluding** duplicate **`estimate_quote_accepted` / `estimate_quote_declined`** audits (`estimate-quote-timeline.ts`).
+- **Dashboard rails:** `DashboardQuoteAttentionSections` renders **`SENT`** estimates awaiting customer responses on active links + deduped “recently accepted / declined” lists sourced strictly from **`QUOTE_*`** timeline hits (`get-quote-attention.ts`).
+- **Panel polish:** `EstimateQuoteLinkPanel` badges revoked/expired/responded combinations, explains revoke/regenerate impact, and disables regenerate once **`respondedAt`** exists on the newest link (`shouldDisableQuoteLinkRegenerate`).
+- **Loader:** `load-estimate-quote-staff-ui.ts` batches Prisma reads (`tenantId` + `estimateId` predicates everywhere).
+
+**Files**
+
+- `apps/web/lib/estimate/{quote-link-staff-summary.ts,estimate-quote-timeline.ts,load-estimate-quote-staff-ui.ts}`
+- `apps/web/lib/dashboard/get-quote-attention.ts`
+- `apps/web/components/estimate/{estimate-quote-response-summary.tsx,estimate-timeline-section.tsx,estimate-quote-link-panel.tsx}`
+- `apps/web/app/(app)/dashboard/{page.tsx,dashboard-quote-attention.tsx}`
+- `apps/web/app/(app)/estimates/[id]/{page.tsx,preview/page.tsx}`
+- Tests: `quote-link-staff-summary.test.ts`, `estimate-quote-timeline.test.ts`, `get-quote-attention.test.ts`
+- Docs: `docs/ai-context/{ESTIMATE_ENGINE.md,API_STRUCTURE.md,UI_SYSTEM.md,CHANGELOG_AI.md}`
+- `apps/web/package.json` (**`verify:estimate-quote`** gains new specs)
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:estimate-quote` (**34** tests)
+- `pnpm --filter @bvisible/web run verify:estimate-acceptance` (**30** tests)
+- `pnpm --filter @bvisible/web run build`
+
+**Gaps**
+
+- Timeline cannot yet show “quote link issued” as its **own** row unless/until an audit is added for manual issuance (SMTP sends already emit **`estimate_sent_to_client`**).
 
 ---
 

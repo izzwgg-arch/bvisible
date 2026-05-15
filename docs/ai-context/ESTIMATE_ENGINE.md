@@ -42,7 +42,20 @@ absolute URL, writes **`estimate_sent_to_client`**, and sets **`DRAFT → SENT` 
 **resent** without forcing another status transition (each send rotates the public URL).
 
 Estimate detail includes **Customer quote link** (`EstimateQuoteLinkPanel`): generate/regenerate (optional
-expiry), revoke, copy URL immediately after rotation (plaintext URL is not stored server-side).
+expiry), revoke, copy URL immediately after rotation (plaintext URL is not stored server-side). Staff-facing
+**Customer quote response** summary (`EstimateQuoteResponseSummary`) and **Estimate timeline**
+(`EstimateTimelineSection`) render above that panel: the summary derives link outcome (**Not issued / Awaiting /
+Accepted / Declined / Revoked / Expired**), responder name + optional note, `respondedAt`, latest link issuance/expiry,
+last public view time, and whether any URL is currently usable; **Regenerate** is disabled once the newest link row
+records `respondedAt` (customer already decided — rotation remains intentional escalation only). The read-only
+timeline merges chronological **`estimate_timeline_events`** (`QUOTE_ACCEPTED` / `QUOTE_DECLINED`) with selected,
+estimate-targeted **`audit_logs`** (`estimate_sent_to_client`, `estimate_quote_viewed_public`,
+`estimate_status_changed`, `estimate_finalized`, `estimate_unfinalized`) — **not** duplicate
+`estimate_quote_accepted` / `estimate_quote_declined` rows because timeline carries authoritative QUOTE_* lines.
+There is **still no audit row solely for “link issued outside SMTP send”** — purely manual generations appear via link
+metadata/UI without inventing synthetic timeline bullets.
+
+The **`/dashboard`** overview surfaces **`getDashboardQuoteAttention`**: recently accepted quotes (distinct estimates by latest **`QUOTE_ACCEPTED`** timeline hit), recently declined (**`QUOTE_DECLINED`**), and **`SENT`** estimates that still have an active (`respondedAt` null, not revoked/expired) link awaiting customer response — each row links back to `/estimates/[id]` (**tenant-scoped queries only**).
 
 **Vendor pricing intelligence (read-only)** — material rows call
 `lookupVendorCatalogIntelligence` (`apps/web/lib/vendor-pricing/catalog-lookup.ts`)
