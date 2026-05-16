@@ -5,6 +5,54 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-16 — Production deploy completed: email ingestion hardening (58a39e5)
+
+**Pre-deploy** (`curl -fsS http://127.0.0.1:3000/api/health` on server)
+
+- `{"status":"ok","service":"bvisible-web","commit":"9f7f0811db508cd24b1a759ddc5f96130956386c"}` (previous release tip)
+
+**Deploy job**
+
+- **Job ID:** `20260516T002347-674cb5`
+- **Log:** `/opt/bvisible/deploy-queue/logs/20260516T002347-674cb5.log`
+- **Requested / deployed commit:** `58a39e5efa02130d5f1a79f20b7b4edfa953a0de` (detached checkout; `pnpm install` OK; `next build` OK; **no pending Prisma migrations**; `db-verify.sh` OK; PM2 `startOrReload bvisible-web` OK; `healthcheck.sh` OK)
+
+**Post-deploy health** (`curl -fsS http://127.0.0.1:3000/api/health`)
+
+```json
+{"status":"ok","service":"bvisible-web","commit":"58a39e5efa02130d5f1a79f20b7b4edfa953a0de"}
+```
+
+**Server tests** (run as `deploy`, `cd /opt/bvisible/app`)
+
+- `pnpm --filter @bvisible/web run verify:email-ingestion` — **PASS** (12 tests: `match.test.ts` + `storage.test.ts`)
+- `pnpm --filter @bvisible/web run typecheck` — **PASS**
+- `bash server-scripts/db/.verify-email-ingestion-flow.sh` — **PASS** (grep anchors + Vitest bundle)
+
+**Route smoke** (unauthenticated, localhost)
+
+- `GET /admin/email-ingestion` → **307** to `/login?next=%2Fadmin%2Femail-ingestion` (auth gate; no 5xx)
+
+**Browser / admin UI**
+
+- **Not run from Cursor** (no interactive session as `admin@bvisible.local`). Operator: open `/admin/email-ingestion` after login; confirm rows, guidance chips, Link / Retry / Dismiss.
+
+**Live IMAP / duplicate Message-ID / attachment edge smoke**
+
+- **Not run from Cursor** (no safe test send from this environment; DB inbox credentials not queried). Operator: if an inbox is enabled, send a message with internal `PO-` in the subject and confirm match + `VENDOR_REPLY` + attachments; resend same `Message-ID` and confirm dedupe; attach an oversize file and confirm skipped row.
+
+**Security / safety (unchanged product guarantees)**
+
+- Unsupported MIME / oversize → skipped attachment row, email retained (`EMAIL_INGESTION.md`).
+- Attachments served only via authenticated `/api/email-ingest/...` and `/api/po/...` routes (not public URLs).
+- Unmatched ambiguous mail stays in review; vendor price regex runs only after successful PO materialization; financial reconciliation trust remains on **OCR_APPROVED** path per existing design.
+
+**Caveats**
+
+- Same as 2026-05-14 hardening entry: rare partial state if a crash occurs mid-materialization before `VENDOR_REPLY` commits.
+
+---
+
 ## 2026-05-14 — Email ingestion hardening (matcher, attachments, review UI, tests)
 
 **What changed**
