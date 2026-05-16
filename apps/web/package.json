@@ -15,6 +15,7 @@
     "verify:estimate-po-flow": "vitest run lib/purchase-orders/map-estimate-kind-to-po-kind.test.ts lib/dashboard/get-estimate-po-flow.test.ts",
     "verify:estimate-invoice-flow": "vitest run lib/invoices/allocate-estimate-sell-to-invoice-lines.test.ts lib/estimate/estimate-invoice-fulfillment.test.ts lib/dashboard/get-dashboard-estimate-invoice-flow.test.ts lib/estimate/estimate-quote-timeline.test.ts",
     "verify:ocr-reconciliation-flow": "vitest run lib/ocr lib/reconciliation",
+    "verify:email-ingestion": "vitest run lib/email-ingest/match.test.ts lib/email-ingest/storage.test.ts",
     "verify:estimate-acceptance": "vitest run lib/estimate/public-quote-response.test.ts lib/estimate/estimate-quote-link.test.ts lib/estimate/customer-quote-view.test.ts lib/estimate/customer-quote.test.ts",
     "verify:vendor-catalog": "vitest run lib/shop-material/apply-catalog-to-estimate-line.test.ts lib/shop-material/pricing-aggregate.test.ts lib/vendor-pricing/vendor-price-source-label.test.ts",
     "smoke:core": "playwright test smoke/core-workflow.spec.ts --config=playwright.config.ts",

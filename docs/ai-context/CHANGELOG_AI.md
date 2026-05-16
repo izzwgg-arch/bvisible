@@ -5,7 +5,38 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-15 — Production deploy completed: vendor intelligence catch-up (9f7f0811…)
+## 2026-05-14 — Email ingestion hardening (matcher, attachments, review UI, tests)
+
+**What changed**
+
+- Deterministic PO matching: internal `PO-` tokens **before** QBO-like tokens; multiple DB hits for the same ladder step → **`NONE`** (review queue). Vendor + recent window documented as **30 days** (code constant).
+- Inbound email attachments: **`MAX_UPLOAD_BYTES`** enforced in `persistEmailAttachment` **before** sniff/write (`size_exceeded` → skipped row, no disk write).
+- Materialize path: early return when a **`VENDOR_REPLY`** POEvent already exists for the ingested email (`sourceEmailId`).
+- Admin review table: compact **guidance chips** next to match status for operator next steps.
+
+**Files (primary)**
+
+- `apps/web/lib/email-ingest/match.ts`, `match.test.ts`, `storage.ts`, `storage.test.ts`, `run.ts`
+- `apps/web/app/(app)/admin/email-ingestion/review-table.tsx`, `apps/web/lib/ui/status-labels.ts`
+- `apps/web/package.json` — script `verify:email-ingestion`
+- `server-scripts/db/.verify-email-ingestion-flow.sh`
+- Docs: `EMAIL_INGESTION.md`, `PO_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `SECURITY_RULES.md`, `DEBUGGING.md`, `UI_SYSTEM.md`, `CHANGELOG_AI.md` (this entry)
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run verify:email-ingestion`
+- `pnpm --filter @bvisible/web run typecheck`
+- `bash server-scripts/db/.verify-email-ingestion-flow.sh` (Linux/macOS/Git Bash)
+
+**Risks**
+
+- Stricter ambiguity handling may surface more rows in **Unmatched** (intended). Vendor+recent still requires exactly one qualifying PO inside the rolling window.
+
+**Remaining gaps**
+
+- Crash between partial `POAttachment` writes and the `VENDOR_REPLY` transaction can still leave rare manual cleanup cases (pre-existing class).
+
+---
 
 **Pre-deploy** (`curl -fsS http://127.0.0.1:3000/api/health` on server)
 

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
   ALLOWED_MIMES,
+  MAX_UPLOAD_BYTES,
   detectMimeFromBytes,
   newStorageKey,
   resolveAttachmentPath,
@@ -65,6 +66,9 @@ export class UnsupportedAttachmentError extends Error {
 export async function persistEmailAttachment(
   input: PersistEmailAttachmentInput
 ): Promise<PersistedEmailAttachment> {
+  if (input.bytes.byteLength > MAX_UPLOAD_BYTES) {
+    throw new UnsupportedAttachmentError('size_exceeded');
+  }
   const detected = detectMimeFromBytes(input.bytes);
   if (!detected || !ALLOWED_MIMES.includes(detected.mime)) {
     throw new UnsupportedAttachmentError(

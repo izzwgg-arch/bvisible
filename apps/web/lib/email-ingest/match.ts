@@ -1,9 +1,8 @@
 import { POStatus, prisma } from '@bvisible/db';
 import type { ParsedEmail } from './parse';
 
-// Deterministic matcher. See docs/ai-context/PO_SYSTEM.md "Future:
-// vendor reply routing" for the priority ladder. We never use AI,
-// fuzzy embeddings, or scoring — every decision must be explainable
+// Deterministic matcher. See docs/ai-context/EMAIL_INGESTION.md.
+// No AI, fuzzy embeddings, or scoring — every decision must be explainable
 // from the inputs and a code lookup.
 //
 // Returned shape mirrors what gets persisted on IngestedEmail.
@@ -27,11 +26,14 @@ export interface MatchResult {
 
 const RECENT_PO_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-// Tokens we consider for QBO and internal PO matches. Pattern is
-// loose because QBO numbers vary widely (P/PO prefixes, no prefix,
-// digits-only, dashes). Internal numbers are tighter (PO-NNNNNN).
-const QBO_LIKE_TOKEN = /\b[A-Za-z]{0,4}-?\d{2,10}\b/g;
+/** Internal PO-NNNNNN (tight). */
 const INTERNAL_PO_TOKEN = /\bPO-\d{4,8}\b/g;
+/**
+ * QBO-style references (loose). Capped after extraction — haystack can contain
+ * many digit tokens from unrelated content.
+ */
+const QBO_LIKE_TOKEN = /\b[A-Za-z]{0,4}-?\d{2,10}\b/g;
+const MAX_QBO_TOKENS = 24;
 
 function dedupe(tokens: string[]): string[] {
   return Array.from(new Set(tokens.map((t) => t.trim()).filter(Boolean)));
@@ -51,36 +53,28 @@ export interface MatchInput {
   attachmentNames: string[];
 }
 
+async function vendorFromSender(
+  tenantId: string,
+  email: ParsedEmail,
+): Promise<{ id: string } | null> {
+  return prisma.vendor.findFirst({
+    where: {
+      tenantId,
+      deletedAt: null,
+      email: email.fromAddress,
+    },
+    select: { id: true },
+  });
+}
+
 export async function matchEmail(input: MatchInput): Promise<MatchResult> {
   const haystack = searchTextBundle(input.email, input.attachmentNames);
   const tenantId = input.tenantId;
 
-  // ---- 1: exact match on QuickBooks PO number --------------------
-  const qboTokens = dedupe(haystack.match(QBO_LIKE_TOKEN) ?? []);
-  if (qboTokens.length > 0) {
-    const po = await prisma.purchaseOrder.findFirst({
-      where: {
-        tenantId,
-        deletedAt: null,
-        qboPoNumber: { in: qboTokens },
-      },
-      select: { id: true, vendorId: true, qboPoNumber: true },
-      orderBy: [{ updatedAt: 'desc' }],
-    });
-    if (po) {
-      return {
-        reason: 'QBO_NUMBER',
-        purchaseOrderId: po.id,
-        vendorId: po.vendorId,
-        hint: po.qboPoNumber ?? null,
-      };
-    }
-  }
-
-  // ---- 2: exact match on internal PO-NNNNNN ----------------------
+  // ---- 1: exact internal PO-NNNNNN (before loose QBO tokens) ------------
   const internalTokens = dedupe(haystack.match(INTERNAL_PO_TOKEN) ?? []);
   if (internalTokens.length > 0) {
-    const po = await prisma.purchaseOrder.findFirst({
+    const pos = await prisma.purchaseOrder.findMany({
       where: {
         tenantId,
         deletedAt: null,
@@ -89,7 +83,8 @@ export async function matchEmail(input: MatchInput): Promise<MatchResult> {
       select: { id: true, vendorId: true, number: true },
       orderBy: [{ updatedAt: 'desc' }],
     });
-    if (po) {
+    if (pos.length === 1) {
+      const po = pos[0]!;
       return {
         reason: 'PO_NUMBER',
         purchaseOrderId: po.id,
@@ -97,17 +92,52 @@ export async function matchEmail(input: MatchInput): Promise<MatchResult> {
         hint: po.number,
       };
     }
+    if (pos.length > 1) {
+      const vendor = await vendorFromSender(tenantId, input.email);
+      return {
+        reason: 'NONE',
+        purchaseOrderId: null,
+        vendorId: vendor?.id ?? pos[0]!.vendorId,
+        hint: internalTokens.join(', '),
+      };
+    }
   }
 
-  // ---- 3: vendor-by-sender + unique recent open PO ----------------
-  const vendor = await prisma.vendor.findFirst({
-    where: {
-      tenantId,
-      deletedAt: null,
-      email: input.email.fromAddress,
-    },
-    select: { id: true },
-  });
+  // ---- 2: exact QuickBooks PO number -------------------------------------
+  const qboTokens = dedupe(haystack.match(QBO_LIKE_TOKEN) ?? []).slice(0, MAX_QBO_TOKENS);
+  if (qboTokens.length > 0) {
+    const pos = await prisma.purchaseOrder.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        qboPoNumber: { in: qboTokens },
+      },
+      select: { id: true, vendorId: true, qboPoNumber: true },
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+    const withQbo = pos.filter((p) => p.qboPoNumber != null && p.qboPoNumber.length > 0);
+    if (withQbo.length === 1) {
+      const po = withQbo[0]!;
+      return {
+        reason: 'QBO_NUMBER',
+        purchaseOrderId: po.id,
+        vendorId: po.vendorId,
+        hint: po.qboPoNumber ?? null,
+      };
+    }
+    if (withQbo.length > 1) {
+      const vendor = await vendorFromSender(tenantId, input.email);
+      return {
+        reason: 'NONE',
+        purchaseOrderId: null,
+        vendorId: vendor?.id ?? null,
+        hint: qboTokens.slice(0, 6).join(', '),
+      };
+    }
+  }
+
+  // ---- 3: vendor-by-sender + unique recent open PO -----------------------
+  const vendor = await vendorFromSender(tenantId, input.email);
   if (vendor) {
     const since = new Date(Date.now() - RECENT_PO_WINDOW_MS);
     const candidates = await prisma.purchaseOrder.findMany({
@@ -132,8 +162,6 @@ export async function matchEmail(input: MatchInput): Promise<MatchResult> {
         hint: input.email.fromAddress,
       };
     }
-    // We still surface the vendor even if PO matching was ambiguous —
-    // the review screen can use it to constrain the manual picker.
     return {
       reason: 'NONE',
       purchaseOrderId: null,

@@ -33,13 +33,13 @@ runIngestForTenant(tenantId)            (apps/web/lib/email-ingest/run.ts)
    └─ release lease + log EmailIngestRun
 ```
 
-### Verification script (schema + code anchors)
+### Verification script (schema + code anchors + Vitest)
 
 From repo root (Linux/macOS/Git Bash):
 
 `bash server-scripts/db/.verify-email-ingestion-flow.sh`
 
-Confirms **`@@unique([tenantId, messageId])`** remains on `IngestedEmail` and that ingest upserts reference **`tenantId, messageId`** (deterministic grep-only gate).
+Confirms **`@@unique([tenantId, messageId])`**, ingest upsert references **`tenantId, messageId`**, deterministic matcher markers, inbound **`MAX_UPLOAD_BYTES`** enforcement before disk write, **`VENDOR_REPLY`** materialize short-circuit, OCR enqueue wiring, **`manualLinkEmailToPoAction`**, then runs **`pnpm --filter @bvisible/web run verify:email-ingestion`**.
 
 ## Mailbox setup (Gmail / Workspace)
 
@@ -209,17 +209,18 @@ Order of attempts. First hit wins; the chosen rule is recorded in
 
 | Rule | `matchReason` | Hint stored in `matchHint` |
 |---|---|---|
-| 1. Exact match on `qboPoNumber` in subject or first 8 KB of plain-text body | `QBO_NUMBER` | The matched `qboPoNumber` |
-| 2. Exact match on internal `PurchaseOrder.number` (e.g. `PO-000123`) in subject or body | `PO_NUMBER` | The matched `number` |
-| 3. `From:` address matches a vendor that has **exactly one** non-canceled PO updated in the last 90 days | `VENDOR_AND_RECENT` | The vendor name |
-| 4. Operator manually links via `/admin/email-ingestion` | `MANUAL` | The PO number |
-| Otherwise | `NONE` (status `UNMATCHED`) | n/a |
+| 1. Exact match on internal `PurchaseOrder.number` token `\bPO-\d{4,8}\b` in subject, plain-text body snippet, **or stored attachment original filenames** (single DB row only — if multiple different internal numbers resolve to rows, **none** match) | `PO_NUMBER` | The matched `number` |
+| 2. Exact match on `qboPoNumber` among capped QBO-like tokens extracted from the same haystack (first **24** unique tokens after dedupe; if multiple different `qboPoNumber` values hit rows, **none** match) | `QBO_NUMBER` | The matched `qboPoNumber` |
+| 3. `From:` address matches a vendor that has **exactly one** open PO (`SENT`, `ORDERED`, `PARTIALLY_RECEIVED`) with `updatedAt` in the last **30 days** | `VENDOR_AND_RECENT` | The sender email address |
+| 4. Operator manually links via `/admin/email-ingestion` | `MANUAL` | Operator-provided hint |
+| Otherwise | `NONE` (status `UNMATCHED`) | May include comma-separated tokens or sender when helpful |
+
+When rule 1 or 2 yields **more than one** candidate PO, the email stays **`UNMATCHED`** with `matchReason = NONE` and (when possible) `matchedVendorId` from the sender so the review queue can pre-filter.
 
 Explicitly **not** implemented:
 
 - AI / LLM matching.
 - Fuzzy embeddings, probabilistic scoring.
-- Attachment filename hint matching (operator manually links instead).
 - Vendor pricing from attachment **contents** (PDF bytes, OCR, tables).
 
 ## Attachment handling
@@ -246,9 +247,10 @@ Explicitly **not** implemented:
   UNIQUE. The IMAP message is only marked `\Seen` after the row
   commits. Crashing mid-tick is safe: the next tick re-fetches and
   the unique constraint short-circuits the second write.
-- **Materialization idempotency:** `materializeIngestedEmailOnPo()` is
-  keyed on `(purchaseOrderId, sourceEmailId)`. Re-running it for an
-  already-materialized email writes nothing.
+- **Materialization idempotency:** if a `POEvent` of kind `VENDOR_REPLY`
+  already exists for the `IngestedEmail.id` (`sourceEmailId`), `materializeOnPo()`
+  returns immediately (no duplicate promotions or OCR enqueue from a replay).
+  Manual link / retry paths call the same helper.
 - **Vendor price history idempotency:** `VendorPriceHistory` rows use
   unique `(tenantId, dedupeKey)` so retries after a successful insert
   no-op instead of duplicating observations.
@@ -266,7 +268,8 @@ Explicitly **not** implemented:
 
 - Filterable buckets: **Unmatched** (default), **Matched**, **Failed**,
   **Dismissed**, **All**. Each bucket shows count badges.
-- Per-row expand panel: status / match reason chips, sender + subject,
+- Per-row expand panel: status / match reason chips, compact **guidance chips**
+  (skipped attachments, vendor-known vs unknown), sender + subject,
   body snippet (rendered as plain text in `<pre>` — never
   `dangerouslySetInnerHTML`), per-attachment list with download links
   (skipped attachments show the skip reason instead).

@@ -1,5 +1,6 @@
 import {
   EmailIngestStatus,
+  EmailMatchReason,
   EstimateStatus,
   InvoiceStatus,
   OcrJobStatus,
@@ -92,6 +93,23 @@ export function labelEmailIngestStatus(s: EmailIngestStatus): string {
       return 'Dismissed';
     default:
       return String(s).replace(/_/g, ' ');
+  }
+}
+
+export function labelEmailMatchReason(r: EmailMatchReason): string {
+  switch (r) {
+    case EmailMatchReason.QBO_NUMBER:
+      return 'QBO PO number';
+    case EmailMatchReason.PO_NUMBER:
+      return 'Internal PO number';
+    case EmailMatchReason.VENDOR_AND_RECENT:
+      return 'Vendor + recent open PO';
+    case EmailMatchReason.MANUAL:
+      return 'Manual link';
+    case EmailMatchReason.NONE:
+      return 'No auto-match';
+    default:
+      return String(r).replace(/_/g, ' ');
   }
 }
 

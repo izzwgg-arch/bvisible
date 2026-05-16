@@ -23,6 +23,7 @@ pnpm --filter @bvisible/web run verify:estimate-quote
 pnpm --filter @bvisible/web run verify:estimate-po-flow
 pnpm --filter @bvisible/web run verify:estimate-invoice-flow
 pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
+pnpm --filter @bvisible/web run verify:email-ingestion
 pnpm --filter @bvisible/web run typecheck
 bash server-scripts/db/.verify-email-ingestion-flow.sh
 ```
@@ -507,11 +508,12 @@ For each row the panel shows the body snippet and per-attachment list
 with download links. The matcher is deterministic; common reasons for
 unmatched:
 
-- The vendor wrote a free-form thread without the QBO PO number → use
+- The vendor wrote a free-form thread without a PO or QBO token → use
   the inline **Link to PO** combobox + **Link** button.
-- The QBO PO number was sent in an attachment filename only → today
-  the matcher does not look inside attachment filenames; manually link.
-- The PO is older than the 90-day window → manually link.
+- Multiple open POs for the same vendor and no explicit token → the row
+  stays `UNMATCHED` until an operator picks the PO.
+- The PO was last updated outside the **30-day** vendor-and-recent window
+  → manually link.
 
 ### Vendor price extraction (Phase 10)
 

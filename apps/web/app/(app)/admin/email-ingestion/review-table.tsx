@@ -7,7 +7,7 @@ import {
   EmailIngestStatus,
   EmailMatchReason,
 } from '@bvisible/db';
-import { labelEmailIngestStatus } from '@/lib/ui/status-labels';
+import { labelEmailIngestStatus, labelEmailMatchReason } from '@/lib/ui/status-labels';
 import {
   dismissEmailAction,
   manualLinkEmailToPoAction,
@@ -51,6 +51,31 @@ export interface ReviewTableProps {
   rows: ReadonlyArray<EmailRow>;
   pos: ReadonlyArray<PoChoice>;
   filter: 'unmatched' | 'matched' | 'failed' | 'dismissed' | 'all';
+}
+
+function reviewGuidanceChips(row: EmailRow): string[] {
+  const chips: string[] = [];
+  if (
+    row.status === EmailIngestStatus.MATCHED ||
+    row.status === EmailIngestStatus.DISMISSED
+  ) {
+    return chips;
+  }
+  if (row.attachments.some((a) => a.skipped)) {
+    chips.push('Some attachments skipped (type or size)');
+  }
+  if (
+    row.status === EmailIngestStatus.UNMATCHED ||
+    row.status === EmailIngestStatus.PENDING ||
+    row.status === EmailIngestStatus.FAILED
+  ) {
+    if (row.matchedVendor) {
+      chips.push('Vendor matched — pick PO (ambiguous or no PO token)');
+    } else {
+      chips.push('Link vendor email or add PO/QBO reference in mail');
+    }
+  }
+  return chips;
 }
 
 const STATUS_LABELS: Record<EmailIngestStatus, { label: string; className: string }> = {
@@ -200,10 +225,18 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                   </span>
                   {row.matchReason !== EmailMatchReason.NONE ? (
                     <span className="inline-flex items-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
-                      {row.matchReason.toLowerCase().replace(/_/g, ' ')}
+                      {labelEmailMatchReason(row.matchReason)}
                       {row.matchHint ? ` · ${row.matchHint}` : ''}
                     </span>
                   ) : null}
+                  {reviewGuidanceChips(row).map((c) => (
+                    <span
+                      key={c}
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10.5px] font-medium text-slate-800"
+                    >
+                      {c}
+                    </span>
+                  ))}
                   {row.matchedPo ? (
                     <a
                       href={`/purchase-orders/${row.matchedPo.id}`}

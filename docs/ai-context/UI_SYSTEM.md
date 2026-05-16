@@ -128,8 +128,9 @@ The look, feel, and behavior of the web app.
   filterable buckets (Unmatched / Matched / Failed / Dismissed / All)
   with count badges. Per-row expand panel renders the body snippet
   inside `<pre>` (never `dangerouslySetInnerHTML`), the per-attachment
-  download links (skipped attachments show their `skipReason`), and
-  inline forms for **Link** (PO combobox), **Retry**, and **Dismiss**.
+  download links (skipped attachments show their `skipReason`), compact
+  **guidance chips** (e.g. skipped files, vendor-known vs needs link),
+  and inline forms for **Link** (PO combobox), **Retry**, and **Dismiss**.
   Sidebar carries the read-only inbox config card (host / port /
   mailbox / `lastPolledAt` / `lastErrorAt` / `lastErrorMessage`;
   password is **never** displayed) and a "Recent ticks" list. The

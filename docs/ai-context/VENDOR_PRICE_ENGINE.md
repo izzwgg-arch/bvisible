@@ -13,7 +13,9 @@ Implementation lives in:
   history, dedupe, lower-price side effects.
 - Hook: after PO materialization succeeds, `apps/web/lib/email-ingest/run.ts`
   calls `runVendorPriceExtractionAfterMaterialize` inside `try/catch` so pricing
-  failures never fail ingestion.
+  failures never fail ingestion. Emails that remain **`UNMATCHED`** never hit
+  this hook — there is no regex pricing pass until an operator links a PO or
+  the deterministic matcher finds a single safe target.
 
 ## Data model (tenant-scoped)
 

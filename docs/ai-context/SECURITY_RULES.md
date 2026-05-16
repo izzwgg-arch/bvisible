@@ -229,12 +229,13 @@
   every persistent side effect is gated by the unique
   `(tenantId, messageId)` constraint (R-MAIL-01) — replays after the
   restart no-op rather than duplicate.
-- **Idempotency.** The `IngestedEmail` row is upserted on
+- **Materialization idempotency.** The `IngestedEmail` row is upserted on
   `(tenantId, messageId)`; the IMAP message is only marked `\Seen`
-  *after* the row plus its attachments have been committed. The PO-side
-  materialization (POEvent + POAttachment promotion) is keyed on
-  `(purchaseOrderId, sourceEmailId)` — re-running it for an already-
-  materialized email writes nothing.
+  *after* the row plus its attachments have been committed. After that,
+  `materializeOnPo` short-circuits when a `VENDOR_REPLY` POEvent already
+  exists for the same `sourceEmailId` (retries / duplicate ticks do not
+  re-promote attachments or re-enqueue OCR). Inbound `persistEmailAttachment`
+  rejects blobs over **`MAX_UPLOAD_BYTES`** before any `mkdir`/`writeFile`.
 - **Attachment validation.** Email attachments share the exact same
   magic-byte allowlist as PO uploads (PDF / JPEG / PNG / WEBP) via the
   shared `detectMimeFromBytes()`. Anything else is recorded as an

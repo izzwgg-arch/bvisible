@@ -189,25 +189,26 @@ Env thresholds: `RECON_PRICE_TOLERANCE_BPS`, `RECON_ABSOLUTE_PRICE_TOLERANCE_CEN
 Inbound vendor emails are pulled by the IMAP poller and matched to a
 PO using the strict order in `EMAIL_INGESTION.md`:
 
-1. Exact match on `qboPoNumber` in subject or first 8 KB of plaintext body.
-2. Exact match on internal `PurchaseOrder.number` (e.g. `PO-000123`).
-3. `From:` address matches a vendor that has a recent (last 90 days)
-   non-canceled PO and that vendor has exactly one such PO.
+1. Exact match on internal `PurchaseOrder.number` (token `PO-` + 4–8 digits) in subject, body snippet, or **stored attachment original filenames** (ambiguous multi-PO hits → unmatched).
+2. Exact match on `qboPoNumber` among extracted QBO-like tokens from the same haystack (ambiguous multi-PO hits → unmatched).
+3. `From:` address matches a vendor that has **exactly one** open PO (`SENT`, `ORDERED`, `PARTIALLY_RECEIVED`) with `updatedAt` in the last **30 days**.
 4. Otherwise unmatched → operator review at `/admin/email-ingestion`.
 
 Behaviour:
 
-- Each matched email writes a `VENDOR_REPLY` POEvent with sender,
-  subject, attachment count and `messageId` in the metadata, plus
-  one `ATTACHMENT_ADDED` POEvent per accepted attachment.
+- Each matched email writes a single `VENDOR_REPLY` POEvent with sender,
+  subject, attachment count and `messageId` in the metadata; accepted
+  files become `POAttachment` rows (`kind = EMAIL_ATTACHMENT`) without
+  a separate per-file POEvent.
 - Attachments allowed by the existing PO allowlist (PDF / JPEG / PNG /
   WEBP) are persisted as `POAttachment` rows with
   `kind = EMAIL_ATTACHMENT`, `sourceEmailId` set to the originating
   `IngestedEmail.id`, and bytes hard-linked into the per-PO upload
   directory under the same secure scheme as manual uploads.
-- Idempotency is the unique `(tenantId, messageId)` constraint on
+- **Idempotency** is the unique `(tenantId, messageId)` constraint on
   `IngestedEmail` (R-MAIL-01). Already-seen messages short-circuit
-  before any side effect.
+  before any side effect. Materialization no-ops when a `VENDOR_REPLY`
+  event already exists for that `sourceEmailId`.
 - Unmatched / failed emails sit in `/admin/email-ingestion` until an
   operator either links them to a PO (`manualLinkEmailToPoAction`)
   or dismisses them (`dismissEmailAction`).

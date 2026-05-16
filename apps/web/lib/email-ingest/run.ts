@@ -428,6 +428,18 @@ interface MaterializeArgs {
 // AFTER attachment promotion so a failure leaves the email as PENDING
 // for review.
 async function materializeOnPo(args: MaterializeArgs): Promise<void> {
+  const alreadyMaterialized = await prisma.pOEvent.findFirst({
+    where: {
+      tenantId: args.tenantId,
+      sourceEmailId: args.ingestedEmailId,
+      kind: POEventKind.VENDOR_REPLY,
+    },
+    select: { id: true },
+  });
+  if (alreadyMaterialized) {
+    return;
+  }
+
   const stored = await prisma.ingestedEmail.findUnique({
     where: { id: args.ingestedEmailId },
     select: {
