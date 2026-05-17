@@ -5,17 +5,26 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-17 — Browser QA smoke + OCR review UX polish (pending deploy)
+## 2026-05-17 — Browser QA smoke + OCR review UX polish (`7b2ee34`)
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | `7b2ee34fd74c0017d82382c2c90a83cfe04c3fab` |
+| **Job ID** | `20260517T070541-e23f46` |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"7b2ee34fd74c0017d82382c2c90a83cfe04c3fab"}` |
+| **Prior normalization SHA** | `2014bbdfc8ce903fc56d90d927eb33e31b952f4a` (still the pricing/rail logic base; this release adds smoke + OCR chip labels only) |
 
 **Browser QA**
 
 - **Not run live** — `BVISIBLE_ADMIN_PASSWORD` unset in workspace and on `/opt/bvisible/shared/env/.env`.
-- **Operator-run Playwright** (after exporting creds locally, never commit password):
+- **Operator-run Playwright** (export creds locally; never commit password):
 
 ```bash
 export BVISIBLE_BASE_URL=https://vmi3270817.contaboserver.net
 export BVISIBLE_ADMIN_EMAIL=admin@bvisible.local
-# export BVISIBLE_ADMIN_PASSWORD=...  # from operator only
+# export BVISIBLE_ADMIN_PASSWORD=...  # operator only
 pnpm --filter @bvisible/web exec playwright install chromium
 pnpm --filter @bvisible/web run smoke:vendor-normalization
 ```
@@ -35,12 +44,11 @@ pnpm --filter @bvisible/web run smoke:vendor-normalization
 | `verify:estimate-pricing` | **70/70** |
 | `verify:ocr-quality` | **15/15**, 1 skipped |
 | `typecheck` | pass |
-| `smoke:vendor-normalization` | **skipped** (no `BVISIBLE_ADMIN_PASSWORD` in env) |
+| `smoke:vendor-normalization` | **skipped** (no password in env) |
 
 **Remaining gaps**
 
-- Operator must run smoke against prod with credentials to close browser acceptance.
-- Deploy job ID / health commit — fill after push+deploy if released.
+- Operator must run `smoke:vendor-normalization` with credentials to close visual acceptance on prod.
 
 ---
 
