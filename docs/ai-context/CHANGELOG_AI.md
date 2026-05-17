@@ -5,7 +5,53 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-17 — Browser smoke + smoke data hygiene (local, not deployed)
+## 2026-05-17 — Browser smoke + smoke data hygiene (`fd3a0bf`) — production
+
+**Push** — `fd3a0bfb8b098fa1ffc15926c0f0866365447738` → `origin/main`.
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | `fd3a0bfb8b098fa1ffc15926c0f0866365447738` |
+| **Job ID** | `20260517T184709-0a56c4` |
+| **Migrations** | None (19 applied, unchanged) |
+| **PM2** | reload OK |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"fd3a0bfb8b098fa1ffc15926c0f0866365447738"}` |
+
+**Server verification** (`/opt/bvisible/app`)
+
+| Command | Result |
+|---------|--------|
+| `typecheck` | pass |
+| `verify:workflow-queues` | **26/26** |
+| `verify:po-lifecycle` | **19/19** |
+| `verify:vendor-catalog` | **52/52** |
+| `verify:ocr-quality` | **16/16** (tesseract optional passed on host) |
+
+**Smoke tooling on server** — All present under `/opt/bvisible/app`: `apps/web/smoke/po-lifecycle.spec.ts`, `smoke-fixtures.ts`, `load-smoke-env.ts`, `server-scripts/smoke/run-smoke.sh`, `.bvisible-smoke.env.example`, `server-scripts/db/.list-smoke-data.sh`, `.cleanup-smoke-data.sh`.
+
+**Smoke env (server, no credentials)** — `bash server-scripts/smoke/run-smoke.sh all` → exit **2**, lists missing `BVISIBLE_*` vars, does not print passwords, no Playwright run, no DB mutation.
+
+**Inventory** (`bash server-scripts/db/.list-smoke-data.sh`)
+
+| Kind | n |
+|------|---|
+| vendors | 3 |
+| purchase_orders | 4 (`PO-901001`–`901004`) |
+| ingested_emails | 6 |
+| ocr_on_fixture_pos | 2 |
+| clients / estimates (SMOKE title) | 0 |
+
+**Cleanup dry-run** — `fixture POs: 4`, `ingested_emails: 6`, `estimates: 0`; no deletes (`CONFIRM_SMOKE_CLEANUP=1` required).
+
+**Operator Playwright** — **Skipped** on server and agent (`~/.bvisible-smoke.env` not on deploy box by design). Operator runs from laptop: copy `server-scripts/smoke/.bvisible-smoke.env.example` → `~/.bvisible-smoke.env`, set password locally, `bash server-scripts/smoke/run-smoke.sh all`.
+
+**Remaining gaps** — No `SMOKE-*` prefixed PO for full lifecycle button mutations; first `smoke:core` run creates `SMOKE-Client` / `SMOKE-CoreWorkflow` if missing.
+
+---
+
+## 2026-05-17 — Browser smoke + smoke data hygiene (local dev)
 
 **Credentials** — `~/.bvisible-smoke.env` (from `server-scripts/smoke/.bvisible-smoke.env.example`); auto-loaded by `smoke/load-smoke-env.ts`. Password never printed, committed, or added to server `.env`.
 

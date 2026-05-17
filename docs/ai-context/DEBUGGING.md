@@ -95,6 +95,8 @@ If **`SMOKE-CoreWorkflow`** is **FINALIZED** or **REJECTED**, reset or delete th
 
 **Smoke data cleanup (optional, destructive):** `bash server-scripts/db/.cleanup-smoke-data.sh` dry-runs counts; `CONFIRM_SMOKE_CLEANUP=1` deletes only `SMOKE-*` / `PO-90100*` / `SMOKE-EMAIL*` rows. Prefer inventory first; manual SQL for FK-heavy chains if unsure.
 
+**On production host** (`/opt/bvisible/app`, after deploy): scripts ship in-repo — `bash server-scripts/db/.list-smoke-data.sh` (read-only inventory), `bash server-scripts/smoke/run-smoke.sh all` (fails fast without `BVISIBLE_*` on the server; run Playwright from an operator laptop with `~/.bvisible-smoke.env`, not from `/opt/bvisible/shared/env/.env`).
+
 ## 1. Deploy queue — failing or stuck
 
 ### Symptom: deploys keep going to `failed/`
