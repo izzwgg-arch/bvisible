@@ -5,6 +5,63 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Production deploy completed: email review reason codes + review UI (d2e1d85)
+
+**Pre-deploy health** (`curl -fsS http://127.0.0.1:3000/api/health`)
+
+- `{"status":"ok","service":"bvisible-web","commit":"58a39e5efa02130d5f1a79f20b7b4edfa953a0de"}` (previous tip before this job)
+
+**Deploy job**
+
+- **Job ID:** `20260517T041657-10f7d0`
+- **Log:** `/opt/bvisible/deploy-queue/logs/20260517T041657-10f7d0.log`
+- **Requested / deployed commit:** `d2e1d850342a070a8e72a4cadd1b69433bef7aae` (`d2e1d85` — operational review codes + UI)
+
+**Migration**
+
+- **`prisma migrate deploy`** applied **`20260524103000_ingested_email_review_reason_codes`** successfully (adds `ingested_emails.reviewReasonCodes` JSONB default `'[]'`).
+- **`db-verify.sh`** — **PASS** (18 migrations applied; latest migration name matches).
+
+**Post-deploy health**
+
+```json
+{"status":"ok","service":"bvisible-web","commit":"d2e1d850342a070a8e72a4cadd1b69433bef7aae"}
+```
+
+**Server tests** (`cd /opt/bvisible/app`)
+
+- `pnpm --filter @bvisible/web run verify:email-ingestion` — **PASS** (12 tests)
+- `pnpm --filter @bvisible/web run verify:email-ingestion-fixtures` — **PASS** (3 tests)
+- `pnpm --filter @bvisible/web run verify:email-operational-safety` — **PASS** (9 tests)
+- `pnpm --filter @bvisible/web run typecheck` — **PASS**
+- `bash server-scripts/db/.verify-email-ingestion-flow.sh` — **PASS**
+
+**Database verification**
+
+- `information_schema`: column **`reviewReasonCodes`** present on **`ingested_emails`** (count = 1).
+- **`ingested_emails` row count at check:** `0` — existing-rows/backfill behavior not stress-tested on live data (empty table); Prisma default **`[]`** applies for new inserts.
+
+**Browser / admin UI**
+
+- **Not run from Cursor** (no interactive login as `admin@bvisible.local`). Operator: `/admin/email-ingestion` — confirm reason chips, Saved/Skipped badges, explanations, Link / Retry / Dismiss.
+
+**Live IMAP smoke (reason codes)**
+
+- **Skipped** from Cursor (no controlled send from this session).
+
+**Safety (design + deploy checks; unchanged product rules)**
+
+- Duplicate **`Message-ID`**: unique `(tenantId, messageId)` + early return on **`P2002`** (unchanged).
+- OCR enqueue errors wrapped so ingestion continues (unchanged).
+- Vendor price extraction only after PO materialization; unmatched rows never call it (unchanged).
+- No automatic PO/estimate/invoice financial mutation from ingest.
+
+**Caveats**
+
+- Operator browser pass and optional live mailbox scenarios still pending.
+
+---
+
 ## 2026-05-17 — Email ingestion operational hardening (review codes, fixtures, dedupe)
 
 **What changed**
@@ -25,7 +82,7 @@ records what changed, the files touched, the risks, and the verification.
 
 **Deploy**
 
-- Requires **`prisma migrate deploy`** for new column before relying on review chips in prod.
+- **`2026-05-17`** production deploy applied migration **`20260524103000_ingested_email_review_reason_codes`** — see top changelog entry for job ID and verification.
 
 ---
 
