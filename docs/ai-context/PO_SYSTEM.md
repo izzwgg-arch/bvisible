@@ -188,6 +188,8 @@ Matrix and ladder: `apps/web/lib/po/po-lifecycle-matrix.ts`. State derives from 
 
 **Tests:** `pnpm --filter @bvisible/web run verify:po-lifecycle`.
 
+**Browser smoke:** `pnpm --filter @bvisible/web run smoke:po-lifecycle` — dashboard + lifecycle rail; operator button clicks only when a PO number starts with `SMOKE-` (read-only rail check on `PO-90100*` email fixtures otherwise). Inventory: `bash server-scripts/db/.list-smoke-data.sh`.
+
 **Triggers:** approving OCR lines runs `runPoReconciliationSnapshot` with a dedupe key
 (`tenantId + PO + OCR doc + sorted line ids`). Manual **Recompute snapshot** uses a fresh
 UUID nonce. Duplicate triggers short-circuit via `@@unique([tenantId, triggerDedupeKey])`.

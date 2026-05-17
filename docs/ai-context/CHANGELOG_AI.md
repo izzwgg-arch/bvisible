@@ -5,6 +5,49 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Browser smoke + smoke data hygiene (local, not deployed)
+
+**Credentials** — `~/.bvisible-smoke.env` (from `server-scripts/smoke/.bvisible-smoke.env.example`); auto-loaded by `smoke/load-smoke-env.ts`. Password never printed, committed, or added to server `.env`.
+
+**Smoke commands**
+
+| Command | Purpose |
+|---------|---------|
+| `bash server-scripts/smoke/run-smoke.sh all` | Wrapper: loads env, runs all suites |
+| `pnpm --filter @bvisible/web run smoke:po-lifecycle` | Dashboard + PO lifecycle rail; mutations **SMOKE-*** PO only |
+| `pnpm --filter @bvisible/web run smoke:core` | Core workflow (+ PO lifecycle queue visibility) |
+| `pnpm --filter @bvisible/web run smoke:vendor-normalization` | Vendor rail + OCR review |
+
+**Browser / operator** — **Skipped in CI/agent** (`~/.bvisible-smoke.env` missing locally). Operator: copy example env, set password, run `run-smoke.sh all` against production URL.
+
+**Production smoke inventory** (`bash server-scripts/db/.list-smoke-data.sh` via SCP on host)
+
+| Kind | Count | Notes |
+|------|-------|-------|
+| vendors | 3 | `SMOKE-EMAIL-*` |
+| purchase_orders | 4 | `PO-901001`–`PO-901004` (no `SMOKE-` prefixed PO yet) |
+| ingested_emails | 6 | `SMOKE-EMAIL*` subjects |
+| ocr_on_fixture_pos | 2 | `PO-901001` FAILED, `PO-901004` CONFIRMED |
+| clients / estimates (SMOKE title) | 0 | created on first `smoke:core` run |
+
+**Cleanup policy** — `server-scripts/db/.cleanup-smoke-data.sh`: dry-run default; `CONFIRM_SMOKE_CLEANUP=1` deletes only `SMOKE-*` / `PO-90100*` / `SMOKE-EMAIL*` fixtures. Dry-run on prod: 4 fixture POs, 6 emails.
+
+**Vitest (local)**
+
+| Command | Result |
+|---------|--------|
+| `typecheck` | pass |
+| `verify:workflow-queues` | 26/26 |
+| `verify:po-lifecycle` | 19/19 |
+| `verify:vendor-catalog` | 52/52 |
+| `verify:ocr-quality` | 15 pass, 1 skipped |
+
+**Deploy** — None (scripts/docs/smoke only). Ship with next app deploy to install `.list-smoke-data.sh` on server permanently.
+
+**Remaining gaps** — Playwright not executed without operator password; create `SMOKE-Lifecycle` PO (or manual `SMOKE-*` number) to exercise operator button mutations on production.
+
+---
+
 ## 2026-05-17 — PO vendor order lifecycle hardening (`775c9c7`) — production
 
 **Push** — `775c9c745e5e2ee931fe7c8ccdb25f28ab172ad4` (feature) + `4700f4f0acccf6d4a3dae02a1b5dc76ac1b9b49e` (CHANGELOG deploy SHA note only) → `origin/main`.

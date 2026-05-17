@@ -60,21 +60,40 @@ After deploy (or against local `pnpm dev`), exercise the **staff UI + public quo
 pnpm --filter @bvisible/web exec playwright install chromium
 ```
 
-**Run smoke:**
+**Credential file (local only, never commit):**
 
 ```bash
-cd apps/web   # or stay at repo root:
-pnpm --filter @bvisible/web run smoke:core
-pnpm --filter @bvisible/web run smoke:vendor-normalization
+cp server-scripts/smoke/.bvisible-smoke.env.example ~/.bvisible-smoke.env
+chmod 600 ~/.bvisible-smoke.env
+# edit: set BVISIBLE_ADMIN_PASSWORD (never print or commit)
 ```
 
-**`smoke:vendor-normalization`** — estimate vendor-intelligence rail (coroplast label variants, unresolved copy, Apply-only unit cost, Enter navigation) + OCR review queue/detail (operator copy, parse-reason chips, no raw `HIGH` / `qty_label_unit_price` enums). Reuses estimate title **`SMOKE-VendorNorm`** and **`SMOKE-Client`**; does not require private catalog rows.
+Or export `BVISIBLE_BASE_URL`, `BVISIBLE_ADMIN_EMAIL`, `BVISIBLE_ADMIN_PASSWORD` in your shell. Playwright loads `~/.bvisible-smoke.env` automatically via `smoke/load-smoke-env.ts` when vars are unset. **Do not** put the password in `/opt/bvisible/shared/env/.env` unless explicitly approved.
 
-The suite creates/reuses rows prefixed **`SMOKE-`** (`SMOKE-Client`, `SMOKE-CatalogItem`, estimate title **`SMOKE-CoreWorkflow`**). Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default so quote URLs are less likely to be persisted.
+**Run smoke (wrapper or individual suites):**
+
+```bash
+bash server-scripts/smoke/run-smoke.sh all          # core + vendor + po-lifecycle
+bash server-scripts/smoke/run-smoke.sh po-lifecycle
+
+# or from repo root:
+pnpm --filter @bvisible/web run smoke:core
+pnpm --filter @bvisible/web run smoke:vendor-normalization
+pnpm --filter @bvisible/web run smoke:po-lifecycle
+pnpm --filter @bvisible/web run smoke:all
+```
+
+| Suite | What it checks |
+|-------|----------------|
+| `smoke:core` | Dashboard (operational + **PO vendor lifecycle** queues), route smoke, `SMOKE-CoreWorkflow` quote path |
+| `smoke:vendor-normalization` | Vendor rail + OCR review copy (`SMOKE-VendorNorm`) |
+| `smoke:po-lifecycle` | Lifecycle rail + operator buttons; **mutations only on `SMOKE-*` PO numbers**; read-only rail on `PO-90100*` fixtures if no `SMOKE-` PO |
+
+The suite creates/reuses rows prefixed **`SMOKE-`** (`SMOKE-Client`, `SMOKE-CatalogItem`, estimate title **`SMOKE-CoreWorkflow`**). Email/OCR fixtures use **`PO-901001`–`PO-901004`** and **`SMOKE-EMAIL*`** vendors/emails — inventory via `bash server-scripts/db/.list-smoke-data.sh` on the app host. Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default.
 
 If **`SMOKE-CoreWorkflow`** is **FINALIZED** or **REJECTED**, reset or delete that estimate and re-run.
 
-**Operator env file (local only, never commit):** export vars in the shell or source a file outside the repo, e.g. `~/.bvisible-smoke.env` with `BVISIBLE_BASE_URL`, `BVISIBLE_ADMIN_EMAIL`, `BVISIBLE_ADMIN_PASSWORD`. Production deploy box does not need the password in `/opt/bvisible/shared/env/.env` for vitest — only for Playwright against the live site.
+**Smoke data cleanup (optional, destructive):** `bash server-scripts/db/.cleanup-smoke-data.sh` dry-runs counts; `CONFIRM_SMOKE_CLEANUP=1` deletes only `SMOKE-*` / `PO-90100*` / `SMOKE-EMAIL*` rows. Prefer inventory first; manual SQL for FK-heavy chains if unsure.
 
 ## 1. Deploy queue — failing or stuck
 

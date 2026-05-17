@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { loadSmokeEnvFromFile } from './load-smoke-env';
 
 export function requireEnv(name: string): string {
   const v = process.env[name]?.trim();
@@ -9,8 +10,16 @@ export function requireEnv(name: string): string {
 }
 
 export function requireSmokeCredentials(): void {
+  loadSmokeEnvFromFile();
   requireEnv('BVISIBLE_ADMIN_EMAIL');
   requireEnv('BVISIBLE_ADMIN_PASSWORD');
+}
+
+export function smokeCredentialsAvailable(): boolean {
+  loadSmokeEnvFromFile();
+  return Boolean(
+    process.env.BVISIBLE_ADMIN_EMAIL?.trim() && process.env.BVISIBLE_ADMIN_PASSWORD?.trim(),
+  );
 }
 
 /** Never log or print the password. */
