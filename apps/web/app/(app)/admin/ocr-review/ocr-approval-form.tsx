@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useTransition, useState } from 'react';
 import {
   approveOcrDocumentAction,
@@ -34,6 +35,7 @@ export function OcrApprovalForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [approvedPoId, setApprovedPoId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -115,10 +117,16 @@ export function OcrApprovalForm({
                 lines: payloadLines,
               });
               if (!r.ok) setMessage(r.error ?? 'Approve failed.');
-              else
+              else if (r.purchaseOrderId) {
                 setMessage(
-                  'Approved. Vendor price history updated for selected lines.'
+                  r.reconciliationSkipped
+                    ? `Approved. Pricing saved. Reconciliation snapshot already exists for this approval — open the PO to review or recompute.`
+                    : `Approved. Pricing saved and a reconciliation snapshot was created — review variances on the PO.`,
                 );
+                setApprovedPoId(r.purchaseOrderId);
+              } else {
+                setMessage('Approved. Vendor price history updated for selected lines.');
+              }
             });
           }}
         >
@@ -141,6 +149,14 @@ export function OcrApprovalForm({
         </button>
         {message ? (
           <span className="text-[13px] text-[var(--color-bv-muted)]">{message}</span>
+        ) : null}
+        {approvedPoId ? (
+          <Link
+            href={`/purchase-orders/${approvedPoId}/reconciliation`}
+            className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[12px] font-semibold text-emerald-950 hover:bg-emerald-100"
+          >
+            Open PO reconciliation
+          </Link>
         ) : null}
       </div>
     </div>

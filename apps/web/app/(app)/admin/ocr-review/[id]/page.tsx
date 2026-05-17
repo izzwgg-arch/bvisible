@@ -176,9 +176,20 @@ export default async function OcrReviewDetailPage({
           </h2>
           <OcrApprovalForm documentId={doc.id} lines={lines} />
         </div>
+      ) : doc.status === OcrJobStatus.CONFIRMED && doc.poAttachment ? (
+        <p className="text-[13px] text-[var(--color-bv-muted)]">
+          Approved — vendor price history was written for selected lines. A reconciliation snapshot
+          was created (or already existed for this approval).{' '}
+          <Link
+            href={`/purchase-orders/${doc.poAttachment.purchaseOrderId}/reconciliation`}
+            className="font-medium text-emerald-700 underline-offset-2 hover:underline"
+          >
+            Open PO reconciliation
+          </Link>
+        </p>
       ) : (
         <p className="text-[13px] text-[var(--color-bv-muted)]">
-          This job is not awaiting review ({doc.status}).
+          This job is not awaiting review ({labelOcrJobStatus(doc.status)}).
         </p>
       )}
     </div>

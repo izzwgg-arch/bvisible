@@ -4,8 +4,10 @@ import {
   EstimateStatus,
   InvoiceStatus,
   OcrJobStatus,
+  POReconciliationLineMatch,
   POReconciliationStatus,
   POStatus,
+  SpendAlertKind,
   VendorPriceExtractionMethod,
 } from '@bvisible/db';
 
@@ -110,6 +112,48 @@ export function labelEmailMatchReason(r: EmailMatchReason): string {
       return 'No auto-match';
     default:
       return String(r).replace(/_/g, ' ');
+  }
+}
+
+export function labelReconciliationLineMatch(m: POReconciliationLineMatch): string {
+  switch (m) {
+    case POReconciliationLineMatch.MATCHED:
+      return 'Matched';
+    case POReconciliationLineMatch.PRICE_VARIANCE:
+      return 'Price variance';
+    case POReconciliationLineMatch.QTY_VARIANCE:
+      return 'Qty variance';
+    case POReconciliationLineMatch.PRICE_AND_QTY_VARIANCE:
+      return 'Price & qty variance';
+    case POReconciliationLineMatch.UNMATCHED_PO_LINE:
+      return 'PO line unmatched';
+    case POReconciliationLineMatch.UNMATCHED_RECEIPT_LINE:
+      return 'Receipt line unmatched';
+    case POReconciliationLineMatch.AMBIGUOUS_PO_LINE:
+      return 'Ambiguous PO line';
+    case POReconciliationLineMatch.AMBIGUOUS_RECEIPT_LINE:
+      return 'Ambiguous receipt line';
+    default:
+      return String(m).replace(/_/g, ' ');
+  }
+}
+
+export function labelSpendAlertKind(k: SpendAlertKind): string {
+  switch (k) {
+    case SpendAlertKind.PRICE_OVER_PO_EXPECTED:
+      return 'Price over PO';
+    case SpendAlertKind.QTY_MISMATCH:
+      return 'Quantity mismatch';
+    case SpendAlertKind.PO_TOTAL_OVER_EXPECTED:
+      return 'PO total over expected';
+    case SpendAlertKind.UNMATCHED_RECEIPT_LINE:
+      return 'Unmatched receipt line';
+    case SpendAlertKind.MISSING_PO_RECEIPT_LINE:
+      return 'Missing receipt line';
+    case SpendAlertKind.RECONCILIATION_AMBIGUOUS:
+      return 'Ambiguous pairing';
+    default:
+      return String(k).replace(/_/g, ' ');
   }
 }
 

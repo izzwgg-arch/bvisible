@@ -26,7 +26,13 @@ const approveSchema = z.object({
 
 export async function approveOcrDocumentAction(
   input: unknown
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  purchaseOrderId?: string;
+  reconciliationId?: string | null;
+  reconciliationSkipped?: boolean;
+}> {
   const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
 
   const parsed = approveSchema.safeParse(input);
@@ -90,6 +96,20 @@ export async function approveOcrDocumentAction(
     })),
   });
 
+  const triggerDedupeKey = buildOcrApproveTriggerDedupeKey({
+    tenantId: me.tenantId,
+    purchaseOrderId: doc.poAttachment.purchaseOrderId,
+    ocrDocumentId: doc.id,
+    includedOcrLineItemIds: ids,
+  });
+
+  const reconResult = await runPoReconciliationSnapshot({
+    tenantId: me.tenantId,
+    purchaseOrderId: doc.poAttachment.purchaseOrderId,
+    actorId: me.id,
+    triggerDedupeKey,
+  });
+
   await prisma.ocrDocument.update({
     where: { id: doc.id },
     data: {
@@ -104,7 +124,13 @@ export async function approveOcrDocumentAction(
   revalidatePath('/admin/reconciliation');
   revalidatePath(`/purchase-orders/${doc.poAttachment.purchaseOrderId}/reconciliation`);
   revalidatePath('/dashboard');
-  return { ok: true };
+  revalidatePath(`/purchase-orders/${doc.poAttachment.purchaseOrderId}`);
+  return {
+    ok: true,
+    purchaseOrderId: doc.poAttachment.purchaseOrderId,
+    reconciliationId: reconResult.reconciliationId ?? null,
+    reconciliationSkipped: reconResult.skipped,
+  };
 }
 
 export async function rejectOcrDocumentAction(

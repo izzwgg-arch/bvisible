@@ -154,8 +154,10 @@ quantity-tier normalization yet.
   stores `parseReason` on `OcrLineItem.extractionSource`). Each worker tick
   `deleteMany` line items then re-inserts (replay-safe).
 - **Human gate:** `/admin/ocr-review/*` (ADMIN+). Only **Approve** runs
-  `persistApprovedOcrPriceLines` (`extractionMethod = OCR_APPROVED`). Automatic OCR
-  never writes pricing rows. `REVIEW_REQUIRED` is suggestions only.
+  `persistApprovedOcrPriceLines` (`extractionMethod = OCR_APPROVED`) then a replay-safe
+  `runPoReconciliationSnapshot` (dedupe key from OCR doc + included line ids). Automatic OCR
+  never writes pricing rows. `REVIEW_REQUIRED` is suggestions only. UI links operators to PO
+  reconciliation after approve.
 - **Verification:** `pnpm --filter @bvisible/web run verify:ocr-quality`;
   `bash server-scripts/db/.verify-ocr-quality.sh` (host + vitest);
   `bash server-scripts/db/.verify-ocr-receipt-parse.sh` (parse-only, no binaries).

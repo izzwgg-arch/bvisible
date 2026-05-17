@@ -5,6 +5,43 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — PO receipt / reconciliation operator workflow (uncommitted)
+
+**Flow audit (before changes)**
+
+| Step | Behavior |
+|------|----------|
+| `POAttachment` | Receipt-like uploads enqueue `OcrDocument` |
+| `OcrLineItem` | Worker suggestions; human approves on `/admin/ocr-review/[id]` |
+| OCR approve | `persistApprovedOcrPriceLines` → `VendorPriceHistory` (`OCR_APPROVED`) only |
+| Reconciliation | **Was not triggered on approve** — manual **Recompute snapshot** only |
+| `POReconciliation` + `SpendAlert` | Deterministic snapshot; stale OPEN alerts superseded |
+| PO detail | Operational rail existed; receipt/recon stats were thin |
+| Dashboard | OCR queue + spend alerts; no “approved OCR, no snapshot” rows |
+
+**What changed**
+
+- **OCR approve** now runs `runPoReconciliationSnapshot` with `buildOcrApproveTriggerDedupeKey` (replay-safe; skips duplicate trigger). Returns PO id + reconciliation id; UI links to PO reconciliation.
+- **PO detail** — `PoReceiptWorkflowSummaryCard`: OCR status, approved line count, recon status, variance lines, open alerts, next-action chips.
+- **Reconciliation UI** — human labels for match kinds / alert kinds; compact copy (no giant banners).
+- **Dashboard** — attention rows for POs with confirmed OCR but no snapshot; recently operator-stamped POs.
+- **Tests:** `po-receipt-workflow.test.ts`; `verify:po-receipt-workflow` script.
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `verify:ocr-reconciliation-flow` | **41/41**, 1 skipped |
+| `verify:po-receipt-workflow` | **21/21** |
+| `typecheck` | pass |
+
+**Remaining gaps**
+
+- Browser smoke for SMOKE-RECON PO (needs operator credentials).
+- Deploy pending commit + push.
+
+---
+
 ## 2026-05-17 — Browser QA smoke + OCR review UX polish (`7b2ee34`)
 
 **Deploy**

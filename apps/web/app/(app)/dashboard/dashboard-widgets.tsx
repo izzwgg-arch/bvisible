@@ -119,6 +119,10 @@ function attentionKindLabel(kind: AttentionFeedKind): string {
       return 'OCR';
     case 'email_inbox':
       return 'Inbox';
+    case 'recon_run_needed':
+      return 'Reconcile';
+    case 'reconciled_recent':
+      return 'Reconciled';
     default:
       return 'Ops';
   }

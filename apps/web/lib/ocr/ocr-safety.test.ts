@@ -9,6 +9,7 @@ describe('OCR financial safety (static contracts)', () => {
     );
     expect(src).toContain('OcrJobStatus.REVIEW_REQUIRED');
     expect(src).toContain('persistApprovedOcrPriceLines');
+    expect(src).toContain('runPoReconciliationSnapshot');
     const rejectBlock = src.split('rejectOcrDocumentAction')[1] ?? '';
     expect(rejectBlock).not.toContain('persistApprovedOcrPriceLines');
   });

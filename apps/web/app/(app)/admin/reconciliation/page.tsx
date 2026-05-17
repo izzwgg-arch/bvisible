@@ -9,13 +9,10 @@ import {
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { dismissSpendAlertFormAction } from '@/lib/reconciliation/actions';
+import { labelPoReconciliationStatus, labelSpendAlertKind } from '@/lib/ui/status-labels';
 
 export const metadata = { title: 'PO reconciliation inbox' };
 export const dynamic = 'force-dynamic';
-
-function statusLabel(s: POReconciliationStatus): string {
-  return s.replaceAll('_', ' ');
-}
 
 export default async function AdminReconciliationInboxPage() {
   const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
@@ -97,7 +94,7 @@ export default async function AdminReconciliationInboxPage() {
                     {a.title}
                   </div>
                   <div className="mt-0.5 text-[11px] uppercase tracking-wide text-[var(--color-bv-muted)]">
-                    {a.kind.replaceAll('_', ' ')}
+                    {labelSpendAlertKind(a.kind)}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -163,7 +160,7 @@ export default async function AdminReconciliationInboxPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-800">
-                        {statusLabel(r.status)}
+                        {labelPoReconciliationStatus(r.status)}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-[var(--color-bv-muted)]">

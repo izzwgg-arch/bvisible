@@ -8,7 +8,9 @@ import {
 } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { PoReceiptWorkflowSummaryCard } from '@/components/po/po-receipt-workflow-summary';
 import { PoOperationalRail } from '@/components/workflow/po-operational-rail';
+import { getPoReceiptWorkflowSummary } from '@/lib/po/get-po-receipt-workflow-summary';
 import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { PoEditor, type PoEditorBootstrap } from './editor';
@@ -134,6 +136,11 @@ export default async function PurchaseOrderDetailPage({
     notFound();
   }
 
+  const receiptWorkflowSummary =
+    me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN
+      ? await getPoReceiptWorkflowSummary(me.tenantId, id)
+      : null;
+
   const attachmentTotal = po.attachments.length;
   const receiptishCount = po.attachments.filter((a) => RECEIPTISH.includes(a.kind)).length;
   const attachmentsFromEmailCount = po.attachments.filter((a) => a.sourceEmailId != null).length;
@@ -228,6 +235,15 @@ export default async function PurchaseOrderDetailPage({
             clientCompanyName={po.estimate.client.companyName}
             estimateStatus={po.estimate.status}
             quoteSummaryProps={estimateOriginQuoteUi.quoteSummaryProps}
+          />
+        </div>
+      ) : null}
+      {receiptWorkflowSummary ? (
+        <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
+          <PoReceiptWorkflowSummaryCard
+            poId={po.id}
+            summary={receiptWorkflowSummary}
+            role={me.role}
           />
         </div>
       ) : null}

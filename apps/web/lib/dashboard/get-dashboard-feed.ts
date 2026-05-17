@@ -21,7 +21,13 @@ export interface DashboardRecentPo {
   updatedAt: Date;
 }
 
-export type AttentionFeedKind = 'spend' | 'vendor_price' | 'ocr_queue' | 'email_inbox';
+export type AttentionFeedKind =
+  | 'spend'
+  | 'vendor_price'
+  | 'ocr_queue'
+  | 'email_inbox'
+  | 'recon_run_needed'
+  | 'reconciled_recent';
 
 export interface AttentionFeedItem {
   kind: AttentionFeedKind;
@@ -48,6 +54,8 @@ export async function getDashboardOperationalFeed(
     vendorNotes,
     unmatchedEmailCount,
     pendingOcrCount,
+    posNeedingRecon,
+    recentlyReconciledPos,
   ] = await Promise.all([
     prisma.estimate.findMany({
       where: { tenantId, deletedAt: null },
@@ -120,6 +128,38 @@ export async function getDashboardOperationalFeed(
           },
         })
       : Promise.resolve(0),
+    opts.includeOperatorAttention
+      ? prisma.purchaseOrder.findMany({
+          where: {
+            tenantId,
+            deletedAt: null,
+            operatorMarkedReconciledAt: null,
+            attachments: {
+              some: { ocrDocument: { status: OcrJobStatus.CONFIRMED } },
+            },
+            reconciliations: { none: {} },
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 4,
+          select: { id: true, number: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
+    opts.includeOperatorAttention
+      ? prisma.purchaseOrder.findMany({
+          where: {
+            tenantId,
+            deletedAt: null,
+            operatorMarkedReconciledAt: { not: null },
+          },
+          orderBy: { operatorMarkedReconciledAt: 'desc' },
+          take: 3,
+          select: {
+            id: true,
+            number: true,
+            operatorMarkedReconciledAt: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const attentionItems: AttentionFeedItem[] = [];
@@ -153,6 +193,27 @@ export async function getDashboardOperationalFeed(
       subtitle: 'Confirm extracted lines before they affect vendor history.',
       href: '/admin/ocr-review',
       createdAt: new Date(),
+    });
+  }
+
+  for (const po of posNeedingRecon) {
+    attentionItems.push({
+      kind: 'recon_run_needed',
+      title: `${po.number} — run reconciliation`,
+      subtitle: 'OCR lines were approved but no snapshot exists yet.',
+      href: `/purchase-orders/${po.id}/reconciliation`,
+      createdAt: po.updatedAt,
+    });
+  }
+
+  for (const po of recentlyReconciledPos) {
+    if (!po.operatorMarkedReconciledAt) continue;
+    attentionItems.push({
+      kind: 'reconciled_recent',
+      title: `${po.number} marked reconciled`,
+      subtitle: 'Operator stamp recorded — no automatic accounting change.',
+      href: `/purchase-orders/${po.id}`,
+      createdAt: po.operatorMarkedReconciledAt,
     });
   }
 

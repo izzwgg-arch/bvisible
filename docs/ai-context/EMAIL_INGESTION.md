@@ -289,6 +289,10 @@ Explicitly **not** implemented:
 OCR-approved vendor rows still require `/admin/ocr-review` approval before
 `VendorPriceHistory` insert. Estimate editor reads those rows via deterministic
 `catalog-lookup` + `normalize` (no regex-on-body changes in this pass).
+
+**PO receipt workflow (2026-05-17)** — after OCR approve, `runPoReconciliationSnapshot`
+runs with a deterministic dedupe key; operators can also **Recompute snapshot** on the PO.
+Neither path mutates PO/estimate financials — compare + alerts only (`PO_SYSTEM.md`).
   Manual link / retry paths call the same helper.
 - **Vendor price history idempotency:** `VendorPriceHistory` rows use
   unique `(tenantId, dedupeKey)` so retries after a successful insert

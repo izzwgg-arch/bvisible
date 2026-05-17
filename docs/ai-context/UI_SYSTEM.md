@@ -179,6 +179,9 @@ The look, feel, and behavior of the web app.
     (Draft → Sent → Ordered → Received, with partial receipts aligned to Ordered), attachment counts,
     reconciliation snapshot label, OCR receipt counts by status, inbound-email touch counts for operators,
     and **next recommended action** (upload docs, reconciliation, OCR queue, email matching).
+  - **Receipt → reconciliation summary** on `/purchase-orders/[id]` (`PoReceiptWorkflowSummaryCard`):
+    OCR status, approved OCR line count, latest reconciliation status, variance line count, open spend
+    alerts, and chip CTAs (Review OCR, Run reconciliation, Resolve variance, Mark PO reconciled).
   - Same two-column layout as the estimate editor: line grid + notes +
     attachments + timeline on the left, sticky meta panel (320px) on the
     right.

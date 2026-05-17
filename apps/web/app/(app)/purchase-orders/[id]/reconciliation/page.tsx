@@ -16,6 +16,11 @@ import {
   refreshReconciliationFormAction,
   rejectReconciliationLineFormAction,
 } from '@/lib/reconciliation/actions';
+import {
+  labelPoReconciliationStatus,
+  labelReconciliationLineMatch,
+  labelSpendAlertKind,
+} from '@/lib/ui/status-labels';
 
 export const metadata = { title: 'PO reconciliation' };
 export const dynamic = 'force-dynamic';
@@ -166,11 +171,17 @@ export default async function PurchaseOrderReconciliationPage({
       </div>
 
       {staleMark ? (
-        <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
-          A newer reconciliation snapshot exists after the operator stamp — review
-          again before relying on the stamp.
-        </div>
+        <p className="mb-4 text-[13px] text-amber-900">
+          A newer snapshot exists after the operator stamp — review again before relying on the
+          stamp.
+        </p>
       ) : null}
+
+      <p className="mb-4 text-[12.5px] text-[var(--color-bv-muted)]">
+        Compares PO lines to <strong className="font-medium text-[var(--color-bv-text)]">OCR-approved</strong>{' '}
+        vendor price history. Confirm, accept variance, or reject — PO and estimate totals are never
+        auto-adjusted.
+      </p>
 
       <div className="mb-8 flex flex-wrap gap-3">
         <form action={refreshReconciliationFormAction}>
@@ -212,7 +223,7 @@ export default async function PurchaseOrderReconciliationPage({
                 headerStatusLine,
               )}`}
             >
-              {latest.status.replaceAll('_', ' ')}
+              {labelPoReconciliationStatus(latest.status)}
             </span>
             <span className="text-[var(--color-bv-muted)]">
               Run {latest.createdAt.toISOString().slice(0, 19).replace('T', ' ')}
@@ -248,7 +259,7 @@ export default async function PurchaseOrderReconciliationPage({
                         <span
                           className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${matchBadgeClass(line.match)}`}
                         >
-                          {line.match.replaceAll('_', ' ')}
+                          {labelReconciliationLineMatch(line.match)}
                         </span>
                         {line.resolution !== POReconciliationLineResolution.NONE ? (
                           <div className="mt-1 text-[10px] font-medium text-[var(--color-bv-muted)]">
@@ -434,7 +445,7 @@ export default async function PurchaseOrderReconciliationPage({
                       </span>
                     </td>
                     <td className="px-3 py-2 align-middle font-mono text-[11px] text-[var(--color-bv-muted)]">
-                      {row.kind.replaceAll('_', ' ')}
+                      {labelSpendAlertKind(row.kind)}
                     </td>
                     <td className="max-w-[280px] px-3 py-2 align-middle text-[12px]">
                       {row.title}
