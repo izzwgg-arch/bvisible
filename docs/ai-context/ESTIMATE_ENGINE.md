@@ -87,6 +87,8 @@ strictly lower), and **Apply converted unit cost** (only when a certain converte
 cents value exists) — each patches **only** `unitCostCents` on click with
 `onMouseDown` preventDefault — never automatic mutations and never focus stealing.
 Unresolved matches show guidance only; pricing is never applied automatically.
+**Browser smoke:** `pnpm --filter @bvisible/web run smoke:vendor-normalization` (coroplast
+variants + Apply-only checks; requires `BVISIBLE_*` env).
 
 **Pricing helper (estimate UI)** — `pricing-helper-panel.tsx` sits beside the catalog picker. Modes: **Square footage** (in × in ÷ 144 × piece count → qty as sq ft), **Sheet goods** (32 or 50 sq ft nominal + 75% / ceil rule → qty as sheet count), **Roll material** (width in × length ft → nominal roll sq ft; optional minimum billable sq ft; qty as billed sq ft), **Banner** (`bannerPrice` → one MATERIAL line at qty 1 × computed raw cents). Each mode only patches the **currently focused grid row** when the user clicks **Apply**; typing in the helper never mutates lines.
 

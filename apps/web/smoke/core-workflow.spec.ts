@@ -10,30 +10,11 @@
  */
 
 import { test, expect, type Page, type Browser } from '@playwright/test';
+import { loginAsAdmin, requireEnv, requireSmokeCredentials } from './auth';
 
 const SMOKE_CLIENT = 'SMOKE-Client';
 const SMOKE_ITEM = 'SMOKE-CatalogItem';
 const SMOKE_ESTIMATE_TITLE = 'SMOKE-CoreWorkflow';
-
-function requireEnv(name: string): string {
-  const v = process.env[name]?.trim();
-  if (!v) {
-    throw new Error(`[smoke:core] Missing required environment variable: ${name}`);
-  }
-  return v;
-}
-
-async function loginAsAdmin(page: Page): Promise<void> {
-  const email = requireEnv('BVISIBLE_ADMIN_EMAIL');
-  const password = requireEnv('BVISIBLE_ADMIN_PASSWORD');
-
-  await page.goto('/login');
-  await expect(page.getByRole('heading', { level: 1, name: /sign in to b visible/i })).toBeVisible();
-  await page.locator('#email').fill(email);
-  await page.locator('#password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 45_000 });
-}
 
 async function ensureSmokeClient(page: Page): Promise<void> {
   await test.step('Ensure smoke client exists', async () => {
@@ -104,8 +85,7 @@ async function readEstimateNumber(page: Page): Promise<string> {
 
 test.describe.serial('core workflow smoke', () => {
   test.beforeAll(() => {
-    requireEnv('BVISIBLE_ADMIN_EMAIL');
-    requireEnv('BVISIBLE_ADMIN_PASSWORD');
+    requireSmokeCredentials();
   });
 
   test('SMOKE-CoreWorkflow happy path (idempotent)', async ({ browser }: { browser: Browser }) => {

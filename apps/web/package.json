@@ -22,6 +22,7 @@
     "verify:estimate-acceptance": "vitest run lib/estimate/public-quote-response.test.ts lib/estimate/estimate-quote-link.test.ts lib/estimate/customer-quote-view.test.ts lib/estimate/customer-quote.test.ts",
     "verify:vendor-catalog": "vitest run lib/shop-material/apply-catalog-to-estimate-line.test.ts lib/shop-material/pricing-aggregate.test.ts lib/vendor-pricing/vendor-price-source-label.test.ts lib/vendor-pricing/catalog-lookup.test.ts lib/vendor-pricing/normalize.test.ts lib/vendor-pricing/material-match.test.ts lib/vendor-pricing/unit-conversion.test.ts",
     "smoke:core": "playwright test smoke/core-workflow.spec.ts --config=playwright.config.ts",
+    "smoke:vendor-normalization": "playwright test smoke/vendor-normalization.spec.ts --config=playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
     "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"

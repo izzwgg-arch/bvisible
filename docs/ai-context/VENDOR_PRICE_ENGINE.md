@@ -175,7 +175,8 @@ quantity-tier normalization yet.
   `onMouseDown` preventDefault; never auto-fills costs. Automated regression:
   `pnpm --filter @bvisible/web run verify:vendor-catalog`;
   `bash server-scripts/db/.verify-vendor-normalization.sh` (bundles vendor-catalog +
-  estimate-pricing + ocr-quality vitest).
+  estimate-pricing + ocr-quality vitest). **Browser smoke (operator creds):**
+  `pnpm --filter @bvisible/web run smoke:vendor-normalization` — see `DEBUGGING.md` § 0c.
 
 ## Phase 14 — PO reconciliation (deterministic, human-gated)
 

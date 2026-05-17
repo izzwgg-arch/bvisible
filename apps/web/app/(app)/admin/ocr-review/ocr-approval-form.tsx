@@ -6,6 +6,8 @@ import {
   rejectOcrDocumentAction,
 } from '@/app/(app)/admin/ocr-review/actions';
 import { labelOcrParseReason } from '@/lib/ocr/parse-reason-labels';
+import { labelVendorPriceConfidenceProduct } from '@/lib/vendor-pricing/vendor-price-source-label';
+import { VendorPriceConfidence } from '@bvisible/db';
 
 export interface ApprovalLineRow {
   id: string;
@@ -180,7 +182,8 @@ function LineEditor({
         </label>
         <span className="flex flex-wrap gap-1.5">
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-            {line.confidence}
+            {labelVendorPriceConfidenceProduct(line.confidence as VendorPriceConfidence) ??
+              'Confidence'}
           </span>
           <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-900">
             {labelOcrParseReason(line.extractionSource)}

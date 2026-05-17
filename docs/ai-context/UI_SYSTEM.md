@@ -82,7 +82,7 @@ The look, feel, and behavior of the web app.
     and contextual **next recommended action** when something blocks progress.
   - Two-column desktop layout: line grid on the left, sticky totals
     panel (320px) on the right. Single-column on narrow widths.
-  - **Material-row vendor intelligence** — debounced `lookupVendorCatalogForEstimateAction` when a material description/qty cell is focused; see bullet above for shipped UX (cards, table, explicit Apply). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`.
+  - **Material-row vendor intelligence** — debounced `lookupVendorCatalogForEstimateAction` when a material description/qty cell is focused; see bullet above for shipped UX (cards, table, explicit Apply). Suggestions never overwrite cells or steal keyboard navigation from `makeGridKeyHandler`. **Browser smoke:** `pnpm --filter @bvisible/web run smoke:vendor-normalization` (requires `BVISIBLE_*` env; see `DEBUGGING.md` § 0c).
   - **Catalog items** (`catalog-item-picker.tsx`) — search tenant `ShopMaterialItem` rows. MATERIAL rows show **unit cost** (what **Apply** writes: preferred vendor’s latest linked snapshot when set, else cheapest latest, else internal item cost) plus read-only **cheapest** and **preferred** lines when vendor history exists. **Sell hint** uses catalog markup % or sell override as guidance only (estimate total still follows **`computeEstimate`**). **Apply** patches the focused line once per explicit click — no hooks while typing.
   - **Pricing helper** (`pricing-helper-panel.tsx`) — compact card under the catalog: **Square footage**, **Sheet goods** (4×8 / 5×10 + 75% / ceil rule), **Roll material** (nominal roll sq ft, optional minimum billable sq ft), **Banner** (R-EST-03). Shows plain-English explanation + optional $ fields; **Apply to focused line** only (no auto-fill on keystroke). Same focus target as catalog **Apply**.
   - Grid uses `<table>` semantics (one DOM node per cell) and the shared
@@ -138,9 +138,10 @@ The look, feel, and behavior of the web app.
   SUPER_ADMIN.
 - **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): queue shows status + line
   count; detail shows source attachment link, truncated OCR text, per-line **parse reason**
-  chip (from `parse-receipt-lines.ts`), optional qty, and compact **Approve selected** /
-  **Reject** — copy states vendor price history is written only after approval.
-  Approving also enqueues a replay-safe `POReconciliation` snapshot for that PO batch.
+  chips (human labels from `parse-receipt-lines.ts`), qty hints, and **High/Medium/Lower
+  confidence** chips (not raw enum strings). Compact **Approve selected** / **Reject** —
+  copy states vendor price history is written only after approval. Approving also enqueues a
+  replay-safe `POReconciliation` snapshot for that PO batch. **Smoke:** `smoke:vendor-normalization`.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
   `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /
   `SUPERSEDED` / `DISMISSED` chips for audit). The **dashboard** links into this inbox via the

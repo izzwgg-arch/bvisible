@@ -53,11 +53,16 @@ pnpm --filter @bvisible/web exec playwright install chromium
 ```bash
 cd apps/web   # or stay at repo root:
 pnpm --filter @bvisible/web run smoke:core
+pnpm --filter @bvisible/web run smoke:vendor-normalization
 ```
+
+**`smoke:vendor-normalization`** — estimate vendor-intelligence rail (coroplast label variants, unresolved copy, Apply-only unit cost, Enter navigation) + OCR review queue/detail (operator copy, parse-reason chips, no raw `HIGH` / `qty_label_unit_price` enums). Reuses estimate title **`SMOKE-VendorNorm`** and **`SMOKE-Client`**; does not require private catalog rows.
 
 The suite creates/reuses rows prefixed **`SMOKE-`** (`SMOKE-Client`, `SMOKE-CatalogItem`, estimate title **`SMOKE-CoreWorkflow`**). Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default so quote URLs are less likely to be persisted.
 
 If **`SMOKE-CoreWorkflow`** is **FINALIZED** or **REJECTED**, reset or delete that estimate and re-run.
+
+**Operator env file (local only, never commit):** export vars in the shell or source a file outside the repo, e.g. `~/.bvisible-smoke.env` with `BVISIBLE_BASE_URL`, `BVISIBLE_ADMIN_EMAIL`, `BVISIBLE_ADMIN_PASSWORD`. Production deploy box does not need the password in `/opt/bvisible/shared/env/.env` for vitest — only for Playwright against the live site.
 
 ## 1. Deploy queue — failing or stuck
 

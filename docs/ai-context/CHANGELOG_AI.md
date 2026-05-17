@@ -5,6 +5,45 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Browser QA smoke + OCR review UX polish (pending deploy)
+
+**Browser QA**
+
+- **Not run live** — `BVISIBLE_ADMIN_PASSWORD` unset in workspace and on `/opt/bvisible/shared/env/.env`.
+- **Operator-run Playwright** (after exporting creds locally, never commit password):
+
+```bash
+export BVISIBLE_BASE_URL=https://vmi3270817.contaboserver.net
+export BVISIBLE_ADMIN_EMAIL=admin@bvisible.local
+# export BVISIBLE_ADMIN_PASSWORD=...  # from operator only
+pnpm --filter @bvisible/web exec playwright install chromium
+pnpm --filter @bvisible/web run smoke:vendor-normalization
+```
+
+**What changed**
+
+- **`smoke/auth.ts`** — shared login helper (no password logging).
+- **`smoke/vendor-normalization.spec.ts`** — rail coroplast variants, unresolved copy, Apply-only unit cost, Enter nav; OCR queue/detail smoke.
+- **`smoke:vendor-normalization`** npm script; `core-workflow` uses shared auth.
+- **OCR review:** confidence chips use product labels (`High confidence`, etc.) instead of raw `HIGH` enum.
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `verify:vendor-catalog` | **52/52** |
+| `verify:estimate-pricing` | **70/70** |
+| `verify:ocr-quality` | **15/15**, 1 skipped |
+| `typecheck` | pass |
+| `smoke:vendor-normalization` | **skipped** (no `BVISIBLE_ADMIN_PASSWORD` in env) |
+
+**Remaining gaps**
+
+- Operator must run smoke against prod with credentials to close browser acceptance.
+- Deploy job ID / health commit — fill after push+deploy if released.
+
+---
+
 ## 2026-05-17 — Vendor pricing normalization production verification (`2014bbd`)
 
 **Deploy**
