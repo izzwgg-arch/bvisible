@@ -6,16 +6,12 @@ import { getDashboardOperationalFeed } from '@/lib/dashboard/get-dashboard-feed'
 import { getOnboardingChecklistState } from '@/lib/onboarding/checklist-data';
 import { isOnboardingChecklistDismissed } from '@/lib/onboarding/dismiss-action';
 import { OnboardingChecklistCard } from '@/components/onboarding/onboarding-checklist-card';
-import { getDashboardQuoteAttention } from '@/lib/dashboard/get-quote-attention';
-import { getDashboardEstimatePoFlow } from '@/lib/dashboard/get-estimate-po-flow';
-import { getDashboardEstimateInvoiceFlow } from '@/lib/dashboard/get-dashboard-estimate-invoice-flow';
-import { VendorPriceAlerts } from './vendor-price-alerts';
-import { SpendOperationAlerts } from './reconciliation-widgets';
 import {
-  DashboardQuoteAttentionSections,
-} from './dashboard-quote-attention';
-import { DashboardEstimatePoFlowSections } from './dashboard-estimate-po-flow';
-import { DashboardEstimateInvoiceFlowSections } from './dashboard-estimate-invoice-flow';
+  getOperationalWorkflowQueues,
+  type OperationalQueueFilter,
+} from '@/lib/workflow/get-operational-workflow-queues';
+import { VendorPriceAlerts } from './vendor-price-alerts';
+import { DashboardOperationalQueues } from './dashboard-operational-queues';
 import {
   DashboardMetricGrid,
   DashboardOperationalSections,
@@ -26,33 +22,51 @@ import {
 export const metadata = { title: 'Dashboard' };
 export const dynamic = 'force-dynamic';
 
+const QUEUE_FILTERS = new Set<OperationalQueueFilter>([
+  'all',
+  'stale',
+  'blocked',
+  'unresolved',
+  'mine',
+]);
+
+function parseQueueFilter(raw: string | undefined): OperationalQueueFilter {
+  if (raw && QUEUE_FILTERS.has(raw as OperationalQueueFilter)) {
+    return raw as OperationalQueueFilter;
+  }
+  return 'all';
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; queue?: string }>;
 }) {
   const user = await requireUserForAppShell();
-  const { error } = await searchParams;
+  const { error, queue: queueParam } = await searchParams;
+  const queueFilter = parseQueueFilter(queueParam);
 
   const showOperator =
     user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
-  const [metrics, feed, dismissed, checklistState, quoteAttention, estimatePoFlow, estimateInvoiceFlow] =
+  const [metrics, feed, dismissed, checklistState, operationalQueues] =
     user.tenantId != null
       ? await Promise.all([
           getDashboardMetrics(user.tenantId, {
             includeOperatorMetrics: showOperator,
           }),
           getDashboardOperationalFeed(user.tenantId, {
-            includeOperatorAttention: showOperator,
+            includeOperatorAttention: false,
           }),
           isOnboardingChecklistDismissed(),
           getOnboardingChecklistState(user.tenantId, user.role),
-          getDashboardQuoteAttention(user.tenantId),
-          getDashboardEstimatePoFlow(user.tenantId),
-          getDashboardEstimateInvoiceFlow(user.tenantId),
+          getOperationalWorkflowQueues(user.tenantId, {
+            filter: queueFilter,
+            currentUserId: user.id,
+            includeOperatorQueues: showOperator,
+          }),
         ])
-      : [null, null, true, null, null, null, null];
+      : [null, null, true, null, null];
 
   const workspaceLabel = user.tenant.name;
 
@@ -94,12 +108,14 @@ export default async function DashboardPage({
         <>
           <DashboardQuickActions role={user.role} hasClients={metrics.clientCount > 0} />
           <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
-          {quoteAttention ? <DashboardQuoteAttentionSections data={quoteAttention} /> : null}
-          {estimatePoFlow ? <DashboardEstimatePoFlowSections data={estimatePoFlow} /> : null}
-          {estimateInvoiceFlow ? (
-            <DashboardEstimateInvoiceFlowSections data={estimateInvoiceFlow} />
+          {operationalQueues ? (
+            <DashboardOperationalQueues
+              queues={operationalQueues}
+              activeFilter={queueFilter}
+              showOperatorQueues={showOperator}
+            />
           ) : null}
-          {feed ? <DashboardOperationalSections feed={feed} /> : null}
+          {feed ? <DashboardOperationalSections feed={feed} showAttention={false} /> : null}
           <DashboardRecentActivity rows={metrics.recentActivity} />
         </>
       ) : null}
@@ -110,9 +126,6 @@ export default async function DashboardPage({
         </div>
       ) : null}
 
-      {user.tenantId && showOperator ? (
-        <SpendOperationAlerts tenantId={user.tenantId} />
-      ) : null}
     </>
   );
 }

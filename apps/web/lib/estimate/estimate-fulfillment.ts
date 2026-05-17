@@ -182,7 +182,7 @@ export function fulfillmentHeadlineForEstimateStatus(status: EstimateStatus): Fu
     case ES.SENT:
       return {
         title: 'Next steps',
-        subtitle: 'Awaiting customer response.',
+        subtitle: 'Awaiting customer — public quote outstanding.',
         muted: false,
       };
     case ES.APPROVED:

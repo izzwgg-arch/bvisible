@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { EstimateStatus, POStatus } from '@bvisible/db';
 import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
+import { WORKFLOW_STATE_LABELS } from '@/lib/workflow/operational-state';
 
 const FLOW = [
   EstimateStatus.DRAFT,
@@ -57,12 +58,12 @@ export function EstimateWorkflowRail({
             }
           : status === EstimateStatus.SENT
             ? {
-                title: 'Awaiting customer decision',
+                title: WORKFLOW_STATE_LABELS.awaiting_customer,
                 body: 'Mark Approved when they accept — then create POs from the totals panel.',
               }
             : status === EstimateStatus.APPROVED && !isFinalized
               ? {
-                  title: 'Operationalize the win',
+                  title: hasPo ? WORKFLOW_STATE_LABELS.ready_to_finalize : WORKFLOW_STATE_LABELS.approved_waiting_po,
                   body: 'Create POs from approved lines, capture QBO numbers, then finalize.',
                 }
               : null;

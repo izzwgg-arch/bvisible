@@ -5,7 +5,13 @@ import type { DashboardAuditRow, DashboardMetrics } from '@/lib/dashboard/get-da
 import type { AttentionFeedKind, DashboardOperationalFeed } from '@/lib/dashboard/get-dashboard-feed';
 import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
 
-export function DashboardOperationalSections({ feed }: { feed: DashboardOperationalFeed }) {
+export function DashboardOperationalSections({
+  feed,
+  showAttention = true,
+}: {
+  feed: DashboardOperationalFeed;
+  showAttention?: boolean;
+}) {
   return (
     <div className="mb-10 grid gap-8 xl:grid-cols-2">
       <section>
@@ -70,6 +76,7 @@ export function DashboardOperationalSections({ feed }: { feed: DashboardOperatio
         )}
       </section>
 
+      {showAttention ? (
       <section className="xl:col-span-2">
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
           Operational attention
@@ -105,6 +112,7 @@ export function DashboardOperationalSections({ feed }: { feed: DashboardOperatio
           </ul>
         )}
       </section>
+      ) : null}
     </div>
   );
 }

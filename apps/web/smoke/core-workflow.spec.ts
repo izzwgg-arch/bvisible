@@ -100,6 +100,7 @@ test.describe.serial('core workflow smoke', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByText(/B Visible/)).toBeVisible();
       await expect(page.getByText(/operational overview/)).toBeVisible();
+      await expect(page.getByText(/Operational queues/)).toBeVisible();
     });
 
     await test.step('Route smoke (authenticated)', async () => {

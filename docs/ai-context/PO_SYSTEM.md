@@ -176,6 +176,8 @@ normalization). Estimate editor matching uses the same normalized labels + deter
 alias ladder (`VENDOR_PRICE_ENGINE.md`). Deterministic pairing requires equal counts per normalized label;
 otherwise ambiguous PO/receipt rows + `SpendAlert` candidates.
 
+**Operational queues (dashboard):** PO rows surface under **Waiting on vendor reply** (issued PO, no `VENDOR_REPLY` event), **OCR needs review**, and **Reconciliation variance** (latest snapshot needs attention or OCR confirmed without snapshot). Labels align with `WORKFLOW_STATE_LABELS` on PO detail rails — display-only; no financial mutation.
+
 **Triggers:** approving OCR lines runs `runPoReconciliationSnapshot` with a dedupe key
 (`tenantId + PO + OCR doc + sorted line ids`). Manual **Recompute snapshot** uses a fresh
 UUID nonce. Duplicate triggers short-circuit via `@@unique([tenantId, triggerDedupeKey])`.

@@ -5,6 +5,33 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Unified operational workflow queues (uncommitted)
+
+**Workflow audit matrix** — documented in `apps/web/lib/workflow/operational-matrix.ts` (states: awaiting customer, approved waiting PO, vendor reply, OCR review, recon snapshot, variance, ready to finalize, invoice, unmatched mail, completed).
+
+**Queue model** — `getOperationalWorkflowQueues()` derives rows from real DB predicates only (no synthetic workflow table). Pure helpers: `getOperationalWorkflowState`, `getOperationalAttentionReason`, `getOperationalNextAction`, `isOperationalStale` (`operational-state.ts`, `operational-stale.ts`).
+
+**Dashboard** — compact **Operational queues** sections replace fragmented quote/PO/invoice attention widgets; filters: All / Stale / Blocked / Unresolved / Mine (`?queue=`). Recent estimates/POs rail kept; legacy amber attention feed hidden when queues active.
+
+**Rails** — estimate + PO operational rails use shared `WORKFLOW_STATE_LABELS` (e.g. Awaiting customer, OCR review needed, Variance detected).
+
+**Stale thresholds (display-only)** — quote 3d, approved-no-PO 2d, vendor reply 3d, OCR review 2d, recon 5d, unpaid invoice 7d.
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `verify:workflow-queues` | **25/25** |
+| `verify:po-receipt-workflow` | **21/21** |
+| `verify:estimate-quote` | **47/47** |
+| `typecheck` | pass |
+
+**Deploy** — pending commit + push.
+
+**Remaining gaps** — Playwright queue transition smoke needs operator password; optional spend-alert rows in reconciliation bucket.
+
+---
+
 ## 2026-05-17 — PO receipt / reconciliation operator workflow (`a71ce5f`)
 
 **Deploy**

@@ -12,6 +12,7 @@ import {
   labelPoReconciliationStatus,
   labelPoStatus,
 } from '@/lib/ui/status-labels';
+import { WORKFLOW_STATE_LABELS } from '@/lib/workflow/operational-state';
 
 const STEPS = [
   POStatus.DRAFT,
@@ -106,19 +107,19 @@ export function PoOperationalRail({
         }
       : !canceled && reconNeedsAttention && showOperator
         ? {
-            title: 'Reconciliation needs a decision',
+            title: WORKFLOW_STATE_LABELS.variance_detected,
             body: `Latest snapshot: ${labelPoReconciliationStatus(latestReconciliation!.status)} — review lines or stamp reconciled.`,
             href: `/purchase-orders/${poId}/reconciliation` as const,
           }
         : !canceled && ocrPending > 0 && showOperator
           ? {
-              title: 'Receipt OCR waiting',
+              title: WORKFLOW_STATE_LABELS.ocr_review_needed,
               body: `${ocrPending} document${ocrPending === 1 ? '' : 's'} need operator review before pricing feeds forward.`,
               href: '/admin/ocr-review' as const,
             }
           : emailsTouchingPo > matchedEmailsCount && showOperator
             ? {
-                title: 'Inbound mail needs matching',
+                title: WORKFLOW_STATE_LABELS.unmatched_email,
                 body: 'Some vendor mail tied to this PO is still pending operator linking.',
                 href: '/admin/email-ingestion' as const,
               }

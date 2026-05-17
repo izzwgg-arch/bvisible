@@ -37,6 +37,11 @@
    (dedupe key per doc + line ids) — it never mutates PO, estimate, or invoice line
    pricing. Operator-facing alert copy uses normalized item labels plus structural ids —
    never raw OCR dumps (truncated OCR previews elsewhere).
+8. **Operational workflow queues are read-only aggregations.**
+   `getOperationalWorkflowQueues` and related helpers (`apps/web/lib/workflow/`) only
+   **read** tenant-scoped rows to build dashboard queue sections, stale badges, and next-action
+   links. Stale thresholds are display-only. Queue UI must not create workflow rows, mutate
+   finances, or change OCR approve/reject, quote/public approval, or email matching behavior.
 
 ## Customer estimate quotes
 

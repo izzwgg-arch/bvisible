@@ -60,18 +60,16 @@ The look, feel, and behavior of the web app.
   open POs, vendor price notifications (`dismissedAt: null`), pending OCR queue (ADMIN+),
   unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
   recent rows from `audit_logs`, plus quick actions. **Operational overview** layout:
-  recent estimates + recent POs + **`DashboardQuoteAttentionSections`** (`getDashboardQuoteAttention.ts`:
-  awaiting **`SENT`** estimates that still have an active `/quote/[token]` with **no** `respondedAt`, distinct surfaces for newest **`QUOTE_ACCEPTED`** / **`QUOTE_DECLINED`** timeline hits with `/estimates/[id]` deep links) +
-  **`DashboardEstimatePoFlowSections`** (`get-estimate-po-flow.ts` — approved estimates missing linked POs,
-  newest estimate-backed PO rows, approved estimates already tied to POs, estimate-linked PO recon bottlenecks using latest `POReconciliation` statuses only),
-  **`DashboardEstimateInvoiceFlowSections`** (`get-dashboard-estimate-invoice-flow.ts` — approved estimates missing invoices, unpaid invoices tied to approved estimates, recently paid estimate-linked invoices via **`Invoice.paidAt`**) + merged **attention feed** (`getDashboardOperationalFeed()` in
-  `apps/web/lib/dashboard/get-dashboard-feed.ts`: spend alerts, vendor price rows, and for ADMIN+
-  synthetic OCR queue / unmatched-email prompts when counts > 0 — still backed by DB counts,
-  not fabricated rows). **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
+  recent estimates + recent POs + unified **`DashboardOperationalQueues`** (`getOperationalWorkflowQueues()` in
+  `apps/web/lib/workflow/` — compact queue sections: awaiting customer, approved waiting for PO, vendor reply,
+  OCR review, reconciliation variance, ready to finalize, unmatched mail, invoice follow-up, recently completed;
+  each row shows status chip, customer/job, blocker reason, next-action CTA, stale badge; filters via `?queue=stale|blocked|unresolved|mine`).
+  Legacy fragmented quote/PO/invoice widgets removed from the dashboard layout; underlying fetch helpers remain for tests.
+  **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
   shows a dismissible checklist whose completion state is computed from real tenant data
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
-  **Regression bundles** (operator/CI): `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
+  **Regression bundles** (operator/CI): `verify:workflow-queues`, `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.

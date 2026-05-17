@@ -290,6 +290,8 @@ OCR-approved vendor rows still require `/admin/ocr-review` approval before
 `VendorPriceHistory` insert. Estimate editor reads those rows via deterministic
 `catalog-lookup` + `normalize` (no regex-on-body changes in this pass).
 
+**Operational queues (2026-05-17)** — unmatched / pending `IngestedEmail` rows appear on the dashboard under **Unmatched inbound mail** (`getOperationalWorkflowQueues`); matching remains manual on `/admin/email-ingestion` — no auto-link side effects from queue display.
+
 **PO receipt workflow (2026-05-17)** — after OCR approve, `runPoReconciliationSnapshot`
 runs with a deterministic dedupe key; operators can also **Recompute snapshot** on the PO.
 Neither path mutates PO/estimate financials — compare + alerts only (`PO_SYSTEM.md`).
