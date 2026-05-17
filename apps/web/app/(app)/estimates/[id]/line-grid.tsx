@@ -69,6 +69,7 @@ export function LineGrid({
 
   return (
     <section
+      id="estimate-line-grid"
       className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
     >
       <div className="flex items-center justify-between border-b border-[var(--color-bv-border)] px-5 py-3">
@@ -261,8 +262,13 @@ export function LineGrid({
               })}
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-[var(--color-bv-muted)]">
-                    No lines yet. Add a row below to start.
+                  <td colSpan={7} className="px-5 py-8">
+                    <div className="mx-auto max-w-md rounded-[10px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-4 text-center">
+                      <p className="text-[13px] font-medium text-[var(--color-bv-text)]">No line items yet</p>
+                      <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
+                        Click <strong className="text-[var(--color-bv-text)]">+ Material</strong> below, or focus a row and use the catalog / pricing helper under the grid.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : null}

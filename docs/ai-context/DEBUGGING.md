@@ -85,7 +85,7 @@ pnpm --filter @bvisible/web run smoke:all
 
 | Suite | What it checks |
 |-------|----------------|
-| `smoke:core` | Dashboard (operational + **PO vendor lifecycle** queues), route smoke, `SMOKE-CoreWorkflow` quote path |
+| `smoke:core` | Dashboard queues, `/estimates/new`, route smoke, `SMOKE-CoreWorkflow` quote path (catalog Apply on draft) |
 | `smoke:vendor-normalization` | Vendor rail + OCR review copy (`SMOKE-VendorNorm`) |
 | `smoke:po-lifecycle` | Lifecycle rail + operator buttons; **mutations only on `SMOKE-*` PO numbers**; read-only rail on `PO-90100*` fixtures if no `SMOKE-` PO |
 

@@ -205,9 +205,7 @@ export function PricingHelperPanel({
             Pricing helper
           </h2>
           <p className="mt-0.5 max-w-xl text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
-            Quick calculators for common shop math. Nothing changes on the estimate until you click{' '}
-            <strong className="text-[var(--color-bv-text)]">Apply to focused line</strong> — focus a row in the grid
-            first (same target as catalog Apply).
+            Sq ft, sheets, rolls, banner — applies to the focused grid row only.
           </p>
         </div>
       </div>

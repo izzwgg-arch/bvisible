@@ -5,6 +5,41 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Estimator daily workflow UX polish (local)
+
+**Flow audit (before)**
+
+| Step | Friction |
+|------|----------|
+| `/estimates` | Status only; no next action or quick links; cost column cluttered daily view |
+| `/estimates/new` | Worked but thin guidance when no clients |
+| `/estimates/[id]` | Duplicate Preview/Print header links; large sky/amber workflow banners + fulfillment + quote panels = noise |
+| Editor | Catalog/pricing above grid; vendor rail verbose; empty grid easy to miss |
+
+**UI changes**
+
+- **List** — Job + client + status + sell + **Next** column + compact quick links (Edit, Quote, PO, Invoice).
+- **New estimate** — Helper copy; dashed empty client card with CTA; button **Create & add lines**.
+- **Detail** — `EstimateDailyWorkflowStrip` (Draft → Quote sent → Approved → PO → Invoice) with primary CTA; removed duplicate Print link.
+- **Editor** — Line grid first (keyboard central), then catalog, pricing helper, vendor intel; compact empty states when no lines / no focused row.
+
+**Smoke** — `smoke:core` visits `/estimates/new` heading; credentials still required to run.
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `typecheck` | pass |
+| `verify:estimate-pricing` | 70/70 |
+| `verify:vendor-catalog` | 52/52 |
+| `verify:estimate-quote` | 49/49 |
+
+**Deploy** — Not yet pushed.
+
+**Remaining gaps** — Playwright smoke skipped without `~/.bvisible-smoke.env`; fulfillment/quote panels still below strip (could collapse further later).
+
+---
+
 ## 2026-05-17 — Browser smoke + smoke data hygiene (`fd3a0bf`) — production
 
 **Push** — `fd3a0bfb8b098fa1ffc15926c0f0866365447738` → `origin/main`.

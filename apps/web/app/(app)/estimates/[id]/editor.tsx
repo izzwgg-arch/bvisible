@@ -410,14 +410,6 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
           notes={state.notes}
           dispatch={dispatch}
         />
-        <CatalogItemPicker
-          catalog={bootstrap.shopCatalog}
-          machines={bootstrap.machines}
-          activeLineId={catalogLineId}
-          lines={state.lines}
-          dispatch={dispatch}
-        />
-        <PricingHelperPanel activeLineId={catalogLineId} lines={state.lines} dispatch={dispatch} />
         <LineGrid
           lines={state.lines}
           machines={bootstrap.machines}
@@ -426,6 +418,14 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
           onAnyLineFocus={setCatalogLineId}
           dispatch={dispatch}
         />
+        <CatalogItemPicker
+          catalog={bootstrap.shopCatalog}
+          machines={bootstrap.machines}
+          activeLineId={catalogLineId}
+          lines={state.lines}
+          dispatch={dispatch}
+        />
+        <PricingHelperPanel activeLineId={catalogLineId} lines={state.lines} dispatch={dispatch} />
         <VendorCatalogIntelPanel
           line={vendorIntelLine}
           onApplyManagedCost={(lineId, cents) =>

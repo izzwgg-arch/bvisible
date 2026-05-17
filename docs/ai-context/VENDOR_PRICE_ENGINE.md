@@ -113,6 +113,8 @@ After a **successful** history insert, if there was a **prior** row for the same
 
 1. Inserts `VendorPriceNotification` (`dismissedAt = null` until an operator posts
    the dismiss action).
+On the estimate editor, the **vendor intelligence rail** sits below the line grid and only applies to focused **MATERIAL** rows — compact copy when no match; nothing auto-applies unit cost.
+
 2. Appends `POEventKind.VENDOR_LOWER_PRICE` on the linked PO with sanitized message +
    structured metadata (includes `sourceEmailId`).
 3. Writes audit `vendor_price_lower_detected`.

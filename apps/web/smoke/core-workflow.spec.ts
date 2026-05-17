@@ -128,9 +128,11 @@ test.describe.serial('core workflow smoke', () => {
     await ensureSmokeClient(page);
     await ensureSmokeCatalogItem(page);
 
-    const { estimateUrl, statusFromList } = await test.step('Open or create smoke estimate', async () =>
-      openOrCreateSmokeEstimate(page),
-    );
+    const { estimateUrl, statusFromList } =     await test.step('Open or create smoke estimate', async () => {
+      await page.goto('/estimates/new');
+      await expect(page.getByRole('heading', { level: 1, name: 'New estimate' })).toBeVisible();
+      await openOrCreateSmokeEstimate(page);
+    });
 
     if (statusFromList === 'Finalized') {
       throw new Error(

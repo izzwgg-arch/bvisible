@@ -84,11 +84,15 @@ export function CatalogItemPicker({
       <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
         Catalog items
       </h2>
-      <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-        Focus a line in the grid, search the catalog, then click <strong className="text-[var(--color-bv-text)]">Apply</strong>{' '}
-        — nothing changes until you do (typing in cells is unaffected). Use the <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> below for sq ft, sheet counts, roll usage, or banner totals. <strong className="text-[var(--color-bv-text)]">Unit cost</strong>{' '}
-        is internal/vendor-only; <strong className="text-[var(--color-bv-text)]">Sell hint</strong> is catalog guidance from markup or a catalog sell override — the estimate total still uses the grid plus the estimate multiplier (default ×3 on raw cost).
-      </p>
+      {!activeLineId ? (
+        <p className="mt-2 rounded-[8px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[12px] text-[var(--color-bv-muted)]">
+          Click a line in the grid above, then search and <strong className="text-[var(--color-bv-text)]">Apply</strong> — nothing changes until you do.
+        </p>
+      ) : (
+        <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
+          Applying to the focused row. Unit cost is internal; sell hint is guidance only (totals use grid × multiplier).
+        </p>
+      )}
 
       <div className="mt-3 space-y-2">
         <label className="flex flex-col gap-1">

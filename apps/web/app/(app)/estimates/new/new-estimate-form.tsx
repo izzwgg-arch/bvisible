@@ -27,7 +27,7 @@ export function NewEstimateForm({ clients }: { clients: ReadonlyArray<ClientOpti
           className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
         >
           <option value="" disabled>
-            Pick a client…
+            Select client…
           </option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -57,7 +57,7 @@ export function NewEstimateForm({ clients }: { clients: ReadonlyArray<ClientOpti
           disabled={pending}
           className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[14px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending ? 'Creating…' : 'Create estimate'}
+          {pending ? 'Creating…' : 'Create & add lines'}
         </button>
       </div>
     </form>

@@ -9,7 +9,8 @@ import {
 } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
-import { EstimateWorkflowRail } from '@/components/workflow/estimate-workflow-rail';
+import { EstimateDailyWorkflowStrip } from '@/components/estimate/estimate-daily-workflow-strip';
+import { getEstimateEditorPrimaryAction } from '@/lib/estimate/estimate-editor-primary-action';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
 import { EstimateFulfillmentPanel } from '@/components/estimate/estimate-fulfillment-panel';
@@ -260,6 +261,15 @@ export default async function EstimateDetailPage({
           subtotalCents: linkedInvoiceRow.subtotalCents,
         };
 
+  const primary = getEstimateEditorPrimaryAction({
+    estimateId: estimate.id,
+    status: estimate.status,
+    lineCount: estimate.lines.length,
+    hasLinkedPo: linkedPosRaw.length > 0,
+    hasLinkedInvoice: linkedInvoiceRow != null,
+    quoteLinkActive: quoteUi.quotePanelProps.activeLink != null,
+  });
+
   const bootstrap: EditorBootstrap = {
     estimate: {
       id: estimate.id,
@@ -308,12 +318,6 @@ export default async function EstimateDetailPage({
               Preview quote
             </Link>
             <Link
-              href={`/estimates/${estimate.id}/preview`}
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-            >
-              Print / PDF
-            </Link>
-            <Link
               href={`/estimates/${estimate.id}/preview#customer-send`}
               className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
             >
@@ -323,22 +327,22 @@ export default async function EstimateDetailPage({
               href="/estimates"
               className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
             >
-              Back to estimates
+              All estimates
             </Link>
           </>
         }
       />
-      <EstimateWorkflowRail
-        estimateNumber={estimate.number}
-        status={estimate.status}
-        linkedPos={linkedPosRaw.map((p) => ({
-          id: p.id,
-          number: p.number,
-          status: p.status,
-          qboPoNumber: p.qboPoNumber,
-          vendorName: p.vendor?.name ?? null,
-        }))}
-      />
+      <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
+        <EstimateDailyWorkflowStrip
+          status={estimate.status}
+          quoteSent={quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT}
+          hasPo={linkedPosRaw.length > 0}
+          hasInvoice={linkedInvoiceRow != null}
+          primaryHref={primary.href}
+          primaryLabel={primary.label}
+          hint={primary.hint}
+        />
+      </div>
       <div className="mx-auto mb-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
         <EstimateFulfillmentPanel
           estimateId={estimate.id}
