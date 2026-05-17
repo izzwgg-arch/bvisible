@@ -5,7 +5,7 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-17 — PO vendor order lifecycle hardening (pending deploy)
+## 2026-05-17 — PO vendor order lifecycle hardening (`775c9c7`)
 
 **Lifecycle audit** — Prior state: `POStatus` + mental inference from vendor mail/OCR/recon. Gaps: no unified ladder, no stale display, no explicit blocked/backorder operator path. Deterministic signals now: `POStatus`, `POEvent` (`VENDOR_REPLY`, operator lifecycle kinds), OCR job statuses on attachments, latest `POReconciliation`, open `SpendAlert`, `operatorMarkedReconciledAt`, linked estimate status/QBO coverage.
 
@@ -44,7 +44,7 @@ records what changed, the files touched, the risks, and the verification.
 | `verify:po-receipt-workflow` | **21/21** |
 | `typecheck` | pass |
 
-**Deploy** — Requires migration apply + PM2 reload. Commit SHA: _(set after commit)_.
+**Deploy** — Requires `git push origin main`, migration `20260517143000_po_lifecycle_operator_events`, PM2 reload. Commit: `775c9c745e5e2ee931fe7c8ccdb25f28ab172ad4`.
 
 **Browser smoke** — Operator checklist: PO sent/no reply → `sent_to_vendor` + stale; vendor reply → ack/shipment bucket; OCR partial → partial receipt; variance PO → variance queue; manual blocked → blocked bucket; finalize path → ready to finalize. Playwright skipped if `BVISIBLE_ADMIN_PASSWORD` unset.
 
