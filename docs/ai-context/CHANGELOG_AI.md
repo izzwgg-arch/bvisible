@@ -5,6 +5,45 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Vendor pricing normalization production verification (`2014bbd`)
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | `2014bbdfc8ce903fc56d90d927eb33e31b952f4a` (`test/harden vendor pricing normalization and estimator rail`) |
+| **Job ID** | `20260517T065612-d94c00` |
+| **Migrations** | None pending (18 applied; latest `20260524103000_ingested_email_review_reason_codes`) |
+| **PM2** | reload OK (`bvisible-web` online) |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"2014bbdfc8ce903fc56d90d927eb33e31b952f4a"}` |
+
+**Server verification** (`/opt/bvisible/app`)
+
+| Command | Result |
+|---------|--------|
+| `verify:vendor-catalog` | **52/52** |
+| `verify:estimate-pricing` | **70/70** |
+| `verify:ocr-quality` | **16/16** (host tesseract PNG OCR on prod) |
+| `typecheck` | pass |
+| `.verify-vendor-normalization.sh` | **PASS** (bundles all three vitest aliases) |
+
+**Browser / operator**
+
+- `BVISIBLE_ADMIN_PASSWORD` **not** in `/opt/bvisible/shared/env/.env` — Playwright smoke not run from deploy box.
+- Operator: sign in as `admin@bvisible.local` → open any estimate → focus MATERIAL row → type coroplast variants (`COROPLAST 4MM WHITE`, `4MM WHITE CORO`, `Coro-Plast White 4 mm`) → confirm rail match reason/confidence, click-only Apply, no typing mutations, grid Enter/Shift+Enter unchanged → `/admin/ocr-review` still requires Approve before vendor history.
+
+**Bugs found/fixed during deploy**
+
+- None (clean deploy on first enqueue).
+
+**Remaining limitations**
+
+- Prefix alias/name matches require operator confirmation before trusting price.
+- Roll→linear ft needs known roll length before safe auto-conversion.
+- Browser acceptance on estimate rail pending operator credentials on prod.
+
+---
+
 ## 2026-05-17 — Vendor pricing normalization + estimator workflow hardening
 
 **What changed**
@@ -40,12 +79,23 @@ records what changed, the files touched, the risks, and the verification.
 - Debounced vendor rail on MATERIAL focus; catalog picker + pricing helper unchanged (click-only Apply).
 - Rail: **Apply suggested cost**, **Apply cheapest vendor cost** (when strictly lower), **Apply converted unit cost** (only when conversion proposal includes cents + `needsConfirmation`).
 
-**Verification (local)**
+**Alias ladder (estimate `catalog-lookup`)**
+
+1. Managed shop item name  
+2. Managed shop alias  
+3. Vendor exact alias  
+4. Vendor exact name  
+5. Vendor SKU exact  
+6. Prefix alias (`needsConfirmation`)  
+7. Prefix name (`needsConfirmation`)  
+8. Unresolved / manual  
+
+**Verification**
 
 ```bash
-pnpm --filter @bvisible/web run verify:vendor-catalog    # 52 passed
+pnpm --filter @bvisible/web run verify:vendor-catalog    # 52 passed (local + prod)
 pnpm --filter @bvisible/web run verify:estimate-pricing # 70 passed
-pnpm --filter @bvisible/web run verify:ocr-quality      # 15 passed, 1 skipped
+pnpm --filter @bvisible/web run verify:ocr-quality      # 16 passed on prod (15+1 skip local)
 pnpm --filter @bvisible/web run typecheck
 bash server-scripts/db/.verify-vendor-normalization.sh
 ```
@@ -59,16 +109,7 @@ bash server-scripts/db/.verify-vendor-normalization.sh
 - `server-scripts/db/.verify-vendor-normalization.sh`
 - `docs/ai-context/{CHANGELOG_AI,VENDOR_PRICE_ENGINE,ESTIMATE_ENGINE,UI_SYSTEM,KNOWN_RULES,DEBUGGING,PO_SYSTEM,EMAIL_INGESTION}.md`
 
-**Deploy**
-
-- Commit + push to `origin`, then enqueue deploy with exact `commitHash` (see `DEPLOY_QUEUE.md`).
-- Post-deploy: `bash server-scripts/db/.verify-vendor-normalization.sh` on `/opt/bvisible/app`.
-
-**Remaining gaps**
-
-- Prefix alias/name matches still need operator confirmation before trusting price.
-- Roll→LF needs explicit roll length table before safe auto-conversion.
-- Browser QA on estimate rail Apply/focus requires operator login on prod.
+**Shipped in commit** `2014bbdfc8ce903fc56d90d927eb33e31b952f4a` — see production verification entry above.
 
 ---
 
