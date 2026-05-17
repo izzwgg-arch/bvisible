@@ -5,7 +5,21 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-17 — PO vendor order lifecycle hardening (`775c9c7`)
+## 2026-05-17 — PO vendor order lifecycle hardening (`775c9c7`) — production
+
+**Push** — `775c9c745e5e2ee931fe7c8ccdb25f28ab172ad4` (feature) + `4700f4f0acccf6d4a3dae02a1b5dc76ac1b9b49e` (CHANGELOG deploy SHA note only) → `origin/main`.
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Deployed commit** | `775c9c745e5e2ee931fe7c8ccdb25f28ab172ad4` |
+| **Job ID** | `20260517T164053-3340d1` |
+| **Migration** | `20260517143000_po_lifecycle_operator_events` applied (19 migrations total; db-verify OK) |
+| **PM2** | reload OK |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"775c9c745e5e2ee931fe7c8ccdb25f28ab172ad4"}` |
+
+Deploy targeted feature SHA `775c9c7` (not docs tip `4700f4f`) — app code identical; `4700f4f` is CHANGELOG-only.
 
 **Lifecycle audit** — Prior state: `POStatus` + mental inference from vendor mail/OCR/recon. Gaps: no unified ladder, no stale display, no explicit blocked/backorder operator path. Deterministic signals now: `POStatus`, `POEvent` (`VENDOR_REPLY`, operator lifecycle kinds), OCR job statuses on attachments, latest `POReconciliation`, open `SpendAlert`, `operatorMarkedReconciledAt`, linked estimate status/QBO coverage.
 
@@ -35,20 +49,22 @@ records what changed, the files touched, the risks, and the verification.
 
 **Migration** — `20260517143000_po_lifecycle_operator_events` adds `POEventKind`: `OPERATOR_VENDOR_ACKNOWLEDGED`, `OPERATOR_BLOCKED`, `OPERATOR_BLOCKED_CLEARED`, `OPERATOR_RECEIVED_COMPLETE`.
 
-**Verification**
+**Server verification** (`/opt/bvisible/app`, post-deploy)
 
 | Command | Result |
 |---------|--------|
-| `pnpm --filter @bvisible/web run verify:po-lifecycle` | **19/19** |
+| `verify:po-lifecycle` | **19/19** |
 | `verify:workflow-queues` | **26/26** |
 | `verify:po-receipt-workflow` | **21/21** |
 | `typecheck` | pass |
 
-**Deploy** — Requires `git push origin main`, migration `20260517143000_po_lifecycle_operator_events`, PM2 reload. Commit: `775c9c745e5e2ee931fe7c8ccdb25f28ab172ad4`.
+**Production safety** — `po-lifecycle-actions.ts` only `purchaseOrder.findFirst` + `pOEvent.create` + `writeAuditLog` + `revalidatePath` (no `POLineItem` / estimate / invoice / reconciliation writes). Queue fetchers (`getPoLifecycleDashboardQueues`, `getPoLifecycleSnapshot`) are read-only aggregations; stale thresholds display-only.
 
-**Browser smoke** — Operator checklist: PO sent/no reply → `sent_to_vendor` + stale; vendor reply → ack/shipment bucket; OCR partial → partial receipt; variance PO → variance queue; manual blocked → blocked bucket; finalize path → ready to finalize. Playwright skipped if `BVISIBLE_ADMIN_PASSWORD` unset.
+**Browser / operator** — **Skipped** (`BVISIBLE_ADMIN_PASSWORD` not in workspace or server `.env`). Checklist: `/dashboard` → **PO vendor lifecycle** sections; open SENT PO without reply → **Sent to vendor**; **Mark vendor acknowledged** → timeline event + shipment bucket; **Mark blocked** / **Clear blocked**; **Mark received complete** → received state; confirm unified operational queues still render.
 
-**Remaining gaps** — PO may appear in both unified workflow queues and PO lifecycle queues when predicates overlap; strict `POStatus` transition ordering still not enforced.
+**Risks / caveats** — PO may appear in both workflow and lifecycle queues when predicates overlap; deploying `775c9c7` leaves server CHANGELOG one commit behind `4700f4f` until a docs-only or full redeploy.
+
+**Remaining gaps** — Playwright with credentials; optional dedupe between workflow vs lifecycle PO buckets; strict `POStatus` ordering not enforced.
 
 ---
 
