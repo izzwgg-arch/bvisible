@@ -1,13 +1,9 @@
-import {
-  OcrJobStatus,
-  VendorPriceExtractionMethod,
-  prisma,
-} from '@bvisible/db';
+import { OcrJobStatus, prisma } from '@bvisible/db';
 import { resolveAttachmentPath } from '@/lib/po/uploads';
-import { extractPricesFromTextBlob } from '@/lib/vendor-pricing/extract';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { extractPlainTextFromAttachment } from './extract-plain-text';
 import { parseReceiptDocumentGuesses } from './parse-receipt';
+import { parseReceiptLineCandidates } from './parse-receipt-lines';
 
 /** Bounded retries before FAILED — avoids infinite OCR loops on corrupt bytes. */
 export const OCR_MAX_ATTEMPTS = 14;
@@ -133,11 +129,7 @@ export async function processOcrDocument(job: {
     });
 
     const guesses = parseReceiptDocumentGuesses(text);
-    const candidates = extractPricesFromTextBlob(
-      text,
-      VendorPriceExtractionMethod.OCR_TEXT_REGEX,
-      null
-    ).slice(0, MAX_LINE_ITEMS);
+    const candidates = parseReceiptLineCandidates(text, MAX_LINE_ITEMS);
 
     const snippet =
       text.length > SNIPPET_LEN ? text.slice(0, SNIPPET_LEN) : text;
@@ -158,7 +150,7 @@ export async function processOcrDocument(job: {
             quantityMilliGuess: c.quantityMilli,
             unitPriceCentsGuess: c.priceCents,
             confidence: c.confidence,
-            extractionSource: String(c.method),
+            extractionSource: c.parseReason.slice(0, 80),
           },
         });
       }

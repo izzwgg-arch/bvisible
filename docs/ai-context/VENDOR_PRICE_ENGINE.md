@@ -133,12 +133,16 @@ quantity-tier normalization yet.
   bounded concurrency + retry cap (`R-OCR-02`). Extractors: `pdf-parse` for PDF
   text layers; host **`tesseract` CLI** + **`sharp`** for images; optional **`pdftoppm`**
   (Poppler) when PDF has no extractable text layer.
-- **Parsing:** header guesses (`parse-receipt.ts`) + line candidates via existing
-  `extractPricesFromTextBlob(..., OCR_TEXT_REGEX, ...)`.
+- **Parsing:** header guesses (`parse-receipt.ts`) + line candidates via
+  `parse-receipt-lines.ts` (skips subtotal/tax/total; supports `qty N`, `N x $price`;
+  stores `parseReason` on `OcrLineItem.extractionSource`). Each worker tick
+  `deleteMany` line items then re-inserts (replay-safe).
 - **Human gate:** `/admin/ocr-review/*` (ADMIN+). Only **Approve** runs
   `persistApprovedOcrPriceLines` (`extractionMethod = OCR_APPROVED`). Automatic OCR
-  never writes pricing rows.
-- **Verification (no OCR binaries):** `bash server-scripts/db/.verify-ocr-receipt-parse.sh`.
+  never writes pricing rows. `REVIEW_REQUIRED` is suggestions only.
+- **Verification:** `pnpm --filter @bvisible/web run verify:ocr-quality`;
+  `bash server-scripts/db/.verify-ocr-quality.sh` (host + vitest);
+  `bash server-scripts/db/.verify-ocr-receipt-parse.sh` (parse-only, no binaries).
 
 ## Estimate editor catalog hints (read-only)
 

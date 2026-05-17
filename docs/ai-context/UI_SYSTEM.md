@@ -136,9 +136,10 @@ The look, feel, and behavior of the web app.
   password is **never** displayed) and a "Recent ticks" list. The
   page header includes a "Configure inbox" CTA when the viewer is
   SUPER_ADMIN.
-- **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): queue + detail views for
-  `OcrDocument` suggestions (`REVIEW_REQUIRED`), truncated OCR preview, editable line
-  picks, **Approve** (writes `VendorPriceHistory` via `OCR_APPROVED`) vs **Reject**.
+- **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): queue shows status + line
+  count; detail shows source attachment link, truncated OCR text, per-line **parse reason**
+  chip (from `parse-receipt-lines.ts`), optional qty, and compact **Approve selected** /
+  **Reject** — copy states vendor price history is written only after approval.
   Approving also enqueues a replay-safe `POReconciliation` snapshot for that PO batch.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
   `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /

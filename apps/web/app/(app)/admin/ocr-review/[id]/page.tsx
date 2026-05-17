@@ -7,6 +7,7 @@ import {
   OcrApprovalForm,
   type ApprovalLineRow,
 } from '@/app/(app)/admin/ocr-review/ocr-approval-form';
+import { labelOcrJobStatus } from '@/lib/ui/status-labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,14 +60,16 @@ export default async function OcrReviewDetailPage({
     rawLineText: l.rawLineText,
     itemLabelNormalized: l.itemLabelNormalized,
     unitPriceCentsGuess: l.unitPriceCentsGuess,
+    quantityMilliGuess: l.quantityMilliGuess,
+    extractionSource: l.extractionSource,
     confidence: l.confidence,
   }));
 
   return (
     <div className="flex max-w-5xl flex-col gap-6">
       <PageHeader
-        title="OCR extraction detail"
-        subtitle="Suggestions only — approve to append vendor price observations."
+        title={doc.poAttachment?.originalFilename ?? 'Receipt OCR'}
+        subtitle={`${labelOcrJobStatus(doc.status)} · ${doc.lineItems.length} line candidate${doc.lineItems.length === 1 ? '' : 's'}`}
         actions={
           <Link
             href="/admin/ocr-review"
@@ -78,13 +81,16 @@ export default async function OcrReviewDetailPage({
       />
 
       <div className="grid gap-4 rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 text-[13px]">
-        <div className="flex flex-wrap gap-4">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold uppercase tracking-wide text-slate-800">
-            {doc.status}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+            {labelOcrJobStatus(doc.status)}
           </span>
-          <span className="text-[var(--color-bv-muted)]">
-            Engine: {doc.engineLabel}
-          </span>
+          <span className="text-[12px] text-[var(--color-bv-muted)]">{doc.engineLabel}</span>
+          {doc.rawTextCharCount != null ? (
+            <span className="text-[12px] text-[var(--color-bv-muted)]">
+              · {doc.rawTextCharCount.toLocaleString()} chars
+            </span>
+          ) : null}
         </div>
         {doc.poAttachment ? (
           <div className="flex flex-col gap-1">
@@ -106,9 +112,11 @@ export default async function OcrReviewDetailPage({
             {previewHref ? (
               <a
                 href={previewHref}
-                className="mt-1 text-[13px] font-medium text-emerald-700 underline"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex text-[13px] font-medium text-emerald-700 underline"
               >
-                Download original attachment (authenticated)
+                Open source attachment
               </a>
             ) : null}
           </div>
@@ -164,7 +172,7 @@ export default async function OcrReviewDetailPage({
       {doc.status === OcrJobStatus.REVIEW_REQUIRED ? (
         <div className="rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4">
           <h2 className="mb-3 text-[14px] font-semibold text-[var(--color-bv-text)]">
-            Operator decision
+            Review line candidates
           </h2>
           <OcrApprovalForm documentId={doc.id} lines={lines} />
         </div>

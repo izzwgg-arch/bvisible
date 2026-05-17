@@ -13,7 +13,8 @@ import sharp from 'sharp';
 
 const execFileAsync = promisify(execFile);
 
-const MIN_NATIVE_PDF_CHARS = 48;
+/** Below this, try raster OCR even after a weak native extract. */
+const MIN_NATIVE_PDF_CHARS = 32;
 
 async function tryPdfNativeText(buffer: Buffer): Promise<string | null> {
   try {
@@ -36,13 +37,16 @@ async function ocrImageBuffer(buffer: Buffer): Promise<string> {
   const prepared = await sharp(buffer)
     .rotate()
     .resize({
-      width: 2200,
-      height: 2200,
+      width: 2400,
+      height: 2400,
       fit: 'inside',
       withoutEnlargement: true,
     })
+    .greyscale()
+    .normalize()
+    .sharpen({ sigma: 0.8 })
     .flatten({ background: '#ffffff' })
-    .jpeg({ quality: 84 })
+    .jpeg({ quality: 88 })
     .toBuffer();
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'bv-ocr-img-'));
@@ -52,7 +56,7 @@ async function ocrImageBuffer(buffer: Buffer): Promise<string> {
     const outBase = path.join(tmpDir, 'out');
     await execFileAsync(
       'tesseract',
-      [imgPath, outBase, '-l', 'eng'],
+      [imgPath, outBase, '-l', 'eng', '--psm', '6'],
       { timeout: 180_000 }
     );
     return await readFile(`${outBase}.txt`, 'utf8');
@@ -120,7 +124,7 @@ export async function extractPlainTextFromAttachment(args: {
       return { text: native, engineLabel: 'pdf-parse (native text)' };
     }
     const raster = await tryPdfRasterOcr(buf);
-    if (raster && raster.trim().length > 0) {
+    if (raster && raster.replace(/\s+/g, ' ').trim().length >= MIN_NATIVE_PDF_CHARS) {
       return { text: raster, engineLabel: 'pdftoppm + tesseract-cli' };
     }
     throw new Error('pdf_no_extractable_text');

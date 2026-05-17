@@ -5,6 +5,56 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — OCR quality / receipt review hardening
+
+**What changed**
+
+- **Line parser:** `parse-receipt-lines.ts` — deterministic item/qty/price extraction; skips subtotal/tax/total and invoice-meta lines; supports `qty 2`, `2 x $45.00`, currency commas.
+- **Worker:** uses new parser; `deleteMany` before insert on each tick (no duplicate `OcrLineItem` rows on replay).
+- **Extraction:** sharper image preprocess (`greyscale`, `normalize`, `sharpen`); tesseract `--psm 6`.
+- **Fixtures:** text fixtures in `lib/ocr/fixtures/sample-invoices.ts`; on-demand PDF/PNG via `generate-binary.ts` (not committed).
+- **UI:** `/admin/ocr-review` — line count column; detail — status chip, parse reason per line, qty hint, compact approve/reject copy.
+- **Tests:** `verify:ocr-quality`; `server-scripts/db/.verify-ocr-quality.sh`.
+
+**OCR quality rules**
+
+| Rule | Behavior |
+|------|----------|
+| Summary lines | Subtotal, tax, total, amount due → **not** line items |
+| Invoice meta | `Invoice INV-…` alone → **not** a price row |
+| Qty | `qty N`, `N x $price`, `N @ $price` → `quantityMilli` |
+| Financial trust | `VendorPriceHistory` only after operator **Approve** (`OCR_APPROVED`) |
+| Replay | Each tick replaces line items for that document |
+
+**Files touched**
+
+- `apps/web/lib/ocr/{parse-receipt-lines,parse-receipt-lines.test,parse-reason-labels,fixtures,ocr-quality.test,ocr-safety.test,extract-plain-text,worker}.ts`
+- `apps/web/app/(app)/admin/ocr-review/{page,[id]/page,ocr-approval-form}.tsx`
+- `apps/web/package.json`
+- `server-scripts/db/.verify-ocr-quality.sh`
+- `docs/ai-context/{CHANGELOG_AI,DEBUGGING,VENDOR_PRICE_ENGINE,UI_SYSTEM,PO_SYSTEM}.md`
+
+**Verification**
+
+```bash
+pnpm --filter @bvisible/web run verify:ocr-quality          # 15 passed, 1 skipped (host tesseract)
+pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
+pnpm --filter @bvisible/web run typecheck
+bash server-scripts/db/.verify-ocr-quality.sh   # on Linux server with tesseract
+```
+
+**Deploy**
+
+- Push then enqueue deploy with exact `commitHash` (no floating tip).
+- Host: `tesseract-ocr` + `poppler-utils` already on prod from prior OCR runtime fix.
+
+**Remaining gaps**
+
+- Hand-built test PDF may not parse via `pdf-parse` on all OS builds; production invoices with real text layers or raster OCR are the source of truth.
+- No systemd timer dedicated to OCR tick yet (manual/cron POST to `/api/internal/ocr/tick`).
+
+---
+
 ## 2026-05-17 — OCR runtime / internal tick / production ops fix
 
 **What changed**

@@ -161,9 +161,10 @@ Same byte storage and magic-byte rules as the web uploader. Flow:
 
 Eligible receipt-like attachment kinds enqueue **one** tenant-scoped
 `OcrDocument` per `POAttachment` (unique FK). Processing is asynchronous via the
-internal OCR tick (`DEBUGGING.md` §11f); operators confirm suggestions at
+internal OCR tick (`DEBUGGING.md` §11f). Line candidates come from
+`parse-receipt-lines.ts` (subtotal/tax/total excluded). Operators confirm at
 `/admin/ocr-review/*` before any `VendorPriceHistory` row is written (`KNOWN_RULES.md`
-R-OCR-01).
+R-OCR-01). Re-ticking a document replaces line items (`deleteMany` then insert).
 
 ### PO reconciliation & spend alerts (Phase 14)
 

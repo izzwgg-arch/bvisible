@@ -15,6 +15,7 @@
     "verify:estimate-po-flow": "vitest run lib/purchase-orders/map-estimate-kind-to-po-kind.test.ts lib/dashboard/get-estimate-po-flow.test.ts",
     "verify:estimate-invoice-flow": "vitest run lib/invoices/allocate-estimate-sell-to-invoice-lines.test.ts lib/estimate/estimate-invoice-fulfillment.test.ts lib/dashboard/get-dashboard-estimate-invoice-flow.test.ts lib/estimate/estimate-quote-timeline.test.ts",
     "verify:ocr-reconciliation-flow": "vitest run lib/ocr lib/reconciliation",
+    "verify:ocr-quality": "vitest run lib/ocr/parse-receipt-lines.test.ts lib/ocr/parse-receipt.test.ts lib/ocr/ocr-quality.test.ts lib/ocr/ocr-safety.test.ts lib/ocr/enqueue.test.ts",
     "verify:email-ingestion": "vitest run lib/email-ingest/match.test.ts lib/email-ingest/storage.test.ts",
     "verify:email-ingestion-fixtures": "vitest run lib/email-ingest/ingest-fixtures.test.ts",
     "verify:email-operational-safety": "vitest run lib/email-ingest/review-reasons.test.ts lib/email-ingest/operational-safety.test.ts",

@@ -47,6 +47,7 @@ export default async function OcrReviewIndexPage({
     },
     orderBy: [{ updatedAt: 'desc' }],
     include: {
+      _count: { select: { lineItems: true } },
       poAttachment: {
         select: {
           id: true,
@@ -103,6 +104,7 @@ export default async function OcrReviewIndexPage({
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">PO</th>
                 <th className="px-4 py-3">File</th>
+                <th className="px-4 py-3">Lines</th>
                 <th className="px-4 py-3">Updated</th>
               </tr>
             </thead>
@@ -132,6 +134,9 @@ export default async function OcrReviewIndexPage({
                     >
                       {d.poAttachment?.originalFilename ?? d.id.slice(0, 8)}
                     </Link>
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-[var(--color-bv-muted)]">
+                    {d._count.lineItems}
                   </td>
                   <td className="px-4 py-3 text-[var(--color-bv-muted)]">
                     {d.updatedAt.toISOString().slice(0, 19).replace('T', ' ')}

@@ -1255,6 +1255,16 @@ Checks middleware posture, tick auth, `tesseract` + `pdftoppm`, optional loopbac
 tick, and that no `VendorPriceHistory` row references OCR line items on
 non-`CONFIRMED` documents.
 
+### OCR quality (parsing rules + fixtures)
+
+```bash
+pnpm --filter @bvisible/web run verify:ocr-quality
+bash server-scripts/db/.verify-ocr-quality.sh   # Linux server: host binaries + vitest
+```
+
+Text fixtures live in `apps/web/lib/ocr/fixtures/sample-invoices.ts`; PDF/PNG bytes
+are generated on demand by `fixtures/generate-binary.ts` (not stored in git).
+
 ### Deterministic parse-only checks (CI / laptop)
 
 ```bash
