@@ -229,7 +229,17 @@ interface IngestParseFailed {
   matched: false;
 }
 
-type IngestResult = IngestOk | IngestParseFailed;
+export type IngestResult = IngestOk | IngestParseFailed;
+
+/**
+ * Same ingest path as the IMAP tick (parse → persist → match → materialize).
+ * For controlled server smoke only — does not mark IMAP \\Seen.
+ */
+export async function ingestRawMessageForSmoke(
+  args: IngestArgs,
+): Promise<IngestResult> {
+  return ingestOneMessage(args);
+}
 
 async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
   let parsed: ParsedEmail;

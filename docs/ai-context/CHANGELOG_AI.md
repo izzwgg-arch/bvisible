@@ -5,6 +5,75 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Email ingestion live smoke + review UI verification (fixture path on prod)
+
+**Production health** (`curl -fsS http://127.0.0.1:3000/api/health`)
+
+```json
+{"status":"ok","service":"bvisible-web","commit":"d2e1d850342a070a8e72a4cadd1b69433bef7aae"}
+```
+
+**Inbox / timer**
+
+- `bvisible-ingest-tick.timer`: **active**, **enabled**
+- `INGEST_TICK_SECRET` not matched by a simple `grep '^INGEST_TICK_SECRET='` on `/opt/bvisible/shared/env/.env` from this session (timer still runs in prod; verify cron/env wiring separately if rotating secrets)
+- `tenant_email_inboxes` with `enabled = true`: **0** rows at check time (env-fallback IMAP may still apply for first tenant)
+- `/admin/email-ingestion` returns **307** → login (route reachable)
+
+**Test data** (tenant `bvisible`, slug `bvisible`)
+
+| Entity | ID |
+|--------|-----|
+| Tenant | `cmp4nel450006kmulfmq2n5s7` |
+| Vendor SMOKE-EMAIL-Match | `cmp9ae5300001km4q8an8q0kv` (`smoke-email-match@bvisible.local`) |
+| Vendor SMOKE-EMAIL-Single | `cmp9ae53k0003km4qr7482d62` |
+| Vendor SMOKE-EMAIL-Ambiguous | `cmp9ae53r0005km4qjzb3jn9l` |
+| PO PO-901001 (+ QBO-901001) | `cmp9ae54h0007km4qiyx4b9pg` |
+| PO PO-901002 | `cmp9ae55g0009km4qr7sk72hm` |
+| PO PO-901003 | `cmp9ae55t000bkm4qd18cufx3` |
+| PO PO-901004 | `cmp9ae56h000dkm4q9rio2uft` |
+
+**Fixture ingest** (`scripts/smoke-email-ingestion-live.ts` via `ingestRawMessageForSmoke` — same parse/match/materialize path as IMAP tick, no `\Seen`)
+
+| Case | Ingested email ID | Status | Match | `reviewReasonCodes` | Notes |
+|------|-------------------|--------|-------|---------------------|-------|
+| A subject `PO-901001` | `cmp9ae580000fkm4qqjcxmefy` | MATCHED | PO_NUMBER | `NO_ATTACHMENTS` | `VENDOR_REPLY` ×1 |
+| B body `PO-901001` | `cmp9ae5ip000okm4qi5efvgw5` | MATCHED | PO_NUMBER | `NO_ATTACHMENTS` | `VENDOR_REPLY` ×1 |
+| C vendor single open PO | `cmp9ae5m3000tkm4qdxw7cmfy` | MATCHED | VENDOR_AND_RECENT | `NO_ATTACHMENTS` | linked `PO-901002` |
+| D vendor two open POs | `cmp9ae5rf000ykm4qpsdfn922` | UNMATCHED | NONE | `MULTIPLE_VENDOR_PO_CANDIDATES`, `MANUAL_REVIEW_REQUIRED`, `NO_ATTACHMENTS` | no `VENDOR_REPLY` |
+| E zip attachment | `cmp9ae5uh0011km4qumhgapd2` | UNMATCHED | NONE | `ATTACHMENT_REJECTED`, `MANUAL_REVIEW_REQUIRED` | attachment skipped (allowlist) |
+| F duplicate Message-ID | (same row as A) | — | — | — | replay `kind: duplicate`; **1** row for `messageId` |
+| G PDF on matched PO | `cmp9ae5zi0018km4q0wvcyidh` | MATCHED | PO_NUMBER | `OCR_PENDING` | PDF saved; **OcrDocument** ×1 |
+
+**OCR**
+
+- Case G: `OcrDocument` count **1**, `reviewReasonCodes` includes **`OCR_PENDING`** after materialize (enqueue path OK)
+- OCR worker tick not exercised in this session
+
+**Vendor pricing**
+
+- Regex extraction ran only after **MATCHED** materialize (stdout `vendor_price_extraction` on matched cases)
+- Case **D** / **E** remained **UNMATCHED** with **0** `VENDOR_REPLY` events (no materialize → no extraction on those rows)
+
+**Admin UI**
+
+- **Not run from Cursor** — `BVISIBLE_ADMIN_PASSWORD` not present in server `.env` for automated Playwright. Operator: log in as `admin@bvisible.local`, open `/admin/email-ingestion?filter=all`, confirm six **SMOKE-EMAIL** rows, chips, Saved/Skipped on case E/G, Link/Retry/Dismiss.
+
+**Live IMAP sends**
+
+- **Skipped** — fixture path used instead (no external SMTP)
+
+**Tooling added (repo)**
+
+- `ingestRawMessageForSmoke` export, `scripts/smoke-email-ingestion-live.ts`, `smoke/email-ingestion-review.spec.ts`, `server-scripts/db/.smoke-email-ingestion-live.sh`
+
+**Caveats**
+
+- Prisma may log a `P2002` line on duplicate replay even though ingest returns `duplicate` (cosmetic log noise)
+- `vendorPriceHistoryDelta` in smoke JSON is cumulative vs baseline, not per-case isolation
+
+---
+
 ## 2026-05-17 — Production deploy completed: email review reason codes + review UI (d2e1d85)
 
 **Pre-deploy health** (`curl -fsS http://127.0.0.1:3000/api/health`)
