@@ -215,7 +215,7 @@ For each `UNSEEN` message:
 6. If matched, materialize:
    - one `POEvent` of kind `VENDOR_REPLY` with metadata
      `{ messageId, fromDomain, attachmentCount, subject }` and a
-     non-null `sourceEmailId`,
+     non-null `sourceEmailId` (feeds **PO vendor lifecycle** as deterministic vendor-ack signal in `po-lifecycle-signals.ts`; no AI interpretation),
    - one `POAttachment` per accepted attachment with
      `kind = EMAIL_ATTACHMENT`, `sourceEmailId` set, bytes copied
      into the per-PO directory.

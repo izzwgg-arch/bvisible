@@ -176,7 +176,17 @@ normalization). Estimate editor matching uses the same normalized labels + deter
 alias ladder (`VENDOR_PRICE_ENGINE.md`). Deterministic pairing requires equal counts per normalized label;
 otherwise ambiguous PO/receipt rows + `SpendAlert` candidates.
 
-**Operational queues (dashboard):** PO rows surface under **Waiting on vendor reply** (issued PO, no `VENDOR_REPLY` event), **OCR needs review**, and **Reconciliation variance** (latest snapshot needs attention or OCR confirmed without snapshot). Labels align with `WORKFLOW_STATE_LABELS` on PO detail rails — display-only; no financial mutation.
+**Operational queues (dashboard):** Cross-entity buckets via `getOperationalWorkflowQueues()` (vendor reply, OCR review, variance, etc.). **PO vendor lifecycle queues** (`getPoLifecycleDashboardQueues()` in `apps/web/lib/po/`) are PO-centric: waiting vendor ack, waiting shipment/receipt, partial receipt, variance, ready to finalize, blocked/backordered — derived from `getPurchaseOrderLifecycleState()` only. PO detail **`PoLifecycleRail`** shows the same ladder + stale badge + next action. Display-only; no financial mutation.
+
+### Vendor order lifecycle (deterministic)
+
+Matrix and ladder: `apps/web/lib/po/po-lifecycle-matrix.ts`. State derives from real rows/events (`POStatus`, `POEvent`, OCR statuses on attachments, latest `POReconciliation`, open `SpendAlert`, estimate finalize/QBO coverage) — no synthetic workflow table.
+
+**Operator lifecycle events** (`POEventKind`): `OPERATOR_VENDOR_ACKNOWLEDGED`, `OPERATOR_BLOCKED`, `OPERATOR_BLOCKED_CLEARED`, `OPERATOR_RECEIVED_COMPLETE`. Server actions in `apps/web/lib/po/po-lifecycle-actions.ts`; blocked flag is chronological (blocked until cleared).
+
+**Stale thresholds** (display-only, `po-lifecycle-stale.ts`): 3d no vendor reply; 7d waiting shipment after ack; 5d partial receipt; 5d unresolved variance/recon.
+
+**Tests:** `pnpm --filter @bvisible/web run verify:po-lifecycle`.
 
 **Triggers:** approving OCR lines runs `runPoReconciliationSnapshot` with a dedupe key
 (`tenantId + PO + OCR doc + sorted line ids`). Manual **Recompute snapshot** uses a fresh

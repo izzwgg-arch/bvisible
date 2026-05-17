@@ -152,6 +152,11 @@ enum POEventKind {
   CANCELED
   VENDOR_REPLY
   VENDOR_LOWER_PRICE
+  /// Operator attestation — does not change PO line pricing.
+  OPERATOR_VENDOR_ACKNOWLEDGED
+  OPERATOR_BLOCKED
+  OPERATOR_BLOCKED_CLEARED
+  OPERATOR_RECEIVED_COMPLETE
 }
 
 // Deterministic email/snippet/filename price extraction (Phase 10).

@@ -60,16 +60,19 @@ The look, feel, and behavior of the web app.
   open POs, vendor price notifications (`dismissedAt: null`), pending OCR queue (ADMIN+),
   unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
   recent rows from `audit_logs`, plus quick actions. **Operational overview** layout:
-  recent estimates + recent POs + unified **`DashboardOperationalQueues`** (`getOperationalWorkflowQueues()` in
-  `apps/web/lib/workflow/` — compact queue sections: awaiting customer, approved waiting for PO, vendor reply,
-  OCR review, reconciliation variance, ready to finalize, unmatched mail, invoice follow-up, recently completed;
-  each row shows status chip, customer/job, blocker reason, next-action CTA, stale badge; filters via `?queue=stale|blocked|unresolved|mine`).
+  recent estimates + recent POs + **`DashboardPoLifecycleQueues`** (ADMIN+: PO vendor lifecycle buckets from
+  `getPoLifecycleDashboardQueues()` — PO number, vendor, customer/job, lifecycle chip, stale badge, blocker, CTA) +
+  unified **`DashboardOperationalQueues`** (`getOperationalWorkflowQueues()` in `apps/web/lib/workflow/` — estimate/invoice/mail
+  buckets: awaiting customer, approved waiting for PO, vendor reply, OCR review, reconciliation variance, ready to finalize,
+  unmatched mail, invoice follow-up, recently completed; filters via `?queue=stale|blocked|unresolved|mine`).
+  PO detail uses **`PoLifecycleRail`** (`components/po/po-lifecycle-rail.tsx`) — compact step chips, vendor response / receipt
+  progress stats, next action link, operator lifecycle controls (no banner copy).
   Legacy fragmented quote/PO/invoice widgets removed from the dashboard layout; underlying fetch helpers remain for tests.
   **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
   shows a dismissible checklist whose completion state is computed from real tenant data
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
-  **Regression bundles** (operator/CI): `verify:workflow-queues`, `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
+  **Regression bundles** (operator/CI): `verify:po-lifecycle`, `verify:workflow-queues`, `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.

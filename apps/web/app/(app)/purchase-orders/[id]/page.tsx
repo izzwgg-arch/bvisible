@@ -1,15 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import {
-  EmailIngestStatus,
-  POAttachmentKind,
-  Role,
-  prisma,
-} from '@bvisible/db';
+import { Role, prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { PoLifecycleRail } from '@/components/po/po-lifecycle-rail';
 import { PoReceiptWorkflowSummaryCard } from '@/components/po/po-receipt-workflow-summary';
-import { PoOperationalRail } from '@/components/workflow/po-operational-rail';
+import { getPoLifecycleSnapshot } from '@/lib/po/get-po-lifecycle-snapshot';
 import { getPoReceiptWorkflowSummary } from '@/lib/po/get-po-receipt-workflow-summary';
 import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
@@ -17,12 +13,6 @@ import { PoEditor, type PoEditorBootstrap } from './editor';
 
 export const metadata = { title: 'Purchase order' };
 export const dynamic = 'force-dynamic';
-
-const RECEIPTISH: POAttachmentKind[] = [
-  POAttachmentKind.RECEIPT,
-  POAttachmentKind.INVOICE,
-  POAttachmentKind.VENDOR_INVOICE,
-];
 
 export default async function PurchaseOrderDetailPage({
   params,
@@ -32,15 +22,7 @@ export default async function PurchaseOrderDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [
-    po,
-    vendors,
-    events,
-    latestReconciliation,
-    ocrDocs,
-    emailsTouchingPo,
-    matchedEmailsCount,
-  ] = await Promise.all([
+  const [po, vendors, events] = await Promise.all([
     prisma.purchaseOrder.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -108,42 +90,18 @@ export default async function PurchaseOrderDetailPage({
         actor: { select: { name: true, email: true } },
       },
     }),
-    prisma.pOReconciliation.findFirst({
-      where: { tenantId: me.tenantId, purchaseOrderId: id },
-      orderBy: { createdAt: 'desc' },
-      select: { status: true, createdAt: true },
-    }),
-    prisma.ocrDocument.findMany({
-      where: {
-        tenantId: me.tenantId,
-        poAttachment: { purchaseOrderId: id },
-      },
-      select: { id: true, status: true },
-    }),
-    prisma.ingestedEmail.count({
-      where: { tenantId: me.tenantId, matchedPurchaseOrderId: id },
-    }),
-    prisma.ingestedEmail.count({
-      where: {
-        tenantId: me.tenantId,
-        matchedPurchaseOrderId: id,
-        status: EmailIngestStatus.MATCHED,
-      },
-    }),
   ]);
 
   if (!po) {
     notFound();
   }
 
-  const receiptWorkflowSummary =
+  const [receiptWorkflowSummary, lifecycleSnapshot] = await Promise.all([
     me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN
-      ? await getPoReceiptWorkflowSummary(me.tenantId, id)
-      : null;
-
-  const attachmentTotal = po.attachments.length;
-  const receiptishCount = po.attachments.filter((a) => RECEIPTISH.includes(a.kind)).length;
-  const attachmentsFromEmailCount = po.attachments.filter((a) => a.sourceEmailId != null).length;
+      ? getPoReceiptWorkflowSummary(me.tenantId, id)
+      : Promise.resolve(null),
+    getPoLifecycleSnapshot(me.tenantId, id),
+  ]);
 
   const estimateOriginQuoteUi =
     po.estimate != null
@@ -247,20 +205,16 @@ export default async function PurchaseOrderDetailPage({
           />
         </div>
       ) : null}
-      <PoOperationalRail
-        poId={po.id}
-        poNumber={po.number}
-        status={po.status}
-        attachmentTotal={attachmentTotal}
-        receiptishCount={receiptishCount}
-        attachmentsFromEmailCount={attachmentsFromEmailCount}
-        latestReconciliation={latestReconciliation}
-        operatorMarkedReconciledAt={po.operatorMarkedReconciledAt}
-        ocrDocuments={ocrDocs}
-        emailsTouchingPo={emailsTouchingPo}
-        matchedEmailsCount={matchedEmailsCount}
-        role={me.role}
-      />
+      {lifecycleSnapshot ? (
+        <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
+          <PoLifecycleRail
+            poId={po.id}
+            poNumber={po.number}
+            snapshot={lifecycleSnapshot}
+            role={me.role}
+          />
+        </div>
+      ) : null}
       <PoEditor bootstrap={bootstrap} />
     </>
   );

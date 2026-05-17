@@ -5,6 +5,53 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — PO vendor order lifecycle hardening (pending deploy)
+
+**Lifecycle audit** — Prior state: `POStatus` + mental inference from vendor mail/OCR/recon. Gaps: no unified ladder, no stale display, no explicit blocked/backorder operator path. Deterministic signals now: `POStatus`, `POEvent` (`VENDOR_REPLY`, operator lifecycle kinds), OCR job statuses on attachments, latest `POReconciliation`, open `SpendAlert`, `operatorMarkedReconciledAt`, linked estimate status/QBO coverage.
+
+**State ladder** (`apps/web/lib/po/po-lifecycle-matrix.ts`)
+
+| State | Primary signals |
+|-------|-----------------|
+| draft | `POStatus.DRAFT` |
+| sent_to_vendor | `SENT` / `ORDERED`, no vendor ack |
+| vendor_acknowledged | `VENDOR_REPLY` or `OPERATOR_VENDOR_ACKNOWLEDGED` (with receipt OCR in flight) |
+| waiting_on_shipment | Acked, no receipt OCR |
+| partially_received | `PARTIALLY_RECEIVED` or partial OCR confirmed |
+| reconciliation_needed | OCR confirmed, no recon snapshot |
+| variance_detected | Recon needs attention or open spend alerts |
+| received | `RECEIVED` / `OPERATOR_RECEIVED_COMPLETE` / matched recon |
+| ready_to_finalize | Approved estimate + QBO on all linked POs + clean recon |
+| completed | Finalized estimate or operator reconciled stamp |
+| blocked_backordered | Latest `OPERATOR_BLOCKED` not cleared |
+
+**Helpers** — `getPurchaseOrderLifecycleState()`, `getPurchaseOrderLifecycleReason()`, `getPurchaseOrderLifecycleNextAction()`, `getPoLifecycleStaleInfo()` in `apps/web/lib/po/po-lifecycle-state.ts` + `po-lifecycle-signals.ts` + `po-lifecycle-stale.ts`.
+
+**Manual controls** (ADMIN+, `po-lifecycle-actions.ts`) — Mark vendor acknowledged, mark blocked/backordered, clear blocked, mark received complete. Each appends `POEvent` + `audit_logs` only; **no PO line / estimate / QBO mutation**.
+
+**Stale logic** (display-only) — No vendor reply **3d** (`sent_to_vendor`); waiting shipment **7d**; partial receipt **5d**; unresolved variance/recon **5d**. No auto-escalation.
+
+**UI** — PO detail `PoLifecycleRail` (chip ladder, stale badge, vendor response / receipt progress, next action, operator controls). Dashboard `DashboardPoLifecycleQueues` buckets: waiting vendor ack, waiting shipment/receipt, partial receipt, variance, ready to finalize, blocked.
+
+**Migration** — `20260517143000_po_lifecycle_operator_events` adds `POEventKind`: `OPERATOR_VENDOR_ACKNOWLEDGED`, `OPERATOR_BLOCKED`, `OPERATOR_BLOCKED_CLEARED`, `OPERATOR_RECEIVED_COMPLETE`.
+
+**Verification**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:po-lifecycle` | **19/19** |
+| `verify:workflow-queues` | **26/26** |
+| `verify:po-receipt-workflow` | **21/21** |
+| `typecheck` | pass |
+
+**Deploy** — Requires migration apply + PM2 reload. Commit SHA: _(set after commit)_.
+
+**Browser smoke** — Operator checklist: PO sent/no reply → `sent_to_vendor` + stale; vendor reply → ack/shipment bucket; OCR partial → partial receipt; variance PO → variance queue; manual blocked → blocked bucket; finalize path → ready to finalize. Playwright skipped if `BVISIBLE_ADMIN_PASSWORD` unset.
+
+**Remaining gaps** — PO may appear in both unified workflow queues and PO lifecycle queues when predicates overlap; strict `POStatus` transition ordering still not enforced.
+
+---
+
 ## 2026-05-17 — Unified operational workflow queues (`b7d9b29`)
 
 **Deploy**

@@ -42,6 +42,12 @@
    **read** tenant-scoped rows to build dashboard queue sections, stale badges, and next-action
    links. Stale thresholds are display-only. Queue UI must not create workflow rows, mutate
    finances, or change OCR approve/reject, quote/public approval, or email matching behavior.
+9. **PO vendor lifecycle is deterministic and non-financial.**
+   `getPurchaseOrderLifecycleState()` and `getPoLifecycleDashboardQueues()` derive state from
+   existing `POStatus`, `POEvent`, OCR, and reconciliation rows only. Operator lifecycle actions
+   (`po-lifecycle-actions.ts`) append `POEvent` + `audit_logs` (`po_lifecycle_*` actions) — they
+   do not change `POLineItem` pricing, estimate totals, or QBO fields. Stale badges never trigger
+   side effects.
 
 ## Customer estimate quotes
 

@@ -17,6 +17,7 @@
     "verify:ocr-reconciliation-flow": "vitest run lib/ocr lib/reconciliation",
     "verify:po-receipt-workflow": "vitest run lib/reconciliation/po-receipt-workflow.test.ts lib/reconciliation/match.test.ts lib/reconciliation/supersede-open-recon-alerts.test.ts lib/ocr/ocr-safety.test.ts",
     "verify:workflow-queues": "vitest run lib/workflow/operational-queue.test.ts lib/workflow/operational-state.ts lib/dashboard/get-quote-attention.test.ts lib/dashboard/get-estimate-po-flow.test.ts lib/dashboard/get-dashboard-estimate-invoice-flow.test.ts",
+    "verify:po-lifecycle": "vitest run lib/po/po-lifecycle.test.ts lib/po/po-lifecycle-state.ts lib/po/po-lifecycle-signals.ts lib/po/po-lifecycle-stale.ts",
     "verify:ocr-quality": "vitest run lib/ocr/parse-receipt-lines.test.ts lib/ocr/parse-receipt.test.ts lib/ocr/ocr-quality.test.ts lib/ocr/ocr-safety.test.ts lib/ocr/enqueue.test.ts",
     "verify:email-ingestion": "vitest run lib/email-ingest/match.test.ts lib/email-ingest/storage.test.ts",
     "verify:email-ingestion-fixtures": "vitest run lib/email-ingest/ingest-fixtures.test.ts",

@@ -12,6 +12,8 @@ import {
 } from '@/lib/workflow/get-operational-workflow-queues';
 import { VendorPriceAlerts } from './vendor-price-alerts';
 import { DashboardOperationalQueues } from './dashboard-operational-queues';
+import { DashboardPoLifecycleQueues } from './dashboard-po-lifecycle-queues';
+import { getPoLifecycleDashboardQueues } from '@/lib/po/get-po-lifecycle-dashboard-queues';
 import {
   DashboardMetricGrid,
   DashboardOperationalSections,
@@ -49,7 +51,7 @@ export default async function DashboardPage({
   const showOperator =
     user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
-  const [metrics, feed, dismissed, checklistState, operationalQueues] =
+  const [metrics, feed, dismissed, checklistState, operationalQueues, poLifecycleQueues] =
     user.tenantId != null
       ? await Promise.all([
           getDashboardMetrics(user.tenantId, {
@@ -65,8 +67,14 @@ export default async function DashboardPage({
             currentUserId: user.id,
             includeOperatorQueues: showOperator,
           }),
+          showOperator
+            ? getPoLifecycleDashboardQueues(user.tenantId, {
+                currentUserId: user.id,
+                mineOnly: queueFilter === 'mine',
+              })
+            : Promise.resolve(null),
         ])
-      : [null, null, true, null, null];
+      : [null, null, true, null, null, null];
 
   const workspaceLabel = user.tenant.name;
 
@@ -108,6 +116,9 @@ export default async function DashboardPage({
         <>
           <DashboardQuickActions role={user.role} hasClients={metrics.clientCount > 0} />
           <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
+          {poLifecycleQueues ? (
+            <DashboardPoLifecycleQueues queues={poLifecycleQueues} />
+          ) : null}
           {operationalQueues ? (
             <DashboardOperationalQueues
               queues={operationalQueues}
