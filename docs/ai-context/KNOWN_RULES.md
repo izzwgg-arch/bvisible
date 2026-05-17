@@ -94,6 +94,13 @@ it.
   dismissal**, emits `POEventKind.VENDOR_LOWER_PRICE`, and audits the
   event. Prices are **never** auto-applied and vendors are **never**
   auto-switched from this signal alone.
+- **R-VEN-06** Estimate vendor-intelligence matching is **deterministic only**
+  (`normalize.ts` + `catalog-lookup.ts`): managed item/alias → vendor exact alias →
+  exact name → vendor SKU → prefix alias → prefix name. **`materialMatch.needsConfirmation`**
+  is true for prefix buckets and unresolved rows. **Unit conversion** (`unit-conversion.ts`)
+  may propose sheet↔sq ft (4×8 rule) but **`convertedPriceCents` stays null** when the
+  sheet size is unknown or roll length is unknown — estimators must click **Apply converted
+  unit cost** explicitly; the rail never auto-patches `unitCostCents` while typing.
 - **R-VEN-04** Operators may append **`MANUAL`** `VendorPriceHistory` rows from `/items`
   for **`ShopMaterialItem` rows where `kind = MATERIAL`** (ADMIN/SUPER_ADMIN). Rows are append-only with unique `dedupeKey`, optional
   `effectiveAt`, audited via `shop_material_manual_price_recorded`. Manual pricing

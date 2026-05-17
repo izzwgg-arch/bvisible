@@ -5,6 +5,73 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Vendor pricing normalization + estimator workflow hardening
+
+**What changed**
+
+- **Material normalization** (`apps/web/lib/vendor-pricing/normalize.ts`): deterministic uppercase/whitespace/punctuation/inch/mm/dimension folding; trailing unit suffix strip; token folds (`CORO` + `PLAST` → `COROPLAST`); `canonicalMaterialKey` for order-independent clustering.
+- **Alias resolution ladder** (`catalog-lookup.ts` + `material-match.ts`): managed shop item/alias first, then vendor exact alias → exact name → vendor SKU → prefix alias → prefix name; every lookup exposes `materialMatch` (path, reason, confidence label, `needsConfirmation`).
+- **Unit conversion guidance** (`unit-conversion.ts` + `managed-intel.ts`): sheet ↔ sq ft (4×8 = 32 sq ft rule when label contains `4X8`/`48X96`); roll → linear ft never auto-converts; uncertain conversions return `convertedPriceCents: null` and require operator Apply.
+- **Estimate rail** (`vendor-catalog-intel-panel.tsx`): cheapest/preferred/premium/trend/source/confidence; unit-basis guidance; compact trend copy; Apply buttons use `onMouseDown` preventDefault (no focus steal); unresolved copy never auto-applies pricing.
+- **Tests / verify:** extended `verify:vendor-catalog`; new `server-scripts/db/.verify-vendor-normalization.sh`.
+
+**Normalization rules (deterministic)**
+
+| Input pattern | Behavior |
+|---------------|----------|
+| Case / spaces / hyphens | Uppercase, collapse spaces, hyphen → space |
+| Inch / mm | `4"` → `4IN`; `4 mm` → `4MM` |
+| Dimensions | `4 x 8` → `4X8` |
+| Trailing units | Strip `SHEET`, `SQ FT`, `ROLL`, `EA`, etc. before keying |
+| Coroplast variants | `CORO` / `CORO PLAST` → `COROPLAST` token |
+| Canonical key | Sorted unique tokens (order-independent) |
+
+**Conversion rules**
+
+| From → To | Rule |
+|-----------|------|
+| SHEET → SQ_FT | ÷32 when label has `4X8` or `48X96`; else no auto cents |
+| SQ_FT → SHEET | ×32 under same size guard |
+| ROLL → LINEAR_FT | Guidance only; `convertedPriceCents` null |
+| Same unit | Pass-through; no confirmation |
+
+**Estimator workflow**
+
+- Debounced vendor rail on MATERIAL focus; catalog picker + pricing helper unchanged (click-only Apply).
+- Rail: **Apply suggested cost**, **Apply cheapest vendor cost** (when strictly lower), **Apply converted unit cost** (only when conversion proposal includes cents + `needsConfirmation`).
+
+**Verification (local)**
+
+```bash
+pnpm --filter @bvisible/web run verify:vendor-catalog    # 52 passed
+pnpm --filter @bvisible/web run verify:estimate-pricing # 70 passed
+pnpm --filter @bvisible/web run verify:ocr-quality      # 15 passed, 1 skipped
+pnpm --filter @bvisible/web run typecheck
+bash server-scripts/db/.verify-vendor-normalization.sh
+```
+
+**Files touched**
+
+- `apps/web/lib/vendor-pricing/{normalize,normalize.test,material-match,material-match.test,unit-conversion,unit-conversion.test,catalog-lookup,catalog-lookup.test,catalog-intel-types}.ts`
+- `apps/web/lib/shop-material/managed-intel.ts`
+- `apps/web/app/(app)/estimates/[id]/vendor-catalog-intel-panel.tsx`
+- `apps/web/package.json`
+- `server-scripts/db/.verify-vendor-normalization.sh`
+- `docs/ai-context/{CHANGELOG_AI,VENDOR_PRICE_ENGINE,ESTIMATE_ENGINE,UI_SYSTEM,KNOWN_RULES,DEBUGGING,PO_SYSTEM,EMAIL_INGESTION}.md`
+
+**Deploy**
+
+- Commit + push to `origin`, then enqueue deploy with exact `commitHash` (see `DEPLOY_QUEUE.md`).
+- Post-deploy: `bash server-scripts/db/.verify-vendor-normalization.sh` on `/opt/bvisible/app`.
+
+**Remaining gaps**
+
+- Prefix alias/name matches still need operator confirmation before trusting price.
+- Roll→LF needs explicit roll length table before safe auto-conversion.
+- Browser QA on estimate rail Apply/focus requires operator login on prod.
+
+---
+
 ## 2026-05-17 — OCR quality hardening production verification (9f75650)
 
 **Deploy**

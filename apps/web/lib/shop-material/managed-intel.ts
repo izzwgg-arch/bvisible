@@ -12,6 +12,11 @@ import {
   labelVendorPriceConfidenceProduct,
   labelVendorPriceSourceProduct,
 } from '@/lib/vendor-pricing/vendor-price-source-label';
+import { formatCatalogUnitDisplay } from '@/lib/shop-material/catalog-unit-display';
+import {
+  parseVendorUnitToken,
+  proposeUnitConversion,
+} from '@/lib/vendor-pricing/unit-conversion';
 
 function emptyManagedExtensions(shop: {
   preferredVendorId: string | null;
@@ -68,6 +73,8 @@ export async function resolveManagedItemIntel(
       name: true,
       nameNormalized: true,
       kind: true,
+      catalogUnit: true,
+      customUnitLabel: true,
       internalCostCents: true,
       preferredVendorId: true,
       preferredVendor: { select: { name: true } },
@@ -93,6 +100,8 @@ export async function resolveManagedItemIntel(
           name: true,
           nameNormalized: true,
           kind: true,
+          catalogUnit: true,
+          customUnitLabel: true,
           internalCostCents: true,
           preferredVendorId: true,
           preferredVendor: { select: { name: true } },
@@ -115,6 +124,8 @@ export async function resolveManagedItemIntel(
           name: true,
           nameNormalized: true,
           kind: true,
+          catalogUnit: true,
+          customUnitLabel: true,
           internalCostCents: true,
           preferredVendorId: true,
           preferredVendor: { select: { name: true } },
@@ -126,11 +137,17 @@ export async function resolveManagedItemIntel(
 
   if (!shop) return null;
 
+  const catalogUnitLabel = formatCatalogUnitDisplay(
+    shop.catalogUnit,
+    shop.customUnitLabel,
+  );
+
   if (shop.kind !== EstimateLineKind.MATERIAL) {
     return {
       id: shop.id,
       displayName: shop.name,
       nameNormalized: shop.nameNormalized,
+      catalogUnit: catalogUnitLabel,
       detailHref: `/items/${shop.id}`,
       matchVia,
       cheapestVendorName: null,
@@ -139,6 +156,7 @@ export async function resolveManagedItemIntel(
       preferredLatestPriceCents: null,
       suggestedUnitCostCents:
         shop.internalCostCents > 0 ? shop.internalCostCents : null,
+      unitConversionHint: null,
       ...emptyManagedExtensions(shop),
     };
   }
@@ -153,6 +171,7 @@ export async function resolveManagedItemIntel(
       id: shop.id,
       displayName: shop.name,
       nameNormalized: shop.nameNormalized,
+      catalogUnit: catalogUnitLabel,
       detailHref: `/items/${shop.id}`,
       matchVia,
       cheapestVendorName: null,
@@ -160,6 +179,7 @@ export async function resolveManagedItemIntel(
       preferredVendorName: shop.preferredVendor?.name ?? null,
       preferredLatestPriceCents: null,
       suggestedUnitCostCents: null,
+      unitConversionHint: null,
       ...emptyManagedExtensions(shop),
     };
   }
@@ -172,6 +192,7 @@ export async function resolveManagedItemIntel(
       vendorId: true,
       vendorCatalogItemId: true,
       priceCents: true,
+      unit: true,
       createdAt: true,
       effectiveAt: true,
       extractionMethod: true,
@@ -230,10 +251,24 @@ export async function resolveManagedItemIntel(
       ? vendorTrendFromHistories(histories, shop.preferredVendorId)
       : null;
 
+  const cheapestHist = cheapest
+    ? histories.find((h) => h.vendorId === cheapest.vendorId)
+    : null;
+  const unitConversionHint =
+    cheapestHist && cheapest
+      ? proposeUnitConversion({
+          vendorUnit: parseVendorUnitToken(cheapestHist.unit),
+          estimateCatalogUnit: shop.catalogUnit,
+          priceCents: cheapest.priceCents,
+          materialLabelNormalized: shop.nameNormalized,
+        })
+      : null;
+
   return {
     id: shop.id,
     displayName: shop.name,
     nameNormalized: shop.nameNormalized,
+    catalogUnit: catalogUnitLabel,
     detailHref: `/items/${shop.id}`,
     matchVia,
     preferredVendorId: shop.preferredVendorId,
@@ -247,5 +282,6 @@ export async function resolveManagedItemIntel(
     vendorLatestRows,
     cheapestPriceTrend,
     preferredPriceTrend,
+    unitConversionHint,
   };
 }

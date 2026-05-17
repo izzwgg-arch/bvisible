@@ -1,12 +1,16 @@
 import type { TrendKind } from './trends';
+import type { MaterialMatchIntel } from './material-match';
+import type { UnitConversionProposal } from './unit-conversion';
 
 export type CatalogLookupMatchKind =
   | 'none'
-  | 'exact_name'
-  | 'exact_alias'
-  | 'prefix'
   | 'shop_item_name'
-  | 'shop_item_alias';
+  | 'shop_item_alias'
+  | 'exact_alias'
+  | 'exact_name'
+  | 'vendor_sku'
+  | 'prefix_alias'
+  | 'prefix_name';
 
 export type ManagedVendorLatestRow = {
   vendorId: string;
@@ -28,6 +32,7 @@ export type ManagedItemIntel = {
   id: string;
   displayName: string;
   nameNormalized: string;
+  catalogUnit: string;
   detailHref: string;
   matchVia: 'shop_name' | 'shop_alias' | 'linked_catalog';
   preferredVendorId: string | null;
@@ -42,10 +47,13 @@ export type ManagedItemIntel = {
   vendorLatestRows: readonly ManagedVendorLatestRow[];
   cheapestPriceTrend: ManagedPriceTrendFlags | null;
   preferredPriceTrend: ManagedPriceTrendFlags | null;
+  /** When vendor unit differs from estimate catalog unit. */
+  unitConversionHint: UnitConversionProposal | null;
 };
 
 export type VendorCatalogLookupResult = {
   matchKind: CatalogLookupMatchKind;
+  materialMatch: MaterialMatchIntel;
   matchedCatalogItemIds: readonly string[];
   primaryCatalogItemId: string | null;
   primaryCatalogNameNormalized: string | null;

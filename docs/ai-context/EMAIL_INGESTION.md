@@ -284,6 +284,11 @@ Explicitly **not** implemented:
 - **Materialization idempotency:** if a `POEvent` of kind `VENDOR_REPLY`
   already exists for the `IngestedEmail.id` (`sourceEmailId`), `materializeOnPo()`
   returns immediately (no duplicate promotions or OCR enqueue from a replay).
+
+**Estimate material normalization (2026-05-17)** — does not change email matching rules.
+OCR-approved vendor rows still require `/admin/ocr-review` approval before
+`VendorPriceHistory` insert. Estimate editor reads those rows via deterministic
+`catalog-lookup` + `normalize` (no regex-on-body changes in this pass).
   Manual link / retry paths call the same helper.
 - **Vendor price history idempotency:** `VendorPriceHistory` rows use
   unique `(tenantId, dedupeKey)` so retries after a successful insert

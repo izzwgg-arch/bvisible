@@ -72,7 +72,21 @@ Fulfillment UX beside quotes lives on **`/estimates/[id]`**: **`EstimateFulfillm
 **Vendor pricing intelligence (read-only)** — material rows call
 `lookupVendorCatalogIntelligence` (`apps/web/lib/vendor-pricing/catalog-lookup.ts`)
 via `lookupVendorCatalogForEstimateAction`, debounced in the client.
-Matching uses normalized **exact** vendor-catalog keys, vendor **aliases**, tenant **ShopMaterialItem** names + **ShopMaterialItemAlias** rows, then deterministic **prefix** scans. Receipt-backed stats still read capped **`OCR_APPROVED`** histories when a primary `VendorCatalogItem` resolves. Managed-item intelligence aggregates **all** extraction methods (manual + OCR-approved + legacy regex methods) for cheapest/preferred suggestions, exposes a **latest-per-vendor** table with **source + confidence** labels, **per-vendor trend** hints (“Price increased recently”, “Price has varied recently”), and a compact note when **preferred latest is higher than deterministic cheapest**. The rail exposes **Apply suggested cost** and, when the cheapest latest is strictly lower than the suggested (typically because a preferred vendor is set), **Apply cheapest vendor cost** — each patches **only** `unitCostCents` on click — never automatic mutations and never focus stealing.
+Matching uses **`normalizeVendorItemName`** + **`canonicalMaterialKey`** (deterministic
+token folds, no fuzzy AI), then the priority ladder: managed item → managed alias →
+vendor exact alias → vendor exact name → vendor SKU → prefix alias → prefix name.
+Every response includes **`materialMatch`** (path, reason, confidence, whether
+operator confirmation is still required). Receipt-backed stats still read capped
+**`OCR_APPROVED`** histories when a primary `VendorCatalogItem` resolves.
+Managed-item intelligence aggregates **all** extraction methods for cheapest/preferred
+suggestions, **`unitConversionHint`** when vendor unit ≠ catalog unit (sheet↔sq ft
+4×8 rule; uncertain conversions stay null until Apply), a **latest-per-vendor** table
+with **source + confidence**, compact trend copy, and preferred-vs-cheapest premium.
+The rail exposes **Apply suggested cost**, **Apply cheapest vendor cost** (when
+strictly lower), and **Apply converted unit cost** (only when a certain converted
+cents value exists) — each patches **only** `unitCostCents` on click with
+`onMouseDown` preventDefault — never automatic mutations and never focus stealing.
+Unresolved matches show guidance only; pricing is never applied automatically.
 
 **Pricing helper (estimate UI)** — `pricing-helper-panel.tsx` sits beside the catalog picker. Modes: **Square footage** (in × in ÷ 144 × piece count → qty as sq ft), **Sheet goods** (32 or 50 sq ft nominal + 75% / ceil rule → qty as sheet count), **Roll material** (width in × length ft → nominal roll sq ft; optional minimum billable sq ft; qty as billed sq ft), **Banner** (`bannerPrice` → one MATERIAL line at qty 1 × computed raw cents). Each mode only patches the **currently focused grid row** when the user clicks **Apply**; typing in the helper never mutates lines.
 

@@ -1,6 +1,12 @@
 import type { PrismaClient } from '@bvisible/db';
 import { VendorPriceExtractionMethod } from '@bvisible/db';
-import { normalizeVendorItemName } from './normalize';
+import {
+  canonicalMaterialKey,
+  normalizeVendorItemName,
+  normalizeVendorSku,
+  stripTrailingUnitSuffix,
+} from './normalize';
+import { buildMaterialMatchIntel } from './material-match';
 import { classifyPriceTrend, meanCents } from './trends';
 import type {
   CatalogLookupMatchKind,
@@ -38,13 +44,16 @@ export type CatalogLookupInput = {
 
 type CatalogRow = { id: string; nameNormalized: string };
 
-/** Pure merge for tests — deterministic ordering, no fuzzy scoring */
+/** Pure merge for tests — deterministic priority ladder, no fuzzy scoring */
 export function mergeOrderedCatalogItemIds(args: {
   queryNormalized: string;
+  shopItemHit: boolean;
+  shopAliasHit: boolean;
   exactNames: ReadonlyArray<CatalogRow>;
   prefixNames: ReadonlyArray<CatalogRow>;
   exactAliasCatalogIds: ReadonlyArray<string>;
   prefixAliasCatalogIds: ReadonlyArray<string>;
+  skuCatalogRows: ReadonlyArray<CatalogRow>;
   shopNameExactCatalogRows: ReadonlyArray<CatalogRow>;
   shopAliasExactCatalogRows: ReadonlyArray<CatalogRow>;
   maxItems: number;
@@ -58,6 +67,23 @@ export function mergeOrderedCatalogItemIds(args: {
     orderedIds.push(id);
   }
 
+  if (args.shopItemHit) {
+    return { orderedIds: [], matchKind: 'shop_item_name' };
+  }
+
+  if (args.shopAliasHit) {
+    return { orderedIds: [], matchKind: 'shop_item_alias' };
+  }
+
+  if (args.exactAliasCatalogIds.length > 0) {
+    const sorted = [...args.exactAliasCatalogIds].sort((a, b) => a.localeCompare(b));
+    for (const id of sorted) {
+      if (orderedIds.length >= args.maxItems) break;
+      push(id);
+    }
+    return { orderedIds, matchKind: 'exact_alias' };
+  }
+
   if (args.exactNames.length > 0) {
     const sorted = [...args.exactNames].sort((a, b) =>
       a.nameNormalized.localeCompare(b.nameNormalized),
@@ -69,15 +95,15 @@ export function mergeOrderedCatalogItemIds(args: {
     return { orderedIds, matchKind: 'exact_name' };
   }
 
-  if (args.exactAliasCatalogIds.length > 0) {
-    const sorted = [...args.exactAliasCatalogIds].sort((a, b) =>
-      a.localeCompare(b),
+  if (args.skuCatalogRows.length > 0) {
+    const sorted = [...args.skuCatalogRows].sort((a, b) =>
+      a.nameNormalized.localeCompare(b.nameNormalized) || a.id.localeCompare(b.id),
     );
-    for (const id of sorted) {
+    for (const r of sorted) {
       if (orderedIds.length >= args.maxItems) break;
-      push(id);
+      push(r.id);
     }
-    return { orderedIds, matchKind: 'exact_alias' };
+    return { orderedIds, matchKind: 'vendor_sku' };
   }
 
   if (args.shopNameExactCatalogRows.length > 0) {
@@ -102,6 +128,17 @@ export function mergeOrderedCatalogItemIds(args: {
     return { orderedIds, matchKind: 'shop_item_alias' };
   }
 
+  const aliasesSorted = [...args.prefixAliasCatalogIds].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  for (const id of aliasesSorted) {
+    if (orderedIds.length >= args.maxItems) break;
+    push(id);
+  }
+  if (orderedIds.length > 0) {
+    return { orderedIds, matchKind: 'prefix_alias' };
+  }
+
   const namesSorted = [...args.prefixNames].sort((a, b) =>
     a.nameNormalized.localeCompare(b.nameNormalized),
   );
@@ -110,22 +147,24 @@ export function mergeOrderedCatalogItemIds(args: {
     push(r.id);
   }
 
-  const aliasesSorted = [...args.prefixAliasCatalogIds].sort((a, b) =>
-    a.localeCompare(b),
-  );
-  for (const id of aliasesSorted) {
-    if (orderedIds.length >= args.maxItems) break;
-    push(id);
-  }
-
-  const matchKind: CatalogLookupMatchKind =
-    orderedIds.length > 0 ? 'prefix' : 'none';
-  return { orderedIds, matchKind };
+  return {
+    orderedIds,
+    matchKind: orderedIds.length > 0 ? 'prefix_name' : 'none',
+  };
 }
 
-function emptyResult(matchKind: CatalogLookupMatchKind): VendorCatalogLookupResult {
+function emptyResult(
+  matchKind: CatalogLookupMatchKind,
+  normalizedLabel: string,
+  canonicalKey: string,
+): VendorCatalogLookupResult {
   return {
     matchKind,
+    materialMatch: buildMaterialMatchIntel({
+      matchKind,
+      normalizedLabel,
+      canonicalKey,
+    }),
     matchedCatalogItemIds: [],
     primaryCatalogItemId: null,
     primaryCatalogNameNormalized: null,
@@ -157,6 +196,56 @@ async function resolvePrimaryCatalogItem(
   matchKind: CatalogLookupMatchKind;
   primaryName: string | null;
 }> {
+  const shopByName = await prisma.shopMaterialItem.findUnique({
+    where: {
+      tenantId_nameNormalized: { tenantId, nameNormalized: queryNormalized },
+    },
+    select: { id: true, nameNormalized: true },
+  });
+
+  const shopAliasOnly = !shopByName
+    ? await prisma.shopMaterialItemAlias.findUnique({
+        where: {
+          tenantId_aliasNormalized: { tenantId, aliasNormalized: queryNormalized },
+        },
+        select: { shopMaterialItemId: true },
+      })
+    : null;
+
+  if (shopByName) {
+    const linked = await prisma.vendorCatalogItem.findMany({
+      where: { tenantId, shopMaterialItemId: shopByName.id },
+      select: { id: true, nameNormalized: true },
+      orderBy: { nameNormalized: 'asc' },
+      take: MAX_MERGED_CATALOG_IDS,
+    });
+    return {
+      orderedIds: linked.map((r) => r.id),
+      matchKind: 'shop_item_name',
+      primaryName: shopByName.nameNormalized,
+    };
+  }
+
+  if (shopAliasOnly) {
+    const shop = await prisma.shopMaterialItem.findFirst({
+      where: { id: shopAliasOnly.shopMaterialItemId, tenantId },
+      select: { id: true, nameNormalized: true },
+    });
+    if (shop) {
+      const linked = await prisma.vendorCatalogItem.findMany({
+        where: { tenantId, shopMaterialItemId: shop.id },
+        select: { id: true, nameNormalized: true },
+        orderBy: { nameNormalized: 'asc' },
+        take: MAX_MERGED_CATALOG_IDS,
+      });
+      return {
+        orderedIds: linked.map((r) => r.id),
+        matchKind: 'shop_item_alias',
+        primaryName: shop.nameNormalized,
+      };
+    }
+  }
+
   const exactNames = await prisma.vendorCatalogItem.findMany({
     where: { tenantId, nameNormalized: queryNormalized },
     select: { id: true, nameNormalized: true },
@@ -190,55 +279,28 @@ async function resolvePrimaryCatalogItem(
     take: MAX_PREFIX_ALIAS_ROWS,
   });
 
-  const shopByName = await prisma.shopMaterialItem.findUnique({
-    where: {
-      tenantId_nameNormalized: { tenantId, nameNormalized: queryNormalized },
-    },
-    select: { id: true, nameNormalized: true },
-  });
-
-  let shopNameExactCatalogRows: CatalogRow[] = [];
-  if (shopByName) {
-    shopNameExactCatalogRows = await prisma.vendorCatalogItem.findMany({
-      where: { tenantId, shopMaterialItemId: shopByName.id },
-      select: { id: true, nameNormalized: true },
-      orderBy: { nameNormalized: 'asc' },
-      take: MAX_MERGED_CATALOG_IDS,
-    });
-  }
-
-  let shopAliasExactCatalogRows: CatalogRow[] = [];
-  let shopAliasParentNormalized: string | null = null;
-  if (shopNameExactCatalogRows.length === 0) {
-    const aliasHit = await prisma.shopMaterialItemAlias.findUnique({
-      where: {
-        tenantId_aliasNormalized: { tenantId, aliasNormalized: queryNormalized },
-      },
-      select: { shopMaterialItemId: true },
-    });
-    if (aliasHit) {
-      shopAliasExactCatalogRows = await prisma.vendorCatalogItem.findMany({
-        where: { tenantId, shopMaterialItemId: aliasHit.shopMaterialItemId },
-        select: { id: true, nameNormalized: true },
-        orderBy: { nameNormalized: 'asc' },
-        take: MAX_MERGED_CATALOG_IDS,
-      });
-      const parent = await prisma.shopMaterialItem.findFirst({
-        where: { id: aliasHit.shopMaterialItemId, tenantId },
-        select: { nameNormalized: true },
-      });
-      shopAliasParentNormalized = parent?.nameNormalized ?? null;
-    }
-  }
+  const skuNorm = normalizeVendorSku(queryNormalized);
+  const skuCatalogRows =
+    skuNorm.length >= 3
+      ? await prisma.vendorCatalogItem.findMany({
+          where: { tenantId, vendorSku: skuNorm },
+          select: { id: true, nameNormalized: true },
+          orderBy: { nameNormalized: 'asc' },
+          take: MAX_MERGED_CATALOG_IDS,
+        })
+      : [];
 
   const merged = mergeOrderedCatalogItemIds({
     queryNormalized,
+    shopItemHit: false,
+    shopAliasHit: false,
     exactNames,
     prefixNames,
     exactAliasCatalogIds: exactAliasRows.map((r) => r.vendorCatalogItemId),
     prefixAliasCatalogIds: prefixAliases.map((r) => r.vendorCatalogItemId),
-    shopNameExactCatalogRows,
-    shopAliasExactCatalogRows,
+    skuCatalogRows,
+    shopNameExactCatalogRows: [],
+    shopAliasExactCatalogRows: [],
     maxItems: MAX_MERGED_CATALOG_IDS,
   });
 
@@ -250,20 +312,6 @@ async function resolvePrimaryCatalogItem(
       select: { nameNormalized: true },
     });
     primaryName = row?.nameNormalized ?? null;
-  } else if (shopByName) {
-    primaryName = shopByName.nameNormalized;
-    return {
-      orderedIds: [],
-      matchKind: 'shop_item_name',
-      primaryName,
-    };
-  } else if (shopAliasParentNormalized) {
-    primaryName = shopAliasParentNormalized;
-    return {
-      orderedIds: [],
-      matchKind: 'shop_item_alias',
-      primaryName,
-    };
   }
 
   return {
@@ -285,10 +333,13 @@ export async function lookupVendorCatalogIntelligence(
 
   const rawQuery = input.normalizedQuery.trim();
   const query =
-    rawQuery.length > 0 ? normalizeVendorItemName(rawQuery) : '';
+    rawQuery.length > 0
+      ? stripTrailingUnitSuffix(normalizeVendorItemName(rawQuery))
+      : '';
+  const canonicalKey = canonicalMaterialKey(rawQuery);
 
   if (query.length < MIN_NORMALIZED_QUERY_LEN) {
-    return emptyResult('none');
+    return emptyResult('none', query, canonicalKey);
   }
 
   let resolved = await resolvePrimaryCatalogItem(
@@ -318,13 +369,20 @@ export async function lookupVendorCatalogIntelligence(
     primaryVendorCatalogItemId: primaryCatalogItemId,
   });
 
+  const materialMatch = buildMaterialMatchIntel({
+    matchKind: resolved.matchKind,
+    normalizedLabel: query,
+    canonicalKey,
+  });
+
   if (resolved.orderedIds.length === 0) {
     if (!managedItem) {
-      return emptyResult('none');
+      return emptyResult('none', query, canonicalKey);
     }
     return {
-      ...emptyResult(resolved.matchKind),
+      ...emptyResult(resolved.matchKind, query, canonicalKey),
       matchKind: resolved.matchKind,
+      materialMatch,
       matchedCatalogItemIds: [],
       primaryCatalogItemId: null,
       primaryCatalogNameNormalized: managedItem.nameNormalized,
@@ -333,7 +391,7 @@ export async function lookupVendorCatalogIntelligence(
   }
 
   if (!primaryCatalogItemId) {
-    return emptyResult('none');
+    return emptyResult('none', query, canonicalKey);
   }
 
   const histDesc = await prisma.vendorPriceHistory.findMany({
@@ -396,6 +454,7 @@ export async function lookupVendorCatalogIntelligence(
 
   return {
     matchKind: resolved.matchKind,
+    materialMatch,
     matchedCatalogItemIds: resolved.orderedIds,
     primaryCatalogItemId,
     primaryCatalogNameNormalized: resolved.primaryName,

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeVendorItemName } from './normalize';
+import {
+  canonicalMaterialKey,
+  normalizeVendorItemName,
+  normalizeVendorSku,
+  stripTrailingUnitSuffix,
+} from './normalize';
 
 describe('normalizeVendorItemName', () => {
   it('trims leading and trailing whitespace', () => {
@@ -30,5 +35,28 @@ describe('normalizeVendorItemName', () => {
   it('returns empty string for empty input', () => {
     expect(normalizeVendorItemName('')).toBe('');
     expect(normalizeVendorItemName('   \t\r\n  ')).toBe('');
+  });
+
+  it('normalizes coroplast vendor label variants', () => {
+    expect(normalizeVendorItemName('COROPLAST 4MM WHITE')).toBe('COROPLAST 4MM WHITE');
+    expect(normalizeVendorItemName('4MM WHITE CORO')).toBe('4MM WHITE COROPLAST');
+    expect(normalizeVendorItemName('Coro-Plast White 4 mm')).toBe(
+      'COROPLAST WHITE 4MM',
+    );
+  });
+
+  it('strips trailing unit suffixes before keying', () => {
+    expect(stripTrailingUnitSuffix('ACM WHITE SHEET')).toBe('ACM WHITE');
+  });
+
+  it('canonicalMaterialKey clusters token order', () => {
+    const a = canonicalMaterialKey('WHITE 4MM COROPLAST');
+    const b = canonicalMaterialKey('COROPLAST 4MM WHITE');
+    expect(a).toBe(b);
+    expect(a.length).toBeGreaterThan(0);
+  });
+
+  it('normalizeVendorSku is alphanumeric exact', () => {
+    expect(normalizeVendorSku(' ab-12.3 ')).toBe('AB-12.3');
   });
 });

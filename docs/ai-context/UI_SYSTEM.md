@@ -76,7 +76,7 @@ The look, feel, and behavior of the web app.
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.
 - **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`:
-  - **Vendor intelligence rail** (`vendor-catalog-intel-panel.tsx`) — compact **Cheapest** / **Preferred** cards, **latest-per-vendor** comparison table (source + confidence badges, trend copy), explicit **Apply suggested cost** vs **Apply cheapest vendor cost** when those cents differ; OCR-backed catalog block keeps deterministic trend badges and “Price increased recently” / “Price has varied recently” notes without raw enum labels.
+  - **Vendor intelligence rail** (`vendor-catalog-intel-panel.tsx`) — compact **Cheapest** / **Preferred** cards with premium delta, **match reason + confidence** from `materialMatch`, **unit conversion guidance** (“Quoted by sheet”, “Converted from roll pricing”, etc.), **latest-per-vendor** table (source vendor + unit basis via source labels), explicit **Apply** actions (`onMouseDown` preventDefault — no focus steal): suggested, cheapest when lower, converted unit when a certain cents value exists; OCR block uses one-line trend copy (no large warning banners). Unresolved matches show “Needs manual review” guidance only.
   - **Workflow rail** (`components/workflow/estimate-workflow-rail.tsx`) above the editor: estimate lifecycle
     (Draft → Sent → Approved → Finalized), linked PO summary + QBO gap copy, finalize gate explanation,
     and contextual **next recommended action** when something blocks progress.

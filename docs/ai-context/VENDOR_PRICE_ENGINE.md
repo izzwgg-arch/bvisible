@@ -6,7 +6,13 @@ process and not AI/OCR.
 
 Implementation lives in:
 
-- `apps/web/lib/vendor-pricing/normalize.ts` — normalized catalog keys.
+- `apps/web/lib/vendor-pricing/normalize.ts` — deterministic material normalization
+  (`normalizeVendorItemName`, `stripTrailingUnitSuffix`, `canonicalMaterialKey`,
+  `normalizeVendorSku`, token folds such as `CORO`/`CORO PLAST` → `COROPLAST`).
+- `apps/web/lib/vendor-pricing/material-match.ts` — explainable match metadata
+  (`path`, `matchReason`, `confidenceLabel`, `needsConfirmation`) for estimator UI.
+- `apps/web/lib/vendor-pricing/unit-conversion.ts` — sheet↔sq ft (4×8 rule) and
+  roll guidance; never silently converts uncertain units.
 - `apps/web/lib/vendor-pricing/extract.ts` — subject / body snippet / filename
   patterns only.
 - `apps/web/lib/vendor-pricing/persist.ts` — catalog resolution, append-only
@@ -71,12 +77,22 @@ a second history row.
 
 ## Catalog resolution (deterministic)
 
-1. Exact `VendorCatalogItem` match on `(tenantId, vendorId, nameNormalized)`.
-2. Else exact `VendorItemAlias.aliasNormalized` for that vendor.
-3. Else exact `ShopMaterialItem.nameNormalized` at tenant scope → merge linked vendor catalog rows (if any).
-4. Else exact `ShopMaterialItemAlias.aliasNormalized` → merge linked vendor catalog rows (if any).
-5. Else deterministic normalized **prefix** scans over vendor catalog names/aliases (existing caps).
-6. Else **create** a new `VendorCatalogItem` when ingest/manual flows require it.
+**Estimate rail / `lookupVendorCatalogIntelligence`** (`catalog-lookup.ts`):
+
+1. **Managed shop item** — exact `ShopMaterialItem.nameNormalized` → linked vendor catalog IDs.
+2. **Managed alias** — exact `ShopMaterialItemAlias.aliasNormalized` → linked vendor catalog IDs.
+3. **Vendor exact alias** — `VendorItemAlias.aliasNormalized`.
+4. **Vendor exact name** — `VendorCatalogItem.nameNormalized`.
+5. **Vendor SKU** — `normalizeVendorSku` exact on `vendorSku` (min length 3).
+6. **Prefix alias** — `aliasNormalized` startsWith query (capped).
+7. **Prefix name** — `nameNormalized` startsWith query (capped).
+
+Each result includes **`materialMatch`** (`material-match.ts`) with human-readable
+**why**, **confidence** (`High` / `Medium` / `Needs review`), and
+**`needsConfirmation`** for prefix buckets. Unresolved rows never auto-apply pricing.
+
+**Email ingest persist** (`persist.ts`) still uses vendor-scoped exact + alias + create
+semantics documented in ingest paths — unchanged by this normalization pass.
 
 No semantic similarity or embeddings.
 
@@ -147,14 +163,19 @@ quantity-tier normalization yet.
 ## Estimate editor catalog hints (read-only)
 
 - Service: `lookupVendorCatalogIntelligence` in `apps/web/lib/vendor-pricing/catalog-lookup.ts`
-  (deterministic exact → alias → **prefix** on normalized keys; **tenant scoped**
+  (ladder above; strips trailing unit tokens from queries before match; **tenant scoped**
   on every query).
+- **Unit basis:** `resolveManagedItemIntel` may attach `unitConversionHint` when vendor
+  latest unit differs from shop `catalogUnit` (sheet↔sq ft 4×8 rule; roll→LF manual).
 - Trends / spikes: `apps/web/lib/vendor-pricing/trends.ts` — compares latest OCR-approved
   unit observation vs rolling average / prior point using fixed basis-point thresholds
   plus coefficient-of-variation volatility — **no embeddings**, **no substring scoring**.
 - UI: debounced rail under the estimate line grid (`vendor-catalog-intel-panel.tsx`);
-  never auto-fills costs or moves focus. Automated regression:
-  `pnpm --filter @bvisible/web run verify:vendor-catalog`.
+  shows match reason + confidence; compact trend lines; Apply buttons use
+  `onMouseDown` preventDefault; never auto-fills costs. Automated regression:
+  `pnpm --filter @bvisible/web run verify:vendor-catalog`;
+  `bash server-scripts/db/.verify-vendor-normalization.sh` (bundles vendor-catalog +
+  estimate-pricing + ocr-quality vitest).
 
 ## Phase 14 — PO reconciliation (deterministic, human-gated)
 

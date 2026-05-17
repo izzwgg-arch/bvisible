@@ -171,7 +171,9 @@ R-OCR-01). Re-ticking a document replaces line items (`deleteMany` then insert).
 Append-only `POReconciliation` snapshots compare **expected `POLineItem` rows**
 (normalized descriptions using the vendor naming pipeline) against
 **`VendorPriceHistory` rows with `extractionMethod = OCR_APPROVED`** tied to this PO via
-`sourcePoAttachment`. Deterministic pairing requires equal counts per normalized label;
+`sourcePoAttachment` (operator approval only — unchanged by estimate-side material
+normalization). Estimate editor matching uses the same normalized labels + deterministic
+alias ladder (`VENDOR_PRICE_ENGINE.md`). Deterministic pairing requires equal counts per normalized label;
 otherwise ambiguous PO/receipt rows + `SpendAlert` candidates.
 
 **Triggers:** approving OCR lines runs `runPoReconciliationSnapshot` with a dedupe key

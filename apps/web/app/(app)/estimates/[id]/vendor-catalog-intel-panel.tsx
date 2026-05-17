@@ -24,10 +24,14 @@ function matchKindLabel(k: VendorCatalogLookupResult['matchKind']): string {
       return 'Exact catalog';
     case 'exact_alias':
       return 'Alias match';
-    case 'prefix':
-      return 'Prefix match';
+    case 'prefix_name':
+      return 'Prefix name';
+    case 'prefix_alias':
+      return 'Prefix alias';
+    case 'vendor_sku':
+      return 'Vendor SKU';
     case 'shop_item_name':
-      return 'Shop item';
+      return 'Managed item';
     case 'shop_item_alias':
       return 'Item alias';
     default:
@@ -196,7 +200,14 @@ export function VendorCatalogIntelPanel({
               >
                 {managed.displayName}
               </Link>
-              <p className="mt-1 text-[11px] text-emerald-900/80">{managedViaLabel(managed.matchVia)}</p>
+              <p className="mt-1 text-[11px] text-emerald-900/80">
+                {managedViaLabel(managed.matchVia)} · Unit: {managed.catalogUnit}
+              </p>
+              {data?.materialMatch ? (
+                <p className="mt-1 text-[11px] text-emerald-900/85">
+                  {data.materialMatch.matchReason} · {data.materialMatch.confidenceLabel}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -235,13 +246,30 @@ export function VendorCatalogIntelPanel({
             </div>
           </div>
 
-          {managed.preferredPremiumVsCheapestCents != null && managed.preferredPremiumVsCheapestCents > 0 ? (
-            <p className="rounded-md border border-slate-200/90 bg-white/50 px-2 py-1.5 text-[11px] text-emerald-950/95">
-              Preferred vendor is{' '}
+          {managed.preferredPremiumVsCheapestCents != null &&
+          managed.preferredPremiumVsCheapestCents > 0 ? (
+            <p className="text-[11px] text-emerald-950/90">
+              Preferred premium:{' '}
               <span className="font-semibold tabular-nums">
                 {formatMoney(managed.preferredPremiumVsCheapestCents)}
               </span>{' '}
-              higher than cheapest.
+              vs cheapest
+            </p>
+          ) : null}
+
+          {managed.unitConversionHint ? (
+            <p className="text-[11px] leading-snug text-emerald-950/90">
+              {managed.unitConversionHint.guidanceLabel}
+              {managed.unitConversionHint.convertedPriceCents != null ? (
+                <>
+                  {' '}
+                  →{' '}
+                  <span className="font-semibold tabular-nums">
+                    {formatMoney(managed.unitConversionHint.convertedPriceCents)}
+                  </span>{' '}
+                  per {managed.catalogUnit}
+                </>
+              ) : null}
             </p>
           ) : null}
 
@@ -314,6 +342,7 @@ export function VendorCatalogIntelPanel({
               <button
                 type="button"
                 className="rounded-[8px] bg-emerald-700 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm hover:bg-emerald-800"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onApplyManagedCost(line.id, suggested)}
               >
                 Apply suggested cost
@@ -323,18 +352,37 @@ export function VendorCatalogIntelPanel({
               <button
                 type="button"
                 className="rounded-[8px] border border-emerald-800/30 bg-white px-3 py-1.5 text-[12px] font-semibold text-emerald-950 shadow-sm hover:bg-emerald-50"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onApplyManagedCost!(line!.id, cheapestCents)}
               >
                 Apply cheapest vendor cost
+              </button>
+            ) : null}
+            {onApplyManagedCost &&
+            line &&
+            managed.unitConversionHint?.convertedPriceCents != null &&
+            managed.unitConversionHint.needsConfirmation ? (
+              <button
+                type="button"
+                className="rounded-[8px] border border-amber-300/80 bg-amber-50 px-3 py-1.5 text-[12px] font-semibold text-amber-950 hover:bg-amber-100"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() =>
+                  onApplyManagedCost(
+                    line.id,
+                    managed.unitConversionHint!.convertedPriceCents!,
+                  )
+                }
+              >
+                Apply converted unit cost
               </button>
             ) : null}
           </div>
         </div>
       ) : null}
 
-      {!queryTooShort && !loading && data && data.matchKind === 'none' && !data.managedItem ? (
+      {!queryTooShort && !loading && data?.materialMatch.path === 'unresolved' && !data.managedItem ? (
         <p className="text-[12px] text-[var(--color-bv-muted)]">
-          No catalog row matches this label yet (vendor catalog or managed item). Keep typing — matching stays deterministic on normalized text.
+          {data.materialMatch.matchReason} Add an Items alias or pick from the catalog picker — pricing is never applied automatically.
         </p>
       ) : null}
 
@@ -395,17 +443,19 @@ export function VendorCatalogIntelPanel({
           </dl>
 
           {data.priceRecentlyIncreasedVsAvg || data.priceRecentlyIncreasedVsPrev ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11.5px] text-amber-950">
+            <p className="text-[11px] text-amber-900">
               Price increased recently
-              {data.priceRecentlyIncreasedVsAvg ? ' (vs 90-day average)' : ''}
-              {data.priceRecentlyIncreasedVsAvg && data.priceRecentlyIncreasedVsPrev ? ' · ' : ''}
-              {data.priceRecentlyIncreasedVsPrev ? ' (vs prior observation)' : ''}
-            </div>
+              {data.priceRecentlyIncreasedVsAvg ? ' (vs 90d avg)' : ''}
+              {data.priceRecentlyIncreasedVsPrev ? ' (vs prior)' : ''}
+            </p>
           ) : null}
           {data.highVolatility ? (
-            <div className="rounded-md border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-[11.5px] text-amber-950">
-              Price has varied recently
-            </div>
+            <p className="text-[11px] text-amber-900">Price has varied recently (90d)</p>
+          ) : null}
+          {data.materialMatch.needsConfirmation ? (
+            <p className="text-[11px] text-[var(--color-bv-muted)]">
+              {data.materialMatch.matchReason}
+            </p>
           ) : null}
 
           {data.primaryCatalogNameNormalized ? (

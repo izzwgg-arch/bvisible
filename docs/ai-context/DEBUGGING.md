@@ -555,6 +555,14 @@ pnpm --filter @bvisible/web run verify:vendor-catalog
 
 Covers deterministic catalog merge ordering + trend thresholds used by the estimate editor intelligence rail.
 
+**Vendor normalization bundle (no DB)**
+
+```bash
+bash server-scripts/db/.verify-vendor-normalization.sh
+```
+
+Runs `verify:vendor-catalog` (normalize, material-match, unit-conversion, catalog-lookup, pricing-aggregate), `verify:estimate-pricing`, and `verify:ocr-quality`.
+
 **Inspect unread lower-price notifications** (adjust `tenantId`):
 
 ```bash
