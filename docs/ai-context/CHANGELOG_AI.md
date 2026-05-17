@@ -38,13 +38,29 @@ records what changed, the files touched, the risks, and the verification.
 - `pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow` — 26/26
 - `pnpm --filter @bvisible/web run typecheck` — pass
 
-**Production follow-up (operator)**
+**Production deploy (completed via SSH)**
 
-1. Commit/push → deploy with exact `commitHash`.
-2. Set `INGEST_TICK_SECRET` and/or `OCR_TICK_SECRET` in `/opt/bvisible/shared/env/.env`; PM2 reload.
-3. `sudo bash server-scripts/ocr/install-runtime-deps.sh`
-4. `bash server-scripts/db/.verify-ocr-runtime.sh`
-5. Manual OCR tick + re-check smoke `OcrDocument` `cmp9ae61y001ekm4qnfvd3ko2` or new fixture.
+| Field | Value |
+|-------|-------|
+| **Job ID** | `20260517T060232-572b89` |
+| **SHA** | `f9316db7162e7927ff92a91a8767e31cf7df1281` |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"f9316db7162e7927ff92a91a8767e31cf7df1281"}` |
+
+**Production verification**
+
+| Check | Result |
+|-------|--------|
+| `POST /api/internal/ocr/tick` no secret | **401** JSON (`unauthorized`) — **no** `/login` redirect |
+| `POST` with `INGEST_TICK_SECRET` | **200** `{"ok":true,"data":{"processed":3}}` |
+| `INGEST_TICK_SECRET` in `.env` | Set (was empty; rotated in place) |
+| `tesseract` / `pdftoppm` | **5.3.4** / **24.02.0** (apt install on host) |
+| `.verify-ocr-runtime.sh` | **OK** (all checks PASS) |
+| `vendor_price_histories` on non-CONFIRMED OCR | **0** |
+| Smoke `OcrDocument` `cmp9ae61y001ekm4qnfvd3ko2` | Still **PENDING**, `lastError`: `pdf_no_extractable_text`, `attemptCount` **9**, **0** line items — PDF content unreadable, not infra |
+
+**Remaining gap**
+
+- Smoke invoice PDF still yields `pdf_no_extractable_text` even with host OCR binaries; needs a readable fixture or operator review of attachment bytes. Worker will move to **FAILED** at `OCR_MAX_ATTEMPTS` (14).
 
 ---
 
