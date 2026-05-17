@@ -266,10 +266,18 @@ Explicitly **not** implemented:
 
 ## Operator review (`/admin/email-ingestion`, ADMIN+)
 
+Each `IngestedEmail` row stores **`reviewReasonCodes`** (JSON string array): deterministic
+codes from the matcher (`matcherReviewCodes` on `NONE`), attachment outcomes
+(`NO_ATTACHMENTS`, `ATTACHMENT_REJECTED`), merged OCR job states after PO
+materialization (`OCR_PENDING`, `OCR_FAILED`), and **`MANUAL_REVIEW_REQUIRED`**
+whenever the row is still unmatched. Codes are never AI-derived. The admin UI
+shows compact chips plus a one-line “why matched” / “why review” explanation
+from the same fields (`apps/web/lib/email-ingest/review-reasons.ts`).
+
 - Filterable buckets: **Unmatched** (default), **Matched**, **Failed**,
   **Dismissed**, **All**. Each bucket shows count badges.
-- Per-row expand panel: status / match reason chips, compact **guidance chips**
-  (skipped attachments, vendor-known vs unknown), sender + subject,
+- Per-row expand panel: status / match reason chips, deterministic **`reviewReasonCodes`**
+  chips (matcher ambiguity, attachment rejects, OCR state), sender + subject,
   body snippet (rendered as plain text in `<pre>` — never
   `dangerouslySetInnerHTML`), per-attachment list with download links
   (skipped attachments show the skip reason instead).

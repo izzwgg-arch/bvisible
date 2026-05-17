@@ -245,6 +245,10 @@
   `/opt/bvisible/shared/uploads/<tenantId>/email/<ingestedEmailId>/<storageKey>`
   with the same `0640` mode, then promoted into the per-PO directory by
   `promoteEmailAttachmentToPo()` when the email is matched.
+- **Per-email attachment dedupe (content-addressed).** Within one ingest
+  transaction, identical sanitized filename + identical bytes (SHA-256)
+  produce a single `IngestedEmailAttachment` row so operators do not see
+  duplicate lines for the same MIME part replay.
 - **Sanitization in the operator UI.** `/admin/email-ingestion` renders
   the body snippet as plain text inside a `<pre>` (never `dangerouslySet
   InnerHTML`), the subject + sender pass through React's default

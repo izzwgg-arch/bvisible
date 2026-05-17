@@ -941,6 +941,9 @@ model IngestedEmail {
   bodyTextSnippet   String?                                         // first ~2 KB of plain text, sanitized
   hasAttachments    Boolean           @default(false)
   attachmentCount   Int               @default(0)
+  /// Deterministic review tags (string codes), e.g. MULTIPLE_PO_MATCHES, ATTACHMENT_REJECTED.
+  /// Populated from matcher + attachment outcomes + OCR job state; never AI-derived.
+  reviewReasonCodes Json              @default("[]")
   errorMessage      String?
   processedAt       DateTime?                                       // set on first successful match/unmatch write
   retriedAt         DateTime?                                       // last manual retry attempt

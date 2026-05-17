@@ -5,6 +5,30 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — Email ingestion operational hardening (review codes, fixtures, dedupe)
+
+**What changed**
+
+- **`IngestedEmail.reviewReasonCodes`** (JSON string array, migration `20260524103000_ingested_email_review_reason_codes`) stores deterministic operator-facing codes: matcher ambiguity (`MULTIPLE_PO_MATCHES`, `MULTIPLE_QBO_MATCHES`, `UNKNOWN_PO`, `MULTIPLE_VENDOR_PO_CANDIDATES`), **`NO_ATTACHMENTS`**, **`ATTACHMENT_REJECTED`**, merged **`OCR_PENDING` / `OCR_FAILED`**, and **`MANUAL_REVIEW_REQUIRED`** on every unmatched path. `DUPLICATE_MESSAGE` remains a reserved code for tooling (duplicate `Message-ID` still short-circuits before a second row exists).
+- **`matchEmail`** returns `matcherReviewCodes` on `NONE` outcomes (additive with ingest builder).
+- **Attachment ingest:** `safeOriginalFilename` for stored display names; **SHA-256 + filename dedupe** per email transaction (`emailAttachmentDedupeKey`); `attachmentCount` / `hasAttachments` reflect stored rows.
+- **Admin review UI:** code chips (grouped colors), Saved/Skipped badges, deterministic match / review one-liners (`review-reasons.ts`).
+- **Retry** clears `reviewReasonCodes` while resetting to `PENDING`.
+- **Vitest:** `verify:email-ingestion-fixtures`, `verify:email-operational-safety`; extended `server-scripts/db/.verify-email-ingestion-flow.sh`.
+
+**Verification**
+
+- `pnpm --filter @bvisible/web run typecheck`
+- `pnpm --filter @bvisible/web run verify:email-ingestion`
+- `pnpm --filter @bvisible/web run verify:email-ingestion-fixtures`
+- `pnpm --filter @bvisible/web run verify:email-operational-safety`
+
+**Deploy**
+
+- Requires **`prisma migrate deploy`** for new column before relying on review chips in prod.
+
+---
+
 ## 2026-05-16 — Production deploy completed: email ingestion hardening (58a39e5)
 
 **Pre-deploy** (`curl -fsS http://127.0.0.1:3000/api/health` on server)

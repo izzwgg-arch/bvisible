@@ -8,6 +8,7 @@ import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { loadInboxDiag } from '@/lib/email-ingest/config';
 import { InboxConfigCard } from './inbox-config-card';
+import { parseStoredReviewReasonCodes } from '@/lib/email-ingest/review-reasons';
 import {
   EmailIngestionReviewTable,
   type EmailRow,
@@ -57,6 +58,7 @@ export default async function EmailIngestionPage({
         matchHint: true,
         attachmentCount: true,
         bodyTextSnippet: true,
+        reviewReasonCodes: true,
         matchedPurchaseOrder: { select: { id: true, number: true } },
         matchedVendor: { select: { id: true, name: true } },
         attachments: {
@@ -134,6 +136,7 @@ export default async function EmailIngestionPage({
     attachmentCount: e.attachmentCount,
     attachments: e.attachments,
     bodyTextSnippet: e.bodyTextSnippet,
+    reviewReasonCodes: parseStoredReviewReasonCodes(e.reviewReasonCodes),
   }));
 
   const poChoices: PoChoice[] = pos.map((p) => ({

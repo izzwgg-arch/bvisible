@@ -9,6 +9,12 @@ cd "$ROOT"
 echo "== Prisma: IngestedEmail dedupe key @@unique([tenantId, messageId]) =="
 grep -nF '@@unique([tenantId, messageId])' packages/db/prisma/schema.prisma
 
+echo "== Prisma: IngestedEmail reviewReasonCodes column =="
+grep -n 'reviewReasonCodes' packages/db/prisma/schema.prisma | head -n 5
+
+echo "== Code: review reason builder =="
+grep -n "EMAIL_REVIEW_REASON_CODES" apps/web/lib/email-ingest/review-reasons.ts | head -n 3
+
 echo "== Code: ingest upsert keyed by tenantId + messageId =="
 grep -n 'tenantId, messageId' apps/web/lib/email-ingest/run.ts | head -n 12
 
@@ -29,5 +35,11 @@ grep -Rn "manualLinkEmailToPoAction" apps/web/app --include="*.ts" | head -n 6
 
 echo "== Vitest: verify:email-ingestion =="
 pnpm --filter @bvisible/web run verify:email-ingestion
+
+echo "== Vitest: verify:email-ingestion-fixtures =="
+pnpm --filter @bvisible/web run verify:email-ingestion-fixtures
+
+echo "== Vitest: verify:email-operational-safety =="
+pnpm --filter @bvisible/web run verify:email-operational-safety
 
 echo "OK — email ingestion invariants present."

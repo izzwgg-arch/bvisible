@@ -211,7 +211,8 @@ Behaviour:
   event already exists for that `sourceEmailId`.
 - Unmatched / failed emails sit in `/admin/email-ingestion` until an
   operator either links them to a PO (`manualLinkEmailToPoAction`)
-  or dismisses them (`dismissEmailAction`).
+  or dismisses them (`dismissEmailAction`). Each row carries deterministic
+  **`reviewReasonCodes`** (matcher + attachment + OCR state) for the review UI.
 
 See `EMAIL_INGESTION.md` for the full pipeline, lease/lock model,
 systemd timer, encryption-at-rest scheme for IMAP credentials, and

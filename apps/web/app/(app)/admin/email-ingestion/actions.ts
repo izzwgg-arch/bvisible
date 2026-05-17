@@ -131,6 +131,7 @@ export async function retryEmailAction(
       status: EmailIngestStatus.PENDING,
       errorMessage: null,
       retriedAt: new Date(),
+      reviewReasonCodes: [],
     },
   });
 

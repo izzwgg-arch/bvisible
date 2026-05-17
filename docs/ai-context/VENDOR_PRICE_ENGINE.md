@@ -15,7 +15,9 @@ Implementation lives in:
   calls `runVendorPriceExtractionAfterMaterialize` inside `try/catch` so pricing
   failures never fail ingestion. Emails that remain **`UNMATCHED`** never hit
   this hook — there is no regex pricing pass until an operator links a PO or
-  the deterministic matcher finds a single safe target.
+  the deterministic matcher finds a single safe target. Operator-facing
+  **`reviewReasonCodes`** on `IngestedEmail` document ambiguous matchers,
+  attachment rejections, and OCR job state without implying AI scoring.
 
 ## Data model (tenant-scoped)
 

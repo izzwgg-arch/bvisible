@@ -6,11 +6,12 @@ import {
   Prisma,
   prisma,
 } from '@bvisible/db';
+import { createHash } from 'node:crypto';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { loadResolvedInbox, type ResolvedInbox } from './config';
 import { openImap, ImapConnectError, type ImapClient } from './client';
 import { parseRawMessage, type ParsedEmail } from './parse';
-import { matchEmail, type MatchReason } from './match';
+import { matchEmail, type MatchReason, type MatchResult } from './match';
 import {
   persistEmailAttachment,
   promoteEmailAttachmentToPo,
@@ -18,8 +19,23 @@ import {
 } from './storage';
 import { runVendorPriceExtractionAfterMaterialize } from '@/lib/vendor-pricing/persist';
 import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
+import { safeOriginalFilename } from '@/lib/po/uploads';
+import {
+  buildEmailReviewReasonCodes,
+  mergeEmailReviewReasonCodes,
+  mergeOcrReviewCodes,
+} from './review-reasons';
+import type { EmailReviewReasonCode } from './review-reasons';
 import { unlink } from 'node:fs/promises';
 import path from 'node:path';
+
+/** Content-addressed key for per-email attachment dedupe (Vitest uses same helper). */
+export function emailAttachmentDedupeKey(
+  normalizedFilename: string,
+  bytes: Uint8Array,
+): string {
+  return `${normalizedFilename}\0${createHash('sha256').update(bytes).digest('hex')}`;
+}
 
 const MAX_BATCH = 50;
 // Bound the per-tick wall time so a chatty mailbox can never wedge the
@@ -250,34 +266,45 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
           receivedAt: parsed.receivedAt,
           bodyTextSnippet: parsed.bodyTextSnippet,
           hasAttachments: parsed.attachments.length > 0,
-          attachmentCount: parsed.attachments.length,
+          attachmentCount: 0,
           status: EmailIngestStatus.PENDING,
           matchReason: EmailMatchReason.NONE,
+          reviewReasonCodes: [],
         },
         select: { id: true },
       });
 
       const attachmentNames: string[] = [];
+      const seenAttachmentKeys = new Set<string>();
+      let storedAttachmentRows = 0;
+
       for (const att of parsed.attachments) {
+        const norm = safeOriginalFilename(att.filename);
+        const dedupeKey = emailAttachmentDedupeKey(norm, att.bytes);
+        if (seenAttachmentKeys.has(dedupeKey)) {
+          continue;
+        }
+        seenAttachmentKeys.add(dedupeKey);
         try {
           const persisted = await persistEmailAttachment({
             tenantId: args.tenantId,
             ingestedEmailId: email.id,
-            originalFilename: att.filename,
+            originalFilename: norm,
             bytes: att.bytes,
           });
-          attachmentNames.push(att.filename);
+          attachmentNames.push(norm);
           await tx.ingestedEmailAttachment.create({
             data: {
               tenantId: args.tenantId,
               ingestedEmailId: email.id,
               storageKey: persisted.storageKey,
-              originalFilename: att.filename,
+              originalFilename: norm,
               mimeType: persisted.detected.mime,
               sizeBytes: att.bytes.byteLength,
               sha256: persisted.sha256,
             },
           });
+          storedAttachmentRows += 1;
         } catch (err) {
           if (err instanceof UnsupportedAttachmentError) {
             await tx.ingestedEmailAttachment.create({
@@ -285,7 +312,7 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
                 tenantId: args.tenantId,
                 ingestedEmailId: email.id,
                 storageKey: '',
-                originalFilename: att.filename,
+                originalFilename: norm,
                 mimeType: att.contentType,
                 sizeBytes: att.bytes.byteLength,
                 sha256: '',
@@ -293,6 +320,7 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
                 skipReason: err.message,
               },
             });
+            storedAttachmentRows += 1;
           } else {
             // Unknown failure — don't fail the email row, but mark it
             // so review surfaces the issue.
@@ -300,6 +328,14 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
           }
         }
       }
+
+      await tx.ingestedEmail.update({
+        where: { id: email.id },
+        data: {
+          attachmentCount: storedAttachmentRows,
+          hasAttachments: storedAttachmentRows > 0,
+        },
+      });
 
       return email.id;
     });
@@ -317,7 +353,13 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
     where: { id: createdId! },
     select: {
       id: true,
-      attachments: { select: { originalFilename: true, skipped: true } },
+      attachments: {
+        select: {
+          originalFilename: true,
+          skipped: true,
+          skipReason: true,
+        },
+      },
     },
   });
   const attachmentNamesForMatch = (stored?.attachments ?? []).map(
@@ -344,6 +386,11 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
       parsed,
     });
   } else {
+    const unmatchedCodes = buildEmailReviewReasonCodes({
+      hasIncomingAttachments: parsed.attachments.length > 0,
+      storedAttachments: stored?.attachments ?? [],
+      match,
+    });
     await prisma.ingestedEmail.update({
       where: { id: createdId! },
       data: {
@@ -352,6 +399,7 @@ async function ingestOneMessage(args: IngestArgs): Promise<IngestResult> {
         matchedVendorId: match.vendorId,
         matchHint: match.hint,
         processedAt: new Date(),
+        reviewReasonCodes: unmatchedCodes,
       },
     });
   }
@@ -411,6 +459,58 @@ function mapReason(r: MatchReason): EmailMatchReason {
   }
 }
 
+/** Shape for review-code builder on matched emails (matcher NONE branch unused). */
+function syntheticMatchedMatchShape(args: {
+  purchaseOrderId: string;
+  vendorId: string | null;
+  hint: string | null;
+}): MatchResult {
+  return {
+    reason: 'PO_NUMBER',
+    purchaseOrderId: args.purchaseOrderId,
+    vendorId: args.vendorId,
+    hint: args.hint,
+  };
+}
+
+async function refreshIngestedEmailReviewCodes(input: {
+  tenantId: string;
+  ingestedEmailId: string;
+  match: MatchResult;
+  hasIncomingAttachments: boolean;
+}): Promise<void> {
+  const storedAttachments = await prisma.ingestedEmailAttachment.findMany({
+    where: { tenantId: input.tenantId, ingestedEmailId: input.ingestedEmailId },
+    select: { skipped: true, skipReason: true },
+  });
+  const ocrStatuses =
+    input.match.reason !== 'NONE'
+      ? (
+          await prisma.ocrDocument.findMany({
+            where: {
+              tenantId: input.tenantId,
+              poAttachment: { sourceEmailId: input.ingestedEmailId },
+            },
+            select: { status: true },
+          })
+        ).map((r) => r.status)
+      : [];
+
+  const codes: EmailReviewReasonCode[] = mergeEmailReviewReasonCodes(
+    buildEmailReviewReasonCodes({
+      hasIncomingAttachments: input.hasIncomingAttachments,
+      storedAttachments,
+      match: input.match,
+    }),
+    mergeOcrReviewCodes(ocrStatuses),
+  );
+
+  await prisma.ingestedEmail.update({
+    where: { id: input.ingestedEmailId },
+    data: { reviewReasonCodes: codes },
+  });
+}
+
 interface MaterializeArgs {
   tenantId: string;
   ingestedEmailId: string;
@@ -437,6 +537,20 @@ async function materializeOnPo(args: MaterializeArgs): Promise<void> {
     select: { id: true },
   });
   if (alreadyMaterialized) {
+    const meta = await prisma.ingestedEmail.findUnique({
+      where: { id: args.ingestedEmailId },
+      select: { hasAttachments: true },
+    });
+    await refreshIngestedEmailReviewCodes({
+      tenantId: args.tenantId,
+      ingestedEmailId: args.ingestedEmailId,
+      match: syntheticMatchedMatchShape({
+        purchaseOrderId: args.purchaseOrderId,
+        vendorId: args.vendorId,
+        hint: args.hint,
+      }),
+      hasIncomingAttachments: meta?.hasAttachments ?? false,
+    });
     return;
   }
 
@@ -597,6 +711,21 @@ async function materializeOnPo(args: MaterializeArgs): Promise<void> {
       });
     }
   }
+
+  const meta = await prisma.ingestedEmail.findUnique({
+    where: { id: args.ingestedEmailId },
+    select: { hasAttachments: true },
+  });
+  await refreshIngestedEmailReviewCodes({
+    tenantId: args.tenantId,
+    ingestedEmailId: args.ingestedEmailId,
+    match: syntheticMatchedMatchShape({
+      purchaseOrderId: args.purchaseOrderId,
+      vendorId: args.vendorId,
+      hint: args.hint,
+    }),
+    hasIncomingAttachments: meta?.hasAttachments ?? false,
+  });
 }
 
 export function buildTimelineMessage(args: {

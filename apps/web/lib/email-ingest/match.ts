@@ -1,3 +1,4 @@
+import type { EmailReviewReasonCode } from './review-reasons';
 import { POStatus, prisma } from '@bvisible/db';
 import type { ParsedEmail } from './parse';
 
@@ -22,6 +23,8 @@ export interface MatchResult {
   purchaseOrderId: string | null;
   vendorId: string | null;
   hint: string | null;
+  /** Populated when `reason === 'NONE'` — merged into `IngestedEmail.reviewReasonCodes`. */
+  matcherReviewCodes?: EmailReviewReasonCode[];
 }
 
 const RECENT_PO_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -67,9 +70,16 @@ async function vendorFromSender(
   });
 }
 
+function matcherCodes(
+  ...codes: EmailReviewReasonCode[]
+): EmailReviewReasonCode[] {
+  return [...new Set(codes)].sort() as EmailReviewReasonCode[];
+}
+
 export async function matchEmail(input: MatchInput): Promise<MatchResult> {
   const haystack = searchTextBundle(input.email, input.attachmentNames);
   const tenantId = input.tenantId;
+  let unknownInternalPoTokens = false;
 
   // ---- 1: exact internal PO-NNNNNN (before loose QBO tokens) ------------
   const internalTokens = dedupe(haystack.match(INTERNAL_PO_TOKEN) ?? []);
@@ -99,8 +109,10 @@ export async function matchEmail(input: MatchInput): Promise<MatchResult> {
         purchaseOrderId: null,
         vendorId: vendor?.id ?? pos[0]!.vendorId,
         hint: internalTokens.join(', '),
+        matcherReviewCodes: matcherCodes('MULTIPLE_PO_MATCHES'),
       };
     }
+    unknownInternalPoTokens = true;
   }
 
   // ---- 2: exact QuickBooks PO number -------------------------------------
@@ -132,6 +144,10 @@ export async function matchEmail(input: MatchInput): Promise<MatchResult> {
         purchaseOrderId: null,
         vendorId: vendor?.id ?? null,
         hint: qboTokens.slice(0, 6).join(', '),
+        matcherReviewCodes: matcherCodes(
+          ...(unknownInternalPoTokens ? (['UNKNOWN_PO'] as const) : []),
+          'MULTIPLE_QBO_MATCHES',
+        ),
       };
     }
   }
@@ -162,13 +178,36 @@ export async function matchEmail(input: MatchInput): Promise<MatchResult> {
         hint: input.email.fromAddress,
       };
     }
+    if (candidates.length > 1) {
+      return {
+        reason: 'NONE',
+        purchaseOrderId: null,
+        vendorId: vendor.id,
+        hint: input.email.fromAddress,
+        matcherReviewCodes: matcherCodes(
+          ...(unknownInternalPoTokens ? (['UNKNOWN_PO'] as const) : []),
+          'MULTIPLE_VENDOR_PO_CANDIDATES',
+        ),
+      };
+    }
     return {
       reason: 'NONE',
       purchaseOrderId: null,
       vendorId: vendor.id,
       hint: input.email.fromAddress,
+      matcherReviewCodes: matcherCodes(
+        ...(unknownInternalPoTokens ? (['UNKNOWN_PO'] as const) : []),
+      ),
     };
   }
 
-  return { reason: 'NONE', purchaseOrderId: null, vendorId: null, hint: null };
+  return {
+    reason: 'NONE',
+    purchaseOrderId: null,
+    vendorId: null,
+    hint: null,
+    matcherReviewCodes: matcherCodes(
+      ...(unknownInternalPoTokens ? (['UNKNOWN_PO'] as const) : []),
+    ),
+  };
 }

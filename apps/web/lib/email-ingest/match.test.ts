@@ -257,7 +257,7 @@ describe('matchEmail', () => {
       attachmentNames: [],
       email: baseEmail({ subject: 'PO-5001 and PO-5002 combined' }),
     });
-    expectNone(r, 'v1');
+    expectNone(r, 'v1', ['MULTIPLE_PO_MATCHES']);
   });
 
   it('returns NONE when multiple QBO tokens match different rows', async () => {
@@ -289,7 +289,7 @@ describe('matchEmail', () => {
       attachmentNames: [],
       email: baseEmail({ subject: 'ABC-111 vs ABC-222' }),
     });
-    expectNone(r, 'v1');
+    expectNone(r, 'v1', ['MULTIPLE_QBO_MATCHES']);
   });
 
   it('matches vendor + exactly one recent open PO', async () => {
@@ -346,7 +346,7 @@ describe('matchEmail', () => {
       attachmentNames: [],
       email: baseEmail({ subject: 'FYI' }),
     });
-    expectNone(r, 'v1');
+    expectNone(r, 'v1', ['MULTIPLE_VENDOR_PO_CANDIDATES']);
   });
 
   it('returns NONE for unknown PO number (no DB row)', async () => {
@@ -357,7 +357,7 @@ describe('matchEmail', () => {
       attachmentNames: [],
       email: baseEmail({ subject: 'PO-99999999' }),
     });
-    expectNone(r, 'v1');
+    expectNone(r, 'v1', ['UNKNOWN_PO']);
   });
 
   it('returns NONE without PO token and multiple vendor POs', async () => {
@@ -391,7 +391,7 @@ describe('matchEmail', () => {
       attachmentNames: [],
       email: baseEmail({ subject: 'No reference here' }),
     });
-    expectNone(r, 'v1');
+    expectNone(r, 'v1', ['MULTIPLE_VENDOR_PO_CANDIDATES']);
   });
 });
 
@@ -404,8 +404,17 @@ function expectPo(
   expect(r.purchaseOrderId).toBe(purchaseOrderId);
 }
 
-function expectNone(r: MatchResult, vendorId: string | null) {
+function expectNone(
+  r: MatchResult,
+  vendorId: string | null,
+  matcherCodes?: string[],
+) {
   expect(r.reason).toBe('NONE');
   expect(r.purchaseOrderId).toBeNull();
   expect(r.vendorId).toBe(vendorId);
+  if (matcherCodes) {
+    expect([...(r.matcherReviewCodes ?? [])].sort()).toEqual(
+      [...matcherCodes].sort(),
+    );
+  }
 }

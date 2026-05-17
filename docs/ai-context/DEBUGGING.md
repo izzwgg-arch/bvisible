@@ -24,6 +24,8 @@ pnpm --filter @bvisible/web run verify:estimate-po-flow
 pnpm --filter @bvisible/web run verify:estimate-invoice-flow
 pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
 pnpm --filter @bvisible/web run verify:email-ingestion
+pnpm --filter @bvisible/web run verify:email-ingestion-fixtures
+pnpm --filter @bvisible/web run verify:email-operational-safety
 pnpm --filter @bvisible/web run typecheck
 bash server-scripts/db/.verify-email-ingestion-flow.sh
 ```

@@ -7,6 +7,12 @@ import {
   EmailIngestStatus,
   EmailMatchReason,
 } from '@bvisible/db';
+import type { EmailReviewReasonCode } from '@/lib/email-ingest/review-reasons';
+import {
+  explainEmailMatch,
+  explainUnmatchedReview,
+  labelEmailReviewReasonCode,
+} from '@/lib/email-ingest/review-reasons';
 import { labelEmailIngestStatus, labelEmailMatchReason } from '@/lib/ui/status-labels';
 import {
   dismissEmailAction,
@@ -45,6 +51,7 @@ export interface EmailRow {
   attachmentCount: number;
   attachments: AttachmentRow[];
   bodyTextSnippet: string | null;
+  reviewReasonCodes: EmailReviewReasonCode[];
 }
 
 export interface ReviewTableProps {
@@ -53,29 +60,25 @@ export interface ReviewTableProps {
   filter: 'unmatched' | 'matched' | 'failed' | 'dismissed' | 'all';
 }
 
-function reviewGuidanceChips(row: EmailRow): string[] {
-  const chips: string[] = [];
+function reasonCodeChipClass(code: EmailReviewReasonCode): string {
   if (
-    row.status === EmailIngestStatus.MATCHED ||
-    row.status === EmailIngestStatus.DISMISSED
+    code === 'ATTACHMENT_REJECTED' ||
+    code === 'OCR_FAILED' ||
+    code === 'UNKNOWN_PO'
   ) {
-    return chips;
-  }
-  if (row.attachments.some((a) => a.skipped)) {
-    chips.push('Some attachments skipped (type or size)');
+    return 'border-amber-200 bg-amber-50 text-amber-900';
   }
   if (
-    row.status === EmailIngestStatus.UNMATCHED ||
-    row.status === EmailIngestStatus.PENDING ||
-    row.status === EmailIngestStatus.FAILED
+    code === 'MULTIPLE_PO_MATCHES' ||
+    code === 'MULTIPLE_QBO_MATCHES' ||
+    code === 'MULTIPLE_VENDOR_PO_CANDIDATES'
   ) {
-    if (row.matchedVendor) {
-      chips.push('Vendor matched — pick PO (ambiguous or no PO token)');
-    } else {
-      chips.push('Link vendor email or add PO/QBO reference in mail');
-    }
+    return 'border-violet-200 bg-violet-50 text-violet-900';
   }
-  return chips;
+  if (code === 'OCR_PENDING') {
+    return 'border-sky-200 bg-sky-50 text-sky-900';
+  }
+  return 'border-slate-200 bg-slate-50 text-slate-800';
 }
 
 const STATUS_LABELS: Record<EmailIngestStatus, { label: string; className: string }> = {
@@ -229,12 +232,13 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                       {row.matchHint ? ` · ${row.matchHint}` : ''}
                     </span>
                   ) : null}
-                  {reviewGuidanceChips(row).map((c) => (
+                  {row.reviewReasonCodes.map((code) => (
                     <span
-                      key={c}
-                      className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10.5px] font-medium text-slate-800"
+                      key={code}
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${reasonCodeChipClass(code)}`}
+                      title={labelEmailReviewReasonCode(code)}
                     >
-                      {c}
+                      {labelEmailReviewReasonCode(code)}
                     </span>
                   ))}
                   {row.matchedPo ? (
@@ -268,6 +272,19 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
             </div>
             {isOpen ? (
               <div className="border-t border-[var(--color-bv-border)] px-5 py-3">
+                <p className="text-[12.5px] leading-snug text-[var(--color-bv-text)]">
+                  {row.status === EmailIngestStatus.MATCHED
+                    ? explainEmailMatch({
+                        matchReason: row.matchReason,
+                        matchHint: row.matchHint,
+                      })
+                    : row.status === EmailIngestStatus.DISMISSED
+                      ? 'Dismissed by operator — retained for audit.'
+                      : explainUnmatchedReview({
+                          codes: row.reviewReasonCodes,
+                          matchHint: row.matchHint,
+                        })}
+                </p>
                 {row.bodyTextSnippet ? (
                   <pre className="whitespace-pre-wrap break-words rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3 text-[12px] text-[var(--color-bv-text)]">
                     {row.bodyTextSnippet}
@@ -282,22 +299,31 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                     {row.attachments.map((a) => (
                       <li
                         key={a.id}
-                        className="flex items-center justify-between gap-3 text-[12px]"
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5 text-[12px]"
                       >
-                        <span className="text-[var(--color-bv-text)] break-all">
+                        <span className="min-w-0 text-[var(--color-bv-text)] break-all">
+                          <span
+                            className={`mr-2 inline-flex rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              a.skipped
+                                ? 'bg-amber-100 text-amber-900'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {a.skipped ? 'Skipped' : 'Saved'}
+                          </span>
                           {a.originalFilename}
                           <span className="ml-2 text-[var(--color-bv-muted)]">
                             ({a.mimeType} · {formatBytes(a.sizeBytes)})
                           </span>
                         </span>
                         {a.skipped ? (
-                          <span className="text-rose-700">
-                            skipped: {a.skipReason ?? 'unsupported type'}
+                          <span className="shrink-0 text-[11.5px] text-amber-900">
+                            {a.skipReason ?? 'rejected'}
                           </span>
                         ) : (
                           <a
                             href={`/api/email-ingest/${row.id}/attachments/${a.id}`}
-                            className="text-[var(--color-bv-text)] underline-offset-2 hover:underline"
+                            className="shrink-0 text-[var(--color-bv-text)] underline-offset-2 hover:underline"
                             rel="noreferrer"
                           >
                             Download
