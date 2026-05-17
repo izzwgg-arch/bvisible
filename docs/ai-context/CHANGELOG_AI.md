@@ -5,6 +5,120 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — OCR runtime / internal tick / production ops fix
+
+**What changed**
+
+- Middleware: `/api/internal/ocr/tick` added to `PUBLIC_PATHS` (parity with email-ingest tick).
+- Ops: `server-scripts/ocr/install-runtime-deps.sh` (apt: `tesseract-ocr`, `poppler-utils`).
+- Ops: `server-scripts/db/.verify-ocr-runtime.sh` (tick auth, host binaries, financial isolation).
+- Docs: `DEBUGGING.md`, `SECURITY_RULES.md`, `EMAIL_INGESTION.md`, `ENVIRONMENT_VARIABLES.md`.
+
+**Env keys (values never logged)**
+
+| Key | Role |
+|---|---|
+| `OCR_TICK_SECRET` | Preferred header secret for `/api/internal/ocr/tick` |
+| `INGEST_TICK_SECRET` | Fallback when `OCR_TICK_SECRET` unset; also required for email-ingest tick |
+
+**Files touched**
+
+- `apps/web/middleware.ts`
+- `server-scripts/ocr/install-runtime-deps.sh`
+- `server-scripts/db/.verify-ocr-runtime.sh`
+- `docs/ai-context/{DEBUGGING,SECURITY_RULES,EMAIL_INGESTION,ENVIRONMENT_VARIABLES,CHANGELOG_AI}.md`
+
+**Risks**
+
+- Medium: whitelisting the OCR tick path removes session redirect only; route still 503/401 without valid secret.
+- High until production: host packages + secrets must be applied on server (see task verification).
+
+**Verification (local)**
+
+- `pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow` — 26/26
+- `pnpm --filter @bvisible/web run typecheck` — pass
+
+**Production follow-up (operator)**
+
+1. Commit/push → deploy with exact `commitHash`.
+2. Set `INGEST_TICK_SECRET` and/or `OCR_TICK_SECRET` in `/opt/bvisible/shared/env/.env`; PM2 reload.
+3. `sudo bash server-scripts/ocr/install-runtime-deps.sh`
+4. `bash server-scripts/db/.verify-ocr-runtime.sh`
+5. Manual OCR tick + re-check smoke `OcrDocument` `cmp9ae61y001ekm4qnfvd3ko2` or new fixture.
+
+---
+
+## 2026-05-17 — Production deploy: email smoke tooling on disk + OCR queue verification (3f81056)
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Job ID** | `20260517T051021-ba6a90` |
+| **SHA** | `3f810563607ba4b7fa6de7178a3b498d861a2778` (`3f81056`) |
+| **Prior runtime** | `d2e1d850342a070a8e72a4cadd1b69433bef7aae` |
+| **Migrations** | No pending (18 applied; latest `20260524103000_ingested_email_review_reason_codes`) |
+| **PM2** | `bvisible-web` reload OK |
+| **Note** | First enqueue `20260517T050446-ab32d4` **failed** (dirty tree: SCP’d `run.ts` + untracked smoke script). Reset tracked file, redeployed. |
+
+**Production health** (`curl -fsS http://127.0.0.1:3000/api/health`)
+
+```json
+{"status":"ok","service":"bvisible-web","commit":"3f810563607ba4b7fa6de7178a3b498d861a2778"}
+```
+
+**Server verification** (`/opt/bvisible/app`) — all **PASS**
+
+- `pnpm --filter @bvisible/web run verify:email-ingestion`
+- `pnpm --filter @bvisible/web run verify:email-ingestion-fixtures`
+- `pnpm --filter @bvisible/web run verify:email-operational-safety`
+- `pnpm --filter @bvisible/web run typecheck`
+- `bash server-scripts/db/.verify-email-ingestion-flow.sh`
+
+**Smoke tooling on disk (post-deploy, not SCP-only)**
+
+| Path | Present |
+|------|---------|
+| `apps/web/scripts/smoke-email-ingestion-live.ts` | yes |
+| `server-scripts/db/.smoke-email-ingestion-live.sh` | yes |
+| `apps/web/smoke/email-ingestion-review.spec.ts` | yes |
+
+**OCR queue (Case G — `SMOKE-EMAIL invoice PO-901001`)**
+
+| Field | Value |
+|-------|-------|
+| Ingested email | `cmp9ae5zi0018km4q0wvcyidh` — **MATCHED**, `reviewReasonCodes` includes **`OCR_PENDING`** |
+| `OcrDocument` | `cmp9ae61y001ekm4qnfvd3ko2` — was **PENDING** before worker |
+| Worker | `runOcrWorkerTick(3)` on server (same handler body as `/api/internal/ocr/tick`) — **`processed: 3`**, no crash |
+| After worker | **PENDING**, `lastError`: `pdf_no_extractable_text`, `attemptCount`: **3** (retries until `OCR_MAX_ATTEMPTS` → **FAILED**) |
+| Host OCR deps | **`tesseract` missing**, **`pdftoppm` (poppler) missing** on Ubuntu host |
+| `ocr_line_items` for doc | **0** |
+| `vendor_price_histories` tied to OCR line items for doc | **0** (no approval path) |
+
+**HTTP `/api/internal/ocr/tick`**
+
+- `POST` without secret → **307** redirect to `/login` (route **not** whitelisted in `middleware.ts` unlike `/api/internal/email-ingest/tick`).
+- `INGEST_TICK_SECRET` / `OCR_TICK_SECRET`: **not set** in `/opt/bvisible/shared/env/.env`; ingest cron log repeats `INGEST_TICK_SECRET not set`.
+
+**Reconciliation / financial safety**
+
+- Email ingestion row unchanged (**MATCHED** + **`OCR_PENDING`**); no auto-approve.
+- OCR failure isolated on `ocr_documents.lastError`; no `ocr_line_items` → no `VendorPriceHistory` from OCR approval for this doc.
+- Global `vendor_price_histories` count **3** (pre-existing regex extractions from earlier matched smoke cases, not OCR-approved rows).
+- `po_reconciliations` for smoke **`PO-901001`**: **0** rows (no auto-resolve from pending OCR).
+
+**Admin UI / Playwright**
+
+- **Skipped** — `BVISIBLE_ADMIN_PASSWORD` **not set** on server `.env`. Operator: `/admin/email-ingestion?filter=all` as `admin@bvisible.local`.
+
+**Bugs / gaps (not fixed in this deploy)**
+
+1. Add `/api/internal/ocr/tick` to `PUBLIC_PATHS` in `middleware.ts` (parity with email-ingest tick).
+2. Configure `INGEST_TICK_SECRET` (and optionally `OCR_TICK_SECRET`) in `/opt/bvisible/shared/env/.env` for cron/systemd ticks.
+3. Install `tesseract-ocr` and `poppler-utils` on production host for PDF OCR (`DEBUGGING.md` §11f).
+
+---
+
 ## 2026-05-17 — Email ingestion live smoke + review UI verification (fixture path on prod)
 
 **Production health** (`curl -fsS http://127.0.0.1:3000/api/health`)

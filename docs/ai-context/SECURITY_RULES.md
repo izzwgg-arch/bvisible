@@ -197,6 +197,9 @@
   against `OCR_TICK_SECRET`, falling back to `INGEST_TICK_SECRET` only when
   `OCR_TICK_SECRET` is unset (single-secret installs). Returns `{ ok, data: { processed } }`.
   Never logs raw OCR text blobs or attachment paths beyond short error codes.
+  The middleware whitelists this path (same as `/api/internal/email-ingest/tick`)
+  so loopback POSTs are not redirected to `/login`; auth remains in the route
+  handler (503 when no secret is configured, 401 on mismatch).
 - **Internal test endpoint authentication.** `/api/internal/email-
   ingest/test` uses the same constant-time compare against
   `INGEST_TICK_SECRET`. Returns 503 when the secret is unset and 401

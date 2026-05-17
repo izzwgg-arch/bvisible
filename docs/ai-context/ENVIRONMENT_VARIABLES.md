@@ -60,6 +60,11 @@ INGEST_SECRET=
 # server never silently 200s with no auth.
 INGEST_TICK_SECRET=
 
+# Shared secret for POST /api/internal/ocr/tick (header x-bvisible-ocr-secret).
+# Optional when INGEST_TICK_SECRET is set — the OCR route falls back to it.
+# Constant-time compared; 503 if neither secret is configured.
+OCR_TICK_SECRET=
+
 # Outbound mailer (Phase 5) — used by invite, password reset, and
 # the SUPER_ADMIN /settings/email-test page. Read at runtime by
 # apps/web/lib/mailer.ts via Nodemailer (provider-agnostic SMTP).
@@ -182,7 +187,8 @@ Required for either layout:
 | Var | Required | Notes |
 |---|---|---|
 | `INGEST_SECRET` | yes | AES-256-GCM input key. SHA-256-derived to 32 bytes inside `apps/web/lib/email-ingest/crypto.ts`. Without it, no per-tenant inbox row can be decrypted; the env-var fallback path still works. |
-| `INGEST_TICK_SECRET` | yes | Shared secret presented by `bvisible-ingest-tick.sh` to `/api/internal/email-ingest/tick`. The route refuses the request with `503` if this is unset (no silent 200). |
+| `INGEST_TICK_SECRET` | yes | Shared secret presented by `bvisible-ingest-tick.sh` to `/api/internal/email-ingest/tick`. The route refuses the request with `503` if this is unset (no silent 200). Also used as fallback auth for `/api/internal/ocr/tick` when `OCR_TICK_SECRET` is unset. |
+| `OCR_TICK_SECRET` | no | Dedicated secret for `/api/internal/ocr/tick` (`x-bvisible-ocr-secret`). When unset, the OCR tick route uses `INGEST_TICK_SECRET`. Set this only when you want OCR ticks rotated independently of email ingest. |
 | `IMAP_HOST` | fallback only | Hostname of the IMAP server. |
 | `IMAP_PORT` | fallback only | Default 993. |
 | `IMAP_USER` | fallback only | Auth user. |

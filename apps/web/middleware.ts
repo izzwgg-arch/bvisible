@@ -30,6 +30,10 @@ const PUBLIC_PATHS = new Set<string>([
   // header conveniently and shouldn't redirect a service-to-service POST
   // to /login. The 127.0.0.1 bind + UFW keep this off the public net.
   '/api/internal/email-ingest/tick',
+  // Internal OCR worker tick. Authenticated by the route handler via
+  // constant-time compare against OCR_TICK_SECRET (or INGEST_TICK_SECRET
+  // fallback) in apps/web/app/api/internal/ocr/tick/route.ts.
+  '/api/internal/ocr/tick',
   // Same posture for the IMAP-test endpoint: shared-secret authed,
   // service-to-service. The in-app SUPER_ADMIN form does NOT call this
   // route — it goes through a server action — so no browser path needs

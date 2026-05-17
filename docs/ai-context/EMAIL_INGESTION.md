@@ -158,6 +158,40 @@ sent.
 If `runs[].errors > 0`, tail PM2 stderr for `"emailIngest":true`
 lines — see `DEBUGGING.md § 9` for the `errorKind` table.
 
+## OCR worker tick (receipt attachments)
+
+When email ingestion promotes a PO attachment, it may enqueue an
+`OcrDocument` (see `VENDOR_PRICE_ENGINE.md`). Processing is **not**
+synchronous in the ingest tick — a separate internal worker drains the
+queue:
+
+| Item | Value |
+|---|---|
+| Route | `POST /api/internal/ocr/tick` |
+| Auth header | `x-bvisible-ocr-secret` |
+| Env | `OCR_TICK_SECRET` if set, else `INGEST_TICK_SECRET` (503 if neither) |
+| Middleware | Whitelisted (no session cookie); auth is only in the route handler |
+| Host deps | `tesseract-ocr`, `poppler-utils` — `server-scripts/ocr/install-runtime-deps.sh` |
+
+Manual loopback tick (same secret-loading pattern as ingest; never log the value):
+
+```bash
+SECRET=$(
+  sudo bash -c 'set -a; . /opt/bvisible/shared/env/.env; set +a
+    if [ -n "${OCR_TICK_SECRET:-}" ]; then printf %s "$OCR_TICK_SECRET"
+    else printf %s "${INGEST_TICK_SECRET:-}"; fi'
+)
+curl -fsS -X POST \
+  -H "x-bvisible-ocr-secret: ${SECRET}" \
+  http://127.0.0.1:3000/api/internal/ocr/tick | jq .
+```
+
+Expected: `{ "ok": true, "data": { "processed": <n> } }`. OCR failures stay on
+`ocr_documents.lastError`; **no** `VendorPriceHistory` from OCR until an operator
+confirms in `/admin/ocr-review`.
+
+Verification: `bash server-scripts/db/.verify-ocr-runtime.sh` (`DEBUGGING.md` §11f).
+
 ## Message processing
 
 For each `UNSEEN` message:

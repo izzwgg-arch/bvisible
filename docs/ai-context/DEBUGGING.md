@@ -1210,19 +1210,50 @@ bash server-scripts/db/.verify-mobile-api.sh
 
 ### Host packages (production)
 
-Ubuntu: install **`tesseract-ocr`** (CLI). For scanned PDFs without a text layer,
-install **`poppler-utils`** so `pdftoppm` can rasterize pages before OCR.
+Ubuntu: install **`tesseract-ocr`** (CLI) and **`poppler-utils`** (`pdftoppm` for
+scanned PDFs without a text layer):
+
+```bash
+sudo bash /opt/bvisible/app/server-scripts/ocr/install-runtime-deps.sh
+```
+
+Idempotent; installs only those two apt packages and verifies both CLIs.
+
+### Env keys (never log values)
+
+| Key | Required | Notes |
+|---|---|---|
+| `OCR_TICK_SECRET` | optional | Preferred secret for `x-bvisible-ocr-secret` on `/api/internal/ocr/tick`. |
+| `INGEST_TICK_SECRET` | yes (if `OCR_TICK_SECRET` unset) | Fallback when operators use one shared internal secret. Route returns **503** if neither is set. |
+
+Set in `/opt/bvisible/shared/env/.env`, then reload PM2 (`deploy-once.sh` does this).
 
 ### Manual tick (loopback)
 
 ```bash
+# Load secret without printing it (OCR_TICK_SECRET wins over INGEST_TICK_SECRET)
+SECRET=$(
+  sudo bash -c 'set -a; . /opt/bvisible/shared/env/.env; set +a
+    if [ -n "${OCR_TICK_SECRET:-}" ]; then printf %s "$OCR_TICK_SECRET"
+    else printf %s "${INGEST_TICK_SECRET:-}"; fi'
+)
 curl -sS -X POST \
-  -H "x-bvisible-ocr-secret: $OCR_TICK_SECRET" \
+  -H "x-bvisible-ocr-secret: ${SECRET}" \
   http://127.0.0.1:3000/api/internal/ocr/tick
 ```
 
-`OCR_TICK_SECRET` may match `INGEST_TICK_SECRET` when operators prefer one secret;
-the route accepts either (`SECURITY_RULES.md`).
+Without a secret header the route returns **401** or **503** JSON — not a `/login`
+redirect (middleware whitelists this path like email-ingest tick).
+
+### Runtime verification (server)
+
+```bash
+bash /opt/bvisible/app/server-scripts/db/.verify-ocr-runtime.sh
+```
+
+Checks middleware posture, tick auth, `tesseract` + `pdftoppm`, optional loopback
+tick, and that no `VendorPriceHistory` row references OCR line items on
+non-`CONFIRMED` documents.
 
 ### Deterministic parse-only checks (CI / laptop)
 
