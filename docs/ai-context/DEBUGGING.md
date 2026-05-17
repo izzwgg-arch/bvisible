@@ -1265,6 +1265,18 @@ bash server-scripts/db/.verify-ocr-quality.sh   # Linux server: host binaries + 
 Text fixtures live in `apps/web/lib/ocr/fixtures/sample-invoices.ts`; PDF/PNG bytes
 are generated on demand by `fixtures/generate-binary.ts` (not stored in git).
 
+**Production smoke (deploy box, after deploy):** attach generated fixture to a PO,
+enqueue OCR, run worker tick until `REVIEW_REQUIRED`:
+
+```bash
+cd /opt/bvisible/app/apps/web
+set -a && source /opt/bvisible/shared/env/.env && set +a
+pnpm exec tsx ocr-prod-smoke.ts   # or enqueue + curl tick; see CHANGELOG_AI 9f75650 entry
+```
+
+Expect line items with `extractionSource` parse reasons; legacy unreadable PDFs move to
+**FAILED** at `OCR_MAX_ATTEMPTS` (14).
+
 ### Deterministic parse-only checks (CI / laptop)
 
 ```bash

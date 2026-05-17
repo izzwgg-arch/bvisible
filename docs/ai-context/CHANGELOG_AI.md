@@ -5,6 +5,61 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-17 — OCR quality hardening production verification (9f75650)
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Job ID** | `20260517T062325-27190a` |
+| **SHA** | `9f75650d1468ffc9e6f1f94aded8592280895cd9` |
+| **Migrations** | None pending |
+| **PM2** | reload OK |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"9f75650d1468ffc9e6f1f94aded8592280895cd9"}` |
+
+**Server verification** (`/opt/bvisible/app`) — all **PASS**
+
+| Command | Result |
+|---------|--------|
+| `verify:ocr-quality` | **16/16** (includes host tesseract PNG OCR on server) |
+| `verify:ocr-reconciliation-flow` | **39/39** |
+| `typecheck` | pass |
+| `.verify-ocr-quality.sh` | OK (tesseract 5.3.4, pdftoppm 24.02.0, runtime tick posture) |
+
+**Production OCR smoke**
+
+| Check | Result |
+|-------|--------|
+| Generated fixture PDF + raster OCR | `pdftoppm + tesseract-cli`, **4** parse candidates |
+| Enqueued on PO `PO-901004` | `OcrDocument` `cmp9ee3yk0003kmapmr9s1pgp` |
+| After worker tick | **REVIEW_REQUIRED**, **4** `ocr_line_items` |
+| Parse reasons | `qty_label_unit_price`, `qty_times_unit_price`, `label_dollar_price` |
+| Subtotal/tax/total as lines | **none** |
+| `VendorPriceHistory` before approval | **0** |
+| Legacy blank smoke doc `cmp9ae61y001ekm4qnfvd3ko2` | **FAILED** / `pdf_no_extractable_text` / `attemptCount` **14** (isolated) |
+| HTTP `/api/internal/ocr/tick` | **200** JSON (no `/login` redirect) |
+
+**Review UI**
+
+- `BVISIBLE_ADMIN_PASSWORD` **not** in server `.env` — browser Playwright smoke not run from deploy box.
+- Operator: sign in as `admin@bvisible.local` → `/admin/ocr-review` → open `cmp9ee3yk0003kmapmr9s1pgp` (fixture invoice on PO-901004).
+
+**Safety**
+
+- `REVIEW_REQUIRED` + **0** `VendorPriceHistory` on smoke doc until approval.
+- Global non-CONFIRMED OCR → VPH count **0** (runtime verify script).
+
+**Bugs found/fixed**
+
+- None during verification (queue ordering: first HTTP tick may drain older PENDING jobs before a newly enqueued doc).
+
+**Remaining gaps**
+
+- Dedicated OCR systemd timer still optional; manual/HTTP tick is fine.
+- Browser QA for review UI copy/chips requires operator credentials on prod.
+
+---
+
 ## 2026-05-17 — OCR quality / receipt review hardening
 
 **What changed**
