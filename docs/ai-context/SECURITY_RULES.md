@@ -33,9 +33,10 @@
    as web PO uploads (`apps/web/lib/po/uploads.ts`). Not public S3-style URLs.
 7. **PO reconciliation + spend alerts stay tenant-scoped and OCR-safe.**
    `POReconciliation`, `POReconciliationLine`, and `SpendAlert` queries always
-   filter `tenantId`. Operator-facing alert copy uses normalized item labels plus
-   structural ids — never raw OCR dumps (`SECURITY_RULES.md` posture mirrors
-   truncated OCR previews elsewhere).
+   filter `tenantId`. OCR **Approve** may create a replay-safe reconciliation snapshot
+   (dedupe key per doc + line ids) — it never mutates PO, estimate, or invoice line
+   pricing. Operator-facing alert copy uses normalized item labels plus structural ids —
+   never raw OCR dumps (truncated OCR previews elsewhere).
 
 ## Customer estimate quotes
 

@@ -33,6 +33,15 @@ bash server-scripts/db/.verify-email-ingestion-flow.sh
 
 Do **not** treat passes as a substitute for **deploy queue healthcheck** after releasing (`§ 1`, `/api/health`).
 
+**PO receipt / reconciliation (production DB posture, on app host):**
+
+```bash
+cd /opt/bvisible/app
+bash server-scripts/db/.verify-po-receipt-smoke-prod.sh
+```
+
+Confirms OCR approve wires reconciliation, VPH isolation, and lists fixture PO `PO-901004` posture. Live approve + replay checks: use `/admin/ocr-review` (browser) or operator-only tsx against `approveOcrDocumentAction` path — do not auto-mutate prod from CI.
+
 ## 0c. Logged-in browser smoke (Playwright)
 
 After deploy (or against local `pnpm dev`), exercise the **staff UI + public quote** once with Playwright.

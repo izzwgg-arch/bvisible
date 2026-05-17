@@ -5,40 +5,69 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-17 — PO receipt / reconciliation operator workflow (uncommitted)
+## 2026-05-17 — PO receipt / reconciliation operator workflow (`a71ce5f`)
 
-**Flow audit (before changes)**
+**Deploy**
 
-| Step | Behavior |
-|------|----------|
-| `POAttachment` | Receipt-like uploads enqueue `OcrDocument` |
-| `OcrLineItem` | Worker suggestions; human approves on `/admin/ocr-review/[id]` |
-| OCR approve | `persistApprovedOcrPriceLines` → `VendorPriceHistory` (`OCR_APPROVED`) only |
-| Reconciliation | **Was not triggered on approve** — manual **Recompute snapshot** only |
-| `POReconciliation` + `SpendAlert` | Deterministic snapshot; stale OPEN alerts superseded |
-| PO detail | Operational rail existed; receipt/recon stats were thin |
-| Dashboard | OCR queue + spend alerts; no “approved OCR, no snapshot” rows |
+| Field | Value |
+|-------|-------|
+| **Commit** | `a71ce5fd60b9d0d4af902118e5a6f9eb42b8b0e0` |
+| **Job ID** | `20260517T080824-a7ab78` |
+| **Migrations** | None |
+| **PM2** | reload OK (`bvisible-web` online) |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"a71ce5fd60b9d0d4af902118e5a6f9eb42b8b0e0"}` |
 
 **What changed**
 
-- **OCR approve** now runs `runPoReconciliationSnapshot` with `buildOcrApproveTriggerDedupeKey` (replay-safe; skips duplicate trigger). Returns PO id + reconciliation id; UI links to PO reconciliation.
-- **PO detail** — `PoReceiptWorkflowSummaryCard`: OCR status, approved line count, recon status, variance lines, open alerts, next-action chips.
-- **Reconciliation UI** — human labels for match kinds / alert kinds; compact copy (no giant banners).
-- **Dashboard** — attention rows for POs with confirmed OCR but no snapshot; recently operator-stamped POs.
-- **Tests:** `po-receipt-workflow.test.ts`; `verify:po-receipt-workflow` script.
+- **OCR approve** — `runPoReconciliationSnapshot` + `buildOcrApproveTriggerDedupeKey` (replay-safe). Returns PO id + reconciliation id; approval UI + confirmed OCR detail link to PO reconciliation.
+- **PO detail** — `PoReceiptWorkflowSummaryCard` + `getPoReceiptWorkflowSummary()`.
+- **Reconciliation UI** — human labels (`status-labels.ts`); clearer copy on PO recon page.
+- **Dashboard** — POs with confirmed OCR but no snapshot; recently operator-stamped POs.
+- **Tests** — `lib/reconciliation/po-receipt-workflow.test.ts`; extended `ocr-safety.test.ts`; `verify:po-receipt-workflow`.
 
-**Verification (local)**
+**Files touched**
+
+- `apps/web/app/(app)/admin/ocr-review/{actions.ts,ocr-approval-form.tsx,[id]/page.tsx}`
+- `apps/web/app/(app)/purchase-orders/[id]/{page.tsx,reconciliation/page.tsx}`
+- `apps/web/components/po/po-receipt-workflow-summary.tsx`
+- `apps/web/lib/{po/get-po-receipt-workflow-summary.ts,dashboard/get-dashboard-feed.ts,ui/status-labels.ts,reconciliation/po-receipt-workflow.test.ts,ocr/ocr-safety.test.ts}`
+- `apps/web/app/(app)/admin/reconciliation/page.tsx`, `dashboard/dashboard-widgets.tsx`
+- `apps/web/package.json`
+- `docs/ai-context/{CHANGELOG_AI,PO_SYSTEM,VENDOR_PRICE_ENGINE,UI_SYSTEM,DEBUGGING,EMAIL_INGESTION,SECURITY_RULES}.md`
+
+**Server verification** (`/opt/bvisible/app`)
 
 | Command | Result |
 |---------|--------|
-| `verify:ocr-reconciliation-flow` | **41/41**, 1 skipped |
+| `verify:ocr-reconciliation-flow` | **42/42** |
 | `verify:po-receipt-workflow` | **21/21** |
 | `typecheck` | pass |
 
+**Production smoke**
+
+| Check | Result |
+|-------|--------|
+| Static: approve wires reconciliation | PASS |
+| VPH only on `CONFIRMED` OCR | PASS (0 rows on non-CONFIRMED) |
+| REJECTED/FAILED OCR → no VPH | PASS |
+| Fixture PO `PO-901004` / doc `cmp9ee3yk0003kmapmr9s1pgp` | Approve one line → **CONFIRMED**, **1** VPH, **1** `POReconciliation` (`cmp9i8r6q0005km39j1wfh4ws`); PO `subtotalCents` unchanged |
+| Replay dedupe | Second identical trigger skipped (`reconciliationSkipped` on replay path) |
+| Estimate/invoice auto-mutation | None observed (PO subtotal stable) |
+
+**Browser / operator**
+
+- `BVISIBLE_ADMIN_PASSWORD` **not** in workspace or `/opt/bvisible/shared/env/.env` — Playwright not run.
+- **Operator checklist:** sign in → `/admin/ocr-review` → open confirmed doc → **Open PO reconciliation** → `/purchase-orders/[id]` → receipt workflow summary card → `/purchase-orders/[id]/reconciliation` → verify variance labels → dashboard attention rows for “OCR confirmed, no snapshot”.
+
+**Risks / caveats**
+
+- OCR approve now creates spend alerts; operators should review reconciliation after every approve.
+- Single-tenant prod has one user (`tenantId` nullable SUPER_ADMIN pattern); smoke used PO `createdById` as actor.
+
 **Remaining gaps**
 
-- Browser smoke for SMOKE-RECON PO (needs operator credentials).
-- Deploy pending commit + push.
+- Playwright/browser smoke for approval link + summary card (needs operator password).
+- Optional: commit `scripts/smoke-po-receipt-recon-prod.ts` + `server-scripts/db/.verify-po-receipt-smoke-prod.sh` for repeatable prod checks (used ad hoc on server this deploy).
 
 ---
 
