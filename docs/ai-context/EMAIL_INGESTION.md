@@ -316,8 +316,9 @@ codes from the matcher (`matcherReviewCodes` on `NONE`), attachment outcomes
 (`NO_ATTACHMENTS`, `ATTACHMENT_REJECTED`), merged OCR job states after PO
 materialization (`OCR_PENDING`, `OCR_FAILED`), and **`MANUAL_REVIEW_REQUIRED`**
 whenever the row is still unmatched. Codes are never AI-derived. The admin UI
-shows compact chips plus a one-line “why matched” / “why review” explanation
-from the same fields (`apps/web/lib/email-ingest/review-reasons.ts`).
+shows compact chips plus a one-line **Why** on each collapsed row (match or **Review:** prefix) from `explainEmailMatch` / `explainUnmatchedReview` (`apps/web/lib/email-ingest/review-reasons.ts`) — Details expand shows body/attachments only (no duplicate explain paragraph).
+
+**Fixture coverage:** `lib/email-ingest/ingest-fixtures.test.ts` — RE/FW subjects, forwarded chains, multi-PDF MIME, attachment dedupe keys (same filename, different bytes). Included in `verify:email-ingestion`.
 
 - Filterable buckets: **Unmatched** (default), **Matched**, **Failed**,
   **Dismissed**, **All**. Each bucket shows count badges.

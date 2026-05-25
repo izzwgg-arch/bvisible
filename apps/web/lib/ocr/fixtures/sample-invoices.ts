@@ -28,6 +28,29 @@ export const FIXTURE_MULTI_LINE_INVOICE = [
   'Total                         $338.85',
 ].join('\n');
 
+/** Wrapped item name on one line, price on the next (common on narrow receipts). */
+export const FIXTURE_WRAPPED_LINE_RECEIPT = [
+  'QUICK PRINT DEPOT',
+  'Receipt 8812',
+  '',
+  'Heavy duty coroplast 4mm white',
+  '  $45.00',
+  'Mounting tape roll',
+  '  $18.75',
+  'Subtotal  $63.75',
+  'Total     $63.75',
+].join('\n');
+
+export const FIXTURE_BLURRY_STYLE_RECEIPT = [
+  'HARBOR INK & MEDIA',
+  'Order 77821',
+  '',
+  'Latex ink cartridge CMYK  $156.00',
+  'Print head cleaning kit   $24.50',
+  'Shipping                $12.00',
+  'Total                     $192.50',
+].join('\n');
+
 export const FIXTURE_IMAGE_RECEIPT_OCR_TEXT = [
   'HARBOR INK & MEDIA',
   'Order 77821',

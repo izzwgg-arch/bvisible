@@ -16,6 +16,8 @@ import {
 import { labelInvoiceStatus, labelPoStatus } from '@/lib/ui/status-labels';
 
 import { CreateInvoiceFromEstimateButton } from '@/components/estimate/create-invoice-from-estimate-button';
+import { EstimateFinalizeChecklistPanel } from '@/components/estimate/estimate-finalize-checklist';
+import type { EstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
 import type { EstimateOperationalStepRailRow } from '@/components/estimate/estimate-operational-step-rail';
 import { EstimateOperationalStepRail } from '@/components/estimate/estimate-operational-step-rail';
 
@@ -53,9 +55,19 @@ export function EstimateFulfillmentPanel(props: {
     subtotalCents: number;
   };
   linkedPos: ReadonlyArray<EstimateLinkedPoBootstrap>;
+  finalizeChecklist?: EstimateFinalizeChecklist | null;
 }) {
-  const { estimateId, estimateStatus, headline, hints, operationalSteps, relationshipStrip, linkedInvoice, linkedPos } =
-    props;
+  const {
+    estimateId,
+    estimateStatus,
+    headline,
+    hints,
+    operationalSteps,
+    relationshipStrip,
+    linkedInvoice,
+    linkedPos,
+    finalizeChecklist,
+  } = props;
   const showApprovedPrimary =
     estimateStatus === ES.APPROVED && linkedPos.length === 0;
 
@@ -93,6 +105,11 @@ export function EstimateFulfillmentPanel(props: {
 
       <EstimateOperationalStepRail steps={operationalSteps} />
       {relationshipStrip}
+
+      {finalizeChecklist &&
+      (estimateStatus === ES.APPROVED || estimateStatus === ES.FINALIZED) ? (
+        <EstimateFinalizeChecklistPanel checklist={finalizeChecklist} />
+      ) : null}
 
       {hints.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1.5 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">

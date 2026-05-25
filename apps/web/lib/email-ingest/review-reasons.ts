@@ -145,14 +145,17 @@ export function explainUnmatchedReview(args: {
   if (c.has('MANUAL_REVIEW_REQUIRED')) {
     bits.push('needs operator link, dismiss, or retry');
   }
+  if (c.has('DUPLICATE_MESSAGE')) {
+    bits.push('this Message-ID was already ingested');
+  }
   if (bits.length === 0) {
     return args.matchHint
-      ? `No automatic PO match. Hint: ${args.matchHint}`
-      : 'No automatic PO match.';
+      ? `No PO match — ${args.matchHint}`
+      : 'No PO match — link manually, retry, or dismiss.';
   }
   const hint = args.matchHint?.trim();
-  const base = bits.join('; ');
-  return hint ? `${base}. Tokens/hint: ${hint}.` : `${base}.`;
+  const base = `Review: ${bits.join('; ')}`;
+  return hint ? `${base} (${hint})` : `${base}.`;
 }
 
 export function labelEmailReviewReasonCode(code: EmailReviewReasonCode): string {

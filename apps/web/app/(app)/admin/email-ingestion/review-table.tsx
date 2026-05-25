@@ -261,6 +261,17 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                 <p className="mt-0.5 text-[12px] text-[var(--color-bv-muted)] break-words">
                   {senderLabel(row)} · {formatDate(row.receivedAt)}
                 </p>
+                <p className="mt-1 text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
+                  {row.status === EmailIngestStatus.MATCHED
+                    ? explainEmailMatch({
+                        matchReason: row.matchReason,
+                        matchHint: row.matchHint,
+                      })
+                    : explainUnmatchedReview({
+                        codes: row.reviewReasonCodes,
+                        matchHint: row.matchHint,
+                      })}
+                </p>
               </div>
               <button
                 type="button"
@@ -272,19 +283,11 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
             </div>
             {isOpen ? (
               <div className="border-t border-[var(--color-bv-border)] px-5 py-3">
-                <p className="text-[12.5px] leading-snug text-[var(--color-bv-text)]">
-                  {row.status === EmailIngestStatus.MATCHED
-                    ? explainEmailMatch({
-                        matchReason: row.matchReason,
-                        matchHint: row.matchHint,
-                      })
-                    : row.status === EmailIngestStatus.DISMISSED
-                      ? 'Dismissed by operator — retained for audit.'
-                      : explainUnmatchedReview({
-                          codes: row.reviewReasonCodes,
-                          matchHint: row.matchHint,
-                        })}
-                </p>
+                {row.status === EmailIngestStatus.DISMISSED ? (
+                  <p className="mb-2 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">
+                    Dismissed by operator — retained for audit.
+                  </p>
+                ) : null}
                 {row.bodyTextSnippet ? (
                   <pre className="whitespace-pre-wrap break-words rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3 text-[12px] text-[var(--color-bv-text)]">
                     {row.bodyTextSnippet}

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   FIXTURE_MULTI_LINE_INVOICE,
   FIXTURE_SIMPLE_RECEIPT,
+  FIXTURE_WRAPPED_LINE_RECEIPT,
+  FIXTURE_BLURRY_STYLE_RECEIPT,
 } from './fixtures/sample-invoices';
 import { parseReceiptLineCandidates } from './parse-receipt-lines';
 
@@ -55,5 +57,20 @@ describe('parseReceiptLineCandidates', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]!.priceCents).toBe(4500);
     expect(lines[0]!.quantityMilli).toBe(2000);
+  });
+
+  it('merges wrapped item name + price on following line', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_WRAPPED_LINE_RECEIPT);
+    const coro = lines.find((l) => /coroplast/i.test(l.itemRaw));
+    expect(coro?.priceCents).toBe(4500);
+    expect(coro?.parseReason).toBe('wrapped_item_name');
+    expect(lines.find((l) => /mounting tape/i.test(l.itemRaw))?.priceCents).toBe(1875);
+    expect(lines.some((l) => /subtotal/i.test(l.itemRaw))).toBe(false);
+  });
+
+  it('skips shipping on blurry-style receipt', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_BLURRY_STYLE_RECEIPT);
+    expect(lines.some((l) => /shipping/i.test(l.itemRaw))).toBe(false);
+    expect(lines.some((l) => /ink cartridge/i.test(l.itemRaw))).toBe(true);
   });
 });

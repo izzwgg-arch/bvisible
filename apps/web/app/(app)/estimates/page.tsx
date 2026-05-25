@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney } from '@/lib/estimate/format';
 import { getEstimateListNextAction } from '@/lib/estimate/estimate-list-next-action';
+import { getEstimateListWorkflowChips } from '@/lib/estimate/estimate-list-workflow-chip';
 import { labelEstimateStatus } from '@/lib/ui/status-labels';
 
 export const metadata = { title: 'Estimates' };
@@ -103,6 +104,7 @@ export default async function EstimatesPage() {
                 <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
                   <th className="px-4 py-2 font-medium">Job</th>
                   <th className="px-4 py-2 font-medium">Client</th>
+                  <th className="px-4 py-2 font-medium">Workflow</th>
                   <th className="px-4 py-2 font-medium">Status</th>
                   <th className="px-4 py-2 font-medium text-right">Sell</th>
                   <th className="px-4 py-2 font-medium">Next</th>
@@ -115,6 +117,11 @@ export default async function EstimatesPage() {
                   const hasInvoice = e._count.invoices > 0;
                   const next = getEstimateListNextAction({
                     id: e.id,
+                    status: e.status,
+                    hasLinkedPo: hasPo,
+                    hasLinkedInvoice: hasInvoice,
+                  });
+                  const chips = getEstimateListWorkflowChips({
                     status: e.status,
                     hasLinkedPo: hasPo,
                     hasLinkedInvoice: hasInvoice,
@@ -134,6 +141,9 @@ export default async function EstimatesPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-2.5 text-[var(--color-bv-muted)]">{e.client.companyName}</td>
+                      <td className="px-4 py-2.5">
+                        <WorkflowChips chips={chips} />
+                      </td>
                       <td className="px-4 py-2.5">
                         <StatusPill status={e.status} />
                       </td>
@@ -209,6 +219,36 @@ function QuickActions({
         >
           {l.label}
         </Link>
+      ))}
+    </div>
+  );
+}
+
+const CHIP_TONE: Record<
+  ReturnType<typeof getEstimateListWorkflowChips>[number]['tone'],
+  string
+> = {
+  neutral: 'border-slate-200 bg-slate-50 text-slate-700',
+  action: 'border-sky-200 bg-sky-50 text-sky-900',
+  ready: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  muted: 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]',
+};
+
+function WorkflowChips({
+  chips,
+}: {
+  chips: ReturnType<typeof getEstimateListWorkflowChips>;
+}) {
+  if (chips.length === 0) return <span className="text-[12px] text-[var(--color-bv-muted)]">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {chips.map((c) => (
+        <span
+          key={c.label}
+          className={`inline-flex max-w-[140px] items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium leading-tight ${CHIP_TONE[c.tone]}`}
+        >
+          {c.label}
+        </span>
       ))}
     </div>
   );

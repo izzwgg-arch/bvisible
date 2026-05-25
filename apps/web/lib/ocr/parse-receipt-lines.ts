@@ -166,22 +166,61 @@ function tryMatchLine(trimmed: string): LineMatch | null {
  * Deterministic receipt/invoice line extraction for OCR text.
  * Skips subtotal/tax/total rows and invoice-meta-only lines.
  */
+const PRICE_ONLY_LINE = /^(?:USD\s*)?\$?\s*([\d,]+\.\d{2})\s*$/i;
+
+/** Item label without trailing price — candidate for wrap with next line. */
+function looksLikeWrappedItemContinuation(line: string): boolean {
+  const t = line.trim();
+  if (t.length < 3 || t.length > 120) return false;
+  if (!HAS_LETTER.test(t)) return false;
+  if (SKIP_SUMMARY_LINE.test(t)) return false;
+  if (META_ONLY_LINE.test(t)) return false;
+  if (PRICE_ONLY_LINE.test(t)) return false;
+  if (/\$[\d,]+\.\d{2}/.test(t)) return false;
+  return true;
+}
+
+function mergeWrappedLines(
+  rawLines: string[],
+): ReadonlyArray<{ text: string; wrapped: boolean }> {
+  const merged: { text: string; wrapped: boolean }[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const cur = rawLines[i]!.trim();
+    const next = rawLines[i + 1]?.trim();
+    if (
+      next &&
+      looksLikeWrappedItemContinuation(cur) &&
+      PRICE_ONLY_LINE.test(next)
+    ) {
+      const priceM = next.match(PRICE_ONLY_LINE);
+      if (priceM?.[1]) {
+        merged.push({ text: `${cur}  $${priceM[1]}`, wrapped: true });
+        i += 1;
+        continue;
+      }
+    }
+    merged.push({ text: cur, wrapped: false });
+  }
+  return merged;
+}
+
 export function parseReceiptLineCandidates(
   text: string,
   maxItems = 120
 ): ReceiptLineCandidate[] {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = normalized.split('\n');
+  const lines = mergeWrappedLines(normalized.split('\n'));
   const out: ReceiptLineCandidate[] = [];
   const seen = new Set<string>();
 
-  for (const raw of lines) {
+  for (const { text: raw, wrapped } of lines) {
     const trimmed = raw.trim();
     const match = tryMatchLine(trimmed);
     if (!match) continue;
     pushCandidate(out, seen, {
       ...match,
       sourceLineText: trimmed.slice(0, 2000),
+      parseReason: wrapped ? 'wrapped_item_name' : match.parseReason,
     });
     if (out.length >= maxItems) break;
   }

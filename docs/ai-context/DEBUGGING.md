@@ -26,8 +26,8 @@ pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
 pnpm --filter @bvisible/web run verify:po-receipt-workflow
 pnpm --filter @bvisible/web run verify:po-lifecycle
 pnpm --filter @bvisible/web run verify:workflow-queues
-pnpm --filter @bvisible/web run verify:email-ingestion
-pnpm --filter @bvisible/web run verify:email-ingestion-fixtures
+pnpm --filter @bvisible/web run verify:email-ingestion   # match + storage + ingest-fixtures + operational-safety + review-reasons
+pnpm --filter @bvisible/web run verify:email-ingestion-fixtures   # alias: ingest-fixtures only
 pnpm --filter @bvisible/web run verify:email-operational-safety
 pnpm --filter @bvisible/web run typecheck
 bash server-scripts/db/.verify-email-ingestion-flow.sh

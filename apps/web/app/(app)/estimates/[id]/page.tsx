@@ -29,6 +29,7 @@ import {
   deriveEstimateOperationalSteps,
 } from '@/lib/estimate/estimate-invoice-fulfillment';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
+import { buildEstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
 
 export const metadata = { title: 'Estimate' };
 export const dynamic = 'force-dynamic';
@@ -261,6 +262,26 @@ export default async function EstimateDetailPage({
           subtotalCents: linkedInvoiceRow.subtotalCents,
         };
 
+  const finalizeChecklist = buildEstimateFinalizeChecklist({
+    estimateId: estimate.id,
+    estimateStatus: estimate.status,
+    quoteAccepted: quoteAcceptedEvent != null,
+    linkedPos: linkedBootstrapRows.map((p) => ({
+      id: p.id,
+      number: p.number,
+      qboPoNumber: p.qboPoNumber,
+      latestReconciliationStatus: p.latestReconciliationStatus,
+    })),
+    linkedInvoice:
+      linkedInvoiceRow == null
+        ? null
+        : {
+            id: linkedInvoiceRow.id,
+            status: linkedInvoiceRow.status,
+            paidAt: linkedInvoiceRow.paidAt,
+          },
+  });
+
   const primary = getEstimateEditorPrimaryAction({
     estimateId: estimate.id,
     status: estimate.status,
@@ -368,6 +389,7 @@ export default async function EstimateDetailPage({
           }
           linkedInvoice={linkedInvoiceSnapshot}
           linkedPos={linkedBootstrapRows}
+          finalizeChecklist={finalizeChecklist}
         />
         <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
         <EstimateTimelineSection rows={quoteUi.timelineRows} />

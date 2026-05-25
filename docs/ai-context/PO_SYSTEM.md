@@ -75,7 +75,8 @@ PurchaseOrder
 
 - `PurchaseOrder.qboPoNumber` is **required on at least one linked PO**
   before the linked estimate may be finalized (R-EST-04). Enforced by
-  `finalizeEstimateAction`; UI affordances on the estimate page are
+  `finalizeEstimateAction`; estimate detail shows a display-only **Closeout checklist**
+  (`buildEstimateFinalizeChecklist`) — quote approved, PO linked, QBO on all POs, recon clean, invoice paid (informational) — plus manual finalize in the totals panel. UI affordances on the estimate page are
   hints, not the source of truth.
 - The number is entered manually after creating the PO in QuickBooks.
   The PO's meta panel exposes a small text input that commits on blur.

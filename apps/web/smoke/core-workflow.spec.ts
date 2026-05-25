@@ -69,7 +69,7 @@ async function openOrCreateSmokeEstimate(page: Page): Promise<{ estimateUrl: str
   }
 
   const row = page.locator('tbody tr').filter({ has: titleLink });
-  const statusCell = row.locator('td').nth(3);
+  const statusCell = row.locator('td').nth(4);
   const statusFromList = (await statusCell.innerText()).trim();
   await titleLink.click();
   await page.waitForURL(/\/estimates\/[^/]+$/, { timeout: 45_000 });
@@ -128,11 +128,10 @@ test.describe.serial('core workflow smoke', () => {
     await ensureSmokeClient(page);
     await ensureSmokeCatalogItem(page);
 
-    const { estimateUrl, statusFromList } =     await test.step('Open or create smoke estimate', async () => {
-      await page.goto('/estimates/new');
-      await expect(page.getByRole('heading', { level: 1, name: 'New estimate' })).toBeVisible();
-      await openOrCreateSmokeEstimate(page);
-    });
+    const { estimateUrl, statusFromList } = await test.step(
+      'Open or create smoke estimate',
+      () => openOrCreateSmokeEstimate(page),
+    );
 
     if (statusFromList === 'Finalized') {
       throw new Error(
@@ -149,7 +148,7 @@ test.describe.serial('core workflow smoke', () => {
     if (statusFromList === 'Draft') {
       await test.step('Estimate editor + catalog Apply only on click', async () => {
         await expect(page.getByRole('heading', { level: 2, name: 'Line items' })).toBeVisible();
-        const noLines = page.getByText('No lines yet. Add a row below to start.');
+        const noLines = page.getByText('No line items yet');
         if (await noLines.isVisible()) {
           await page.getByRole('button', { name: '+ Material', exact: true }).click();
         }

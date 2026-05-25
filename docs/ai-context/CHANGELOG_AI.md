@@ -5,6 +5,59 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — Estimate operator UX + finalize checklist + IMAP/OCR hardening (pending deploy)
+
+**Flow audit (Phase 1)**
+
+| Flow | Friction / fix |
+|------|----------------|
+| A. Estimate creation | List lacked workflow context; **Workflow** chips + **Next** column added. New estimate empty-client path already solid. |
+| B. Quote workflow | Detail still stacks fulfillment + quote summary + timeline + link panel — acceptable; daily strip carries primary CTA. |
+| C. PO workflow | Closeout gates (QBO, recon) invisible on estimate — **Closeout checklist** on fulfillment panel. |
+| D. Email ingestion | Match/review reasons buried in Details — one-line **Why** on collapsed rows; expanded panel no longer duplicates. |
+| E. OCR review | Wrapped receipt lines missed — parser merges name + price line; shipping/subtotal still filtered. |
+
+**UX**
+
+- `/estimates` — **Workflow** column (compact chips), status + next action + quick links unchanged.
+- `/estimates/[id]` — **Closeout checklist** (quote approved, PO linked, QBO #, recon clean, invoice paid) display-only; **Ready to finalize** badge when gates pass; no auto-finalize.
+- Email review — compact **Review:** / match copy on list rows.
+
+**IMAP/OCR**
+
+- Fixtures: multi-PDF MIME, RE/FW subjects, dedupe key tests (same name, different bytes).
+- OCR: `wrapped_item_name` heuristic, `FIXTURE_WRAPPED_LINE_RECEIPT`, shipping skip on blurry-style fixture.
+- `verify:email-ingestion` bundle extended with ingest-fixtures + operational-safety + review-reasons.
+
+**Tests (local)**
+
+| Command | Result |
+|---------|--------|
+| `verify:estimate-pricing` | 70/70 |
+| `verify:vendor-catalog` | 52/52 |
+| `verify:estimate-quote` | 52/52 (+ finalize checklist) |
+| `verify:workflow-queues` | 26/26 |
+| `verify:po-lifecycle` | 19/19 |
+| `verify:ocr-quality` | 17/17 (1 optional tesseract skipped) |
+| `verify:email-ingestion` | 24/24 |
+| `typecheck` | pass |
+
+**Smoke** — `smoke:core` fixed table column index + empty-line copy; requires `BVISIBLE_*` env (fail fast if missing).
+
+**Deploy** — Pending push + enqueue.
+
+**Operator QA checklist**
+
+1. `/estimates` — workflow chips match status (awaiting customer, need PO, ready to finalize).
+2. Open **Approved** estimate with PO — checklist shows QBO/recon gaps with **Fix →** links.
+3. Finalize only when checklist shows **Ready to finalize** (totals panel still manual).
+4. Email ingestion — unmatched row shows **Review:** line without opening Details.
+5. OCR review — wrapped receipt lines appear as single candidates.
+
+**Remaining gaps** — List “ready to finalize” chip is heuristic (does not check QBO on list); quote stack on detail still tall; Playwright smoke needs laptop env.
+
+---
+
 ## 2026-05-17 — Estimator daily workflow UX polish (local)
 
 **Flow audit (before)**

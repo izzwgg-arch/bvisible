@@ -1,0 +1,69 @@
+import { describe, expect, it } from 'vitest';
+import { EstimateStatus, InvoiceStatus, POReconciliationStatus } from '@bvisible/db';
+import { buildEstimateFinalizeChecklist } from './estimate-finalize-checklist';
+
+describe('buildEstimateFinalizeChecklist', () => {
+  const estId = 'est-1';
+
+  it('blocks finalize when QBO missing on linked PO', () => {
+    const c = buildEstimateFinalizeChecklist({
+      estimateId: estId,
+      estimateStatus: EstimateStatus.APPROVED,
+      quoteAccepted: true,
+      linkedPos: [
+        {
+          id: 'po-1',
+          number: 'PO-100',
+          qboPoNumber: null,
+          latestReconciliationStatus: POReconciliationStatus.MATCHED,
+        },
+      ],
+      linkedInvoice: null,
+    });
+    expect(c.readyToFinalize).toBe(false);
+    expect(c.blockedSummary).toMatch(/QuickBooks/i);
+    expect(c.items.find((i) => i.key === 'qbo')?.done).toBe(false);
+  });
+
+  it('ready when approved, QBO on all POs, recon clean', () => {
+    const c = buildEstimateFinalizeChecklist({
+      estimateId: estId,
+      estimateStatus: EstimateStatus.APPROVED,
+      quoteAccepted: true,
+      linkedPos: [
+        {
+          id: 'po-1',
+          number: 'PO-100',
+          qboPoNumber: 'QBO-55',
+          latestReconciliationStatus: POReconciliationStatus.MATCHED,
+        },
+      ],
+      linkedInvoice: null,
+    });
+    expect(c.readyToFinalize).toBe(true);
+    expect(c.blockedSummary).toBeNull();
+  });
+
+  it('invoice paid is informational only', () => {
+    const c = buildEstimateFinalizeChecklist({
+      estimateId: estId,
+      estimateStatus: EstimateStatus.APPROVED,
+      quoteAccepted: true,
+      linkedPos: [
+        {
+          id: 'po-1',
+          number: 'PO-100',
+          qboPoNumber: 'QBO-1',
+          latestReconciliationStatus: POReconciliationStatus.MATCHED,
+        },
+      ],
+      linkedInvoice: {
+        id: 'inv-1',
+        status: InvoiceStatus.UNPAID,
+        paidAt: null,
+      },
+    });
+    expect(c.readyToFinalize).toBe(true);
+    expect(c.items.find((i) => i.key === 'invoice')?.done).toBe(false);
+  });
+});
