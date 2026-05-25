@@ -3,11 +3,9 @@ import { OcrJobStatus, prisma, Role } from '@bvisible/db';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
-import {
-  OcrStaleBadge,
-  OcrStatusChip,
-  formatOcrRelativeTime,
-} from '@/app/(app)/admin/ocr-review/ocr-review-ui';
+import { isOcrQueueStale } from '@/app/(app)/admin/ocr-review/ocr-review-ui';
+import { OcrQueueTable, type OcrQueueRow } from '@/app/(app)/admin/ocr-review/ocr-queue-table';
+import { STALE_OCR_REVIEW_MS } from '@/lib/workflow/operational-stale';
 
 export const metadata = { title: 'Receipt OCR review' };
 export const dynamic = 'force-dynamic';
@@ -28,19 +26,28 @@ const TAB_DEFS = [
 export default async function OcrReviewIndexPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; stale?: string }>;
 }) {
   const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const sp = await searchParams;
   const statusRaw = sp.status ?? 'review';
   const activeTab = TAB_DEFS.find((t) => t.key === statusRaw) ?? TAB_DEFS[0];
   const statusFilter = [...activeTab.statuses];
+  const staleOnly = sp.stale === '1' && activeTab.key === 'review';
+  const now = new Date();
 
-  const [docs, statusCounts] = await Promise.all([
+  const [docs, statusCounts, queueDocsForStaleCount] = await Promise.all([
     prisma.ocrDocument.findMany({
       where: {
         tenantId: me.tenantId,
         status: { in: statusFilter },
+        ...(staleOnly
+          ? {
+              updatedAt: {
+                lt: new Date(now.getTime() - STALE_OCR_REVIEW_MS),
+              },
+            }
+          : {}),
       },
       orderBy: [{ updatedAt: 'desc' }],
       include: {
@@ -66,6 +73,15 @@ export default async function OcrReviewIndexPage({
       by: ['status'],
       _count: { _all: true },
     }),
+    activeTab.key === 'review'
+      ? prisma.ocrDocument.findMany({
+          where: {
+            tenantId: me.tenantId,
+            status: { in: [...QUEUE_STATUSES] },
+          },
+          select: { id: true, status: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const countByStatus = Object.fromEntries(
@@ -76,117 +92,110 @@ export default async function OcrReviewIndexPage({
     return tab.statuses.reduce((sum, s) => sum + (countByStatus[s] ?? 0), 0);
   }
 
-  const now = new Date();
+  const staleQueueCount = queueDocsForStaleCount.filter((d) =>
+    isOcrQueueStale(d.status, d.updatedAt, now)
+  ).length;
+
+  const queueRows: OcrQueueRow[] = docs.map((d) => ({
+    id: d.id,
+    status: d.status,
+    updatedAt: d.updatedAt.toISOString(),
+    lineCount: d._count.lineItems,
+    attachmentLabel: d.poAttachment?.originalFilename ?? d.id.slice(0, 8),
+    attachmentTitle: d.poAttachment?.originalFilename ?? d.id,
+    poId: d.poAttachment?.purchaseOrderId ?? null,
+    poNumber: d.poAttachment?.purchaseOrder.number ?? null,
+    vendorName: d.poAttachment?.purchaseOrder.vendor?.name ?? null,
+  }));
+
+  const tabHref = (tabKey: string, stale?: boolean) => {
+    const params = new URLSearchParams({ status: tabKey });
+    if (stale) params.set('stale', '1');
+    return `/admin/ocr-review?${params.toString()}`;
+  };
 
   return (
     <div className="-mx-1 rounded-xl bg-[var(--color-bv-bg)] px-1 pb-2">
       <PageHeader
         title="Receipt OCR review"
-        subtitle="Scan the queue, open attachments, approve lines — pricing writes only after you confirm."
+        subtitle="Dense queue — open, confirm lines, approve. Pricing writes only after you confirm."
       />
 
-      <div className="mb-3 flex flex-wrap gap-1.5">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {TAB_DEFS.map((tab) => {
           const count = tabCount(tab);
-          const active = tab.key === activeTab.key;
+          const active = tab.key === activeTab.key && !staleOnly;
           return (
             <Link
               key={tab.key}
-              href={`/admin/ocr-review?status=${tab.key}`}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
+              href={tabHref(tab.key)}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
                 active
                   ? 'bg-[var(--color-bv-accent)] text-[var(--color-bv-accent-foreground)]'
                   : 'border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-muted)] hover:bg-[var(--color-bv-bg)]'
               }`}
             >
               {tab.label}
-              {count > 0 ? (
-                <span
-                  className={`tabular-nums text-[10px] font-semibold ${
-                    active ? 'opacity-90' : 'text-[var(--color-bv-muted)]'
-                  }`}
-                >
-                  {count}
-                </span>
-              ) : null}
+              <span
+                className={`tabular-nums text-[10px] font-semibold ${
+                  active ? 'opacity-90' : 'text-[var(--color-bv-muted)]'
+                }`}
+              >
+                {count}
+              </span>
             </Link>
           );
         })}
+        {activeTab.key === 'review' && staleQueueCount > 0 ? (
+          <Link
+            href={staleOnly ? tabHref('review') : tabHref('review', true)}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+              staleOnly
+                ? 'bg-orange-600 text-white'
+                : 'border border-orange-200 bg-orange-50 text-orange-950 hover:bg-orange-100'
+            }`}
+          >
+            Stale
+            <span className="tabular-nums text-[10px] font-semibold">{staleQueueCount}</span>
+          </Link>
+        ) : null}
       </div>
 
+      <p className="mb-2 text-[11px] text-[var(--color-bv-muted)]">
+        Showing {docs.length}
+        {staleOnly ? ' stale' : ''} in {activeTab.label.toLowerCase()}
+        {tabCount(activeTab) !== docs.length && !staleOnly
+          ? ` · ${tabCount(activeTab)} total`
+          : staleOnly
+            ? ` · ${tabCount(activeTab)} in queue`
+            : ''}
+      </p>
+
       {docs.length === 0 ? (
-        <OcrEmptyState statusRaw={statusRaw} />
+        <OcrEmptyState statusRaw={statusRaw} staleOnly={staleOnly} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-          <table className="w-full border-collapse text-left text-[12px]">
-            <thead className="border-b border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-              <tr>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">PO</th>
-                <th className="px-3 py-2">Vendor</th>
-                <th className="px-3 py-2">Attachment</th>
-                <th className="px-3 py-2 text-center">Lines</th>
-                <th className="px-3 py-2 text-right">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {docs.map((d) => (
-                <tr
-                  key={d.id}
-                  className="border-t border-[var(--color-bv-border)] hover:bg-[var(--color-bv-bg)]/60"
-                >
-                  <td className="px-3 py-1.5">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <OcrStatusChip status={d.status} />
-                      <OcrStaleBadge status={d.status} updatedAt={d.updatedAt} />
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5">
-                    {d.poAttachment ? (
-                      <Link
-                        className="font-medium text-emerald-700 underline-offset-2 hover:underline"
-                        href={`/purchase-orders/${d.poAttachment.purchaseOrderId}`}
-                      >
-                        {d.poAttachment.purchaseOrder.number}
-                      </Link>
-                    ) : (
-                      <span className="text-[var(--color-bv-muted)]">—</span>
-                    )}
-                  </td>
-                  <td className="max-w-[140px] truncate px-3 py-1.5 text-[var(--color-bv-muted)]">
-                    {d.poAttachment?.purchaseOrder.vendor?.name ?? '—'}
-                  </td>
-                  <td className="max-w-[220px] px-3 py-1.5">
-                    <Link
-                      className="block truncate font-medium text-[var(--color-bv-text)] underline-offset-2 hover:text-emerald-700 hover:underline"
-                      href={`/admin/ocr-review/${d.id}`}
-                      title={d.poAttachment?.originalFilename ?? d.id}
-                    >
-                      {d.poAttachment?.originalFilename ?? d.id.slice(0, 8)}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-1.5 text-center tabular-nums">
-                    <span className="inline-flex min-w-[1.75rem] justify-center rounded-full bg-[var(--color-bv-bg)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
-                      {d._count.lineItems}
-                    </span>
-                  </td>
-                  <td
-                    className="px-3 py-1.5 text-right tabular-nums text-[var(--color-bv-muted)]"
-                    title={d.updatedAt.toISOString()}
-                  >
-                    {formatOcrRelativeTime(d.updatedAt, now)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <OcrQueueTable rows={queueRows} nowIso={now.toISOString()} />
       )}
     </div>
   );
 }
 
-function OcrEmptyState({ statusRaw }: { statusRaw: string }) {
+function OcrEmptyState({
+  statusRaw,
+  staleOnly,
+}: {
+  statusRaw: string;
+  staleOnly: boolean;
+}) {
+  if (staleOnly) {
+    return (
+      <EmptyState
+        title="No stale OCR jobs"
+        description="Nothing in the queue has been waiting more than two days."
+        primaryAction={{ label: 'Show full queue', href: '/admin/ocr-review?status=review' }}
+      />
+    );
+  }
   if (statusRaw === 'review') {
     return (
       <EmptyState

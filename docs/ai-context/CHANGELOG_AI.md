@@ -5,6 +5,54 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+---
+
+## 2026-05-25 — [AGENT J — OCR EMAIL QUEUE THROUGHPUT]
+
+**Problem:** OCR and email ingestion review UIs were functional but slow for operators processing many rows — too much vertical space, actions buried in expand panels, missing sub-filters, and repeated reason copy.
+
+**Audit findings (pre-change):**
+
+| Area | Gap |
+|------|-----|
+| OCR queue | Tab counts hidden at zero; no stale-only filter; attachment link only entry to detail; no row keyboard nav |
+| OCR detail | No “review next” path after opening a job |
+| Email queue | Large card padding + `gap-3` between rows; Link/Retry/Dismiss only inside Details; reason chips + explain sentence duplicated; no reason sub-filters on unmatched bucket |
+| Email suggestions | Verbose panel copy on every unmatched row |
+
+**UI changes (throughput polish only — no matcher/OCR/pricing logic changes):**
+
+- **OCR queue** (`/admin/ocr-review`): compact tab pills with always-visible counts; **Stale** sub-filter chip (>2d, `?stale=1`); “Showing N” summary; denser table via `OcrQueueTable` + **Review →** column; `j`/`k` focus nav between row links (Shift+click opens); stale empty state.
+- **OCR detail**: **Review next →** chip in decision rail when another `REVIEW_REQUIRED` job exists (older `updatedAt` first in queue order).
+- **Email ingestion** (`/admin/email-ingestion`): compact status/reason chips (`shortLabelEmailReviewReasonCode`); unmatched **reason filter chips** (all / attachment rejected / ambiguous / OCR pending) with counts; Link/Retry/Dismiss always visible on actionable rows (Link primary, Retry outline, Dismiss ghost); explain sentence only when codes absent on collapsed row (full explain in Body expand); compact suggestions panel; Enter toggles Body on focused row.
+- **Helpers:** `matchesEmailReasonFilter`, `countEmailReasonFilter`, `shortLabelEmailReviewReasonCode` in `review-reasons.ts`.
+
+**Safety notes:** No auto-link, auto-approve, bulk dismiss, or matcher/OCR/pricing/reconciliation math changes. Ctrl+Enter approve on OCR detail unchanged. Email keyboard: Enter expands body only — no shortcut binds Link/Dismiss.
+
+**Files touched:**
+
+- `apps/web/app/(app)/admin/ocr-review/{page.tsx,ocr-queue-table.tsx,[id]/page.tsx,ocr-approval-form.tsx}`
+- `apps/web/app/(app)/admin/email-ingestion/{page.tsx,review-table.tsx}`
+- `apps/web/components/email-ingest/email-review-po-suggestions.tsx`
+- `apps/web/lib/email-ingest/{review-reasons.ts,review-reasons.test.ts}`
+- `docs/ai-context/{CHANGELOG_AI,UI_SYSTEM,EMAIL_INGESTION,VENDOR_PRICE_ENGINE,DEBUGGING}.md`
+
+**Verification (local):**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:email-ingestion` | **59/59** |
+| `pnpm --filter @bvisible/web run verify:email-ingestion-fixtures` | **18/18** |
+| `pnpm --filter @bvisible/web run verify:email-operational-safety` | **19/19** |
+| `pnpm --filter @bvisible/web run verify:ocr-quality` | **23 passed, 1 skipped** |
+| `pnpm --filter @bvisible/web run typecheck` | **pass** |
+
+**Deploy:** not run (per task).
+
+**Remaining gaps:** No server-side pagination beyond `take: 100`; no bulk safe actions; browser smoke not run; OCR queue `j`/`k` requires focus on a row link first (not roving tabindex on `<tr>`).
+
+---
+
 ## 2026-05-25 — [AGENT D2 — SECOND UI BATCH MERGE + DEPLOY]
 
 **Prior production:** `e5731056dbeed275dd4e0d2376337a843589c95c` (Agent D — estimate UX + finalization batch).

@@ -24,12 +24,53 @@ export function EmailReviewPoSuggestionsPanel({
   suggestions,
   busy,
   onLink,
+  compact = false,
 }: {
   suggestions: readonly EmailReviewPoSuggestion[];
   busy: boolean;
   onLink: (purchaseOrderId: string) => void;
+  compact?: boolean;
 }) {
   const now = new Date();
+
+  if (compact) {
+    return (
+      <div className="mt-1.5 rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5">
+        <p className="text-[10px] font-medium text-[var(--color-bv-muted)]">
+          Suggestions only — you choose; nothing auto-links.
+        </p>
+        {suggestions.length === 0 ? (
+          <p className="mt-1 text-[11px] text-[var(--color-bv-muted)]">No safe PO suggestion.</p>
+        ) : (
+          <ul className="mt-1 flex flex-col gap-1">
+            {suggestions.map((s) => (
+              <li
+                key={s.purchaseOrderId}
+                className="flex flex-wrap items-center justify-between gap-1.5 rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2 py-1"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono text-[11px] font-semibold text-[var(--color-bv-text)]">
+                    {s.number}
+                  </span>
+                  <span className="ml-1.5 text-[10px] text-[var(--color-bv-muted)]">
+                    {s.vendorName ?? 'No vendor'} · {CONFIDENCE_LABEL[s.confidence]}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onLink(s.purchaseOrderId)}
+                  className="shrink-0 inline-flex items-center justify-center rounded-md bg-[var(--color-bv-text)] px-2 py-0.5 text-[10px] font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busy ? '…' : 'Link'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2.5">

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { EmailMatchReason } from '@bvisible/db';
 import {
   buildEmailReviewReasonCodes,
+  countEmailReasonFilter,
   dedupeSorted,
   explainEmailMatch,
   explainUnmatchedReview,
+  matchesEmailReasonFilter,
   mergeEmailReviewReasonCodes,
   mergeOcrReviewCodes,
   parseStoredReviewReasonCodes,
@@ -105,5 +107,34 @@ describe('explainUnmatchedReview', () => {
       matchHint: 'PO-1, PO-2',
     });
     expect(t.toLowerCase()).toContain('multiple internal');
+  });
+});
+
+describe('matchesEmailReasonFilter', () => {
+  it('filters attachment and ambiguous buckets', () => {
+    expect(
+      matchesEmailReasonFilter(['ATTACHMENT_REJECTED', 'MANUAL_REVIEW_REQUIRED'], 'attachment_rejected')
+    ).toBe(true);
+    expect(
+      matchesEmailReasonFilter(['MULTIPLE_PO_MATCHES'], 'ambiguous')
+    ).toBe(true);
+    expect(
+      matchesEmailReasonFilter(['OCR_PENDING'], 'ocr_pending')
+    ).toBe(true);
+    expect(
+      matchesEmailReasonFilter(['OCR_PENDING'], 'attachment_rejected')
+    ).toBe(false);
+  });
+
+  it('counts rows per filter', () => {
+    const rows = [
+      { reviewReasonCodes: ['ATTACHMENT_REJECTED'] as const },
+      { reviewReasonCodes: ['MULTIPLE_PO_MATCHES'] as const },
+      { reviewReasonCodes: ['OCR_PENDING'] as const },
+    ];
+    expect(countEmailReasonFilter(rows, 'all')).toBe(3);
+    expect(countEmailReasonFilter(rows, 'attachment_rejected')).toBe(1);
+    expect(countEmailReasonFilter(rows, 'ambiguous')).toBe(1);
+    expect(countEmailReasonFilter(rows, 'ocr_pending')).toBe(1);
   });
 });

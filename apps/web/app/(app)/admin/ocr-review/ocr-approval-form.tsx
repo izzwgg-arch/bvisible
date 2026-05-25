@@ -73,6 +73,7 @@ export function OcrDecisionRail({
   purchaseOrderId,
   purchaseOrderNumber,
   disabled = false,
+  nextReviewHref = null,
 }: {
   documentId: string;
   lines: ApprovalLineRow[];
@@ -80,6 +81,7 @@ export function OcrDecisionRail({
   purchaseOrderId?: string | null;
   purchaseOrderNumber?: string | null;
   disabled?: boolean;
+  nextReviewHref?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -217,6 +219,14 @@ export function OcrDecisionRail({
           >
             Back to queue
           </Link>
+          {nextReviewHref ? (
+            <Link
+              href={nextReviewHref}
+              className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-950 hover:bg-emerald-100"
+            >
+              Review next →
+            </Link>
+          ) : null}
         </div>
       </div>
     </aside>
