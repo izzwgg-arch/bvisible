@@ -5,31 +5,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-if [ -f "${HOME}/.bvisible-smoke.env" ]; then
-  echo "[smoke] Loading ${HOME}/.bvisible-smoke.env (values not echoed)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+bash "${SCRIPT_DIR}/check-smoke-env.sh"
+
+SMOKE_HOME="${HOME:-${USERPROFILE:-}}"
+if [ -f "${SMOKE_HOME}/.bvisible-smoke.env" ]; then
   set -a
   # shellcheck source=/dev/null
-  source "${HOME}/.bvisible-smoke.env"
+  source "${SMOKE_HOME}/.bvisible-smoke.env"
   set +a
-else
-  echo "[smoke] No ~/.bvisible-smoke.env — set BVISIBLE_* env vars or create from server-scripts/smoke/.bvisible-smoke.env.example"
 fi
 
-missing=0
-for v in BVISIBLE_BASE_URL BVISIBLE_ADMIN_EMAIL BVISIBLE_ADMIN_PASSWORD; do
-  if [ -z "${!v:-}" ]; then
-    echo "[smoke] MISSING: $v"
-    missing=1
-  fi
-done
-if [ "$missing" -ne 0 ]; then
-  echo "[smoke] Aborting — credentials required for Playwright smoke."
-  exit 2
-fi
-
-export BVISIBLE_BASE_URL
-export BVISIBLE_ADMIN_EMAIL
-export BVISIBLE_ADMIN_PASSWORD
+export BVISIBLE_BASE_URL BVISIBLE_ADMIN_EMAIL BVISIBLE_ADMIN_PASSWORD
 
 echo "[smoke] Target: ${BVISIBLE_BASE_URL}"
 echo "[smoke] Installing chromium if needed..."

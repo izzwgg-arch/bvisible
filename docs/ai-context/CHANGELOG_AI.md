@@ -5,6 +5,50 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT E — SMOKE QA READINESS]
+
+**Problem:** Browser smoke is routinely skipped because `BVISIBLE_ADMIN_PASSWORD` is operator-only and unavailable to agents. The runbook needed platform-specific setup steps and a safe pre-flight env check.
+
+**Smoke setup (operator)**
+
+1. Copy `server-scripts/smoke/.bvisible-smoke.env.example` → `~/.bvisible-smoke.env` (Windows: `%USERPROFILE%\.bvisible-smoke.env`).
+2. Set `BVISIBLE_ADMIN_PASSWORD` locally — never commit.
+3. Unix: `chmod 600 ~/.bvisible-smoke.env`.
+4. Verify: `bash server-scripts/smoke/check-smoke-env.sh` (exit 0 = ready).
+5. Run: `bash server-scripts/smoke/run-smoke.sh all` or individual `pnpm --filter @bvisible/web run smoke:*` scripts.
+
+**Files touched**
+
+- `server-scripts/smoke/check-smoke-env.sh` — **new** read-only credential pre-flight
+- `server-scripts/smoke/run-smoke.sh` — delegates env check; supports `USERPROFILE` on Windows
+- `server-scripts/smoke/.bvisible-smoke.env.example` — Windows + Unix setup comments
+- `docs/ai-context/DEBUGGING.md` — § 0c expanded: PowerShell, Git Bash, suite table, output meanings, common failures, smoke data inventory/cleanup
+- `docs/ai-context/UI_SYSTEM.md` — dashboard smoke bullet points to `check-smoke-env.sh`
+
+**Env checker behavior**
+
+- Loads `~/.bvisible-smoke.env` (or `%USERPROFILE%\.bvisible-smoke.env`) if present
+- Prints base URL + email only; password shown as `(set, not shown)`
+- Exit `2` with `MISSING: BVISIBLE_*` lines when vars absent; never mutates files
+
+**Verification (local operator laptop, 2026-05-25)**
+
+| Command | Result |
+|---------|--------|
+| `bash server-scripts/smoke/check-smoke-env.sh` | exit **2** — clean `MISSING:` output, no password leak |
+| `bash server-scripts/db/.list-smoke-data.sh` | exit **1** — `cd /opt/bvisible/app` not found (expected off-host; run via SSH on app host) |
+| `bash server-scripts/db/.cleanup-smoke-data.sh` | exit **1** — same (dry-run/delete logic only reachable on app host) |
+
+**Remaining gaps**
+
+- Full Playwright smoke not run in this session (no operator password in agent environment).
+- List/cleanup scripts still require app host path; no local-docker shortcut documented.
+- Agents will continue to skip browser smoke — by design until operator runs pre-flight.
+
+**Deploy:** none.
+
+---
+
 ## 2026-05-25 — [AGENT B — FINALIZATION CLOSEOUT]
 
 **Audit findings (before changes)**

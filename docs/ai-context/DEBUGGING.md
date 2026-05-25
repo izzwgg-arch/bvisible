@@ -48,39 +48,98 @@ Confirms OCR approve wires reconciliation, VPH isolation, and lists fixture PO `
 
 After deploy (or against local `pnpm dev`), exercise the **staff UI + public quote** once with Playwright.
 
-**Required env (never commit `.env` with passwords):**
+**Who runs this:** the human operator on a laptop — **not** CI agents and **not** from `/opt/bvisible/shared/env/.env` on the server. Agents skip browser smoke when `BVISIBLE_ADMIN_PASSWORD` is unavailable; that is expected. Operators must create a local credential file once.
 
-- `BVISIBLE_BASE_URL` — e.g. `https://vmi3270817.contaboserver.net` or `http://127.0.0.1:3000`
-- `BVISIBLE_ADMIN_EMAIL`
-- `BVISIBLE_ADMIN_PASSWORD`
+### Required env (never commit passwords)
 
-**One-time browser binaries** (per machine):
+| Variable | Example |
+|----------|---------|
+| `BVISIBLE_BASE_URL` | `https://vmi3270817.contaboserver.net` or `http://127.0.0.1:3000` |
+| `BVISIBLE_ADMIN_EMAIL` | staff login email |
+| `BVISIBLE_ADMIN_PASSWORD` | staff password — **never print, log, or commit** |
 
-```bash
+### Where to store credentials
+
+| Platform | Path |
+|----------|------|
+| Linux / macOS / Git Bash | `~/.bvisible-smoke.env` |
+| Windows | `%USERPROFILE%\.bvisible-smoke.env` (e.g. `C:\Users\you\.bvisible-smoke.env`) |
+
+Playwright also auto-loads this file via `apps/web/smoke/load-smoke-env.ts` when vars are unset in the shell.
+
+### One-time setup — Windows PowerShell
+
+From the repo root:
+
+```powershell
+Copy-Item server-scripts\smoke\.bvisible-smoke.env.example $env:USERPROFILE\.bvisible-smoke.env
+notepad $env:USERPROFILE\.bvisible-smoke.env   # set BVISIBLE_ADMIN_PASSWORD
+```
+
+Verify (use Git Bash — installed with Git for Windows):
+
+```powershell
+& "C:\Program Files\Git\bin\bash.exe" server-scripts/smoke/check-smoke-env.sh
+```
+
+Expected when password is set: `OK — credentials present`, base URL + email shown, `BVISIBLE_ADMIN_PASSWORD=(set, not shown)`.
+
+Install Chromium once (any shell):
+
+```powershell
 pnpm --filter @bvisible/web exec playwright install chromium
 ```
 
-**Credential file (local only, never commit):**
+Run smoke via Git Bash:
+
+```powershell
+& "C:\Program Files\Git\bin\bash.exe" server-scripts/smoke/run-smoke.sh all
+```
+
+### One-time setup — Git Bash / Linux / macOS
 
 ```bash
 cp server-scripts/smoke/.bvisible-smoke.env.example ~/.bvisible-smoke.env
 chmod 600 ~/.bvisible-smoke.env
 # edit: set BVISIBLE_ADMIN_PASSWORD (never print or commit)
+
+bash server-scripts/smoke/check-smoke-env.sh
+pnpm --filter @bvisible/web exec playwright install chromium
 ```
 
-Or export `BVISIBLE_BASE_URL`, `BVISIBLE_ADMIN_EMAIL`, `BVISIBLE_ADMIN_PASSWORD` in your shell. Playwright loads `~/.bvisible-smoke.env` automatically via `smoke/load-smoke-env.ts` when vars are unset. **Do not** put the password in `/opt/bvisible/shared/env/.env` unless explicitly approved.
+`chmod 600` restricts the file to your user (recommended on Unix). Windows has no chmod — keep the file in your profile directory only.
 
-**Run smoke (wrapper or individual suites):**
+Alternatively export `BVISIBLE_*` in the shell for the session (same three vars). **Do not** put the smoke password in `/opt/bvisible/shared/env/.env` unless explicitly approved.
+
+### Verify env before running (read-only)
 
 ```bash
-bash server-scripts/smoke/run-smoke.sh all          # core + vendor + po-lifecycle
-bash server-scripts/smoke/run-smoke.sh po-lifecycle
+bash server-scripts/smoke/check-smoke-env.sh
+```
 
-# or from repo root:
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | All three vars set; prints base URL + email only |
+| `2` | Missing var(s) — lists `MISSING: BVISIBLE_*` lines, no password echoed |
+
+### Run smoke suites
+
+Wrapper (checks env, installs Chromium if needed, runs Playwright):
+
+```bash
+bash server-scripts/smoke/run-smoke.sh core              # core only
+bash server-scripts/smoke/run-smoke.sh vendor            # vendor-normalization only
+bash server-scripts/smoke/run-smoke.sh po-lifecycle      # PO lifecycle only
+bash server-scripts/smoke/run-smoke.sh all               # all three sequentially
+```
+
+Or from repo root (requires env already set or `~/.bvisible-smoke.env` present — Playwright loads the file):
+
+```bash
 pnpm --filter @bvisible/web run smoke:core
 pnpm --filter @bvisible/web run smoke:vendor-normalization
 pnpm --filter @bvisible/web run smoke:po-lifecycle
-pnpm --filter @bvisible/web run smoke:all
+pnpm --filter @bvisible/web run smoke:all                # all specs in smoke/
 ```
 
 | Suite | What it checks |
@@ -89,13 +148,58 @@ pnpm --filter @bvisible/web run smoke:all
 | `smoke:vendor-normalization` | Vendor rail + OCR review copy (`SMOKE-VendorNorm`) |
 | `smoke:po-lifecycle` | Lifecycle rail + operator buttons; **mutations only on `SMOKE-*` PO numbers**; read-only rail on `PO-90100*` fixtures if no `SMOKE-` PO |
 
-The suite creates/reuses rows prefixed **`SMOKE-`** (`SMOKE-Client`, `SMOKE-CatalogItem`, estimate title **`SMOKE-CoreWorkflow`**). Email/OCR fixtures use **`PO-901001`–`PO-901004`** and **`SMOKE-EMAIL*`** vendors/emails — inventory via `bash server-scripts/db/.list-smoke-data.sh` on the app host. Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default.
+### What output means
 
-If **`SMOKE-CoreWorkflow`** is **FINALIZED** or **REJECTED**, reset or delete that estimate and re-run.
+| Output | Meaning |
+|--------|---------|
+| `[smoke-env] OK` | Credentials loaded; safe to run Playwright |
+| `[smoke-env] MISSING: …` / exit `2` | Create or fix `~/.bvisible-smoke.env`; smoke will be skipped |
+| `[smoke] Target: https://…` | Wrapper is hitting that base URL |
+| Playwright `N passed` | Suite succeeded |
+| Playwright `timeout` / `401` / login redirect loop | Wrong password, wrong base URL, or app down — re-run `check-smoke-env.sh` and confirm deploy |
+| `SMOKE-CoreWorkflow` already FINALIZED/REJECTED | Delete or reset that estimate (see smoke data below) and re-run |
 
-**Smoke data cleanup (optional, destructive):** `bash server-scripts/db/.cleanup-smoke-data.sh` dry-runs counts; `CONFIRM_SMOKE_CLEANUP=1` deletes only `SMOKE-*` / `PO-90100*` / `SMOKE-EMAIL*` rows. Prefer inventory first; manual SQL for FK-heavy chains if unsure.
+Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default.
 
-**On production host** (`/opt/bvisible/app`, after deploy): scripts ship in-repo — `bash server-scripts/db/.list-smoke-data.sh` (read-only inventory), `bash server-scripts/smoke/run-smoke.sh all` (fails fast without `BVISIBLE_*` on the server; run Playwright from an operator laptop with `~/.bvisible-smoke.env`, not from `/opt/bvisible/shared/env/.env`).
+### Common failures
+
+1. **`bash: command not found` (Windows)** — use Git Bash: `"C:\Program Files\Git\bin\bash.exe" server-scripts/smoke/check-smoke-env.sh`
+2. **All specs skipped / env missing** — operator file not created; agents cannot invent the password
+3. **Login failure** — typo in password or email; staging URL mismatch in `BVISIBLE_BASE_URL`
+4. **Chromium not installed** — run `pnpm --filter @bvisible/web exec playwright install chromium`
+5. **Stale `SMOKE-CoreWorkflow` estimate** — blocked finalize state; inventory + optional cleanup below
+
+The suite creates/reuses rows prefixed **`SMOKE-`** (`SMOKE-Client`, `SMOKE-CatalogItem`, estimate title **`SMOKE-CoreWorkflow`**). Email/OCR fixtures use **`PO-901001`–`PO-901004`** and **`SMOKE-EMAIL*`** vendors/emails.
+
+### Smoke data inventory and cleanup (app host)
+
+Fixtures use prefixes **`SMOKE-`**, **`PO-90100*`**, **`SMOKE-EMAIL*`** only. Real customer rows are never targeted.
+
+**List smoke rows (read-only, run on production app host via SSH):**
+
+```bash
+cd /opt/bvisible/app
+bash server-scripts/db/.list-smoke-data.sh
+```
+
+Prints clients, vendors, estimates, POs, ingested emails, OCR docs, and count summary. No deletes.
+
+**Cleanup (destructive — dry-run by default):**
+
+```bash
+cd /opt/bvisible/app
+bash server-scripts/db/.cleanup-smoke-data.sh
+# prints "DRY RUN" and row counts — NO deletes
+
+CONFIRM_SMOKE_CLEANUP=1 bash server-scripts/db/.cleanup-smoke-data.sh
+# WARNING: deletes only SMOKE-* / PO-90100* / SMOKE-EMAIL* fixture rows
+```
+
+> **Warning:** `CONFIRM_SMOKE_CLEANUP=1` permanently removes smoke/fixture rows only. Never run against a database you have not inventoried with `.list-smoke-data.sh` first. Prefer dry-run; use manual SQL for FK-heavy chains if unsure.
+
+On operator laptops without `/opt/bvisible/app`, list/cleanup scripts exit at `cd` — that is expected; SSH to the app host instead.
+
+**Playwright from operator laptop:** `bash server-scripts/smoke/run-smoke.sh all` (credentials in `~/.bvisible-smoke.env`, not server `.env`).
 
 ## 1. Deploy queue — failing or stuck
 

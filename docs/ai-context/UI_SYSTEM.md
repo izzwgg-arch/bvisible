@@ -72,7 +72,7 @@ The look, feel, and behavior of the web app.
   shows a dismissible checklist whose completion state is computed from real tenant data
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
-  **Browser smoke** (operator laptop, `~/.bvisible-smoke.env` — not on server `.env`): `smoke:core`, `smoke:vendor-normalization`, `smoke:po-lifecycle`; wrapper `bash server-scripts/smoke/run-smoke.sh all`. Deployed on host at `/opt/bvisible/app` (`fd3a0bf+`). See `DEBUGGING.md` § 0c.
+  **Browser smoke** (operator laptop only — `%USERPROFILE%\.bvisible-smoke.env` on Windows, `~/.bvisible-smoke.env` elsewhere; **not** server `.env`): verify with `bash server-scripts/smoke/check-smoke-env.sh`, then `smoke:core`, `smoke:vendor-normalization`, `smoke:po-lifecycle`, or wrapper `bash server-scripts/smoke/run-smoke.sh all`. Agents skip smoke without the operator password. See `DEBUGGING.md` § 0c.
   **Regression bundles** (operator/CI): `verify:po-lifecycle`, `verify:workflow-queues`, `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
