@@ -5,7 +5,7 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-25 — Email review PO suggestions (deterministic ranking) — pending deploy
+## 2026-05-25 — Email review PO suggestions (deterministic ranking) (`199c3a1`) — production
 
 **Phase 1 audit**
 
@@ -30,7 +30,18 @@ Weighted points: exact PO-# (+100), QBO # (+90), vendor sender (+40), PO in file
 
 **Smoke** — `smoke/email-ingestion-review.spec.ts` extended for suggestion copy; not run here (needs `BVISIBLE_*`).
 
-**Deploy** — Pending push.
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | `199c3a1253f237b9d270e9f9089a5b860153c53b` |
+| **Job ID** | `20260525T175405-d9bf62` |
+| **Migrations** | None |
+| **Health** | `{"status":"ok","service":"bvisible-web","commit":"199c3a1253f237b9d270e9f9089a5b860153c53b"}` |
+
+**Server** — `verify:email-ingestion` **35/35**.
+
+**Remaining gaps** — Suggestions limited to 200 recent open POs in page query; canceled POs excluded from pool; Playwright smoke not run without `BVISIBLE_*`.
 
 ---
 
