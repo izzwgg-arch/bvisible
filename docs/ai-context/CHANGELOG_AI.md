@@ -25,7 +25,7 @@ records what changed, the files touched, the risks, and the verification.
 
 **Conflicts:** none (dashboard merge was conflict-free; OCR/PO branches were pre-integrated).
 
-**Final merged SHA:** *(see Deploy section — updated after push + deploy)*
+**Final merged SHA:** `0a7d8ba54a1a938b2f37c024f1c4cf68aa6d2ff4` (merge `015c063` + docs `0a7d8ba`)
 
 **Pre-deploy verification (local, merged tree)**
 
@@ -40,13 +40,33 @@ records what changed, the files touched, the risks, and the verification.
 | `pnpm --filter @bvisible/web run verify:email-ingestion` | **57/57** |
 | `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
 
-**Deploy:** *(job ID, health JSON, server verification — filled after queue deploy)*
+**Deploy**
 
-**Browser / smoke:** *(filled after deploy attempt)*
+| Field | Value |
+|-------|-------|
+| **Commit** | `0a7d8ba54a1a938b2f37c024f1c4cf68aa6d2ff4` |
+| **Job ID** | `20260525T192207-671425` |
+| **Migrations** | 19 applied, **0 pending** (`20260517143000_po_lifecycle_operator_events` latest) |
+| **PM2** | `bvisible-web` **online** (reload OK) |
+| **Health (loopback)** | `{"status":"ok","service":"bvisible-web","commit":"0a7d8ba54a1a938b2f37c024f1c4cf68aa6d2ff4"}` |
+
+**Server verification (`/opt/bvisible/app`)**
+
+| Script / command | Result |
+|------------------|--------|
+| `typecheck` | **pass** |
+| `verify:workflow-queues` | **26/26** |
+| `verify:po-lifecycle` | **19/19** |
+| `verify:po-receipt-workflow` | **21/21** |
+| `verify:ocr-quality` | **24/24** (tesseract on host — no skip) |
+| `verify:ocr-reconciliation-flow` | **50/50** |
+| `bash server-scripts/db/.verify-ocr-quality.sh` | **PASS** — tick route, secret gate, no unapproved VPH |
+
+**Browser / smoke:** **skipped** — `~/.bvisible-smoke.env` absent on operator laptop (expected per `DEBUGGING.md` §0c). Manual QA checklist deferred to operator: `/dashboard` command center, `/admin/ocr-review` queue + detail, `/purchase-orders/[id]` execution workspace.
 
 **Docs confirmed:** `UI_SYSTEM.md`, `PO_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `ESTIMATE_ENGINE.md` — Agent F/G/H entries retained; this entry records batch merge + deploy.
 
-**Remaining gaps:** *(updated post-deploy)*
+**Remaining gaps:** Playwright smoke not run (no operator password). Inline OCR PDF preview still opens download in new tab. `PoOperationalRail` unused — cleanup candidate. Manual browser QA on the three UI surfaces not performed in this session.
 
 ---
 
