@@ -48,6 +48,11 @@
    (`po-lifecycle-actions.ts`) append `POEvent` + `audit_logs` (`po_lifecycle_*` actions) — they
    do not change `POLineItem` pricing, estimate totals, or QBO fields. Stale badges never trigger
    side effects.
+10. **Estimate finalize is status-only.** `finalizeEstimateAction` runs
+    `evaluateEstimateFinalizeGates()` then sets `Estimate.status` to **`FINALIZED`** and writes
+    **`estimate_finalized`** audit metadata — it never calls `computeEstimate` or mutates line
+    pricing. **`saveEstimateAction`** refuses edits while FINALIZED. Dashboard/list “Potentially
+    ready” labels are heuristics only; detail checklist + server gates are authoritative.
 
 ## Customer estimate quotes
 

@@ -26,16 +26,18 @@ it.
   $45 minimum, $0.50 per grommet. Helper: `packages/pricing/src/banner.ts`.
   (Editor calculator UI to compose a banner line lands in the next phase;
   the engine helper is shipped now so other surfaces can use it.)
-- **R-EST-04** An estimate cannot be **finalized** until at least one of its
-  linked, non-deleted `PurchaseOrder`s has a non-null `qboPoNumber`. Enforced
-  server-side by `finalizeEstimateAction`
-  (`apps/web/app/(app)/estimates/[id]/actions.ts`); typed errors
-  `no_linked_po` / `no_qbo_number` map to sanitized UI strings and are
-  written to `audit_logs` as `estimate_finalized` (or never written if the
-  gate fails). `updateEstimateStatusAction` rejects `FINALIZED` directly to
-  guarantee no other code path can bypass the gate. Once an estimate is
-  `FINALIZED`, status changes are blocked except via `unfinalizeEstimateAction`
-  (ADMIN+). `EstimateStatus` enum: `DRAFT / SENT / APPROVED / REJECTED / FINALIZED`.
+- **R-EST-04** An estimate cannot be **finalized** until: (1) status is
+  **`APPROVED`**, (2) at least one linked, non-deleted `PurchaseOrder` exists,
+  (3) **every** linked PO has a non-null `qboPoNumber`, and (4) no linked PO has
+  a latest reconciliation snapshot outside **`MATCHED`/`RESOLVED`** (no snapshot
+  is OK). Enforced server-side by `evaluateEstimateFinalizeGates()` +
+  `finalizeEstimateAction` (`apps/web/app/(app)/estimates/[id]/actions.ts`);
+  typed errors include `not_approved`, `no_linked_po`, `no_qbo_number`,
+  `reconciliation_unresolved`, `already_finalized`. Success writes
+  `audit_logs` **`estimate_finalized`** only — **no** pricing recompute.
+  `updateEstimateStatusAction` rejects `FINALIZED` directly. **`saveEstimateAction`**
+  refuses edits while FINALIZED. Unfinalize: `unfinalizeEstimateAction` (ADMIN+).
+  `EstimateStatus` enum: `DRAFT / SENT / APPROVED / REJECTED / FINALIZED`.
 
 ## Purchase Orders
 

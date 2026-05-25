@@ -5,6 +5,113 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT E — SMOKE QA READINESS]
+
+**Problem:** Browser smoke is routinely skipped because `BVISIBLE_ADMIN_PASSWORD` is operator-only and unavailable to agents. The runbook needed platform-specific setup steps and a safe pre-flight env check.
+
+**Smoke setup (operator)**
+
+1. Copy `server-scripts/smoke/.bvisible-smoke.env.example` → `~/.bvisible-smoke.env` (Windows: `%USERPROFILE%\.bvisible-smoke.env`).
+2. Set `BVISIBLE_ADMIN_PASSWORD` locally — never commit.
+3. Unix: `chmod 600 ~/.bvisible-smoke.env`.
+4. Verify: `bash server-scripts/smoke/check-smoke-env.sh` (exit 0 = ready).
+5. Run: `bash server-scripts/smoke/run-smoke.sh all` or individual `pnpm --filter @bvisible/web run smoke:*` scripts.
+
+**Files touched**
+
+- `server-scripts/smoke/check-smoke-env.sh` — **new** read-only credential pre-flight
+- `server-scripts/smoke/run-smoke.sh` — delegates env check; supports `USERPROFILE` on Windows
+- `server-scripts/smoke/.bvisible-smoke.env.example` — Windows + Unix setup comments
+- `docs/ai-context/DEBUGGING.md` — § 0c expanded: PowerShell, Git Bash, suite table, output meanings, common failures, smoke data inventory/cleanup
+- `docs/ai-context/UI_SYSTEM.md` — dashboard smoke bullet points to `check-smoke-env.sh`
+
+**Env checker behavior**
+
+- Loads `~/.bvisible-smoke.env` (or `%USERPROFILE%\.bvisible-smoke.env`) if present
+- Prints base URL + email only; password shown as `(set, not shown)`
+- Exit `2` with `MISSING: BVISIBLE_*` lines when vars absent; never mutates files
+
+**Verification (local operator laptop, 2026-05-25)**
+
+| Command | Result |
+|---------|--------|
+| `bash server-scripts/smoke/check-smoke-env.sh` | exit **2** — clean `MISSING:` output, no password leak |
+| `bash server-scripts/db/.list-smoke-data.sh` | exit **1** — `cd /opt/bvisible/app` not found (expected off-host; run via SSH on app host) |
+| `bash server-scripts/db/.cleanup-smoke-data.sh` | exit **1** — same (dry-run/delete logic only reachable on app host) |
+
+**Remaining gaps**
+
+- Full Playwright smoke not run in this session (no operator password in agent environment).
+- List/cleanup scripts still require app host path; no local-docker shortcut documented.
+- Agents will continue to skip browser smoke — by design until operator runs pre-flight.
+
+**Deploy:** none.
+
+---
+
+## 2026-05-25 — [AGENT B — FINALIZATION CLOSEOUT]
+
+**Audit findings (before changes)**
+
+| Area | Prior behavior | Gap |
+|------|----------------|-----|
+| Server `finalizeEstimateAction` | ≥1 linked PO + ≥1 with QBO | Did not require `APPROVED`, all PO QBO #s, or clean recon; weaker than UI checklist |
+| Totals panel finalize button | Blocked on any QBO (not all) | Mismatch with checklist “every linked PO” copy |
+| Dashboard ready-to-finalize queue | QBO on all POs only | No recon gate; could imply ready when detail checklist blocked |
+| Estimates list chips | “Ready to finalize” when PO+invoice | Heuristic skipped QBO/recon |
+| `saveEstimateAction` | No status check | FINALIZED estimates could still save line/total mutations |
+| Checklist UI | Banner `blockedSummary` above rows | Operator asked for compact rows |
+
+**Finalization rules (R-EST-04, aligned server + UI)**
+
+Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estimate-finalization.ts`.
+
+| Gate | Required | Server | UI checklist | Invoice |
+|------|----------|--------|--------------|---------|
+| Estimate status | `APPROVED` | yes | yes | — |
+| Linked PO | ≥1 non-deleted | yes | yes | — |
+| QBO numbers | on **every** linked PO | yes | yes | — |
+| Reconciliation | latest snapshot `MATCHED` or `RESOLVED` (or none) | yes | yes | — |
+| Invoice paid | — | no (informational) | optional row | — |
+| Financial mutation on finalize | none | status + `estimate_finalized` audit only | — | — |
+| Double finalize | rejected `already_finalized` | yes | — | — |
+| Edits while FINALIZED | blocked | `saveEstimateAction` refuses; status buttons locked | Save disabled | — |
+
+**UI changes**
+
+- **Closeout checklist** — compact row list (`EstimateFinalizeChecklistPanel`); “N remaining” / **Ready to finalize** badge; invoice row marked **Optional**; removed banner summary.
+- **Totals panel** — finalize disable reason from shared gates; green helper when ready; Save disabled while FINALIZED.
+- **Dashboard queue** — ready-to-finalize fetch includes recon; rows with open recon show **Potentially ready — open to confirm.** badge/subtitle.
+- **Estimates list** — approved PO+invoice chip uses same “Potentially ready” copy (list has no QBO/recon data).
+
+**Files touched**
+
+- `apps/web/lib/estimate/estimate-finalization.ts`, `estimate-finalization.test.ts`
+- `apps/web/lib/estimate/estimate-finalize-checklist.ts`, `estimate-finalize-checklist.test.ts`
+- `apps/web/lib/estimate/estimate-list-workflow-chip.ts`
+- `apps/web/app/(app)/estimates/[id]/actions.ts`, `totals-panel.tsx`
+- `apps/web/components/estimate/estimate-finalize-checklist.tsx`
+- `apps/web/lib/workflow/get-operational-workflow-queues.ts`
+- `apps/web/app/(app)/dashboard/dashboard-operational-queues.tsx`
+- `apps/web/package.json` — `verify:estimate-finalization`
+- Docs: `ESTIMATE_ENGINE.md`, `PO_SYSTEM.md`, `UI_SYSTEM.md`, `DEBUGGING.md`, `SECURITY_RULES.md`, `KNOWN_RULES.md`
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:estimate-finalization` | **17/17** |
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
+| `pnpm --filter @bvisible/web run verify:po-receipt-workflow` | **21/21** |
+| `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
+| `pnpm --filter @bvisible/web run typecheck` | pass |
+
+**Deploy notes** — Requires commit + push before deploy (git-first). No migration. After deploy: open an APPROVED estimate with linked POs, confirm checklist rows + finalize button agree; attempt finalize with missing QBO or open recon → server error matches UI; confirm FINALIZED estimate cannot save line edits.
+
+**Remaining gaps** — List page still uses heuristic chips (labeled “Potentially ready”); Playwright finalize smoke not run in this session; editor line grid not fully read-only when FINALIZED (server save block is the enforcement).
+
+---
+
 ## 2026-05-25 — Email review PO suggestions (deterministic ranking) (`199c3a1`) — production
 
 **Phase 1 audit**
