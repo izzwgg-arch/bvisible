@@ -205,7 +205,7 @@ export function PricingHelperPanel({
             Pricing helper
           </h2>
           <p className="mt-0.5 max-w-xl text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
-            Sq ft, sheets, rolls, banner — applies to the focused grid row only.
+            Sq ft, sheets, rolls, or banner — applies to the focused grid row when you click Apply.
           </p>
         </div>
       </div>

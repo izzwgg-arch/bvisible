@@ -77,12 +77,13 @@ The look, feel, and behavior of the web app.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
   so lists and admin grids read like operations software, not raw enum strings.
-- **Estimates list** (`/estimates`) — compact table: job, client, **Workflow** chips (awaiting customer, approved waiting PO, ready to finalize heuristic), status, sell, **Next** action, quick links (quote / PO / invoice by status). **New estimate** (`/estimates/new`) — small form + guidance; routes to create client when none exist.
+- **Estimates list** (`/estimates`) — compact table: job, client, **Workflow** chips (awaiting customer, approved waiting PO, ready to finalize heuristic), status, sell, **Next** action (empty drafts → **Add lines** with `#estimate-line-grid`), quick links (quote / PO / invoice by status). **New estimate** (`/estimates/new`) — numbered 1·2·3 helper + small form; routes to create client when none exist.
 - **Estimate editor** at `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,vendor-catalog-intel-panel,catalog-item-picker}.tsx`:
-  - **Daily workflow strip** (`EstimateDailyWorkflowStrip`) — Draft → Quote sent → Approved → PO → Invoice with one primary CTA (replaces large colored workflow banners on detail).
+  - **Daily workflow strip** (`EstimateDailyWorkflowStrip`) — Draft → Quote sent → Approved → PO → Invoice with one primary CTA; header mirrors the same primary link (no duplicate Preview/Send buttons).
+  - **Estimating phase layout (Draft / Sent / Rejected)** — editor (line grid first) renders **above** fulfillment/quote panels; quote stack lives in collapsible **Quote & customer response** (`EstimateCollapsibleSection`, open when Sent). **Approved / Finalized** keep fulfillment + quote panels above the editor.
   - **Closeout checklist** (`EstimateFinalizeChecklistPanel` + `buildEstimateFinalizeChecklist`) — display-only gates: quote approved, PO linked, QBO # on every PO, reconciliation clean, invoice paid (informational); **Ready to finalize** badge when PO+QBO+recon pass; finalize still explicit in totals panel.
-  - **Layout order** — line grid first (keyboard), then catalog picker, pricing helper, vendor intel rail.
-  - **Vendor intelligence rail** (`vendor-catalog-intel-panel.tsx`) — compact **Cheapest** / **Preferred** cards with premium delta, **match reason + confidence** from `materialMatch`, **unit conversion guidance** (“Quoted by sheet”, “Converted from roll pricing”, etc.), **latest-per-vendor** table (source vendor + unit basis via source labels), explicit **Apply** actions (`onMouseDown` preventDefault — no focus steal): suggested, cheapest when lower, converted unit when a certain cents value exists; OCR block uses one-line trend copy (no large warning banners). Unresolved matches show “Needs manual review” guidance only.
+  - **Layout order (editor column)** — line grid first (keyboard), then catalog picker, pricing helper, vendor intel rail.
+  - **Vendor intelligence rail** (`vendor-catalog-intel-panel.tsx`) — compact idle copy; **Cheapest** / **Preferred** cards; latest-per-vendor table only when **>1** vendor row; explicit **Apply** actions (`onMouseDown` preventDefault — no focus steal). Unresolved matches show guidance only — nothing auto-applies.
   - **Workflow rail** (`components/workflow/estimate-workflow-rail.tsx`) above the editor: estimate lifecycle
     (Draft → Sent → Approved → Finalized), linked PO summary + QBO gap copy, finalize gate explanation,
     and contextual **next recommended action** when something blocks progress.
@@ -106,15 +107,12 @@ The look, feel, and behavior of the web app.
     note appears when the multiplier deviates from the default 3.000×.
   - Save button is the primary CTA in the totals panel, disabled until
     the editor is dirty. `Cmd/Ctrl+S` anywhere inside the editor saves.
-  - **Customer quote** — estimate detail header links to **`/estimates/[id]/preview`**
-    (print/PDF via browser; send-to-customer anchor). Preview shows allocated sell
-    lines only; vendor intel / editor totals rail stay on the editor route.
+  - **Customer quote** — detail header primary CTA from **`getEstimateEditorPrimaryAction()`** (Preview / Send track / PO / invoice anchors). **`/estimates/[id]/preview`** for print/PDF and **`#customer-send`** email block.
   - **Staff-facing quote visibility stack** — `EstimateFulfillmentPanel.tsx` leads with **`EstimateOperationalStepRail`** + **`EstimateRelationshipFlowStrip`** (Quote→PO→Invoice→Paid) + fulfillment/next-step rails + anchored CTAs (`#estimate-create-po`, `/purchase-orders/new?estimateId=`) grounded on **`purchase_orders.estimateId`** + **`Invoice.estimateId`**, explicit **Create invoice** when **`APPROVED`** without a linked invoice, linked invoice chips — plus timeline acceptance timestamps (never status-alone guesses). Immediately after, **`EstimateQuoteResponseSummary.tsx`**
     (`apps/web/components/estimate/estimate-quote-response-summary.tsx`) keeps responders/name/note/timing states glanceable ahead of the public-link tooling.
   - **Estimate timeline (operations)** — `EstimateTimelineSection.tsx` renders chronological merges from **`estimate_timeline_events`** plus whitelist **`audit_logs`** (`estimate_sent_to_client`, public quote views, status transitions, finalize/unfinalize); duplicated Accept/Decline audits intentionally suppressed because **`QUOTE_*`** timeline rows already cover customer outcomes — avoids fake duplicates while respecting “real rows only”.
   - **Public customer link** — panel (`components/estimate/estimate-quote-link-panel.tsx`)
-    manages **`/quote/[token]`** shares with badges describing revoked/expired/active/responded combinations,
-    clearer revoke/regenerate affordances (full URL still returned once per issuance — DB holds SHA-256 hash only).
+    manages **`/quote/[token]`** shares; empty state links to **Preview → Send to customer** before first issuance.
   - **Public quote page** (`app/quote/[token]/`) — customer **`QuoteDocument`** plus **`print:hidden`** Accept /
     Decline panel (optional name + note); finalized estimates with no prior customer response show a responses-closed
     message instead of buttons.
@@ -214,7 +212,7 @@ The look, feel, and behavior of the web app.
     derived from `POEventKind` and a human-readable timestamp; inline
     "Add note" form posts to `addPoNoteAction` and re-renders the
     timeline via `revalidatePath`.
-- **Estimate totals panel** exposes the **PO bridge**: anchored **Linked POs** (`#estimate-linked-pos`) showing vendor, cached PO total, short `createdAt`, status chips, plus deterministic reconciliation/receipt OCR badges when rows exist; anchored **Create PO from estimate** (`#estimate-create-po`, **`APPROVED` gate** + explanatory copy beforehand); explicit **Link existing purchase order** (`/purchase-orders/new?estimateId=`); and the **Finalize / Unfinalize** controls with R-EST-04 inline reasons. Unfinalize stays ADMIN+ only.
+- **Estimate totals panel** exposes the **PO bridge**: anchored **Linked POs** (`#estimate-linked-pos`) showing vendor, cached PO total, short `createdAt`, status chips, plus deterministic reconciliation/receipt OCR badges when rows exist; anchored **Create PO from estimate** (`#estimate-create-po`, **`APPROVED` gate** + explanatory copy beforehand); explicit **Link existing purchase order** (`/purchase-orders/new?estimateId=`); and the **Finalize / Unfinalize** controls with shared R-EST-04 gate copy from `evaluateEstimateFinalizeGates` (Save disabled while FINALIZED). Unfinalize stays ADMIN+ only.
 - **Status pills** for both `EstimateStatus` (now including `FINALIZED`
   in slate) and `POStatus` (DRAFT / SENT / ORDERED /
   PARTIALLY_RECEIVED / RECEIVED / CANCELED) live in the same six-tone

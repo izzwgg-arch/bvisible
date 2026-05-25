@@ -21,7 +21,7 @@ export default async function NewEstimatePage() {
     <>
       <PageHeader
         title="New estimate"
-        subtitle="Start with job info, then add catalog items or pricing-helper lines."
+        subtitle="Client and job title first — lines come on the next screen."
         actions={
           <Link
             href="/estimates"
@@ -47,7 +47,9 @@ export default async function NewEstimatePage() {
         ) : (
           <>
             <p className="mb-4 text-[13px] leading-snug text-[var(--color-bv-muted)]">
-              Pick the customer and job title. You&apos;ll add catalog or pricing-helper lines on the next screen.
+              <span className="font-medium text-[var(--color-bv-text)]">1.</span> Pick the customer ·{' '}
+              <span className="font-medium text-[var(--color-bv-text)]">2.</span> Name the job ·{' '}
+              <span className="font-medium text-[var(--color-bv-text)]">3.</span> Add catalog or pricing-helper lines on the next screen.
             </p>
             <NewEstimateForm clients={clients} />
           </>

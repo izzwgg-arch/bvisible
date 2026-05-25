@@ -266,7 +266,7 @@ export function LineGrid({
                     <div className="mx-auto max-w-md rounded-[10px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-4 text-center">
                       <p className="text-[13px] font-medium text-[var(--color-bv-text)]">No line items yet</p>
                       <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-                        Click <strong className="text-[var(--color-bv-text)]">+ Material</strong> below, or focus a row and use the catalog / pricing helper under the grid.
+                        Click <strong className="text-[var(--color-bv-text)]">+ Material</strong> below, focus the row, then use <strong className="text-[var(--color-bv-text)]">Catalog items</strong> or <strong className="text-[var(--color-bv-text)]">Pricing helper</strong>.
                       </p>
                     </div>
                   </td>

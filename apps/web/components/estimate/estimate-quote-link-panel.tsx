@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 
@@ -221,7 +222,18 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
 
       <div className="mt-4 flex flex-wrap gap-2">
         {!props.quoteLinkRowsDesc.length ? (
-          <button
+          <>
+            <p className="w-full text-[12px] leading-snug text-[var(--color-bv-muted)]">
+              No public link yet. Use{' '}
+              <Link
+                href={`/estimates/${props.estimateId}/preview#customer-send`}
+                className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+              >
+                Quote preview → Send to customer
+              </Link>{' '}
+              for email copy, or generate a link here.
+            </p>
+            <button
             type="button"
             disabled={pending}
             onClick={runIssue}
@@ -229,6 +241,7 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
           >
             Generate public link
           </button>
+          </>
         ) : (
           <>
             <button

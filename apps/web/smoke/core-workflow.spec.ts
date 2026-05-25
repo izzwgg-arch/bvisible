@@ -63,13 +63,13 @@ async function openOrCreateSmokeEstimate(page: Page): Promise<{ estimateUrl: str
     await page.goto('/estimates/new');
     await page.locator('select[name="clientId"]').selectOption({ label: SMOKE_CLIENT });
     await page.locator('input[name="title"]').fill(SMOKE_ESTIMATE_TITLE);
-    await page.getByRole('button', { name: 'Create estimate' }).click();
+    await page.getByRole('button', { name: 'Create & add lines' }).click();
     await page.waitForURL(/\/estimates\/[^/]+$/, { timeout: 45_000 });
     return { estimateUrl: page.url(), statusFromList: 'Draft' };
   }
 
   const row = page.locator('tbody tr').filter({ has: titleLink });
-  const statusCell = row.locator('td').nth(4);
+  const statusCell = row.locator('td').nth(3);
   const statusFromList = (await statusCell.innerText()).trim();
   await titleLink.click();
   await page.waitForURL(/\/estimates\/[^/]+$/, { timeout: 45_000 });
@@ -111,6 +111,7 @@ test.describe.serial('core workflow smoke', () => {
         ['/clients', /^Clients$/],
         ['/vendors', /^Vendors$/],
         ['/estimates', /^Estimates$/],
+        ['/estimates/new', /^New estimate$/],
         ['/purchase-orders', /^Purchase orders$/],
         ['/invoices', /^Invoices$/],
         ['/admin/email-ingestion', /^Email ingestion$/],
@@ -144,6 +145,13 @@ test.describe.serial('core workflow smoke', () => {
 
     await page.goto(estimateUrl);
     const estimateNumber = await readEstimateNumber(page);
+
+    await test.step('Estimate editor shell (no crash)', async () => {
+      await expect(page.getByRole('heading', { level: 2, name: 'Line items' })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2, name: 'Catalog items' })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 2, name: 'Pricing helper' })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Preview quote|Add line items|Send \/ track quote/i })).toBeVisible();
+    });
 
     if (statusFromList === 'Draft') {
       await test.step('Estimate editor + catalog Apply only on click', async () => {

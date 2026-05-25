@@ -158,7 +158,7 @@ Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estim
 | `verify:estimate-quote` | 53/53 |
 | `typecheck` | pass |
 
-**Deploy** — Not pushed. Commit after review; `git push origin main` before deploy per `DEPLOY_QUEUE.md`.
+**Deploy** — Pushed to `feat/estimate-ux-polish` (not merged to main). No deploy from this branch until PR review.
 
 **Remaining gaps** — List “ready to finalize” chip still heuristic (no QBO check on list); collapsible quote section defaults closed on Draft (expand manually or use strip CTA); Playwright smoke needs operator `~/.bvisible-smoke.env`.
 

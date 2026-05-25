@@ -29,6 +29,7 @@ import {
   deriveEstimateOperationalSteps,
 } from '@/lib/estimate/estimate-invoice-fulfillment';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
+import { EstimateCollapsibleSection } from '@/components/estimate/estimate-collapsible-section';
 import { buildEstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
 
 export const metadata = { title: 'Estimate' };
@@ -291,6 +292,56 @@ export default async function EstimateDetailPage({
     quoteLinkActive: quoteUi.quotePanelProps.activeLink != null,
   });
 
+  const isEstimatingPhase =
+    estimate.status === EstimateStatus.DRAFT ||
+    estimate.status === EstimateStatus.SENT ||
+    estimate.status === EstimateStatus.REJECTED;
+
+  const quoteStack = (
+    <>
+      <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
+      <EstimateTimelineSection rows={quoteUi.timelineRows} />
+      <EstimateQuoteLinkPanel
+        estimateId={estimate.id}
+        estimateStatus={estimate.status}
+        quoteLinkRowsDesc={quoteUi.quoteLinkRows}
+        activeLink={quoteUi.quotePanelProps.activeLink}
+        phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
+        disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
+        regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
+      />
+    </>
+  );
+
+  const fulfillmentBlock = (
+    <EstimateFulfillmentPanel
+      estimateId={estimate.id}
+      estimateStatus={estimate.status}
+      headline={fulfillmentHeadline}
+      hints={fulfillmentHints}
+      operationalSteps={operationalRail.map((s) => ({
+        key: s.key,
+        label: s.label,
+        done: s.done,
+        atIso: s.at ? s.at.toISOString() : null,
+      }))}
+      relationshipStrip={
+        <EstimateRelationshipFlowStrip
+          estimateId={estimate.id}
+          quoteDone={flowFlags.customer_approved}
+          poDone={flowFlags.po_created}
+          invoiceDone={flowFlags.invoice_created}
+          paidDone={flowFlags.invoice_paid}
+          firstPoId={linkedPosRaw[0]?.id ?? null}
+          invoiceId={linkedInvoiceRow?.id ?? null}
+        />
+      }
+      linkedInvoice={linkedInvoiceSnapshot}
+      linkedPos={linkedBootstrapRows}
+      finalizeChecklist={finalizeChecklist}
+    />
+  );
+
   const bootstrap: EditorBootstrap = {
     estimate: {
       id: estimate.id,
@@ -333,16 +384,10 @@ export default async function EstimateDetailPage({
         actions={
           <>
             <Link
-              href={`/estimates/${estimate.id}/preview`}
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-            >
-              Preview quote
-            </Link>
-            <Link
-              href={`/estimates/${estimate.id}/preview#customer-send`}
+              href={primary.href as never}
               className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
             >
-              Send to customer
+              {primary.label}
             </Link>
             <Link
               href="/estimates"
@@ -364,46 +409,29 @@ export default async function EstimateDetailPage({
           hint={primary.hint}
         />
       </div>
-      <div className="mx-auto mb-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
-        <EstimateFulfillmentPanel
-          estimateId={estimate.id}
-          estimateStatus={estimate.status}
-          headline={fulfillmentHeadline}
-          hints={fulfillmentHints}
-          operationalSteps={operationalRail.map((s) => ({
-            key: s.key,
-            label: s.label,
-            done: s.done,
-            atIso: s.at ? s.at.toISOString() : null,
-          }))}
-          relationshipStrip={
-            <EstimateRelationshipFlowStrip
-              estimateId={estimate.id}
-              quoteDone={flowFlags.customer_approved}
-              poDone={flowFlags.po_created}
-              invoiceDone={flowFlags.invoice_created}
-              paidDone={flowFlags.invoice_paid}
-              firstPoId={linkedPosRaw[0]?.id ?? null}
-              invoiceId={linkedInvoiceRow?.id ?? null}
-            />
-          }
-          linkedInvoice={linkedInvoiceSnapshot}
-          linkedPos={linkedBootstrapRows}
-          finalizeChecklist={finalizeChecklist}
-        />
-        <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
-        <EstimateTimelineSection rows={quoteUi.timelineRows} />
-        <EstimateQuoteLinkPanel
-          estimateId={estimate.id}
-          estimateStatus={estimate.status}
-          quoteLinkRowsDesc={quoteUi.quoteLinkRows}
-          activeLink={quoteUi.quotePanelProps.activeLink}
-          phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
-          disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
-          regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
-        />
-      </div>
-      <EstimateEditor bootstrap={bootstrap} />
+      {isEstimatingPhase ? (
+        <>
+          <EstimateEditor bootstrap={bootstrap} />
+          <div className="mx-auto mt-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
+            <EstimateCollapsibleSection
+              title="Quote & customer response"
+              summary="Public link, send status, timeline — expand when ready to share"
+              defaultOpen={estimate.status === EstimateStatus.SENT}
+            >
+              {fulfillmentBlock}
+              {quoteStack}
+            </EstimateCollapsibleSection>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mx-auto mb-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
+            {fulfillmentBlock}
+            {quoteStack}
+          </div>
+          <EstimateEditor bootstrap={bootstrap} />
+        </>
+      )}
     </>
   );
 }

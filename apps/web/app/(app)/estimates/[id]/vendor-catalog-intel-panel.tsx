@@ -129,11 +129,10 @@ export function VendorCatalogIntelPanel({
   if (!line || line.kind !== EstimateLineKind.MATERIAL) {
     return (
       <aside
-        className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]/80 px-4 py-3 text-[12.5px] text-[var(--color-bv-muted)]"
+        className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]/80 px-3 py-2.5 text-[12px] leading-snug text-[var(--color-bv-muted)]"
         aria-label="Vendor pricing intelligence"
       >
-        Focus a <strong className="text-[var(--color-bv-text)]">material</strong>{' '}
-        row (description or qty) to see vendor catalog hints. Nothing here changes your line unless you explicitly apply a suggested unit cost.
+        Focus a <strong className="text-[var(--color-bv-text)]">material</strong> row to see cheapest / preferred vendor hints. Apply only when you click a button — nothing auto-fills.
       </aside>
     );
   }
@@ -153,7 +152,7 @@ export function VendorCatalogIntelPanel({
 
   return (
     <aside
-      className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)]"
+      className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-2.5 shadow-[var(--shadow-bv-card)]"
       aria-label="Vendor pricing intelligence for this material line"
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -188,7 +187,7 @@ export function VendorCatalogIntelPanel({
       ) : null}
 
       {managed ? (
-        <div className="mb-3 space-y-2 rounded-lg border border-emerald-200/90 bg-emerald-50/45 px-3 py-2.5 text-[12.5px] text-emerald-950">
+        <div className="mb-3 space-y-2 rounded-lg border border-emerald-200/90 bg-emerald-50/40 px-2.5 py-2 text-[12px] text-emerald-950">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900/90">
@@ -273,7 +272,7 @@ export function VendorCatalogIntelPanel({
             </p>
           ) : null}
 
-          {managed.vendorLatestRows.length > 0 ? (
+          {managed.vendorLatestRows.length > 1 ? (
             <div className="overflow-x-auto rounded-md border border-emerald-200/70 bg-white/40">
               <table className="w-full min-w-[320px] text-[11.5px]">
                 <thead>

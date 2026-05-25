@@ -85,19 +85,24 @@ export function CatalogItemPicker({
         Catalog items
       </h2>
       {!activeLineId ? (
-        <p className="mt-2 rounded-[8px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[12px] text-[var(--color-bv-muted)]">
-          Click a line in the grid above, then search and <strong className="text-[var(--color-bv-text)]">Apply</strong> — nothing changes until you do.
+        <p className="mt-2 text-[12px] leading-snug text-[var(--color-bv-muted)]">
+          Focus a line in the grid, then search and <strong className="text-[var(--color-bv-text)]">Apply</strong> — nothing changes until you click.
         </p>
-      ) : (
+      ) : activeLine ? (
         <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-          Applying to the focused row. Unit cost is internal; sell hint is guidance only (totals use grid × multiplier).
+          Target row:{' '}
+          <span className="font-medium text-[var(--color-bv-text)]">
+            {kindLabel(activeLine.kind)} · {activeLine.description.slice(0, 56)}
+            {activeLine.description.length > 56 ? '…' : ''}
+          </span>
+          . Unit cost is internal; sell hint is guidance only.
         </p>
-      )}
+      ) : null}
 
       <div className="mt-3 space-y-2">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-            Search
+            Search catalog
           </span>
           <input
             type="search"
@@ -110,16 +115,9 @@ export function CatalogItemPicker({
 
         <div className="rounded-[8px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[12px] text-[var(--color-bv-muted)]">
           {activeLine ? (
-            <>
-              Active row:{' '}
-              <span className="font-medium text-[var(--color-bv-text)]">
-                {kindLabel(activeLine.kind)}
-              </span>{' '}
-              · {activeLine.description.slice(0, 56)}
-              {activeLine.description.length > 56 ? '…' : ''}
-            </>
+            <>Applying to row {lines.findIndex((l) => l.id === activeLineId) + 1}.</>
           ) : (
-            <>Focus any cell on a line to choose a target row.</>
+            <>No row focused — click any cell on a line first.</>
           )}
         </div>
 

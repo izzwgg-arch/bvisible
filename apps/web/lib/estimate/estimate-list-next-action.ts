@@ -9,12 +9,16 @@ export type EstimateListNextAction = {
 export function getEstimateListNextAction(input: {
   id: string;
   status: EstimateStatus;
+  lineCount?: number;
   hasLinkedPo?: boolean;
   hasLinkedInvoice?: boolean;
 }): EstimateListNextAction {
   const base = `/estimates/${input.id}`;
   switch (input.status) {
     case EstimateStatus.DRAFT:
+      if (input.lineCount === 0) {
+        return { label: 'Add lines', href: `${base}#estimate-line-grid`, tone: 'primary' };
+      }
       return { label: 'Continue draft', href: base, tone: 'primary' };
     case EstimateStatus.SENT:
       return { label: 'Preview quote', href: `${base}/preview`, tone: 'primary' };

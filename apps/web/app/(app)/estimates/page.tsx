@@ -36,6 +36,7 @@ export default async function EstimatesPage() {
         client: { select: { id: true, companyName: true } },
         _count: {
           select: {
+            lines: true,
             purchaseOrders: { where: { deletedAt: null } },
             invoices: { where: { deletedAt: null } },
           },
@@ -118,6 +119,7 @@ export default async function EstimatesPage() {
                   const next = getEstimateListNextAction({
                     id: e.id,
                     status: e.status,
+                    lineCount: e._count.lines,
                     hasLinkedPo: hasPo,
                     hasLinkedInvoice: hasInvoice,
                   });
@@ -150,16 +152,22 @@ export default async function EstimatesPage() {
                       <td className="px-4 py-2.5 text-right font-medium tabular-nums text-[var(--color-bv-text)]">
                         {formatMoney(e.finalPriceCents)}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2">
                         <Link
                           href={next.href as never}
-                          className={`text-[12.5px] font-medium hover:underline ${
+                          title={next.label}
+                          className={`inline-flex items-center gap-0.5 text-[12.5px] font-medium hover:underline ${
                             next.tone === 'primary'
                               ? 'text-[var(--color-bv-accent)]'
                               : 'text-[var(--color-bv-muted)]'
                           }`}
                         >
                           {next.label}
+                          {next.tone === 'primary' ? (
+                            <span aria-hidden className="text-[11px]">
+                              →
+                            </span>
+                          ) : null}
                         </Link>
                       </td>
                       <td className="px-4 py-2.5">
@@ -245,7 +253,8 @@ function WorkflowChips({
       {chips.map((c) => (
         <span
           key={c.label}
-          className={`inline-flex max-w-[140px] items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium leading-tight ${CHIP_TONE[c.tone]}`}
+          title={c.label}
+          className={`inline-flex max-w-[148px] items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-snug ${CHIP_TONE[c.tone]}`}
         >
           {c.label}
         </span>

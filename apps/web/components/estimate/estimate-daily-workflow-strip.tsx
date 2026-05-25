@@ -112,7 +112,7 @@ export function EstimateDailyWorkflowStrip({
             href={primaryHref as never}
             className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
           >
-            {primaryLabel} →
+            {primaryLabel}
           </Link>
           <span className="max-w-[280px] text-right text-[11px] leading-snug text-[var(--color-bv-muted)]">
             {hint}
