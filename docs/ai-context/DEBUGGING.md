@@ -226,6 +226,8 @@ On operator laptops without `/opt/bvisible/app`, list/cleanup scripts exit at `c
 
 **Playwright from operator laptop:** `bash server-scripts/smoke/run-smoke.sh all` (credentials in `~/.bvisible-smoke.env`, not server `.env`).
 
+**On production app host (`/opt/bvisible/app`, commit `c91b7f0+`):** smoke scripts ship with every deploy under `server-scripts/smoke/`. Running `bash server-scripts/smoke/check-smoke-env.sh` on the server **without** `~/.bvisible-smoke.env` is expected to exit **2** (fail-fast, no secrets printed) — do **not** create smoke credentials on the server; operators run Playwright from a laptop only.
+
 ## 1. Deploy queue — failing or stuck
 
 ### Symptom: deploys keep going to `failed/`

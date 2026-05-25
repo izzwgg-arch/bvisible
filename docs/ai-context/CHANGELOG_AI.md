@@ -141,16 +141,36 @@ records what changed, the files touched, the risks, and the verification.
 | Command | Result |
 |---------|--------|
 | `bash server-scripts/smoke/check-smoke-env.sh` | exit **2** — clean `MISSING:` output, no password leak |
+| `pnpm --filter @bvisible/web run typecheck` | **pass** |
 | `bash server-scripts/db/.list-smoke-data.sh` | exit **1** — `cd /opt/bvisible/app` not found (expected off-host; run via SSH on app host) |
 | `bash server-scripts/db/.cleanup-smoke-data.sh` | exit **1** — same (dry-run/delete logic only reachable on app host) |
 
+**Production deploy (`c91b7f0`, 2026-05-25)**
+
+| Item | Value |
+|------|-------|
+| Job ID | `20260525T190158-6f7f1e` |
+| Prior prod commit | `199c3a1` |
+| Deployed commit | `c91b7f07ea62515bc640b94cdbf2835df541f848` |
+| Cherry-pick source | `f66f43c` on `docs/smoke-qa-readiness` |
+| PM2 | `bvisible-web` reload OK (online) |
+| Health (public) | `{"status":"ok","service":"bvisible-web","commit":"c91b7f07ea62515bc640b94cdbf2835df541f848"}` |
+| Migrations | none pending (19 applied) |
+| Playwright smoke on server | **not run** (opt-in; no `~/.bvisible-smoke.env` on host) |
+
+**Server post-deploy verification**
+
+- `server-scripts/smoke/check-smoke-env.sh`, `run-smoke.sh`, `.bvisible-smoke.env.example` present under `/opt/bvisible/app/server-scripts/smoke/`
+- `bash server-scripts/smoke/check-smoke-env.sh` on server (no credentials): exit **2**, `MISSING: BVISIBLE_*` only — no password printed, no DB mutations
+- `~/.bvisible-smoke.env` absent on `deploy@212.56.32.136` (confirmed)
+
 **Remaining gaps**
 
-- Full Playwright smoke not run in this session (no operator password in agent environment).
-- List/cleanup scripts still require app host path; no local-docker shortcut documented.
+- Full Playwright smoke not run (operator must create local `~/.bvisible-smoke.env` on laptop).
+- List/cleanup scripts require SSH to app host (`/opt/bvisible/app`).
 - Agents will continue to skip browser smoke — by design until operator runs pre-flight.
 
-**Deploy:** none.
+**Deploy:** `c91b7f0` live on production via deploy queue (docs-only follow-up commits do not require redeploy).
 
 ---
 
