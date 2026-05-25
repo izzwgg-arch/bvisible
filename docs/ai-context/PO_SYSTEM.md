@@ -177,6 +177,8 @@ normalization). Estimate editor matching uses the same normalized labels + deter
 alias ladder (`VENDOR_PRICE_ENGINE.md`). Deterministic pairing requires equal counts per normalized label;
 otherwise ambiguous PO/receipt rows + `SpendAlert` candidates.
 
+**Email review suggestions:** When inbound mail stays **UNMATCHED** (e.g. multiple PO tokens, multiple vendor open POs), `/admin/email-ingestion` shows ranked PO suggestions — display-only; operators still use **Link to this PO** / manual link (`manualLinkEmailToPoAction`) before materialization.
+
 **Operational queues (dashboard):** Cross-entity buckets via `getOperationalWorkflowQueues()` (vendor reply, OCR review, variance, etc.). **PO vendor lifecycle queues** (`getPoLifecycleDashboardQueues()` in `apps/web/lib/po/`) are PO-centric: waiting vendor ack, waiting shipment/receipt, partial receipt, variance, ready to finalize, blocked/backordered — derived from `getPurchaseOrderLifecycleState()` only. PO detail **`PoLifecycleRail`** shows the same ladder + stale badge + next action. Display-only; no financial mutation.
 
 ### Vendor order lifecycle (deterministic)

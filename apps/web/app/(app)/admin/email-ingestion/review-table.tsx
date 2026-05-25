@@ -14,6 +14,8 @@ import {
   labelEmailReviewReasonCode,
 } from '@/lib/email-ingest/review-reasons';
 import { labelEmailIngestStatus, labelEmailMatchReason } from '@/lib/ui/status-labels';
+import type { EmailReviewPoSuggestion } from '@/lib/email-ingest/email-review-po-suggestions';
+import { EmailReviewPoSuggestionsPanel } from '@/components/email-ingest/email-review-po-suggestions';
 import {
   dismissEmailAction,
   manualLinkEmailToPoAction,
@@ -52,6 +54,7 @@ export interface EmailRow {
   attachments: AttachmentRow[];
   bodyTextSnippet: string | null;
   reviewReasonCodes: EmailReviewReasonCode[];
+  poSuggestions: readonly EmailReviewPoSuggestion[];
 }
 
 export interface ReviewTableProps {
@@ -133,12 +136,7 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
     setErrByRow((e) => ({ ...e, [rowId]: msg }));
   }
 
-  async function doLink(rowId: string) {
-    const purchaseOrderId = poChoiceByRow[rowId];
-    if (!purchaseOrderId) {
-      reportErr(rowId, 'Pick a PO from the list first.');
-      return;
-    }
+  async function doLinkToPo(rowId: string, purchaseOrderId: string) {
     setBusyRow(rowId);
     reportErr(rowId, null);
     try {
@@ -151,6 +149,15 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
     } finally {
       setBusyRow(null);
     }
+  }
+
+  async function doLink(rowId: string) {
+    const purchaseOrderId = poChoiceByRow[rowId];
+    if (!purchaseOrderId) {
+      reportErr(rowId, 'Pick a PO from the list first.');
+      return;
+    }
+    await doLinkToPo(rowId, purchaseOrderId);
   }
 
   async function doRetry(rowId: string) {
@@ -206,6 +213,10 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
         const canManualLink =
           row.status !== EmailIngestStatus.MATCHED &&
           row.status !== EmailIngestStatus.DISMISSED;
+        const showSuggestions =
+          canManualLink &&
+          (row.status === EmailIngestStatus.UNMATCHED ||
+            row.status === EmailIngestStatus.PENDING);
         const canDismiss = row.status !== EmailIngestStatus.MATCHED;
         const canRetry =
           row.status === EmailIngestStatus.UNMATCHED ||
@@ -272,6 +283,16 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                         matchHint: row.matchHint,
                       })}
                 </p>
+                {showSuggestions ? (
+                  <EmailReviewPoSuggestionsPanel
+                    suggestions={row.poSuggestions}
+                    busy={busyRow === row.id}
+                    onLink={(poId) => {
+                      setPoChoiceByRow((m) => ({ ...m, [row.id]: poId }));
+                      void doLinkToPo(row.id, poId);
+                    }}
+                  />
+                ) : null}
               </div>
               <button
                 type="button"

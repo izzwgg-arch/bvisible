@@ -32,7 +32,13 @@ test('email ingestion review UI shows smoke rows and controls', async ({ page })
   await expect(smokeRow).toBeVisible({ timeout: 15_000 });
   await smokeRow.getByRole('button', { name: 'Details' }).click();
 
-  await expect(page.getByText(/Matched by|No automatic PO match|Manual review/i).first()).toBeVisible();
+  await expect(
+    page.getByText(/Matched by|Review:|No PO match|Manual review/i).first(),
+  ).toBeVisible();
+  const suggestions = page.getByText(/Suggestions only|No safe PO suggestion/i);
+  if ((await suggestions.count()) > 0) {
+    await expect(suggestions.first()).toBeVisible();
+  }
   await expect(page.getByText('Link', { exact: true })).toBeVisible();
   await expect(page.getByText('Retry', { exact: true })).toBeVisible();
   await expect(page.getByText('Dismiss', { exact: true })).toBeVisible();

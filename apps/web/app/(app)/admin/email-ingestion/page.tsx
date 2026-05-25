@@ -10,6 +10,10 @@ import { loadInboxDiag } from '@/lib/email-ingest/config';
 import { InboxConfigCard } from './inbox-config-card';
 import { parseStoredReviewReasonCodes } from '@/lib/email-ingest/review-reasons';
 import {
+  getEmailReviewPoSuggestions,
+  type PoSuggestionCandidate,
+} from '@/lib/email-ingest/email-review-po-suggestions';
+import {
   EmailIngestionReviewTable,
   type EmailRow,
   type PoChoice,
@@ -94,7 +98,16 @@ export default async function EmailIngestionPage({
         id: true,
         number: true,
         qboPoNumber: true,
-        vendor: { select: { name: true } },
+        status: true,
+        updatedAt: true,
+        vendorId: true,
+        vendor: { select: { id: true, name: true, email: true } },
+        estimate: {
+          select: {
+            title: true,
+            client: { select: { companyName: true } },
+          },
+        },
       },
     }),
     loadInboxDiag(me.tenantId),
@@ -121,23 +134,65 @@ export default async function EmailIngestionPage({
     }),
   ]);
 
-  const rows: EmailRow[] = emails.map((e) => ({
-    id: e.id,
-    subject: e.subject,
-    fromAddress: e.fromAddress,
-    fromName: e.fromName,
-    receivedAt: e.receivedAt.toISOString(),
-    createdAt: e.createdAt.toISOString(),
-    status: e.status,
-    matchReason: e.matchReason,
-    matchHint: e.matchHint,
-    matchedPo: e.matchedPurchaseOrder,
-    matchedVendor: e.matchedVendor,
-    attachmentCount: e.attachmentCount,
-    attachments: e.attachments,
-    bodyTextSnippet: e.bodyTextSnippet,
-    reviewReasonCodes: parseStoredReviewReasonCodes(e.reviewReasonCodes),
+  const suggestionCandidates: PoSuggestionCandidate[] = pos
+    .filter((p): p is typeof p & { vendorId: string } => p.vendorId != null)
+    .map((p) => ({
+    id: p.id,
+    number: p.number,
+    qboPoNumber: p.qboPoNumber,
+    vendorId: p.vendorId,
+    vendorName: p.vendor?.name ?? null,
+    vendorEmail: p.vendor?.email ?? null,
+    status: p.status,
+    updatedAt: p.updatedAt,
+    estimateTitle: p.estimate?.title ?? null,
+    clientCompanyName: p.estimate?.client?.companyName ?? null,
   }));
+
+  const vendorIdBySenderEmail = new Map<string, string>();
+  for (const p of pos) {
+    const email = p.vendor?.email?.trim().toLowerCase();
+    if (email && p.vendor?.id) vendorIdBySenderEmail.set(email, p.vendor.id);
+  }
+
+  const rows: EmailRow[] = emails.map((e) => {
+    const reviewReasonCodes = parseStoredReviewReasonCodes(e.reviewReasonCodes);
+    const attachmentFilenames = e.attachments.map((a) => a.originalFilename);
+    const senderVendorId =
+      vendorIdBySenderEmail.get(e.fromAddress.trim().toLowerCase()) ??
+      e.matchedVendor?.id ??
+      null;
+
+    return {
+      id: e.id,
+      subject: e.subject,
+      fromAddress: e.fromAddress,
+      fromName: e.fromName,
+      receivedAt: e.receivedAt.toISOString(),
+      createdAt: e.createdAt.toISOString(),
+      status: e.status,
+      matchReason: e.matchReason,
+      matchHint: e.matchHint,
+      matchedPo: e.matchedPurchaseOrder,
+      matchedVendor: e.matchedVendor,
+      attachmentCount: e.attachmentCount,
+      attachments: e.attachments,
+      bodyTextSnippet: e.bodyTextSnippet,
+      reviewReasonCodes,
+      poSuggestions: getEmailReviewPoSuggestions({
+        status: e.status,
+        fromAddress: e.fromAddress,
+        subject: e.subject,
+        bodyTextSnippet: e.bodyTextSnippet,
+        matchHint: e.matchHint,
+        matchedVendorId: e.matchedVendor?.id ?? null,
+        reviewReasonCodes,
+        attachmentFilenames,
+        candidatePos: suggestionCandidates,
+        senderVendorId,
+      }),
+    };
+  });
 
   const poChoices: PoChoice[] = pos.map((p) => ({
     id: p.id,

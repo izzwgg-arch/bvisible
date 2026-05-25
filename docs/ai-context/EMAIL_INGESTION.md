@@ -318,7 +318,9 @@ materialization (`OCR_PENDING`, `OCR_FAILED`), and **`MANUAL_REVIEW_REQUIRED`**
 whenever the row is still unmatched. Codes are never AI-derived. The admin UI
 shows compact chips plus a one-line **Why** on each collapsed row (match or **Review:** prefix) from `explainEmailMatch` / `explainUnmatchedReview` (`apps/web/lib/email-ingest/review-reasons.ts`) — Details expand shows body/attachments only (no duplicate explain paragraph).
 
-**Fixture coverage:** `lib/email-ingest/ingest-fixtures.test.ts` — RE/FW subjects, forwarded chains, multi-PDF MIME, attachment dedupe keys (same filename, different bytes). Included in `verify:email-ingestion`.
+**Deterministic PO suggestions (operator review only)** — `getEmailReviewPoSuggestions()` in `apps/web/lib/email-ingest/email-review-po-suggestions.ts` ranks up to **three** POs for **UNMATCHED** / **PENDING** rows using the same token rules as the matcher (internal `PO-#`, QBO-like tokens, vendor sender, filename, open status, recency, estimate/client title overlap). **Does not** change `matchEmail` or auto-link. UI: `EmailReviewPoSuggestionsPanel` — PO number, vendor, status, age, reason chips, confidence label (**Strong / Possible / Weak**), **Link to this PO** (explicit `manualLinkEmailToPoAction`). Copy: *Suggestions only — operator must choose.*
+
+**Fixture coverage:** `lib/email-ingest/ingest-fixtures.test.ts` — RE/FW subjects, forwarded chains, multi-PDF MIME, attachment dedupe keys (same filename, different bytes). Ranking: `email-review-po-suggestions.test.ts`. Included in `verify:email-ingestion`.
 
 - Filterable buckets: **Unmatched** (default), **Matched**, **Failed**,
   **Dismissed**, **All**. Each bucket shows count badges.

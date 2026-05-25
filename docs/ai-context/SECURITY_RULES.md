@@ -270,6 +270,12 @@
   escaping, and the original filename is the same sanitized
   `[A-Za-z0-9._-]{1,200}` value used for PO uploads. Raw HTML bodies
   are not stored.
+- **PO suggestions are not auto-match.** Ranked PO hints on UNMATCHED/PENDING
+  rows (`getEmailReviewPoSuggestions`) are computed from existing email + PO
+  fields only — no LLM, no fuzzy scoring, no change to `matchEmail`. Linking
+  still requires an explicit operator action (`manualLinkEmailToPoAction`);
+  `materializeOnPo` refuses to create a second `VENDOR_REPLY` for the same
+  `sourceEmailId`.
 - **Allowed log fields.** `messageId`, lower-cased sender domain,
   `tenantId`, `attachmentCount`, `matchReason`, `durationMs`,
   `errorKind` (one of `imap_connect`, `imap_auth`, `imap_fetch`,

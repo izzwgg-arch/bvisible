@@ -53,7 +53,7 @@ The look, feel, and behavior of the web app.
 - **Utility helper** `cn()` at `apps/web/lib/cn.ts` (clsx + tailwind-merge).
 - **Empty states** — reusable `<EmptyState>` at `apps/web/components/app/empty-state.tsx`
   for clients/vendors/estimates/PO list pages (replace bare table placeholders when a list is empty).
-  Admin surfaces (Receipt OCR index, email ingestion review grid, reconciliation spend inbox,
+  Admin surfaces (Receipt OCR index, email ingestion review grid with deterministic **PO suggestions** on unmatched rows, reconciliation spend inbox,
   vendor price alerts on the dashboard) use the same card language + next-step CTAs where helpful.
 - **Dashboard** (`apps/web/app/(app)/dashboard/page.tsx`) — server-loaded **real counts**
   via `getDashboardMetrics()` in `apps/web/lib/dashboard/get-dashboard-metrics.ts`: open estimates,

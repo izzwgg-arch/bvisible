@@ -5,6 +5,35 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — Email review PO suggestions (deterministic ranking) — pending deploy
+
+**Phase 1 audit**
+
+| Available today | Use for suggestions |
+|-----------------|---------------------|
+| `IngestedEmail`: subject, body snippet, fromAddress, matchHint, `matchedVendorId`, `reviewReasonCodes`, status | Haystack + ambiguity context |
+| Attachments: `originalFilename` | PO # in filename signal |
+| `matchEmail` output persisted as UNMATCHED + codes | No change to matcher |
+| PO list query (200 rows): number, QBO #, vendor, status, `updatedAt`, estimate title, client name | Candidate pool + ranking |
+
+**Missing / not required:** No new DB columns; suggestions computed at RSC load in `page.tsx` via `getEmailReviewPoSuggestions()`.
+
+**Ranking (display-only, `lib/email-ingest/email-review-po-suggestions.ts`)**
+
+Weighted points: exact PO-# (+100), QBO # (+90), vendor sender (+40), PO in filename (+35), open PO (+20), recency (+8–15), job/client token overlap (+25 each, max 50). Canceled PO penalized (−40). Requires ≥15 points **and** at least one identity signal (not status/recency alone). Top 3; confidence: Strong ≥100, Possible ≥55, Weak otherwise.
+
+**UI** — Collapsed review rows on UNMATCHED/PENDING show suggestion panel + **Link to this PO** (still calls `manualLinkEmailToPoAction`). Copy: “Suggestions only — operator must choose.”
+
+**Manual link safety** — Unchanged matcher. `manualLinkEmailToPoAction` rejects already-MATCHED. `materializeOnPo` short-circuits duplicate `VENDOR_REPLY` for same `sourceEmailId` (no duplicate PO events/attachments).
+
+**Tests** — `email-review-po-suggestions.test.ts` (9 cases); `verify:email-ingestion` **35/35**; `typecheck` pass.
+
+**Smoke** — `smoke/email-ingestion-review.spec.ts` extended for suggestion copy; not run here (needs `BVISIBLE_*`).
+
+**Deploy** — Pending push.
+
+---
+
 ## 2026-05-25 — Estimate operator UX + finalize checklist + IMAP/OCR hardening (`cdde7f1`) — production
 
 **Flow audit (Phase 1)**
