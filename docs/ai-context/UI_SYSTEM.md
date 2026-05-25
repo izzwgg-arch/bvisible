@@ -139,10 +139,14 @@ The look, feel, and behavior of the web app.
   line table). Confirmed rows link to PO reconciliation. No workflow logic changes — polish only.
   **Regression:** `verify:ocr-quality`, `verify:ocr-reconciliation-flow`. **Smoke:** `smoke:vendor-normalization`.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
-  `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /
-  `SUPERSEDED` / `DISMISSED` chips for audit). The **dashboard** links into this inbox via the
-  unreconciled PO metric for admins; **SpendOperationAlerts** (`OPEN` only) lists actionable rows on `/dashboard`.
-  Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
+  `/purchase-orders/[id]/reconciliation`. **Agent K polish:** card-based variance rows
+  (`components/reconciliation/variance-line-row.tsx`) with PO vs receipt compare cells,
+  signed Δ price, match + resolution chips, action `title` hints (confirm / accept variance /
+  reject / merge / mark reconciled / dismiss), snapshot summary bar, **Needs review** vs
+  **Matched·resolved** sections, stale operator-stamp banner, compact **No PO or estimate totals
+  change here** copy (`lib/reconciliation/ui-copy.ts`). Spend alerts on PO detail + inbox use
+  shared `SpendAlertRow` (**Review variance** primary). Dashboard **SpendOperationAlerts** reuses
+  the same row. Humans confirm pairs, accept variance, reject mappings, manually merge unmatched
   receipt / PO rows, dismiss alerts, or stamp the PO reconciled — **no automatic PO /
   estimate mutation**.
 - **Per-tenant inbox config** at `/admin/tenants/[id]/email-inbox`

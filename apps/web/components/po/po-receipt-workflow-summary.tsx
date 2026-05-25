@@ -76,8 +76,18 @@ export function PoReceiptWorkflowSummaryCard({
         <MiniStat
           label="Variance lines"
           value={String(summary.varianceLineCount)}
-          hint="Latest snapshot"
-          tone={summary.varianceLineCount > 0 ? 'amber' : 'neutral'}
+          hint={
+            summary.unresolvedVarianceLineCount > 0
+              ? `${summary.unresolvedVarianceLineCount} unresolved`
+              : 'Latest snapshot'
+          }
+          tone={
+            summary.unresolvedVarianceLineCount > 0
+              ? 'amber'
+              : summary.varianceLineCount > 0
+                ? 'neutral'
+                : 'neutral'
+          }
         />
         <MiniStat
           label="Open alerts"

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma, SpendAlertStatus } from '@bvisible/db';
-import { dismissSpendAlertFormAction } from '@/lib/reconciliation/actions';
+import { RECON_COMPARE_ONLY_BANNER } from '@/lib/reconciliation/ui-copy';
+import { SpendAlertRow } from '@/components/reconciliation/spend-alert-row';
 
 export async function SpendOperationAlerts({ tenantId }: { tenantId: string }) {
   const rows = await prisma.spendAlert.findMany({
@@ -29,54 +30,30 @@ export async function SpendOperationAlerts({ tenantId }: { tenantId: string }) {
           <h2 className="text-[15px] font-semibold tracking-tight text-rose-950">
             Spend & reconciliation alerts
           </h2>
-          <p className="mt-1 text-[12.5px] text-rose-900">
-            Operational signals from PO ↔ receipt snapshots. Normalized labels only
-            — no raw OCR text. Nothing auto-adjusts PO lines or accounting.
-          </p>
+          <p className="mt-1 text-[12px] text-rose-900/90">{RECON_COMPARE_ONLY_BANNER}</p>
         </div>
+        <Link
+          href="/admin/reconciliation"
+          className="shrink-0 text-[12.5px] font-medium text-rose-900 underline-offset-2 hover:underline"
+        >
+          Full inbox →
+        </Link>
       </div>
-      <ul className="mt-4 flex flex-col gap-3">
+
+      <ul className="mt-3 flex flex-col gap-2">
         {rows.map((r) => (
-          <li
+          <SpendAlertRow
             key={r.id}
-            className="flex flex-col gap-2 rounded-[8px] border border-rose-200 bg-white px-3 py-2.5 text-[13px] text-rose-950 sm:flex-row sm:items-start sm:justify-between"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">{r.title}</div>
-              <div className="mt-0.5 text-[12px] text-rose-900">{r.body}</div>
-              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-bv-muted)]">
-                <span className="rounded bg-rose-100 px-1.5 py-0.5 font-medium text-rose-900">
-                  {r.kind.replaceAll('_', ' ')}
-                </span>
-                {r.vendor ? (
-                  <Link
-                    href={`/vendors/${r.vendorId}`}
-                    className="text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
-                  >
-                    {r.vendor.name}
-                  </Link>
-                ) : null}
-                {r.purchaseOrderId && r.purchaseOrder ? (
-                  <Link
-                    href={`/purchase-orders/${r.purchaseOrderId}/reconciliation`}
-                    className="text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
-                  >
-                    {r.purchaseOrder.number}
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-            <form className="shrink-0">
-              <input type="hidden" name="alertId" value={r.id} />
-              <button
-                type="submit"
-                formAction={dismissSpendAlertFormAction}
-                className="rounded-[8px] border border-rose-300 bg-white px-3 py-1.5 text-[12px] font-medium text-rose-900 hover:bg-rose-50"
-              >
-                Dismiss
-              </button>
-            </form>
-          </li>
+            alertId={r.id}
+            title={r.title}
+            body={r.body}
+            kind={r.kind}
+            purchaseOrderId={r.purchaseOrderId}
+            purchaseOrderNumber={r.purchaseOrder?.number}
+            vendorName={r.vendor?.name}
+            vendorId={r.vendorId}
+            variant="dashboard"
+          />
         ))}
       </ul>
     </section>

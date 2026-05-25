@@ -1513,6 +1513,18 @@ ORDER BY "createdAt" DESC;
 Expect resolved historical problems as **`SUPERSEDED`** with `supersededByReconciliationId`
 pointing at the newer snapshot; the PO reconciliation detail page lists rows with status chips for audit.
 
+**Variance workspace UX (operator browser checks, post–Agent K)**
+
+| Step | Expected |
+|------|----------|
+| Open `/admin/reconciliation` with OPEN alerts | **Review variance** is primary; Dismiss is secondary with tooltip |
+| Open `/purchase-orders/[id]/reconciliation` | **Needs review** section first; card rows show PO vs receipt + signed Δ; action buttons have hover hints |
+| Clean snapshot (all matched, no OPEN alerts) | Emerald “Latest snapshot is clean…” banner; **Mark reconciled** promoted in toolbar |
+| After operator stamp + newer snapshot | Amber stale-stamp banner at top |
+| Dashboard `/dashboard` (admin) | **SpendOperationAlerts** shows compare-only copy + **Review variance** per row |
+
+Regression (no browser): `verify:po-receipt-workflow`, `verify:ocr-reconciliation-flow`, `verify:workflow-queues`, `typecheck`.
+
 ### Symptom: jobs stuck `FAILED`
 
 Read `ocr_documents.lastError` (short technical message only — never raw OCR dumps).
