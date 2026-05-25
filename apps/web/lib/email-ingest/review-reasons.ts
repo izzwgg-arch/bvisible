@@ -184,3 +184,77 @@ export function labelEmailReviewReasonCode(code: EmailReviewReasonCode): string 
       return code;
   }
 }
+
+/** Compact chip label for dense review queue rows. */
+export function shortLabelEmailReviewReasonCode(code: EmailReviewReasonCode): string {
+  switch (code) {
+    case 'MULTIPLE_PO_MATCHES':
+      return 'Multi PO';
+    case 'MULTIPLE_QBO_MATCHES':
+      return 'Multi QBO';
+    case 'UNKNOWN_PO':
+      return 'Unknown PO';
+    case 'MULTIPLE_VENDOR_PO_CANDIDATES':
+      return 'Multi vendor';
+    case 'NO_ATTACHMENTS':
+      return 'No files';
+    case 'ATTACHMENT_REJECTED':
+      return 'Rejected file';
+    case 'DUPLICATE_MESSAGE':
+      return 'Duplicate';
+    case 'OCR_PENDING':
+      return 'OCR pending';
+    case 'OCR_FAILED':
+      return 'OCR failed';
+    case 'MANUAL_REVIEW_REQUIRED':
+      return 'Manual';
+    default:
+      return code;
+  }
+}
+
+export const EMAIL_REASON_FILTERS = [
+  'all',
+  'attachment_rejected',
+  'ambiguous',
+  'ocr_pending',
+] as const;
+
+export type EmailReasonFilter = (typeof EMAIL_REASON_FILTERS)[number];
+
+export function isEmailReasonFilter(s: string): s is EmailReasonFilter {
+  return (EMAIL_REASON_FILTERS as readonly string[]).includes(s);
+}
+
+const AMBIGUOUS_CODES: ReadonlySet<EmailReviewReasonCode> = new Set([
+  'MULTIPLE_PO_MATCHES',
+  'MULTIPLE_QBO_MATCHES',
+  'MULTIPLE_VENDOR_PO_CANDIDATES',
+  'UNKNOWN_PO',
+]);
+
+export function matchesEmailReasonFilter(
+  codes: readonly EmailReviewReasonCode[],
+  filter: EmailReasonFilter,
+): boolean {
+  if (filter === 'all') return true;
+  const c = new Set(codes);
+  switch (filter) {
+    case 'attachment_rejected':
+      return c.has('ATTACHMENT_REJECTED') || c.has('NO_ATTACHMENTS');
+    case 'ambiguous':
+      return [...AMBIGUOUS_CODES].some((code) => c.has(code));
+    case 'ocr_pending':
+      return c.has('OCR_PENDING') || c.has('OCR_FAILED');
+    default:
+      return true;
+  }
+}
+
+export function countEmailReasonFilter(
+  rows: ReadonlyArray<{ reviewReasonCodes: readonly EmailReviewReasonCode[] }>,
+  filter: EmailReasonFilter,
+): number {
+  if (filter === 'all') return rows.length;
+  return rows.filter((r) => matchesEmailReasonFilter(r.reviewReasonCodes, filter)).length;
+}

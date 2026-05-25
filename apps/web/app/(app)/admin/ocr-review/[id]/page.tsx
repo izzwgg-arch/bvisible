@@ -56,6 +56,19 @@ export default async function OcrReviewDetailPage({
 
   if (!doc) notFound();
 
+  const nextInQueue =
+    doc.status === OcrJobStatus.REVIEW_REQUIRED
+      ? await prisma.ocrDocument.findFirst({
+          where: {
+            tenantId: me.tenantId,
+            status: OcrJobStatus.REVIEW_REQUIRED,
+            updatedAt: { gt: doc.updatedAt },
+          },
+          orderBy: { updatedAt: 'asc' },
+          select: { id: true },
+        })
+      : null;
+
   const previewHref =
     doc.poAttachment &&
     `/api/po/${doc.poAttachment.purchaseOrderId}/attachments/${doc.poAttachment.id}`;
@@ -169,6 +182,9 @@ export default async function OcrReviewDetailPage({
           purchaseOrderId={poId}
           purchaseOrderNumber={poNumber}
           disabled={!isReview}
+          nextReviewHref={
+            nextInQueue ? `/admin/ocr-review/${nextInQueue.id}` : null
+          }
         />
       </div>
 

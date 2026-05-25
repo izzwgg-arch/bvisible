@@ -26,9 +26,9 @@ pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
 pnpm --filter @bvisible/web run verify:po-receipt-workflow
 pnpm --filter @bvisible/web run verify:po-lifecycle
 pnpm --filter @bvisible/web run verify:workflow-queues
-pnpm --filter @bvisible/web run verify:email-ingestion   # 57 tests: match + storage + ingest-fixtures + operational-safety + review-reasons + email-review-po-suggestions
+pnpm --filter @bvisible/web run verify:email-ingestion   # 59 tests: match + storage + ingest-fixtures + operational-safety + review-reasons + email-review-po-suggestions
 pnpm --filter @bvisible/web run verify:email-ingestion-fixtures   # 18 tests: MIME parse + dedupe fixtures only
-pnpm --filter @bvisible/web run verify:email-operational-safety   # 17 tests: review-reasons + dedupe/OCR/vendor-price static safety
+pnpm --filter @bvisible/web run verify:email-operational-safety   # 19 tests: review-reasons + dedupe/OCR/vendor-price static safety
 pnpm --filter @bvisible/web run typecheck
 bash server-scripts/db/.verify-email-ingestion-flow.sh
 ```
@@ -59,8 +59,8 @@ Regression: `verify:po-lifecycle`, `verify:po-receipt-workflow`, `typecheck` (no
 
 | Step | Expect |
 |------|--------|
-| Queue `/admin/ocr-review` | Dense rows; status chips; stale badge on rows >2d; tab counts |
-| Detail — Needs review | Sticky decision rail visible without scrolling; line table; attachment opens in new tab |
+| Queue `/admin/ocr-review` | Dense rows; status chips; stale badge on rows >2d; tab counts always visible; optional **Stale** filter; **Review →** column; `j`/`k` row link focus |
+| Detail — Needs review | Sticky decision rail; line table; **Review next →** when queue has another job; attachment opens in new tab |
 | Approve | Pricing + reconciliation message; **Open reconciliation** chip appears |
 | Reject | “No pricing was written” — no VPH rows |
 | Failed tab | Engine error panel; no line approval table |

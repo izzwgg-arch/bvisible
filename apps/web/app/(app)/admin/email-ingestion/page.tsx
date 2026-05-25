@@ -8,7 +8,13 @@ import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { loadInboxDiag } from '@/lib/email-ingest/config';
 import { InboxConfigCard } from './inbox-config-card';
-import { parseStoredReviewReasonCodes } from '@/lib/email-ingest/review-reasons';
+import {
+  countEmailReasonFilter,
+  isEmailReasonFilter,
+  matchesEmailReasonFilter,
+  parseStoredReviewReasonCodes,
+  type EmailReasonFilter,
+} from '@/lib/email-ingest/review-reasons';
 import {
   getEmailReviewPoSuggestions,
   type PoSuggestionCandidate,
@@ -25,8 +31,16 @@ export const dynamic = 'force-dynamic';
 const FILTERS = ['unmatched', 'matched', 'failed', 'dismissed', 'all'] as const;
 type FilterKey = (typeof FILTERS)[number];
 
+const REASON_FILTERS: { key: EmailReasonFilter; label: string }[] = [
+  { key: 'all', label: 'All unmatched' },
+  { key: 'attachment_rejected', label: 'Attachment rejected' },
+  { key: 'ambiguous', label: 'Ambiguous match' },
+  { key: 'ocr_pending', label: 'OCR pending' },
+];
+
 interface SearchParams {
   filter?: string;
+  reason?: string;
 }
 
 export default async function EmailIngestionPage({
@@ -39,6 +53,10 @@ export default async function EmailIngestionPage({
   const filter: FilterKey = (FILTERS as readonly string[]).includes(sp.filter ?? '')
     ? (sp.filter as FilterKey)
     : 'unmatched';
+  const reasonFilter: EmailReasonFilter =
+    filter === 'unmatched' && sp.reason && isEmailReasonFilter(sp.reason)
+      ? sp.reason
+      : 'all';
 
   const statusFilter = mapFilter(filter);
 
@@ -194,6 +212,11 @@ export default async function EmailIngestionPage({
     };
   });
 
+  const filteredRows =
+    filter === 'unmatched' && reasonFilter !== 'all'
+      ? rows.filter((r) => matchesEmailReasonFilter(r.reviewReasonCodes, reasonFilter))
+      : rows;
+
   const poChoices: PoChoice[] = pos.map((p) => ({
     id: p.id,
     number: p.number,
@@ -218,7 +241,7 @@ export default async function EmailIngestionPage({
     <>
       <PageHeader
         title="Email ingestion"
-        subtitle="Inbound vendor email captured by the IMAP poller. Review, link, retry, or dismiss. Matched emails materialize on the matched PO's timeline."
+        subtitle="Scan unmatched mail, link to POs, retry or dismiss. Actions stay explicit — nothing auto-links."
         actions={
           isSuperAdmin ? (
             <a
@@ -233,7 +256,7 @@ export default async function EmailIngestionPage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <section>
-          <nav className="mb-4 flex flex-wrap items-center gap-1 text-[12.5px]">
+          <nav className="mb-2 flex flex-wrap items-center gap-1 text-[11px]">
             {FILTERS.map((f) => {
               const active = f === filter;
               const label = `${f.charAt(0).toUpperCase()}${f.slice(1)}`;
@@ -250,11 +273,12 @@ export default async function EmailIngestionPage({
                           totals.matched +
                           totals.failed +
                           totals.dismissed;
+              const href = `/admin/email-ingestion?filter=${f}`;
               return (
                 <a
                   key={f}
-                  href={`/admin/email-ingestion?filter=${f}`}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium ${
+                  href={href}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-medium ${
                     active
                       ? 'border-[var(--color-bv-text)] bg-[var(--color-bv-text)] text-white'
                       : 'border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]'
@@ -262,7 +286,7 @@ export default async function EmailIngestionPage({
                 >
                   {label}
                   <span
-                    className={`inline-flex h-4 min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[10.5px] tabular-nums ${
+                    className={`inline-flex h-3.5 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] tabular-nums ${
                       active
                         ? 'bg-white/20 text-white'
                         : 'bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
@@ -275,8 +299,43 @@ export default async function EmailIngestionPage({
             })}
           </nav>
 
+          {filter === 'unmatched' ? (
+            <nav className="mb-2 flex flex-wrap items-center gap-1 text-[10px]">
+              {REASON_FILTERS.map((rf) => {
+                const active = reasonFilter === rf.key;
+                const count = countEmailReasonFilter(rows, rf.key);
+                const params = new URLSearchParams({ filter: 'unmatched' });
+                if (rf.key !== 'all') params.set('reason', rf.key);
+                return (
+                  <a
+                    key={rf.key}
+                    href={`/admin/email-ingestion?${params.toString()}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium ${
+                      active
+                        ? 'border-violet-300 bg-violet-50 text-violet-950'
+                        : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)] hover:bg-[var(--color-bv-surface)]'
+                    }`}
+                  >
+                    {rf.label}
+                    <span className="tabular-nums text-[9px] font-semibold">{count}</span>
+                  </a>
+                );
+              })}
+            </nav>
+          ) : null}
+
+          <p className="mb-2 text-[11px] text-[var(--color-bv-muted)]">
+            Showing {filteredRows.length}
+            {filter === 'unmatched' && reasonFilter !== 'all'
+              ? ` · ${REASON_FILTERS.find((r) => r.key === reasonFilter)?.label ?? reasonFilter}`
+              : ''}
+            {filter === 'unmatched' && filteredRows.length !== rows.length
+              ? ` (${rows.length} in bucket)`
+              : ''}
+          </p>
+
           <EmailIngestionReviewTable
-            rows={rows}
+            rows={filteredRows}
             pos={poChoices}
             filter={filter}
           />

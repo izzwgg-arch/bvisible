@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { startTransition, useState } from 'react';
+import { startTransition, useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   EmailIngestStatus,
@@ -12,6 +12,7 @@ import {
   explainEmailMatch,
   explainUnmatchedReview,
   labelEmailReviewReasonCode,
+  shortLabelEmailReviewReasonCode,
 } from '@/lib/email-ingest/review-reasons';
 import { labelEmailIngestStatus, labelEmailMatchReason } from '@/lib/ui/status-labels';
 import type { EmailReviewPoSuggestion } from '@/lib/email-ingest/email-review-po-suggestions';
@@ -81,6 +82,9 @@ function reasonCodeChipClass(code: EmailReviewReasonCode): string {
   if (code === 'OCR_PENDING') {
     return 'border-sky-200 bg-sky-50 text-sky-900';
   }
+  if (code === 'MANUAL_REVIEW_REQUIRED') {
+    return 'border-slate-200 bg-slate-50 text-slate-700';
+  }
   return 'border-slate-200 bg-slate-50 text-slate-800';
 }
 
@@ -115,14 +119,25 @@ function formatBytes(n: number): string {
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toISOString().slice(0, 16).replace('T', ' ');
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return d.toISOString().slice(0, 10);
 }
 
 function senderLabel(row: EmailRow): string {
   if (row.fromName && row.fromName.trim().length > 0) {
-    return `${row.fromName} <${row.fromAddress}>`;
+    return row.fromName;
   }
   return row.fromAddress;
+}
+
+/** Hide noisy manual-review chip when other codes explain the row. */
+function visibleReasonCodes(codes: EmailReviewReasonCode[]): EmailReviewReasonCode[] {
+  const filtered = codes.filter((c) => c !== 'MANUAL_REVIEW_REQUIRED');
+  return filtered.length > 0 ? filtered : codes;
 }
 
 export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProps) {
@@ -131,6 +146,10 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [errByRow, setErrByRow] = useState<Record<string, string | null>>({});
   const [openRow, setOpenRow] = useState<string | null>(null);
+
+  const toggleRow = useCallback((rowId: string) => {
+    setOpenRow((prev) => (prev === rowId ? null : rowId));
+  }, []);
 
   function reportErr(rowId: string, msg: string | null) {
     setErrByRow((e) => ({ ...e, [rowId]: msg }));
@@ -187,17 +206,17 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
   if (rows.length === 0) {
     const guide = inboxEmptyGuidance(filter);
     return (
-      <div className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-8 py-12 text-center shadow-[var(--shadow-bv-card)]">
-        <h3 className="text-[16px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+      <div className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-6 py-10 text-center shadow-[var(--shadow-bv-card)]">
+        <h3 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
           {guide.title}
         </h3>
-        <p className="mx-auto mt-2 max-w-lg text-[13.5px] leading-relaxed text-[var(--color-bv-muted)]">
+        <p className="mx-auto mt-2 max-w-lg text-[13px] leading-relaxed text-[var(--color-bv-muted)]">
           {guide.body}
         </p>
         {guide.href ? (
           <Link
             href={guide.href as never}
-            className="mt-6 inline-flex items-center justify-center rounded-[10px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-[var(--shadow-bv-card)] transition-colors hover:opacity-92"
+            className="mt-5 inline-flex items-center justify-center rounded-[10px] bg-[var(--color-bv-accent)] px-4 py-2 text-[13px] font-medium text-[var(--color-bv-accent-foreground)] shadow-[var(--shadow-bv-card)] transition-colors hover:opacity-92"
           >
             {guide.linkLabel}
           </Link>
@@ -207,7 +226,7 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
   }
 
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-1.5">
       {rows.map((row) => {
         const status = STATUS_LABELS[row.status];
         const canManualLink =
@@ -224,144 +243,109 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
           row.status === EmailIngestStatus.PENDING;
         const isOpen = openRow === row.id;
         const err = errByRow[row.id];
+        const codes = visibleReasonCodes(row.reviewReasonCodes);
+        const showWhyCollapsed =
+          row.status === EmailIngestStatus.MATCHED ||
+          codes.length === 0;
+
         return (
           <li
             key={row.id}
-            className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
+            className="rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
           >
-            <div className="flex items-start gap-3 px-5 py-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${status.className}`}
-                  >
-                    {status.label}
-                  </span>
-                  {row.matchReason !== EmailMatchReason.NONE ? (
-                    <span className="inline-flex items-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
-                      {labelEmailMatchReason(row.matchReason)}
-                      {row.matchHint ? ` · ${row.matchHint}` : ''}
-                    </span>
-                  ) : null}
-                  {row.reviewReasonCodes.map((code) => (
+            <div
+              className="px-3 py-2"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !(e.target instanceof HTMLSelectElement)) {
+                  e.preventDefault();
+                  toggleRow(row.id);
+                }
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <span
-                      key={code}
-                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${reasonCodeChipClass(code)}`}
-                      title={labelEmailReviewReasonCode(code)}
+                      className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${status.className}`}
                     >
-                      {labelEmailReviewReasonCode(code)}
+                      {status.label}
                     </span>
-                  ))}
-                  {row.matchedPo ? (
-                    <a
-                      href={`/purchase-orders/${row.matchedPo.id}`}
-                      className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
-                    >
-                      → {row.matchedPo.number}
-                    </a>
+                    {row.matchReason !== EmailMatchReason.NONE &&
+                    row.status === EmailIngestStatus.MATCHED ? (
+                      <span className="inline-flex items-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-bv-muted)]">
+                        {labelEmailMatchReason(row.matchReason)}
+                      </span>
+                    ) : null}
+                    {codes.map((code) => (
+                      <span
+                        key={code}
+                        className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${reasonCodeChipClass(code)}`}
+                        title={labelEmailReviewReasonCode(code)}
+                      >
+                        {shortLabelEmailReviewReasonCode(code)}
+                      </span>
+                    ))}
+                    {row.matchedPo ? (
+                      <a
+                        href={`/purchase-orders/${row.matchedPo.id}`}
+                        className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        {row.matchedPo.number}
+                      </a>
+                    ) : null}
+                    {row.attachmentCount > 0 ? (
+                      <span className="inline-flex items-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--color-bv-muted)]">
+                        {row.attachmentCount} file{row.attachmentCount === 1 ? '' : 's'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-[13px] font-medium leading-snug text-[var(--color-bv-text)] break-words">
+                    {row.subject}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[var(--color-bv-muted)]">
+                    {senderLabel(row)} · {formatDate(row.receivedAt)}
+                  </p>
+                  {showWhyCollapsed ? (
+                    <p className="mt-1 text-[11px] leading-snug text-[var(--color-bv-muted)]">
+                      {row.status === EmailIngestStatus.MATCHED
+                        ? explainEmailMatch({
+                            matchReason: row.matchReason,
+                            matchHint: row.matchHint,
+                          })
+                        : explainUnmatchedReview({
+                            codes: row.reviewReasonCodes,
+                            matchHint: row.matchHint,
+                          })}
+                    </p>
                   ) : null}
-                  {row.attachmentCount > 0 ? (
-                    <span className="inline-flex items-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
-                      📎 {row.attachmentCount}
-                    </span>
+                  {showSuggestions ? (
+                    <EmailReviewPoSuggestionsPanel
+                      compact
+                      suggestions={row.poSuggestions}
+                      busy={busyRow === row.id}
+                      onLink={(poId) => {
+                        setPoChoiceByRow((m) => ({ ...m, [row.id]: poId }));
+                        void doLinkToPo(row.id, poId);
+                      }}
+                    />
                   ) : null}
                 </div>
-                <p className="mt-1.5 text-[14px] font-medium text-[var(--color-bv-text)] break-words">
-                  {row.subject}
-                </p>
-                <p className="mt-0.5 text-[12px] text-[var(--color-bv-muted)] break-words">
-                  {senderLabel(row)} · {formatDate(row.receivedAt)}
-                </p>
-                <p className="mt-1 text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
-                  {row.status === EmailIngestStatus.MATCHED
-                    ? explainEmailMatch({
-                        matchReason: row.matchReason,
-                        matchHint: row.matchHint,
-                      })
-                    : explainUnmatchedReview({
-                        codes: row.reviewReasonCodes,
-                        matchHint: row.matchHint,
-                      })}
-                </p>
-                {showSuggestions ? (
-                  <EmailReviewPoSuggestionsPanel
-                    suggestions={row.poSuggestions}
-                    busy={busyRow === row.id}
-                    onLink={(poId) => {
-                      setPoChoiceByRow((m) => ({ ...m, [row.id]: poId }));
-                      void doLinkToPo(row.id, poId);
-                    }}
-                  />
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => toggleRow(row.id)}
+                  className="shrink-0 inline-flex items-center justify-center rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2 py-1 text-[11px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+                  aria-expanded={isOpen}
+                >
+                  {isOpen ? 'Hide' : 'Body'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setOpenRow(isOpen ? null : row.id)}
-                className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-              >
-                {isOpen ? 'Hide' : 'Details'}
-              </button>
-            </div>
-            {isOpen ? (
-              <div className="border-t border-[var(--color-bv-border)] px-5 py-3">
-                {row.status === EmailIngestStatus.DISMISSED ? (
-                  <p className="mb-2 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">
-                    Dismissed by operator — retained for audit.
-                  </p>
-                ) : null}
-                {row.bodyTextSnippet ? (
-                  <pre className="whitespace-pre-wrap break-words rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3 text-[12px] text-[var(--color-bv-text)]">
-                    {row.bodyTextSnippet}
-                  </pre>
-                ) : (
-                  <p className="text-[12px] text-[var(--color-bv-muted)]">
-                    No text body captured.
-                  </p>
-                )}
-                {row.attachments.length > 0 ? (
-                  <ul className="mt-3 flex flex-col gap-1">
-                    {row.attachments.map((a) => (
-                      <li
-                        key={a.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5 text-[12px]"
-                      >
-                        <span className="min-w-0 text-[var(--color-bv-text)] break-all">
-                          <span
-                            className={`mr-2 inline-flex rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                              a.skipped
-                                ? 'bg-amber-100 text-amber-900'
-                                : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {a.skipped ? 'Skipped' : 'Saved'}
-                          </span>
-                          {a.originalFilename}
-                          <span className="ml-2 text-[var(--color-bv-muted)]">
-                            ({a.mimeType} · {formatBytes(a.sizeBytes)})
-                          </span>
-                        </span>
-                        {a.skipped ? (
-                          <span className="shrink-0 text-[11.5px] text-amber-900">
-                            {a.skipReason ?? 'rejected'}
-                          </span>
-                        ) : (
-                          <a
-                            href={`/api/email-ingest/${row.id}/attachments/${a.id}`}
-                            className="shrink-0 text-[var(--color-bv-text)] underline-offset-2 hover:underline"
-                            rel="noreferrer"
-                          >
-                            Download
-                          </a>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
 
-                <div className="mt-4 flex flex-wrap items-end gap-2">
+              {canManualLink || canRetry || canDismiss ? (
+                <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-[var(--color-bv-border)] pt-2">
                   {canManualLink ? (
-                    <label className="flex flex-1 min-w-[260px] flex-col gap-1">
-                      <span className="text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
+                    <label className="flex min-w-[180px] flex-1 flex-col gap-0.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
                         Link to PO
                       </span>
                       <select
@@ -372,9 +356,9 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                             [row.id]: e.currentTarget.value,
                           }))
                         }
-                        className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-1.5 text-[13px] text-[var(--color-bv-text)]"
+                        className="rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1 text-[12px] text-[var(--color-bv-text)]"
                       >
-                        <option value="">— pick a PO —</option>
+                        <option value="">— pick PO —</option>
                         {pos.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.number}
@@ -386,13 +370,13 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                     </label>
                   ) : null}
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {canManualLink ? (
                       <button
                         type="button"
                         onClick={() => doLink(row.id)}
                         disabled={busyRow === row.id}
-                        className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-text)] px-3 py-1.5 text-[12.5px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center rounded-md bg-[var(--color-bv-text)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {busyRow === row.id ? 'Linking…' : 'Link'}
                       </button>
@@ -402,7 +386,7 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                         type="button"
                         onClick={() => doRetry(row.id)}
                         disabled={busyRow === row.id}
-                        className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Retry
                       </button>
@@ -412,15 +396,77 @@ export function EmailIngestionReviewTable({ rows, pos, filter }: ReviewTableProp
                         type="button"
                         onClick={() => doDismiss(row.id)}
                         disabled={busyRow === row.id}
-                        className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[12.5px] font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center rounded-md px-2 py-1.5 text-[12px] font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Dismiss
                       </button>
                     ) : null}
                   </div>
                 </div>
-                {err ? (
-                  <p className="mt-2 text-[11.5px] text-rose-700">{err}</p>
+              ) : null}
+              {err ? <p className="mt-1.5 text-[11px] text-rose-700">{err}</p> : null}
+            </div>
+
+            {isOpen ? (
+              <div className="border-t border-[var(--color-bv-border)] px-3 py-2">
+                {row.status === EmailIngestStatus.DISMISSED ? (
+                  <p className="mb-2 text-[11px] leading-snug text-[var(--color-bv-muted)]">
+                    Dismissed by operator — retained for audit.
+                  </p>
+                ) : null}
+                {!showWhyCollapsed ? (
+                  <p className="mb-2 text-[11px] leading-snug text-[var(--color-bv-muted)]">
+                    {explainUnmatchedReview({
+                      codes: row.reviewReasonCodes,
+                      matchHint: row.matchHint,
+                    })}
+                  </p>
+                ) : null}
+                {row.bodyTextSnippet ? (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-2 text-[11px] text-[var(--color-bv-text)]">
+                    {row.bodyTextSnippet}
+                  </pre>
+                ) : (
+                  <p className="text-[11px] text-[var(--color-bv-muted)]">No text body captured.</p>
+                )}
+                {row.attachments.length > 0 ? (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {row.attachments.map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1 text-[11px]"
+                      >
+                        <span className="min-w-0 break-all text-[var(--color-bv-text)]">
+                          <span
+                            className={`mr-1.5 inline-flex rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                              a.skipped
+                                ? 'bg-amber-100 text-amber-900'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {a.skipped ? 'Skipped' : 'Saved'}
+                          </span>
+                          {a.originalFilename}
+                          <span className="ml-1.5 text-[var(--color-bv-muted)]">
+                            {formatBytes(a.sizeBytes)}
+                          </span>
+                        </span>
+                        {a.skipped ? (
+                          <span className="shrink-0 text-[10px] text-amber-900">
+                            {a.skipReason ?? 'rejected'}
+                          </span>
+                        ) : (
+                          <a
+                            href={`/api/email-ingest/${row.id}/attachments/${a.id}`}
+                            className="shrink-0 font-medium underline-offset-2 hover:underline"
+                            rel="noreferrer"
+                          >
+                            Download
+                          </a>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </div>
             ) : null}

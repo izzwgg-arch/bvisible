@@ -118,25 +118,23 @@ The look, feel, and behavior of the web app.
   additionally adds `Tenants`, `Inboxes`, and `Email test`.
 - **Email ingestion review** at `/admin/email-ingestion` (ADMIN+):
   filterable buckets (Unmatched / Matched / Failed / Dismissed / All)
-  with count badges. Per-row expand panel renders the body snippet
-  inside `<pre>` (never `dangerouslySetInnerHTML`), the per-attachment
-  download links (skipped attachments show their `skipReason` with **Saved / Skipped**
-  badges), deterministic **`reviewReasonCodes`** chips (grouped styling by severity),
-  a one-line **why matched / why review** sentence, and inline forms for **Link** (PO combobox), **Retry**, and **Dismiss**.
-  Sidebar carries the read-only inbox config card (host / port /
-  mailbox / `lastPolledAt` / `lastErrorAt` / `lastErrorMessage`;
-  password is **never** displayed) and a "Recent ticks" list. The
-  page header includes a "Configure inbox" CTA when the viewer is
-  SUPER_ADMIN.
+  with count badges. On **Unmatched**, secondary reason chips filter by
+  attachment rejected / ambiguous match / OCR pending (counts from
+  `reviewReasonCodes`). Per-row collapsed layout: compact status + short
+  reason chips, subject/sender, optional compact PO suggestions, and
+  always-visible **Link** (primary) / **Retry** / **Dismiss** (Body expand
+  for snippet + attachments only). Enter on a focused row toggles Body.
+  Sidebar carries the read-only inbox config card and Recent ticks.
 - **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): **operational approval workspace** —
   dense queue rows (status chips, vendor, line count, relative updated time, **Stale** badge after
-  2d via `STALE_OCR_REVIEW_MS`), tab pills with counts (Queue / Confirmed / Rejected / Failed).
-  Detail `/admin/ocr-review/[id]`: two-column layout — left: context strip (PO, vendor, attachment),
-  compact **line candidate table** (qty / price hierarchy, parse + confidence chips, collapsed source
-  line), collapsible metadata + OCR preview; right: **sticky decision rail** (Approve / Reject,
-  trust copy that pricing + reconciliation run only after approve, **Next steps** chips, Ctrl+Enter
-  shortcut). **FAILED** vs **Needs review** are visually distinct (failed = engine error panel, no
-  line table). Confirmed rows link to PO reconciliation. No workflow logic changes — polish only.
+  2d via `STALE_OCR_REVIEW_MS`), tab pills with always-on counts (Queue / Confirmed / Rejected / Failed),
+  optional **Stale** sub-filter on Queue (`?stale=1`), “Showing N” summary, **Review →** column,
+  and `j`/`k` keyboard focus between row links (Shift+click opens). Detail `/admin/ocr-review/[id]`:
+  two-column layout — left: context strip (PO, vendor, attachment), compact **line candidate table**
+  (qty / price hierarchy, parse + confidence chips, collapsed source line), collapsible metadata +
+  OCR preview; right: **sticky decision rail** (Approve / Reject, trust copy, **Next steps** +
+  **Review next →** when another queue job exists, Ctrl+Enter shortcut). **FAILED** vs **Needs review**
+  are visually distinct. Confirmed rows link to PO reconciliation. No workflow logic changes — polish only.
   **Regression:** `verify:ocr-quality`, `verify:ocr-reconciliation-flow`. **Smoke:** `smoke:vendor-normalization`.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
   `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /

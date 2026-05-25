@@ -316,11 +316,17 @@ codes from the matcher (`matcherReviewCodes` on `NONE`), attachment outcomes
 (`NO_ATTACHMENTS`, `ATTACHMENT_REJECTED`), merged OCR job states after PO
 materialization (`OCR_PENDING`, `OCR_FAILED`), and **`MANUAL_REVIEW_REQUIRED`**
 whenever the row is still unmatched. Codes are never AI-derived. The admin UI
-shows compact chips plus a one-line **Why** on each collapsed row (match or **Review:** prefix) from `explainEmailMatch` / `explainUnmatchedReview` (`apps/web/lib/email-ingest/review-reasons.ts`) — Details expand shows body/attachments only (no duplicate explain paragraph).
+shows compact chips plus a one-line **Why** on collapsed rows when no reason
+codes are present (matched rows always show match explain). When reason codes
+exist, short chip labels suffice on the collapsed row; full **Review:** sentence
+moves to the **Body** expand. Reason sub-filters on **Unmatched**: All / Attachment
+rejected / Ambiguous match / OCR pending (`matchesEmailReasonFilter` in
+`review-reasons.ts`). **Link**, **Retry**, and **Dismiss** stay visible on
+actionable rows without expanding Body.
 
 **Deterministic PO suggestions (operator review only)** — `getEmailReviewPoSuggestions()` in `apps/web/lib/email-ingest/email-review-po-suggestions.ts` ranks up to **three** POs for **UNMATCHED** / **PENDING** rows using the same token rules as the matcher (internal `PO-#`, QBO-like tokens, vendor sender, filename, open status, recency, estimate/client title overlap). **Does not** change `matchEmail` or auto-link. UI: `EmailReviewPoSuggestionsPanel` — PO number, vendor, status, age, reason chips, confidence label (**Strong / Possible / Weak**), **Link to this PO** (explicit `manualLinkEmailToPoAction`). Copy: *Suggestions only — operator must choose.*
 
-**Fixture coverage:** `lib/email-ingest/fixtures/mime.ts` + `ingest-fixtures.test.ts` — nested RE/FW subjects; forwarded chains with original vendor `From`/`Subject`; multi-PDF; inline image spam + valid PDF; zero-byte parts dropped; unsupported binary + PDF; path traversal filenames sanitized via `safeOriginalFilename`; dedupe keys (same name/different bytes, same bytes/different names, duplicate collapse); body dual PO tokens (`match.test.ts`); filename PO token without subject. **`operational-safety.test.ts`** — static contracts for attachment dedupe, skipped visibility, OCR enqueue idempotency, vendor-price extraction only after materialize, OCR approve gate. Ranking: `email-review-po-suggestions.test.ts`. Included in `verify:email-ingestion` (57 tests) / `verify:email-ingestion-fixtures` (18) / `verify:email-operational-safety` (17).
+**Fixture coverage:** `lib/email-ingest/fixtures/mime.ts` + `ingest-fixtures.test.ts` — nested RE/FW subjects; forwarded chains with original vendor `From`/`Subject`; multi-PDF; inline image spam + valid PDF; zero-byte parts dropped; unsupported binary + PDF; path traversal filenames sanitized via `safeOriginalFilename`; dedupe keys (same name/different bytes, same bytes/different names, duplicate collapse); body dual PO tokens (`match.test.ts`); filename PO token without subject. **`operational-safety.test.ts`** — static contracts for attachment dedupe, skipped visibility, OCR enqueue idempotency, vendor-price extraction only after materialize, OCR approve gate. Ranking: `email-review-po-suggestions.test.ts`. Reason filter helpers: `review-reasons.test.ts`. Included in `verify:email-ingestion` (59 tests) / `verify:email-ingestion-fixtures` (18) / `verify:email-operational-safety` (19).
 
 - Filterable buckets: **Unmatched** (default), **Matched**, **Failed**,
   **Dismissed**, **All**. Each bucket shows count badges.
