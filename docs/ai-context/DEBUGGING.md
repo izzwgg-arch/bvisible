@@ -44,6 +44,29 @@ bash server-scripts/db/.verify-po-receipt-smoke-prod.sh
 
 Confirms OCR approve wires reconciliation, VPH isolation, and lists fixture PO `PO-901004` posture. Live approve + replay checks: use `/admin/ocr-review` (browser) or operator-only tsx against `approveOcrDocumentAction` path — do not auto-mutate prod from CI.
 
+**PO detail execution workspace (operator QA):**
+
+| Step | Expect |
+|------|--------|
+| Open `/purchase-orders/[id]` with OCR or recon activity | Sticky **Operations** bar visible; one primary CTA (not three duplicate cards) |
+| Scroll line grid | Ops bar stays pinned; line grid reachable without passing estimate quote panel |
+| Vendor email on PO | **Latest vendor reply** in right meta panel; timeline vendor rows highlighted |
+| Attachments | Upload row at top of panel; email-sourced files show **✉ Email** chip |
+
+Regression: `verify:po-lifecycle`, `verify:po-receipt-workflow`, `typecheck` (no browser required).
+
+**OCR review workspace (operator QA):**
+
+| Step | Expect |
+|------|--------|
+| Queue `/admin/ocr-review` | Dense rows; status chips; stale badge on rows >2d; tab counts |
+| Detail — Needs review | Sticky decision rail visible without scrolling; line table; attachment opens in new tab |
+| Approve | Pricing + reconciliation message; **Open reconciliation** chip appears |
+| Reject | “No pricing was written” — no VPH rows |
+| Failed tab | Engine error panel; no line approval table |
+
+Regression (no browser): `pnpm --filter @bvisible/web run verify:ocr-quality`, `verify:ocr-reconciliation-flow`, `typecheck`.
+
 ## 0c. Logged-in browser smoke (Playwright)
 
 After deploy (or against local `pnpm dev`), exercise the **staff UI + public quote** once with Playwright.
@@ -144,7 +167,9 @@ pnpm --filter @bvisible/web run smoke:all                # all specs in smoke/
 
 | Suite | What it checks |
 |-------|----------------|
-| `smoke:core` | Dashboard queues, `/estimates` + `/estimates/new` route smoke, editor shell (Line items / Catalog / Pricing helper), `SMOKE-CoreWorkflow` quote path (catalog Apply on draft; **Create & add lines** button; status column index 3) |
+| `smoke:core` | Dashboard command-center queues (sticky filters, dual-column work queues), `/estimates` + `/estimates/new` route smoke, editor shell (Line items / Catalog / Pricing helper), `SMOKE-CoreWorkflow` quote path (catalog Apply on draft; **Create & add lines** button; status column index 3) |
+
+**Dashboard layout regression (no browser):** after dashboard UI changes, run `verify:workflow-queues` + `verify:po-lifecycle` — derivation unchanged; Vitest locks queue predicates. Command summary counts are computed client-side from queue rows in `dashboard-command-summary.tsx` (not new DB queries).
 | `smoke:vendor-normalization` | Vendor rail + OCR review copy (`SMOKE-VendorNorm`) |
 | `smoke:po-lifecycle` | Lifecycle rail + operator buttons; **mutations only on `SMOKE-*` PO numbers**; read-only rail on `PO-90100*` fixtures if no `SMOKE-` PO |
 

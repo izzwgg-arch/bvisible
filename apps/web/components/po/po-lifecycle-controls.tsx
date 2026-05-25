@@ -31,11 +31,11 @@ export function PoLifecycleControls({
   }
 
   return (
-    <div className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-3 shadow-[var(--shadow-bv-card)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
-        Operator lifecycle
+    <div className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2.5 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
+        Operator actions
       </p>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
         <button
           type="button"
           disabled={pending}

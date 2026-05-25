@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { OcrJobStatus, Role } from '@bvisible/db';
 import type { PoReceiptWorkflowSummary } from '@/lib/po/get-po-receipt-workflow-summary';
+import { buildPoReceiptNextActions } from '@/lib/po/po-receipt-next-actions';
 import { labelOcrJobStatus, labelPoReconciliationStatus } from '@/lib/ui/status-labels';
 
 function chipClass(tone: 'neutral' | 'amber' | 'emerald'): string {
@@ -26,37 +27,7 @@ export function PoReceiptWorkflowSummaryCard({
   const showOperator = role === Role.ADMIN || role === Role.SUPER_ADMIN;
   if (!showOperator) return null;
 
-  const nextActions: { label: string; href: string; tone: 'amber' | 'emerald' | 'neutral' }[] =
-    [];
-
-  if (summary.ocrNeedsReviewCount > 0) {
-    nextActions.push({ label: 'Review OCR', href: '/admin/ocr-review', tone: 'amber' });
-  } else if (summary.approvedReceiptLineCount > 0 && !summary.hasReconciliationSnapshot) {
-    nextActions.push({
-      label: 'Run reconciliation',
-      href: `/purchase-orders/${poId}/reconciliation`,
-      tone: 'amber',
-    });
-  } else if (summary.reconciliationNeedsAttention || summary.varianceLineCount > 0) {
-    nextActions.push({
-      label: 'Resolve variance',
-      href: `/purchase-orders/${poId}/reconciliation`,
-      tone: 'amber',
-    });
-  }
-
-  if (
-    summary.hasReconciliationSnapshot &&
-    !summary.operatorMarkedReconciledAt &&
-    summary.openSpendAlertCount === 0 &&
-    !summary.reconciliationNeedsAttention
-  ) {
-    nextActions.push({
-      label: 'Mark PO reconciled',
-      href: `/purchase-orders/${poId}/reconciliation`,
-      tone: 'emerald',
-    });
-  }
+  const nextActions = buildPoReceiptNextActions(poId, summary);
 
   return (
     <section className="mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">

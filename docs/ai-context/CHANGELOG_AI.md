@@ -5,6 +5,111 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT F — OCR REVIEW WORKSPACE]
+
+**Problem:** `/admin/ocr-review` was readable but slow for daily operator throughput — oversized cards, duplicated context, approve/reject below the fold, weak FAILED vs review distinction, no stale queue signals.
+
+**Operational UX rationale:** Operators scan many receipts per session. Density, sticky decision rail, and next-step chips reduce scrolling and make post-approve reconciliation follow-through obvious. Trust copy reinforces that pricing and reconciliation only run on explicit approve — no change to server trust model.
+
+**Safety guarantees (unchanged):**
+
+- No auto-approve; `approveOcrDocumentAction` / `rejectOcrDocumentAction` semantics unchanged
+- No automatic pricing mutation; `persistApprovedOcrPriceLines` only on approve
+- No reconciliation math changes; dedupe key + snapshot flow unchanged
+- Stale badges are display-only (`STALE_OCR_REVIEW_MS`)
+
+**Files touched**
+
+- `apps/web/app/(app)/admin/ocr-review/ocr-review-ui.tsx` — **new** status chips, stale badge, relative time, failure hints
+- `apps/web/app/(app)/admin/ocr-review/page.tsx` — dense queue, tab counts, vendor column
+- `apps/web/app/(app)/admin/ocr-review/[id]/page.tsx` — two-column layout, collapsible metadata, FAILED panel
+- `apps/web/app/(app)/admin/ocr-review/ocr-approval-form.tsx` — line table, sticky `OcrDecisionRail`, select all/clear, Ctrl+Enter
+- `docs/ai-context/UI_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`
+
+**Verification**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:ocr-quality` | 23 passed, 1 skipped |
+| `pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow` | 49 passed, 1 skipped |
+| `pnpm --filter @bvisible/web run typecheck` | pass |
+
+**Remaining gaps:** Browser smoke not run (operator password). No inline attachment PDF preview (opens API download in new tab). Keyboard line-to-line navigation not added (Tab default only).
+
+**Deploy:** standard web deploy after push.
+
+---
+
+## 2026-05-25 — [AGENT G — OPERATIONS COMMAND CENTER]
+
+**Problem:** `/dashboard` buried actionable queues under large metric cards, duplicate recent lists, and a bottom-placed vendor alerts panel — weak scan hierarchy for daily triage.
+
+**Solution (UI-only):** Command-center layout — summary rail, dual-column work queues, dense queue rows, sticky filters, “Needs operator” priority rail, compact metrics/quick actions, collapsed passive sections. No changes to `getOperationalWorkflowQueues`, `getPoLifecycleDashboardQueues`, or lifecycle/state derivation.
+
+**Files touched**
+
+- `apps/web/app/(app)/dashboard/page.tsx` — section reorder, command summary, ops workspace panel
+- `apps/web/app/(app)/dashboard/dashboard-command-summary.tsx` — **new** count rail + filter chips
+- `apps/web/app/(app)/dashboard/dashboard-queue-row.tsx` — **new** shared dense row + priority sort
+- `apps/web/app/(app)/dashboard/dashboard-operational-queues.tsx` — sticky filters, priority buckets, needs-operator rail
+- `apps/web/app/(app)/dashboard/dashboard-po-lifecycle-queues.tsx` — compact rows, blocker-first bucket order
+- `apps/web/app/(app)/dashboard/dashboard-widgets.tsx` — compact metrics, collapsible recent/audit
+- `apps/web/app/(app)/dashboard/vendor-price-alerts.tsx` — denser list; collapsed when empty
+- `apps/web/app/globals.css` — scoped `.dashboard-ops-zone` / `.dashboard-ops-workspace`
+- `docs/ai-context/UI_SYSTEM.md`, `DEBUGGING.md`, `PO_SYSTEM.md`, `ESTIMATE_ENGINE.md`
+
+**Risks:** Low — presentation only. “Needs operator” rail can duplicate rows also shown in bucket sections (intentional for fast triage). PO lifecycle stale counts in summary rail aggregate operational + PO stale chips on one filter link.
+
+**Verification**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **pass** (26 tests) |
+| `pnpm --filter @bvisible/web run verify:po-lifecycle` | **pass** (19 tests) |
+| `pnpm --filter @bvisible/web run typecheck` | **fail** — pre-existing `app/(app)/admin/ocr-review/[id]/page.tsx` TS parse errors (unrelated to dashboard) |
+
+**Deploy:** commit + push + queue deploy with exact `commitHash` when ready.
+
+**Remaining gaps:** Full `typecheck` green after OCR review page fix; browser smoke on `/dashboard` not run (operator password). No global dark theme — command rail only uses slate panel.
+
+---
+
+## 2026-05-25 — [AGENT H — PO EXECUTION WORKSPACE]
+
+**Problem:** `/purchase-orders/[id]` stacked three overlapping workflow surfaces (receipt summary card, lifecycle rail, operator controls) before the line grid — duplicate OCR/recon messaging, weak CTA hierarchy, and excessive scroll before execution work.
+
+**UI changes**
+
+- **`PoExecutionWorkspace`** — sticky operations bar: merged next actions (lifecycle + receipt), compact lifecycle chips, vendor/receipt/blocker pills, collapsible receipt pipeline strip, inline operator controls.
+- **Page order** — operations bar → line grid / attachments / notes / timeline → originating estimate (`<details>`, collapsed by default).
+- **Timeline** — day grouping, collapsed `LINES_SAVED` runs, vendor events highlighted, “show older days”.
+- **Attachments** — upload bar on top, email-sourced rows emphasized, list collapse after six.
+- **Meta panel** — latest `VENDOR_REPLY` strip, tighter sticky sidebar, lines-first editor column.
+
+**Files touched**
+
+- `apps/web/components/po/po-execution-workspace.tsx` (new)
+- `apps/web/lib/po/po-receipt-next-actions.ts` (new)
+- `apps/web/components/po/po-lifecycle-rail.tsx`, `po-receipt-workflow-summary.tsx`, `po-lifecycle-controls.tsx`, `po-estimate-origin-section.tsx`
+- `apps/web/app/(app)/purchase-orders/[id]/page.tsx`, `editor.tsx`, `meta-panel.tsx`, `timeline-panel.tsx`, `attachments-panel.tsx`
+- Docs: `PO_SYSTEM.md`, `UI_SYSTEM.md`, `DEBUGGING.md`
+
+**Safety:** No lifecycle auto-transitions, no reconciliation/OCR trust changes, no accounting mutation.
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:po-lifecycle` | **19/19** |
+| `pnpm --filter @bvisible/web run verify:po-receipt-workflow` | **21/21** |
+| `pnpm --filter @bvisible/web run typecheck` | pass |
+
+**Deploy:** commit + push before deploy; no migration. After deploy: open a PO with OCR/recon activity — confirm single sticky ops bar, primary CTA, and line grid visible without scrolling past duplicate cards.
+
+**Remaining gaps:** `PoOperationalRail` (`components/workflow/po-operational-rail.tsx`) still unused — candidate for removal in a cleanup pass; Playwright PO detail smoke not run in this session.
+
+---
+
 ## 2026-05-25 — [AGENT E — SMOKE QA READINESS]
 
 **Problem:** Browser smoke is routinely skipped because `BVISIBLE_ADMIN_PASSWORD` is operator-only and unavailable to agents. The runbook needed platform-specific setup steps and a safe pre-flight env check.

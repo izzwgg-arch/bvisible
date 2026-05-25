@@ -290,9 +290,8 @@ export function PoEditor({ bootstrap }: { bootstrap: PoEditorBootstrap }) {
   }
 
   return (
-    <div ref={rootRef} className="grid gap-6 lg:grid-cols-[1fr_340px]">
-      <div className="flex flex-col gap-4">
-        <PoNotesCard notes={state.notes} dispatch={dispatch} />
+    <div ref={rootRef} className="mt-4 grid gap-4 lg:grid-cols-[1fr_300px]">
+      <div className="flex flex-col gap-3">
         <PoLineGrid
           lines={state.lines}
           lineCosts={lineCosts}
@@ -302,6 +301,7 @@ export function PoEditor({ bootstrap }: { bootstrap: PoEditorBootstrap }) {
           purchaseOrderId={bootstrap.po.id}
           attachments={bootstrap.attachments}
         />
+        <PoNotesCard notes={state.notes} dispatch={dispatch} />
         <PoTimelinePanel
           purchaseOrderId={bootstrap.po.id}
           events={bootstrap.events}
@@ -332,9 +332,9 @@ function PoNotesCard({
   dispatch: React.Dispatch<PoEditorAction>;
 }) {
   return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-bv-muted)]">
           Internal notes
         </span>
         <textarea

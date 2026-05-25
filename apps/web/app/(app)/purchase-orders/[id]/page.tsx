@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Role, prisma } from '@bvisible/db';
+import { POEventKind, Role, prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
-import { PoLifecycleRail } from '@/components/po/po-lifecycle-rail';
-import { PoReceiptWorkflowSummaryCard } from '@/components/po/po-receipt-workflow-summary';
+import { PoExecutionWorkspace } from '@/components/po/po-execution-workspace';
 import { getPoLifecycleSnapshot } from '@/lib/po/get-po-lifecycle-snapshot';
 import { getPoReceiptWorkflowSummary } from '@/lib/po/get-po-receipt-workflow-summary';
 import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-section';
@@ -114,6 +113,8 @@ export default async function PurchaseOrderDetailPage({
         )
       : null;
 
+  const vendorReplyCount = events.filter((e) => e.kind === POEventKind.VENDOR_REPLY).length;
+
   const bootstrap: PoEditorBootstrap = {
     po: {
       id: po.id,
@@ -166,26 +167,27 @@ export default async function PurchaseOrderDetailPage({
           po.vendor ? ` · vendor ${po.vendor.name}` : ' · no vendor yet'
         }`}
         actions={
-          <div className="flex flex-wrap gap-2">
-            {(me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN) && (
-              <Link
-                href={`/purchase-orders/${id}/reconciliation`}
-                className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-              >
-                Reconciliation
-              </Link>
-            )}
-            <Link
-              href="/purchase-orders"
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-            >
-              Back to POs
-            </Link>
-          </div>
+          <Link
+            href="/purchase-orders"
+            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+          >
+            Back to POs
+          </Link>
         }
       />
-      {estimateOriginQuoteUi != null && po.estimate != null ? (
-        <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
+      {lifecycleSnapshot ? (
+        <PoExecutionWorkspace
+          poId={po.id}
+          poNumber={po.number}
+          lifecycle={lifecycleSnapshot}
+          receiptSummary={receiptWorkflowSummary}
+          role={me.role}
+          vendorReplyCount={vendorReplyCount}
+        />
+      ) : null}
+      <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
+        <PoEditor bootstrap={bootstrap} />
+        {estimateOriginQuoteUi != null && po.estimate != null ? (
           <PoEstimateOriginSection
             estimateId={po.estimate.id}
             estimateNumber={po.estimate.number}
@@ -193,29 +195,10 @@ export default async function PurchaseOrderDetailPage({
             clientCompanyName={po.estimate.client.companyName}
             estimateStatus={po.estimate.status}
             quoteSummaryProps={estimateOriginQuoteUi.quoteSummaryProps}
+            defaultCollapsed
           />
-        </div>
-      ) : null}
-      {receiptWorkflowSummary ? (
-        <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
-          <PoReceiptWorkflowSummaryCard
-            poId={po.id}
-            summary={receiptWorkflowSummary}
-            role={me.role}
-          />
-        </div>
-      ) : null}
-      {lifecycleSnapshot ? (
-        <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
-          <PoLifecycleRail
-            poId={po.id}
-            poNumber={po.number}
-            snapshot={lifecycleSnapshot}
-            role={me.role}
-          />
-        </div>
-      ) : null}
-      <PoEditor bootstrap={bootstrap} />
+        ) : null}
+      </div>
     </>
   );
 }

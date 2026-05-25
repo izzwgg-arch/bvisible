@@ -55,19 +55,7 @@ The look, feel, and behavior of the web app.
   for clients/vendors/estimates/PO list pages (replace bare table placeholders when a list is empty).
   Admin surfaces (Receipt OCR index, email ingestion review grid with deterministic **PO suggestions** on unmatched rows, reconciliation spend inbox,
   vendor price alerts on the dashboard) use the same card language + next-step CTAs where helpful.
-- **Dashboard** (`apps/web/app/(app)/dashboard/page.tsx`) — server-loaded **real counts**
-  via `getDashboardMetrics()` in `apps/web/lib/dashboard/get-dashboard-metrics.ts`: open estimates,
-  open POs, vendor price notifications (`dismissedAt: null`), pending OCR queue (ADMIN+),
-  unreconciled POs (same unreconciled-count semantics as before — operator stamp + open reconciliation),
-  recent rows from `audit_logs`, plus quick actions. **Operational overview** layout:
-  recent estimates + recent POs + **`DashboardPoLifecycleQueues`** (ADMIN+: PO vendor lifecycle buckets from
-  `getPoLifecycleDashboardQueues()` — PO number, vendor, customer/job, lifecycle chip, stale badge, blocker, CTA) +
-  unified **`DashboardOperationalQueues`** (`getOperationalWorkflowQueues()` in `apps/web/lib/workflow/` — estimate/invoice/mail
-  buckets: awaiting customer, approved waiting for PO, vendor reply, OCR review, reconciliation variance, ready to finalize,
-  unmatched mail, invoice follow-up, recently completed; filters via `?queue=stale|blocked|unresolved|mine`).
-  PO detail uses **`PoLifecycleRail`** (`components/po/po-lifecycle-rail.tsx`) — compact step chips, vendor response / receipt
-  progress stats, next action link, operator lifecycle controls (no banner copy).
-  Legacy fragmented quote/PO/invoice widgets removed from the dashboard layout; underlying fetch helpers remain for tests.
+- **Dashboard** (`apps/web/app/(app)/dashboard/page.tsx`) — **operations command center** layout (display-only; no workflow derivation changes). Server-loaded **real counts** via `getDashboardMetrics()`: open estimates, open POs, vendor price notifications, pending OCR (ADMIN+), unreconciled POs, recent `audit_logs`. **Hierarchy (top → bottom):** dark **`DashboardCommandSummary`** rail (actionable / blocked / stale / unresolved counts from existing queue rows — chips link `?queue=` filters) → slate **work queues** panel (two columns on `xl`: **`DashboardOperationalQueues`** + **`DashboardPoLifecycleQueues`**) → inline quick actions + compact metric chips → vendor price alerts when count &gt; 0 (collapsed `<details>` when empty) → collapsed **Recent records** + **Audit timeline**. Queue UX: sticky filter pills, **Needs operator** rail (blocked/stale/unresolved, max 8), priority bucket order (OCR/recon/mail before customer-wait), dense shared **`DashboardQueueRow`** (grid row, stale badge, CTA column). Filters: `?queue=stale|blocked|unresolved|mine`. PO detail **`PoLifecycleRail`** unchanged. Legacy quote/PO/invoice dashboard widgets remain out of layout; fetch helpers kept for Vitest.
   **First-login onboarding card** (`components/onboarding/onboarding-checklist-card.tsx`)
   shows a dismissible checklist whose completion state is computed from real tenant data
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
@@ -140,12 +128,16 @@ The look, feel, and behavior of the web app.
   password is **never** displayed) and a "Recent ticks" list. The
   page header includes a "Configure inbox" CTA when the viewer is
   SUPER_ADMIN.
-- **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): queue shows status + line
-  count; detail shows source attachment link, truncated OCR text, per-line **parse reason**
-  chips (human labels from `parse-receipt-lines.ts`), qty hints, and **High/Medium/Lower
-  confidence** chips (not raw enum strings). Compact **Approve selected** / **Reject** —
-  copy states vendor price history is written only after approval. Approving also enqueues a
-  replay-safe `POReconciliation` snapshot for that PO batch. **Smoke:** `smoke:vendor-normalization`.
+- **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): **operational approval workspace** —
+  dense queue rows (status chips, vendor, line count, relative updated time, **Stale** badge after
+  2d via `STALE_OCR_REVIEW_MS`), tab pills with counts (Queue / Confirmed / Rejected / Failed).
+  Detail `/admin/ocr-review/[id]`: two-column layout — left: context strip (PO, vendor, attachment),
+  compact **line candidate table** (qty / price hierarchy, parse + confidence chips, collapsed source
+  line), collapsible metadata + OCR preview; right: **sticky decision rail** (Approve / Reject,
+  trust copy that pricing + reconciliation run only after approve, **Next steps** chips, Ctrl+Enter
+  shortcut). **FAILED** vs **Needs review** are visually distinct (failed = engine error panel, no
+  line table). Confirmed rows link to PO reconciliation. No workflow logic changes — polish only.
+  **Regression:** `verify:ocr-quality`, `verify:ocr-reconciliation-flow`. **Smoke:** `smoke:vendor-normalization`.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
   `/purchase-orders/[id]/reconciliation` (includes a **Spend alerts** table with `OPEN` /
   `SUPERSEDED` / `DISMISSED` chips for audit). The **dashboard** links into this inbox via the
@@ -179,16 +171,9 @@ The look, feel, and behavior of the web app.
   "Email inbox" link to the tenant's inbox config page.
 - **Purchase order editor** at
   `apps/web/app/(app)/purchase-orders/[id]/{editor,line-grid,meta-panel,timeline-panel,attachments-panel}.tsx`:
-  - **Operational rail** (`components/workflow/po-operational-rail.tsx`) sits beneath **`PoEstimateOriginSection.tsx`** whenever `estimateId` is set (customer quote summary + deep link back to `/estimates/[id]`). The rail itself surfaces PO lifecycle
-    (Draft → Sent → Ordered → Received, with partial receipts aligned to Ordered), attachment counts,
-    reconciliation snapshot label, OCR receipt counts by status, inbound-email touch counts for operators,
-    and **next recommended action** (upload docs, reconciliation, OCR queue, email matching).
-  - **Receipt → reconciliation summary** on `/purchase-orders/[id]` (`PoReceiptWorkflowSummaryCard`):
-    OCR status, approved OCR line count, latest reconciliation status, variance line count, open spend
-    alerts, and chip CTAs (Review OCR, Run reconciliation, Resolve variance, Mark PO reconciled).
-  - Same two-column layout as the estimate editor: line grid + notes +
-    attachments + timeline on the left, sticky meta panel (320px) on the
-    right.
+  - **Execution workspace** (`components/po/po-execution-workspace.tsx`): sticky operations bar at the top of `/purchase-orders/[id]` — primary/secondary CTAs (merged lifecycle + receipt actions via `lib/po/po-receipt-next-actions.ts`), compact vendor-order lifecycle chips, vendor/receipt/blocker pills, collapsible receipt-pipeline strip (admin), inline **`PoLifecycleControls`**. Replaces the former stacked **`PoReceiptWorkflowSummaryCard`** + full **`PoLifecycleRail`** on the detail page (those components remain for reuse; summary card logic is shared).
+  - **Originating estimate** (`PoEstimateOriginSection`): collapsed `<details>` below the editor when `estimateId` is set (quote summary + link to `/estimates/[id]`).
+  - Same two-column layout as the estimate editor: **lines first**, then attachments, internal notes, timeline on the left; sticky meta panel (~300px) on the right with **latest vendor reply** when present.
   - Line grid reuses the **shared cell primitives** (`<CellInput>` /
     `<NumericCell>`) and the **same `makeGridKeyHandler`** from the
     estimate grid — Enter steps down (auto-appending a row of the same

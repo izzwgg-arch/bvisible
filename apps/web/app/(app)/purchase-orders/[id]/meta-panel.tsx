@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { startTransition, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { POStatus } from '@bvisible/db';
+import { POEventKind, POStatus } from '@bvisible/db';
 import { formatMoney } from '@/lib/estimate/format';
 import { setPoQboNumberAction, setPoVendorAction, type SavePoState } from './actions';
 import type { PoEditorBootstrap } from './editor';
@@ -100,10 +100,26 @@ export function PoMetaPanel(props: MetaPanelProps) {
     }
   }
 
+  const latestVendorReply = bootstrap.events.find((e) => e.kind === POEventKind.VENDOR_REPLY);
+
   return (
-    <aside className="sticky top-6 flex flex-col gap-4">
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-        <h2 className="text-[14.5px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+    <aside className="sticky top-[7.5rem] z-10 flex max-h-[calc(100vh-8rem)] flex-col gap-3 overflow-y-auto lg:top-[6.5rem]">
+      {latestVendorReply ? (
+        <section className="rounded-[var(--radius-bv)] border border-sky-200 bg-sky-50/80 p-3 shadow-[var(--shadow-bv-card)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-900">
+            Latest vendor reply
+          </h3>
+          <p className="mt-1 line-clamp-3 text-[12px] leading-snug text-sky-950">
+            {latestVendorReply.message}
+          </p>
+          <p className="mt-1 text-[10px] text-sky-800/80 tabular-nums">
+            {new Date(latestVendorReply.createdAt).toLocaleString()}
+          </p>
+        </section>
+      ) : null}
+
+      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
+        <h2 className="text-[14px] font-semibold tracking-tight text-[var(--color-bv-text)]">
           Subtotal
         </h2>
         <div className="mt-1 text-[22px] font-semibold tabular-nums text-[var(--color-bv-text)]">
@@ -132,8 +148,8 @@ export function PoMetaPanel(props: MetaPanelProps) {
         </div>
       </section>
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-        <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">QuickBooks PO #</h3>
+      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
+        <h3 className="text-[13px] font-semibold text-[var(--color-bv-text)]">QuickBooks PO #</h3>
         <p className="mt-1 text-[11.5px] text-[var(--color-bv-muted)]">
           Required before this estimate can close — matches the QuickBooks PO issued to the vendor.
         </p>
@@ -158,8 +174,8 @@ export function PoMetaPanel(props: MetaPanelProps) {
         ) : null}
       </section>
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-        <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">Vendor</h3>
+      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
+        <h3 className="text-[13px] font-semibold text-[var(--color-bv-text)]">Vendor</h3>
         <select
           value={po.vendor?.id ?? ''}
           onChange={(e) => commitVendor(e.currentTarget.value)}
@@ -184,7 +200,7 @@ export function PoMetaPanel(props: MetaPanelProps) {
       </section>
 
       {po.estimate ? (
-        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
+        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
           <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">
             Linked estimate
           </h3>
@@ -200,8 +216,8 @@ export function PoMetaPanel(props: MetaPanelProps) {
         </section>
       ) : null}
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-        <h3 className="text-[13.5px] font-semibold text-[var(--color-bv-text)]">Status</h3>
+      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
+        <h3 className="text-[13px] font-semibold text-[var(--color-bv-text)]">Status</h3>
         <div className="mt-3 grid grid-cols-2 gap-2">
           {STATUS_OPTIONS.map((s) => {
             const active = po.status === s;

@@ -13,14 +13,50 @@ export function PoLifecycleRail({
   poNumber,
   snapshot,
   role,
+  variant = 'full',
+  hideNextAction = false,
 }: {
   poId: string;
   poNumber: string;
   snapshot: PoLifecycleSnapshot;
   role: Role;
+  variant?: 'full' | 'compact';
+  hideNextAction?: boolean;
 }) {
   const showOperator = role === Role.ADMIN || role === Role.SUPER_ADMIN;
   const stateIdx = RAIL_STEPS.indexOf(snapshot.state as (typeof RAIL_STEPS)[number]);
+  const compact = variant === 'compact';
+
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-0">
+        {snapshot.state !== 'canceled' && snapshot.state !== 'blocked_backordered' ? (
+          <div className="flex flex-wrap gap-1">
+            {RAIL_STEPS.map((step, i) => {
+              const done = stateIdx >= 0 && stateIdx > i;
+              const current = snapshot.state === step;
+              return (
+                <span
+                  key={step}
+                  className={`rounded-full border px-1.5 py-px text-[9px] font-semibold leading-tight ${
+                    current
+                      ? 'border-[var(--color-bv-accent)] bg-[var(--color-bv-accent)]/10 text-[var(--color-bv-accent)]'
+                      : done
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                        : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
+                  }`}
+                >
+                  {PO_LIFECYCLE_LABELS[step]}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <span className="text-[11px] font-medium text-[var(--color-bv-text)]">{snapshot.label}</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mb-8 flex flex-col gap-3">
@@ -69,12 +105,14 @@ export function PoLifecycleRail({
           <Stat label="Blocker" value={snapshot.isBlocked ? 'Needs attention' : 'On track'} />
         </div>
         <p className="mt-3 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">{snapshot.reason}</p>
-        <Link
-          href={snapshot.nextAction.href as never}
-          className="mt-2 inline-flex text-[13px] font-medium text-[var(--color-bv-accent)] hover:underline"
-        >
-          {snapshot.nextAction.label} →
-        </Link>
+        {!hideNextAction ? (
+          <Link
+            href={snapshot.nextAction.href as never}
+            className="mt-2 inline-flex text-[13px] font-medium text-[var(--color-bv-accent)] hover:underline"
+          >
+            {snapshot.nextAction.label} →
+          </Link>
+        ) : null}
       </section>
       {showOperator ? (
         <PoLifecycleControls poId={poId} isBlocked={snapshot.signals.isOperatorBlocked} />

@@ -15,6 +15,7 @@ export function PoEstimateOriginSection(props: {
   clientCompanyName: string;
   estimateStatus: EstimateStatus;
   quoteSummaryProps: EstimateQuoteResponseSummaryProps;
+  defaultCollapsed?: boolean;
 }) {
   const {
     estimateId,
@@ -23,41 +24,40 @@ export function PoEstimateOriginSection(props: {
     clientCompanyName,
     estimateStatus,
     quoteSummaryProps,
+    defaultCollapsed = false,
   } = props;
 
   return (
-    <section className="mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-            Originating estimate
-          </p>
-          <h2 className="mt-1 text-[16px] font-semibold text-[var(--color-bv-text)]">
-            <Link
-              href={`/estimates/${estimateId}`}
-              className="font-mono text-[var(--color-bv-accent)] hover:underline"
-            >
-              {estimateNumber}
-            </Link>
-            <span className="text-[var(--color-bv-text)]"> · {estimateTitle}</span>
-          </h2>
-          <p className="mt-1 text-[13px] text-[var(--color-bv-muted)]">{clientCompanyName}</p>
+    <details
+      className="mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
+      open={!defaultCollapsed}
+    >
+      <summary className="cursor-pointer list-none px-4 py-3 marker:content-none [&::-webkit-details-marker]:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+              Originating estimate
+            </p>
+            <p className="mt-0.5 text-[14px] font-semibold text-[var(--color-bv-text)]">
+              <span className="font-mono text-[var(--color-bv-accent)]">{estimateNumber}</span>
+              <span> · {estimateTitle}</span>
+            </p>
+            <p className="text-[12px] text-[var(--color-bv-muted)]">{clientCompanyName}</p>
+          </div>
+          <span className="rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-bv-text)]">
+            {labelEstimateStatus(estimateStatus)}
+          </span>
         </div>
-        <span className="rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-bv-text)]">
-          Quote status: {labelEstimateStatus(estimateStatus)}
-        </span>
-      </div>
-      <div className="mt-4 border-t border-[var(--color-bv-border)] pt-4">
+      </summary>
+      <div className="border-t border-[var(--color-bv-border)] px-4 pb-4 pt-3">
         <EstimateQuoteResponseSummary {...quoteSummaryProps} />
-      </div>
-      <div className="mt-4">
         <Link
           href={`/estimates/${estimateId}`}
-          className="text-[13px] font-medium text-[var(--color-bv-accent)] hover:underline"
+          className="mt-3 inline-flex text-[13px] font-medium text-[var(--color-bv-accent)] hover:underline"
         >
           Open estimate workspace →
         </Link>
       </div>
-    </section>
+    </details>
   );
 }

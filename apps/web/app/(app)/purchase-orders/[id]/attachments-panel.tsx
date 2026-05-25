@@ -20,9 +20,6 @@ interface AttachmentRow {
   sourceEmailId: string | null;
 }
 
-// EMAIL_ATTACHMENT is intentionally NOT in the picker. It's reserved
-// for the email ingestion pipeline; if a user wants to attach a file
-// manually they pick one of the user-facing kinds.
 const KIND_OPTIONS: ReadonlyArray<POAttachmentKind> = [
   POAttachmentKind.RECEIPT,
   POAttachmentKind.INVOICE,
@@ -68,6 +65,8 @@ interface AttachmentsPanelProps {
   attachments: ReadonlyArray<AttachmentRow>;
 }
 
+const COLLAPSE_AFTER = 6;
+
 export function PoAttachmentsPanel({
   purchaseOrderId,
   attachments,
@@ -78,6 +77,13 @@ export function PoAttachmentsPanel({
   const [uploading, setUploading] = useState(false);
   const [state, setState] = useState<UploadAttachmentState>({ error: null });
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const emailCount = attachments.filter((a) => a.sourceEmailId != null).length;
+  const visible =
+    showAll || attachments.length <= COLLAPSE_AFTER
+      ? attachments
+      : attachments.slice(0, COLLAPSE_AFTER);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -123,84 +129,37 @@ export function PoAttachmentsPanel({
   return (
     <section
       id="po-attachments"
-      className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
+      className="scroll-mt-24 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
     >
-      <div className="flex items-center justify-between border-b border-[var(--color-bv-border)] px-5 py-3">
-        <h2 className="text-[14.5px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-          Attachments
-        </h2>
-        <span className="text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
+      <div className="sticky top-[var(--po-ops-sticky,0)] z-[1] flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-2.5">
+        <div>
+          <h2 className="text-[13.5px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+            Attachments
+          </h2>
+          {emailCount > 0 ? (
+            <p className="text-[11px] text-sky-800">
+              {emailCount} from vendor email — triggers OCR when uploaded via ingestion
+            </p>
+          ) : null}
+        </div>
+        <span className="text-[11px] text-[var(--color-bv-muted)]">
           {attachments.length} file{attachments.length === 1 ? '' : 's'}
         </span>
       </div>
 
-      <ul className="divide-y divide-[var(--color-bv-border)]">
-        {attachments.map((a) => (
-          <li
-            key={a.id}
-            className="flex items-center justify-between gap-4 px-5 py-2.5 text-[13px]"
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <span
-                className={`inline-flex shrink-0 items-center justify-center rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wider ${
-                  a.sourceEmailId
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
-                }`}
-              >
-                {a.sourceEmailId ? '✉ ' : ''}
-                {kindLabel(a.kind)}
-              </span>
-              <a
-                href={`/api/po/${purchaseOrderId}/attachments/${a.id}`}
-                className="min-w-0 truncate text-[var(--color-bv-text)] hover:text-[var(--color-bv-accent)]"
-              >
-                {a.originalFilename}
-              </a>
-              <span className="shrink-0 font-mono text-[11px] text-[var(--color-bv-muted)]">
-                {a.mimeType.split('/')[1] ?? a.mimeType}
-              </span>
-              <span className="shrink-0 text-[11px] text-[var(--color-bv-muted)]">
-                {fmtBytes(a.sizeBytes)}
-              </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="text-[11px] text-[var(--color-bv-muted)]">
-                {new Date(a.createdAt).toLocaleDateString()} · {a.uploadedByLabel}
-              </span>
-              <button
-                type="button"
-                onClick={() => handleDelete(a.id)}
-                disabled={busyId === a.id}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[12px] text-[var(--color-bv-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Delete attachment"
-                title="Delete attachment"
-              >
-                ×
-              </button>
-            </div>
-          </li>
-        ))}
-        {attachments.length === 0 ? (
-          <li className="px-5 py-6 text-center text-[12.5px] text-[var(--color-bv-muted)]">
-            No attachments yet. Upload PDFs, JPEGs, PNGs, or WEBPs (≤ 25 MB).
-          </li>
-        ) : null}
-      </ul>
-
       <form
         ref={formRef}
         onSubmit={handleSubmit}
-        className="flex flex-wrap items-end gap-3 border-t border-[var(--color-bv-border)] px-5 py-3"
+        className="flex flex-wrap items-end gap-2 border-b border-[var(--color-bv-border)] bg-[var(--color-bv-bg)]/50 px-4 py-2.5"
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-bv-muted)]">
             Kind
           </span>
           <select
             value={kind}
             onChange={(e) => setKind(e.currentTarget.value as POAttachmentKind)}
-            className="rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5 text-[13px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+            className="rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1 text-[12px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
           >
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>
@@ -209,8 +168,8 @@ export function PoAttachmentsPanel({
             ))}
           </select>
         </label>
-        <label className="flex flex-1 flex-col gap-1">
-          <span className="text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
+        <label className="flex min-w-[140px] flex-1 flex-col gap-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-bv-muted)]">
             File
           </span>
           <input
@@ -218,21 +177,72 @@ export function PoAttachmentsPanel({
             name="file"
             accept="application/pdf,image/jpeg,image/png,image/webp"
             required
-            className="block w-full text-[12.5px] text-[var(--color-bv-text)] file:mr-3 file:rounded-[6px] file:border file:border-[var(--color-bv-border)] file:bg-[var(--color-bv-bg)] file:px-3 file:py-1.5 file:text-[12.5px] file:font-medium file:text-[var(--color-bv-text)] hover:file:bg-[var(--color-bv-surface)]"
+            className="block w-full text-[12px] text-[var(--color-bv-text)] file:mr-2 file:rounded-[6px] file:border file:border-[var(--color-bv-border)] file:bg-[var(--color-bv-surface)] file:px-2 file:py-1 file:text-[11px] file:font-medium"
           />
         </label>
         <button
           type="submit"
           disabled={uploading}
-          className="inline-flex items-center justify-center rounded-[6px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-[6px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-bv-accent-foreground)] hover:opacity-90 disabled:opacity-60"
         >
-          {uploading ? 'Uploading…' : 'Upload'}
+          {uploading ? '…' : 'Upload'}
         </button>
       </form>
+
+      <ul className="divide-y divide-[var(--color-bv-border)]">
+        {visible.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-center gap-2 px-4 py-2 text-[12.5px] sm:flex-nowrap">
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase ${
+                a.sourceEmailId
+                  ? 'border-sky-300 bg-sky-50 text-sky-900'
+                  : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
+              }`}
+            >
+              {a.sourceEmailId ? '✉ Email' : kindLabel(a.kind)}
+            </span>
+            <a
+              href={`/api/po/${purchaseOrderId}/attachments/${a.id}`}
+              className="min-w-0 flex-1 truncate font-medium text-[var(--color-bv-text)] hover:text-[var(--color-bv-accent)]"
+            >
+              {a.originalFilename}
+            </a>
+            <span className="shrink-0 font-mono text-[10px] text-[var(--color-bv-muted)]">
+              {fmtBytes(a.sizeBytes)}
+            </span>
+            <span className="hidden shrink-0 text-[10px] text-[var(--color-bv-muted)] sm:inline">
+              {new Date(a.createdAt).toLocaleDateString()}
+            </span>
+            <button
+              type="button"
+              onClick={() => handleDelete(a.id)}
+              disabled={busyId === a.id}
+              className="shrink-0 rounded border border-[var(--color-bv-border)] px-1.5 py-0.5 text-[11px] text-[var(--color-bv-muted)] hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40"
+              aria-label="Delete attachment"
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+        {attachments.length === 0 ? (
+          <li className="px-4 py-5 text-center text-[12px] text-[var(--color-bv-muted)]">
+            No attachments — upload receipts or vendor docs to start OCR.
+          </li>
+        ) : null}
+      </ul>
+      {attachments.length > COLLAPSE_AFTER && !showAll ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full border-t border-[var(--color-bv-border)] px-4 py-2 text-[12px] font-medium text-[var(--color-bv-accent)] hover:bg-[var(--color-bv-bg)]"
+        >
+          Show {attachments.length - COLLAPSE_AFTER} more
+        </button>
+      ) : null}
       {state.error ? (
-        <p className="px-5 pb-3 text-[11.5px] text-rose-700">{state.error}</p>
+        <p className="px-4 pb-2 text-[11.5px] text-rose-700">{state.error}</p>
       ) : state.uploadedAt ? (
-        <p className="px-5 pb-3 text-[11.5px] text-emerald-700">Uploaded.</p>
+        <p className="px-4 pb-2 text-[11.5px] text-emerald-700">Uploaded.</p>
       ) : null}
     </section>
   );
