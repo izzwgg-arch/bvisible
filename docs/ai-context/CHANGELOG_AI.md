@@ -5,6 +5,51 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT D2 — SECOND UI BATCH MERGE + DEPLOY]
+
+**Prior production:** `e5731056dbeed275dd4e0d2376337a843589c95c` (Agent D — estimate UX + finalization batch).
+
+**Branches / SHAs in scope**
+
+| Branch | Tip SHA | Status on `main` |
+|--------|---------|------------------|
+| `feat/ocr-review-workspace` | `b9f66c8815fab236bcb8c74f4c288e3a66df96ac` | **Already present** as `09ebbb0` — OCR file tree identical to branch tip; landed before this merge pass |
+| `feat/po-execution-workspace` | `eef7e7e` | **Already present** on `main` (`eef7e7e`) |
+| `feat/dashboard-command-center` | `4d91307` | **Merged** in this pass → merge commit below |
+
+**Merge strategy**
+
+1. Fast-forward `main` from `origin/main` (`d1a1c03` — includes `e573105` + docs-only deploy record).
+2. Confirmed OCR + PO execution UI already on `main` (no re-merge needed; avoids regressing PO execution files).
+3. Merged `origin/feat/dashboard-command-center` (`4d91307`) — **clean merge, no conflicts**.
+
+**Conflicts:** none (dashboard merge was conflict-free; OCR/PO branches were pre-integrated).
+
+**Final merged SHA:** *(see Deploy section — updated after push + deploy)*
+
+**Pre-deploy verification (local, merged tree)**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run typecheck` | **pass** |
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
+| `pnpm --filter @bvisible/web run verify:po-lifecycle` | **19/19** |
+| `pnpm --filter @bvisible/web run verify:po-receipt-workflow` | **21/21** |
+| `pnpm --filter @bvisible/web run verify:ocr-quality` | **23/23** passed, **1** skipped |
+| `pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow` | **49/49** passed, **1** skipped |
+| `pnpm --filter @bvisible/web run verify:email-ingestion` | **57/57** |
+| `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
+
+**Deploy:** *(job ID, health JSON, server verification — filled after queue deploy)*
+
+**Browser / smoke:** *(filled after deploy attempt)*
+
+**Docs confirmed:** `UI_SYSTEM.md`, `PO_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `ESTIMATE_ENGINE.md` — Agent F/G/H entries retained; this entry records batch merge + deploy.
+
+**Remaining gaps:** *(updated post-deploy)*
+
+---
+
 ## 2026-05-25 — [AGENT F — OCR REVIEW WORKSPACE]
 
 **Problem:** `/admin/ocr-review` was readable but slow for daily operator throughput — oversized cards, duplicated context, approve/reject below the fold, weak FAILED vs review distinction, no stale queue signals.
