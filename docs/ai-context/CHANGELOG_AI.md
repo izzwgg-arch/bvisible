@@ -5,6 +5,52 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT K — RECONCILIATION VARIANCE WORKSPACE]
+
+**Problem:** After OCR approval creates reconciliation snapshots, operators had a functional but slow variance workspace — wide 8-column table, unclear resolution states (raw enum text), weak CTA hierarchy (Mark reconciled vs Recompute same weight), duplicated safety copy, and action buttons without “what happens if I click?” hints.
+
+**Audit findings**
+
+| Area | Issue |
+|------|--------|
+| `/purchase-orders/[id]/reconciliation` | Horizontal-scroll table; variance split across columns; resolution shown as `Op: CONFIRMED PAIR`; header badge used first line’s match type |
+| `/admin/reconciliation` | PO number link competed with Dismiss; redundant amber footer for price alerts |
+| Dashboard `SpendOperationAlerts` | Dismiss same visual weight as drill-in; no primary “Review variance” CTA |
+| PO receipt workflow summary | Variance count without unresolved breakdown |
+| Safety copy | Repeated in PageHeader, body, footer thresholds, spend section, dashboard |
+
+**UI changes (display + form wiring only — no math / trust / auto-resolve changes)**
+
+- Shared reconciliation UI: `components/reconciliation/*`, `lib/reconciliation/ui-copy.ts`, `lib/reconciliation/ui-format.ts`
+- PO detail workspace: card-based **Needs review** / **Matched·resolved** sections; side-by-side PO vs receipt compare cells; signed variance amount; match + resolution chips; action `title` hints; snapshot summary bar; stale operator-stamp banner; Mark reconciled promoted when clean
+- Admin inbox: reusable `SpendAlertRow` with **Review variance** primary + muted Dismiss; clean emerald empty state; snapshot table uses status chips
+- Dashboard alerts: same row component; compact compare-only copy; link to full inbox
+- PO receipt summary: `unresolvedVarianceLineCount` on `getPoReceiptWorkflowSummary()` for amber “N unresolved” hint
+- Status labels: `labelReconciliationLineResolution`, `labelSpendAlertStatus`
+
+**Safety guarantees (unchanged)**
+
+- Line resolution / merge / dismiss / mark reconciled actions still only update reconciliation metadata + audit — **no PO, estimate, or invoice total mutation**
+- `markPurchaseOrderReconciledByOperatorAction` remains explicit operator stamp
+- Stale OPEN alert supersede on new snapshot unchanged (`SUPERSEDED` policy)
+- Receipt side still **`OCR_APPROVED` only** in pairing engine
+
+**Verification**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:po-receipt-workflow` | **21/21** |
+| `pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow` | **49/49** passed, **1** skipped |
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
+| `pnpm --filter @bvisible/web run typecheck` | **pass** |
+
+**Branch:** `feat/reconciliation-variance-workspace` — **not merged, not deployed.**
+
+**Remaining gaps:** No keyboard shortcuts for variance row actions; no inline diff highlighting beyond signed Δ; bulk confirm across lines; mobile layout untested; dashboard queue row copy not changed (links already point at reconciliation).
+
+
+---
+
 ## 2026-05-25 — [AGENT I — FINALIZED ESTIMATE LOCKDOWN]
 
 **Problem:** Server-side `saveEstimateAction` already refused FINALIZED estimates, but the editor still looked fully editable — line grid inputs, add/delete rows, catalog/pricing Apply, multiplier fields, and Cmd+S could mislead operators into thinking changes would persist.
@@ -101,7 +147,6 @@ records what changed, the files touched, the risks, and the verification.
 **Deploy:** not run (per task).
 
 **Remaining gaps:** No server-side pagination beyond `take: 100`; no bulk safe actions; browser smoke not run; OCR queue `j`/`k` requires focus on a row link first (not roving tabindex on `<tr>`).
-
 
 ---
 

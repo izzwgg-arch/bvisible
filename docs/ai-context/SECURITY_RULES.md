@@ -36,7 +36,10 @@
    filter `tenantId`. OCR **Approve** may create a replay-safe reconciliation snapshot
    (dedupe key per doc + line ids) — it never mutates PO, estimate, or invoice line
    pricing. Operator-facing alert copy uses normalized item labels plus structural ids —
-   never raw OCR dumps (truncated OCR previews elsewhere).
+   never raw OCR dumps (truncated OCR previews elsewhere). **Variance workspace UI**
+   (`/purchase-orders/[id]/reconciliation`, `/admin/reconciliation`) is compare-only:
+   confirm / accept variance / reject / merge / dismiss / mark reconciled update
+   reconciliation metadata and audit only — not `POLineItem`, estimate totals, or invoices.
 8. **Operational workflow queues are read-only aggregations.**
    `getOperationalWorkflowQueues` and related helpers (`apps/web/lib/workflow/`) only
    **read** tenant-scoped rows to build dashboard queue sections, stale badges, and next-action

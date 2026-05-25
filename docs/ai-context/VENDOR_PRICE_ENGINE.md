@@ -195,8 +195,10 @@ quantity-tier normalization yet.
   **`OCR_APPROVED` rows only** for the receipt side so email-regex observations stay out
   of this comparison unless operators promote data via OCR approve.
 - New reconciliation snapshots **supersede prior `OPEN` spend alerts** tied to older runs for the same PO (`SpendAlertStatus.SUPERSEDED`, `supersededByReconciliationId`), then insert alerts for the current snapshot (`dedupeKey` uniqueness). Operator-dismissed rows stay `DISMISSED`.
-- UX + actions: `apps/web/lib/reconciliation/actions.ts`; surfaces documented in
-  `PO_SYSTEM.md` + `UI_SYSTEM.md`.
+- UX + actions: `apps/web/lib/reconciliation/actions.ts`; display components in
+  `apps/web/components/reconciliation/` + copy in `lib/reconciliation/ui-copy.ts`; surfaces in
+  `PO_SYSTEM.md` + `UI_SYSTEM.md`. Action buttons expose `title` hints — operators see that
+  confirm/accept/reject/dismiss/mark reconciled **do not mutate PO or estimate totals**.
 
 ## Managed MATERIAL aggregation (estimate catalog picker)
 

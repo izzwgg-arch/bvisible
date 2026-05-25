@@ -1,6 +1,7 @@
 import {
   OcrJobStatus,
   POReconciliationLineMatch,
+  POReconciliationLineResolution,
   POReconciliationStatus,
   prisma,
   SpendAlertStatus,
@@ -31,6 +32,7 @@ export type PoReceiptWorkflowSummary = {
   latestReconciliationStatus: POReconciliationStatus | null;
   latestReconciliationAt: Date | null;
   varianceLineCount: number;
+  unresolvedVarianceLineCount: number;
   openSpendAlertCount: number;
   hasReconciliationSnapshot: boolean;
   reconciliationNeedsAttention: boolean;
@@ -68,7 +70,7 @@ export async function getPoReceiptWorkflowSummary(
       select: {
         status: true,
         createdAt: true,
-        lines: { select: { match: true } },
+        lines: { select: { match: true, resolution: true } },
       },
     }),
     prisma.spendAlert.count({
@@ -93,6 +95,13 @@ export async function getPoReceiptWorkflowSummary(
   const varianceLineCount =
     latestReconciliation?.lines.filter((l) => VARIANCE_MATCHES.has(l.match)).length ?? 0;
 
+  const unresolvedVarianceLineCount =
+    latestReconciliation?.lines.filter(
+      (l) =>
+        VARIANCE_MATCHES.has(l.match) &&
+        l.resolution === POReconciliationLineResolution.NONE,
+    ).length ?? 0;
+
   const status = latestReconciliation?.status ?? null;
 
   return {
@@ -103,6 +112,7 @@ export async function getPoReceiptWorkflowSummary(
     latestReconciliationStatus: status,
     latestReconciliationAt: latestReconciliation?.createdAt ?? null,
     varianceLineCount,
+    unresolvedVarianceLineCount,
     openSpendAlertCount,
     hasReconciliationSnapshot: latestReconciliation != null,
     reconciliationNeedsAttention: status != null && RECON_NEEDS_ATTENTION.has(status),

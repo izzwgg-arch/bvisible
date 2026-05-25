@@ -5,9 +5,11 @@ import {
   InvoiceStatus,
   OcrJobStatus,
   POReconciliationLineMatch,
+  POReconciliationLineResolution,
   POReconciliationStatus,
   POStatus,
   SpendAlertKind,
+  SpendAlertStatus,
   VendorPriceExtractionMethod,
 } from '@bvisible/db';
 
@@ -135,6 +137,36 @@ export function labelReconciliationLineMatch(m: POReconciliationLineMatch): stri
       return 'Ambiguous receipt line';
     default:
       return String(m).replace(/_/g, ' ');
+  }
+}
+
+export function labelReconciliationLineResolution(
+  r: POReconciliationLineResolution,
+): string {
+  switch (r) {
+    case POReconciliationLineResolution.NONE:
+      return 'Unresolved';
+    case POReconciliationLineResolution.CONFIRMED_PAIR:
+      return 'Confirmed';
+    case POReconciliationLineResolution.ACCEPTED_VARIANCE:
+      return 'Variance accepted';
+    case POReconciliationLineResolution.REJECTED_PAIR:
+      return 'Rejected';
+    default:
+      return String(r).replace(/_/g, ' ');
+  }
+}
+
+export function labelSpendAlertStatus(s: SpendAlertStatus): string {
+  switch (s) {
+    case SpendAlertStatus.OPEN:
+      return 'Open';
+    case SpendAlertStatus.SUPERSEDED:
+      return 'Superseded';
+    case SpendAlertStatus.DISMISSED:
+      return 'Dismissed';
+    default:
+      return String(s).replace(/_/g, ' ');
   }
 }
 
