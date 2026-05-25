@@ -5,7 +5,7 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
-## 2026-05-25 — Estimate operator UX + finalize checklist + IMAP/OCR hardening (pending deploy)
+## 2026-05-25 — Estimate operator UX + finalize checklist + IMAP/OCR hardening (`cdde7f1`) — production
 
 **Flow audit (Phase 1)**
 
@@ -44,7 +44,27 @@ records what changed, the files touched, the risks, and the verification.
 
 **Smoke** — `smoke:core` fixed table column index + empty-line copy; requires `BVISIBLE_*` env (fail fast if missing).
 
-**Deploy** — Pending push + enqueue.
+**Push** — `cdde7f19ec8ef63cd14e3ac0864d930fbdbc2c3a` → `origin/main` (includes prior `c7172c2` daily workflow strip).
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | `cdde7f19ec8ef63cd14e3ac0864d930fbdbc2c3a` |
+| **Job ID** | `20260525T174301-eb2889` |
+| **Migrations** | None (19 applied) |
+| **PM2** | reload OK |
+| **Health (loopback + public)** | `{"status":"ok","service":"bvisible-web","commit":"cdde7f19ec8ef63cd14e3ac0864d930fbdbc2c3a"}` |
+
+**Server verification** (`/opt/bvisible/app`)
+
+| Command | Result |
+|---------|--------|
+| `verify:workflow-queues` | 26/26 |
+| `verify:po-lifecycle` | 19/19 |
+| `verify:ocr-quality` | 18/18 |
+| `verify:email-ingestion` | 26/26 |
+| `verify:estimate-quote` | 52/52 |
 
 **Operator QA checklist**
 
