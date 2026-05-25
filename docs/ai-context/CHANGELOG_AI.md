@@ -5,6 +5,83 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT D3 — FINAL OPS BATCH MERGE + DEPLOY]
+
+**Prior production:** `0a7d8ba54a1a938b2f37c024f1c4cf68aa6d2ff4` (Agent D2 — OCR workspace, dashboard command center, PO execution workspace).
+
+**Branches / SHAs merged**
+
+| Branch | Tip SHA | Merge commit |
+|--------|---------|--------------|
+| `feat/review-queue-throughput` | `ed2ba930abcfb9e9828cfd39f7ba4324ac44b67e` | `a513a53` — **clean merge** |
+| `feat/finalized-estimate-lockdown` | `a154e9f60479ece8a76a3b0f693c5913885bc814` | `c2b5d8e` — **CHANGELOG conflict resolved** (preserved Agent I + J entries) |
+| `feat/reconciliation-variance-workspace` | `39e26a49e9b5c8bef9b04e02c5f9d1347c89be95` | `751c0b8` — **CHANGELOG conflict resolved** (Agent K prepended; I + J retained) |
+
+**Merge strategy**
+
+1. Fast-forward `main` from `origin/main` (`553f738` — D2 deploy docs).
+2. Merged review-queue-throughput → finalized-estimate-lockdown → reconciliation-variance-workspace in order.
+3. Preserved D2 OCR workspace, PO execution workspace, and dashboard command center (no file-tree regressions).
+4. Preserved package.json verify scripts from I/J/K branches.
+
+**Conflicts resolved**
+
+| File | Resolution |
+|------|------------|
+| `docs/ai-context/CHANGELOG_AI.md` (I merge) | Kept both Agent I (finalized lockdown) and Agent J (queue throughput) entries; newest-first order |
+| `docs/ai-context/CHANGELOG_AI.md` (K merge) | Prepended Agent K (reconciliation variance); retained I + J entries below |
+
+**Final merged SHA:** `751c0b851b1f5d8011fec49ea74b9ebeee4cb246`
+
+**Pre-deploy verification (local, merged tree)**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run typecheck` | **pass** |
+| `pnpm --filter @bvisible/web run verify:estimate-finalization` | **22/22** |
+| `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
+| `pnpm --filter @bvisible/web run verify:estimate-pricing` | **70/70** |
+| `pnpm --filter @bvisible/web run verify:email-ingestion` | **59/59** |
+| `pnpm --filter @bvisible/web run verify:email-ingestion-fixtures` | **18/18** |
+| `pnpm --filter @bvisible/web run verify:email-operational-safety` | **19/19** |
+| `pnpm --filter @bvisible/web run verify:ocr-quality` | **23 passed, 1 skipped** |
+| `pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow` | **49/49** passed, **1** skipped |
+| `pnpm --filter @bvisible/web run verify:po-receipt-workflow` | **21/21** |
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
+
+**Deploy**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | `751c0b851b1f5d8011fec49ea74b9ebeee4cb246` |
+| **Job ID** | `20260525T203421-e0eba4` |
+| **Migrations** | 19 applied, **0 pending** (`20260517143000_po_lifecycle_operator_events` latest) |
+| **PM2** | `bvisible-web` **online** (reload OK) |
+| **Health (loopback)** | `{"status":"ok","service":"bvisible-web","commit":"751c0b851b1f5d8011fec49ea74b9ebeee4cb246"}` |
+
+**Server verification (`/opt/bvisible/app`)**
+
+| Script / command | Result |
+|------------------|--------|
+| `typecheck` | **pass** |
+| `verify:estimate-finalization` | **22/22** |
+| `verify:estimate-quote` | **67/67** |
+| `verify:email-ingestion` | **59/59** |
+| `verify:ocr-quality` | **24/24** (tesseract on host — no skip) |
+| `verify:ocr-reconciliation-flow` | **50/50** |
+| `verify:po-receipt-workflow` | **21/21** |
+| `verify:workflow-queues` | **26/26** |
+| `bash server-scripts/db/.verify-ocr-quality.sh` | **PASS** |
+| `bash server-scripts/db/.verify-email-ingestion-flow.sh` | **PASS** |
+
+**Browser / smoke:** **skipped** — `%USERPROFILE%\.bvisible-smoke.env` absent on operator laptop (expected per `DEBUGGING.md` §0c). Manual QA checklist deferred to operator: FINALIZED estimate read-only chrome, `/admin/ocr-review` throughput UI, `/admin/email-ingestion` reason filters, `/purchase-orders/[id]/reconciliation` variance workspace.
+
+**Docs confirmed:** `UI_SYSTEM.md`, `ESTIMATE_ENGINE.md`, `EMAIL_INGESTION.md`, `PO_SYSTEM.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `SECURITY_RULES.md` — agent branch updates retained; this entry records batch merge + deploy.
+
+**Remaining gaps:** Playwright smoke not run (no operator password). No server-side pagination beyond `take: 100` on review queues. OCR queue `j`/`k` requires focus on row link first. No keyboard shortcuts for variance row actions. Manual browser QA on four UI surfaces not performed in this session.
+
+---
+
 ## 2026-05-25 — [AGENT K — RECONCILIATION VARIANCE WORKSPACE]
 
 **Problem:** After OCR approval creates reconciliation snapshots, operators had a functional but slow variance workspace — wide 8-column table, unclear resolution states (raw enum text), weak CTA hierarchy (Mark reconciled vs Recompute same weight), duplicated safety copy, and action buttons without “what happens if I click?” hints.
@@ -44,7 +121,7 @@ records what changed, the files touched, the risks, and the verification.
 | `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
 | `pnpm --filter @bvisible/web run typecheck` | **pass** |
 
-**Branch:** `feat/reconciliation-variance-workspace` — **not merged, not deployed.**
+**Branch:** `feat/reconciliation-variance-workspace` — **merged on `main` (`751c0b8`); deployed `751c0b8` via job `20260525T203421-e0eba4`.**
 
 **Remaining gaps:** No keyboard shortcuts for variance row actions; no inline diff highlighting beyond signed Δ; bulk confirm across lines; mobile layout untested; dashboard queue row copy not changed (links already point at reconciliation).
 
