@@ -10,6 +10,7 @@ import type {
   VendorCatalogLookupResult,
 } from '@/lib/vendor-pricing/catalog-intel-types';
 import type { DraftLine } from './editor';
+import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 
 const DEBOUNCE_MS = 320;
 
@@ -81,9 +82,11 @@ function managedTrendLines(flags: ManagedPriceTrendFlags | null | undefined): st
 
 export function VendorCatalogIntelPanel({
   line,
+  readOnly = false,
   onApplyManagedCost,
 }: {
   line: DraftLine | null;
+  readOnly?: boolean;
   onApplyManagedCost?: (lineId: string, unitCostCents: number) => void;
 }) {
   const [data, setData] = useState<VendorCatalogLookupResult | null>(null);
@@ -159,6 +162,7 @@ export function VendorCatalogIntelPanel({
         <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-bv-muted)]">
           Vendor intelligence
         </span>
+        {readOnly ? <FinalizedReadOnlyChip /> : null}
         {loading ? (
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
             Updating…

@@ -9,6 +9,7 @@ import {
   type EstimateCatalogPickerRow,
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
+import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 import type { Action, DraftLine } from './editor';
 
 export function CatalogItemPicker({
@@ -16,12 +17,14 @@ export function CatalogItemPicker({
   machines,
   activeLineId,
   lines,
+  readOnly = false,
   dispatch,
 }: {
   catalog: ReadonlyArray<EstimateCatalogPickerRow>;
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   activeLineId: string | null;
   lines: ReadonlyArray<DraftLine>;
+  readOnly?: boolean;
   dispatch: React.Dispatch<Action>;
 }) {
   const [q, setQ] = useState('');
@@ -43,7 +46,7 @@ export function CatalogItemPicker({
   const activeLine = activeLineId ? lines.find((l) => l.id === activeLineId) : null;
 
   function applyRow(row: EstimateCatalogPickerRow) {
-    if (!activeLineId) return;
+    if (readOnly || !activeLineId) return;
 
     const patch = buildLinePatchFromCatalogSelection({ row, machinesById });
 
@@ -77,6 +80,22 @@ export function CatalogItemPicker({
     }
 
     dispatch({ type: 'set-line', id: activeLineId, patch: patch });
+  }
+
+  if (readOnly) {
+    return (
+      <section className="rounded-[var(--radius-bv)] border border-violet-200/80 bg-[var(--color-bv-bg)]/50 p-4 shadow-[var(--shadow-bv-card)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+            Catalog items
+          </h2>
+          <FinalizedReadOnlyChip />
+        </div>
+        <p className="mt-2 text-[12px] leading-snug text-[var(--color-bv-muted)]">
+          Catalog Apply is disabled while this estimate is finalized. Unfinalize from the totals panel to edit lines.
+        </p>
+      </section>
+    );
   }
 
   return (

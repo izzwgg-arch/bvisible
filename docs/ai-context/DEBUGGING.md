@@ -1245,9 +1245,19 @@ Finalize succeeds only when status is **APPROVED**, every linked PO has
 
 ### Symptom: FINALIZED estimate still allows edits in the UI
 
-**Save** is disabled client-side; **`saveEstimateAction`** returns an error if
-status is FINALIZED. Line grid may still focus — server refuses persistence.
-Unfinalize (ADMIN+) to edit again.
+As of the finalized lockdown pass, **FINALIZED** estimates render read-only in the editor:
+static line grid, no catalog/pricing Apply, disabled Save, and **`guardedDispatch`** no-ops.
+If operators still see editable controls, confirm `Estimate.status === FINALIZED` in the DB and
+hard-refresh — stale client bundles should not occur after deploy.
+
+**Save** remains disabled client-side; **`saveEstimateAction`** returns an error if status is
+FINALIZED (authoritative). Unfinalize (ADMIN+) to edit again.
+
+Verify:
+
+```bash
+pnpm --filter @bvisible/web run verify:estimate-finalization
+```
 
 ### Symptom: PO timeline missing an event you expect
 
