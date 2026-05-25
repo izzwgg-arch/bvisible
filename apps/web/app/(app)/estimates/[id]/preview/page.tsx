@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma } from '@bvisible/db';
+import { EstimateStatus, prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
@@ -10,6 +10,7 @@ import { QuotePreviewToolbar } from './quote-preview-toolbar';
 import { SendEstimateEmailForm } from './send-estimate-form';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
+import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 
 export const metadata = { title: 'Estimate quote' };
 export const dynamic = 'force-dynamic';
@@ -80,20 +81,28 @@ export default async function EstimatePreviewPage({
   );
 
   const backHref = `/estimates/${estimate.id}`;
+  const isFinalized = estimate.status === EstimateStatus.FINALIZED;
 
   return (
     <>
       <div className="print:hidden">
         <PageHeader
           title="Quote preview"
-          subtitle="Customer-facing layout — use Print for PDF. Selling totals only (no internal costs)."
+          subtitle={
+            isFinalized
+              ? 'Finalized estimate — customer-facing sell totals only. Print/PDF hides app chrome and internal costs.'
+              : 'Customer-facing layout — use Print for PDF. Selling totals only (no internal costs).'
+          }
           actions={
-            <Link
-              href="/estimates"
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-            >
-              All estimates
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              {isFinalized ? <FinalizedReadOnlyChip /> : null}
+              <Link
+                href="/estimates"
+                className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+              >
+                All estimates
+              </Link>
+            </div>
           }
         />
       </div>

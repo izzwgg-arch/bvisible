@@ -15,6 +15,7 @@ import {
   STANDARD_SHEET_SQ_FT,
 } from '@bvisible/pricing';
 import { formatMoney, parseMoney } from '@/lib/estimate/format';
+import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 import type { Action, DraftLine } from './editor';
 
 type HelperMode = 'sqft' | 'sheet' | 'roll' | 'banner';
@@ -38,10 +39,12 @@ function intStr(raw: string): number {
 export function PricingHelperPanel({
   activeLineId,
   lines,
+  readOnly = false,
   dispatch,
 }: {
   activeLineId: string | null;
   lines: ReadonlyArray<DraftLine>;
+  readOnly?: boolean;
   dispatch: React.Dispatch<Action>;
 }) {
   const [mode, setMode] = useState<HelperMode>('sqft');
@@ -195,7 +198,23 @@ export function PricingHelperPanel({
       ? rollMaterialLineCostCents(rollPerSqftCents, rollBillable)
       : null;
 
-  const canApply = Boolean(activeLineId && activeLine);
+  const canApply = Boolean(activeLineId && activeLine && !readOnly);
+
+  if (readOnly) {
+    return (
+      <section className="rounded-[var(--radius-bv)] border border-violet-200/80 bg-[var(--color-bv-bg)]/50 p-4 shadow-[var(--shadow-bv-card)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+            Pricing helper
+          </h2>
+          <FinalizedReadOnlyChip />
+        </div>
+        <p className="mt-2 text-[12px] leading-snug text-[var(--color-bv-muted)]">
+          Pricing helper Apply is disabled while this estimate is finalized.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">

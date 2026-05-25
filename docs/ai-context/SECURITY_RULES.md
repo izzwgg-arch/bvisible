@@ -51,7 +51,9 @@
 10. **Estimate finalize is status-only.** `finalizeEstimateAction` runs
     `evaluateEstimateFinalizeGates()` then sets `Estimate.status` to **`FINALIZED`** and writes
     **`estimate_finalized`** audit metadata — it never calls `computeEstimate` or mutates line
-    pricing. **`saveEstimateAction`** refuses edits while FINALIZED. Dashboard/list “Potentially
+    pricing. **`saveEstimateAction`** refuses edits while FINALIZED. The estimate editor also sets
+    **`readOnly`** client-side (`isEstimateEditorReadOnly`) so grids and Apply rails cannot mutate
+    state before the server rejects — defense-in-depth, not a substitute for the save gate. Dashboard/list “Potentially
     ready” labels are heuristics only; detail checklist + server gates are authoritative.
 
 ## Customer estimate quotes

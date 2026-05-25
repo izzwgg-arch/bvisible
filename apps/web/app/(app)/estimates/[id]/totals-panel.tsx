@@ -15,6 +15,7 @@ import type { SaveEstimateState } from './actions';
 import type { EditorBootstrap } from './editor';
 import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
 import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
+import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 
 const DEFAULT_MULTIPLIER_MILLI = 3000;
 
@@ -51,6 +52,7 @@ interface TotalsPanelProps {
   finalPriceCents: number;
   multiplierMilli: number;
   designFlatCents: number;
+  readOnly?: boolean;
   dispatch: React.Dispatch<
     | { type: 'set-multiplier'; value: number }
     | { type: 'set-design-flat'; value: number }
@@ -87,6 +89,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
     finalPriceCents,
     multiplierMilli,
     designFlatCents,
+    readOnly = false,
     dispatch,
     dirty,
     saving,
@@ -106,7 +109,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
   } = props;
   const [vendorChoice, setVendorChoice] = useState<string>('');
 
-  const isFinalized = bootstrap.estimate.status === EstimateStatus.FINALIZED;
+  const isFinalized = readOnly || bootstrap.estimate.status === EstimateStatus.FINALIZED;
   const linkedPos = bootstrap.linkedPos;
   const canStartEstimatePoHandoff =
     bootstrap.estimate.status === EstimateStatus.APPROVED && !isFinalized;
@@ -129,9 +132,12 @@ export function TotalsPanel(props: TotalsPanelProps) {
   return (
     <aside className="sticky top-6 flex flex-col gap-4">
       <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-        <h2 className="text-[14.5px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-          Totals
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[14.5px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+            Totals
+          </h2>
+          {isFinalized ? <FinalizedReadOnlyChip /> : null}
+        </div>
 
         <dl className="mt-3 flex flex-col gap-1 text-[13px]">
           <Row label="Materials" value={breakdown.materialsCents} />
@@ -147,18 +153,24 @@ export function TotalsPanel(props: TotalsPanelProps) {
         <div className="mt-4 flex flex-col gap-2 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3">
           <label className="flex items-center justify-between gap-3 text-[12.5px] text-[var(--color-bv-muted)]">
             <span className="font-medium">Design flat fee</span>
-            <span className="w-[110px] rounded-md border border-[var(--color-bv-border)] bg-white">
-              <NumericCell
-                value={designFlatCents}
-                onCommit={(v) => dispatch({ type: 'set-design-flat', value: v })}
-                format={formatMoney}
-                parse={parseMoney}
-                ariaLabel="Design flat fee"
-                cellRow={-1}
-                cellCol="design-flat"
-                align="right"
-              />
-            </span>
+            {isFinalized ? (
+              <span className="tabular-nums font-medium text-[var(--color-bv-text)]">
+                {formatMoney(designFlatCents)}
+              </span>
+            ) : (
+              <span className="w-[110px] rounded-md border border-[var(--color-bv-border)] bg-white">
+                <NumericCell
+                  value={designFlatCents}
+                  onCommit={(v) => dispatch({ type: 'set-design-flat', value: v })}
+                  format={formatMoney}
+                  parse={parseMoney}
+                  ariaLabel="Design flat fee"
+                  cellRow={-1}
+                  cellCol="design-flat"
+                  align="right"
+                />
+              </span>
+            )}
           </label>
           <label className="flex items-center justify-between gap-3 text-[12.5px] text-[var(--color-bv-muted)]">
             <span className="font-medium">
@@ -167,23 +179,29 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 (×{multiplierLabel || '0'})
               </span>
             </span>
-            <span className="w-[110px] rounded-md border border-[var(--color-bv-border)] bg-white">
-              <NumericCell
-                value={multiplierMilli}
-                onCommit={(v) => dispatch({ type: 'set-multiplier', value: Math.max(0, v) })}
-                format={(v) => (v / 1000).toString()}
-                parse={(input) => {
-                  const trimmed = input.trim();
-                  if (trimmed === '') return DEFAULT_MULTIPLIER_MILLI;
-                  if (!/^\d+(\.\d{1,3})?$/.test(trimmed)) return null;
-                  return Math.round(Number(trimmed) * 1000);
-                }}
-                ariaLabel="Sell multiplier"
-                cellRow={-1}
-                cellCol="multiplier"
-                align="right"
-              />
-            </span>
+            {isFinalized ? (
+              <span className="tabular-nums font-medium text-[var(--color-bv-text)]">
+                ×{multiplierLabel || '0'}
+              </span>
+            ) : (
+              <span className="w-[110px] rounded-md border border-[var(--color-bv-border)] bg-white">
+                <NumericCell
+                  value={multiplierMilli}
+                  onCommit={(v) => dispatch({ type: 'set-multiplier', value: Math.max(0, v) })}
+                  format={(v) => (v / 1000).toString()}
+                  parse={(input) => {
+                    const trimmed = input.trim();
+                    if (trimmed === '') return DEFAULT_MULTIPLIER_MILLI;
+                    if (!/^\d+(\.\d{1,3})?$/.test(trimmed)) return null;
+                    return Math.round(Number(trimmed) * 1000);
+                  }}
+                  ariaLabel="Sell multiplier"
+                  cellRow={-1}
+                  cellCol="multiplier"
+                  align="right"
+                />
+              </span>
+            )}
           </label>
           {multiplierIsCustom ? (
             <p className="text-[11.5px] text-amber-700">

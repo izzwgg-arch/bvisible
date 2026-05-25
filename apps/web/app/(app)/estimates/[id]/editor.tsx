@@ -25,6 +25,7 @@ import {
   defaultUnitCostCents,
 } from '@/lib/estimate/defaults';
 import type { SaveEstimateInput } from '@/lib/validators';
+import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
 
 // ---------------------------------------------------------------------
 // Types passed in from the server component.
@@ -217,6 +218,7 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
 }
 
 export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
+  const readOnly = isEstimateEditorReadOnly(bootstrap.estimate.status);
   const [state, dispatch] = useReducer(reducer, bootstrap, initialFromBootstrap);
   const [vendorIntelLineId, setVendorIntelLineId] = useState<string | null>(null);
   const [catalogLineId, setCatalogLineId] = useState<string | null>(null);
@@ -256,8 +258,13 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  function guardedDispatch(action: Action) {
+    if (readOnly) return;
+    dispatch(action);
+  }
+
   async function handleSave() {
-    if (saving) return;
+    if (readOnly || saving) return;
     setSaving(true);
     setSaveState({ error: null });
     const snapBefore = snapshot(stateRef.current);
@@ -305,6 +312,7 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
     const root = rootRef.current;
     if (!root) return;
     function onKey(e: KeyboardEvent) {
+      if (readOnly) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         void handleSave();
@@ -408,28 +416,44 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
         <MetaCard
           title={state.title}
           notes={state.notes}
-          dispatch={dispatch}
+          readOnly={readOnly}
+          dispatch={guardedDispatch}
         />
         <LineGrid
           lines={state.lines}
           machines={bootstrap.machines}
           lineCosts={computed.lineCosts}
+          readOnly={readOnly}
           onVendorIntelLineFocus={setVendorIntelLineId}
           onAnyLineFocus={setCatalogLineId}
-          dispatch={dispatch}
+          dispatch={guardedDispatch}
         />
         <CatalogItemPicker
           catalog={bootstrap.shopCatalog}
           machines={bootstrap.machines}
           activeLineId={catalogLineId}
           lines={state.lines}
-          dispatch={dispatch}
+          readOnly={readOnly}
+          dispatch={guardedDispatch}
         />
-        <PricingHelperPanel activeLineId={catalogLineId} lines={state.lines} dispatch={dispatch} />
+        <PricingHelperPanel
+          activeLineId={catalogLineId}
+          lines={state.lines}
+          readOnly={readOnly}
+          dispatch={guardedDispatch}
+        />
         <VendorCatalogIntelPanel
           line={vendorIntelLine}
-          onApplyManagedCost={(lineId, cents) =>
-            dispatch({ type: 'set-line', id: lineId, patch: { unitCostCents: cents } })
+          readOnly={readOnly}
+          onApplyManagedCost={
+            readOnly
+              ? undefined
+              : (lineId, cents) =>
+                  guardedDispatch({
+                    type: 'set-line',
+                    id: lineId,
+                    patch: { unitCostCents: cents },
+                  })
           }
         />
       </div>
@@ -441,7 +465,8 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
         finalPriceCents={computed.finalPriceCents}
         multiplierMilli={state.multiplierMilli}
         designFlatCents={state.designFlatCents}
-        dispatch={dispatch}
+        readOnly={readOnly}
+        dispatch={guardedDispatch}
         dirty={dirty}
         saving={saving}
         statusBusy={statusBusy}
@@ -465,37 +490,53 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
 function MetaCard({
   title,
   notes,
+  readOnly,
   dispatch,
 }: {
   title: string;
   notes: string;
+  readOnly: boolean;
   dispatch: React.Dispatch<Action>;
 }) {
   return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
+    <section
+      className={`rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)] ${
+        readOnly ? 'bg-[var(--color-bv-bg)]/40' : ''
+      }`}
+    >
       <label className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Title</span>
-        <input
-          value={title}
-          onChange={(e) =>
-            dispatch({ type: 'set-meta', field: 'title', value: e.currentTarget.value })
-          }
-          maxLength={160}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] font-medium text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
-        />
+        {readOnly ? (
+          <p className="text-[14.5px] font-medium text-[var(--color-bv-text)]">{title}</p>
+        ) : (
+          <input
+            value={title}
+            onChange={(e) =>
+              dispatch({ type: 'set-meta', field: 'title', value: e.currentTarget.value })
+            }
+            maxLength={160}
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] font-medium text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+          />
+        )}
       </label>
       <label className="mt-3 flex flex-col gap-1.5">
         <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Notes</span>
-        <textarea
-          value={notes}
-          onChange={(e) =>
-            dispatch({ type: 'set-meta', field: 'notes', value: e.currentTarget.value })
-          }
-          rows={2}
-          maxLength={4000}
-          placeholder="Optional internal notes."
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
-        />
+        {readOnly ? (
+          <p className="whitespace-pre-wrap text-[13.5px] text-[var(--color-bv-text)]">
+            {notes.trim() ? notes : '—'}
+          </p>
+        ) : (
+          <textarea
+            value={notes}
+            onChange={(e) =>
+              dispatch({ type: 'set-meta', field: 'notes', value: e.currentTarget.value })
+            }
+            rows={2}
+            maxLength={4000}
+            placeholder="Optional internal notes."
+            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+          />
+        )}
       </label>
     </section>
   );

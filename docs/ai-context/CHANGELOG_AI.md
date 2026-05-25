@@ -5,6 +5,57 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT I — FINALIZED ESTIMATE LOCKDOWN]
+
+**Problem:** Server-side `saveEstimateAction` already refused FINALIZED estimates, but the editor still looked fully editable — line grid inputs, add/delete rows, catalog/pricing Apply, multiplier fields, and Cmd+S could mislead operators into thinking changes would persist.
+
+**Audit findings (pre-change):**
+
+| Area | Gap |
+|------|-----|
+| Line grid | All cells editable; add-row + move/delete visible; keyboard append active |
+| Meta (title/notes) | Text inputs active |
+| Totals panel | Save disabled ✓; design flat + multiplier still editable |
+| Catalog / pricing helper | Apply buttons active |
+| Vendor intel | Apply cost buttons active |
+| Quote preview | Print OK; no finalized-specific operator copy |
+
+**UI behavior (FINALIZED):**
+
+- **`FinalizedReadOnlyChip`** (`Finalized — read-only`) on line grid header, totals panel, collapsed catalog/pricing helper, vendor intel rail, and staff quote preview header (`print:hidden`).
+- Line grid renders static text (kind, description, qty, unit cost, line cost); hides Actions column and add-row footer; violet-muted border.
+- Title/notes, multiplier, design flat fee — read-only display.
+- Catalog picker + pricing helper collapse to guidance-only cards (Apply hidden).
+- Vendor intel remains informational; Apply buttons omitted via `onApplyManagedCost` guard.
+- **`guardedDispatch`** + early **`handleSave`** / **Cmd+S** return — no client-side mutations.
+- Quote preview/print unchanged for customer layout (`buildCustomerQuoteLines` — no internal cost leakage); app chrome stays `print:hidden`.
+- PO links, invoice links, unfinalize (ADMIN+), and **View quote** primary CTA remain available.
+
+**Server/client safety:** `saveEstimateAction` FINALIZED gate unchanged (authoritative). Client lockdown is defense-in-depth only.
+
+**Files touched:**
+
+- `apps/web/lib/estimate/estimate-read-only-ui.ts` (+ test)
+- `apps/web/components/estimate/finalized-read-only-chip.tsx`
+- `apps/web/app/(app)/estimates/[id]/{editor,line-grid,totals-panel,catalog-item-picker,pricing-helper-panel,vendor-catalog-intel-panel}.tsx`
+- `apps/web/app/(app)/estimates/[id]/preview/page.tsx`
+- `apps/web/package.json` (verify bundle)
+- `docs/ai-context/{CHANGELOG_AI,ESTIMATE_ENGINE,UI_SYSTEM,SECURITY_RULES,DEBUGGING}.md`
+
+**Verification (local):**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:estimate-finalization` | **22/22** |
+| `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
+| `pnpm --filter @bvisible/web run verify:estimate-pricing` | **70/70** |
+| `pnpm --filter @bvisible/web run typecheck` | **fail** — pre-existing `ocr-queue-table.tsx` TS18048 (unrelated to this branch) |
+
+**Deploy:** not run (per task).
+
+**Remaining gaps:** Non-admin operators cannot unfinalize (by design). Delete estimate still available to ADMIN+. Browser smoke not run. Typecheck debt on OCR review table predates this branch.
+
+
 ---
 
 ## 2026-05-25 — [AGENT J — OCR EMAIL QUEUE THROUGHPUT]
@@ -50,6 +101,7 @@ records what changed, the files touched, the risks, and the verification.
 **Deploy:** not run (per task).
 
 **Remaining gaps:** No server-side pagination beyond `take: 100`; no bulk safe actions; browser smoke not run; OCR queue `j`/`k` requires focus on a row link first (not roving tabindex on `<tr>`).
+
 
 ---
 
