@@ -15,6 +15,10 @@ import { DashboardOperationalQueues } from './dashboard-operational-queues';
 import { DashboardPoLifecycleQueues } from './dashboard-po-lifecycle-queues';
 import { getPoLifecycleDashboardQueues } from '@/lib/po/get-po-lifecycle-dashboard-queues';
 import {
+  DashboardCommandSummary,
+  summarizeDashboardQueues,
+} from './dashboard-command-summary';
+import {
   DashboardMetricGrid,
   DashboardOperationalSections,
   DashboardQuickActions,
@@ -83,11 +87,16 @@ export default async function DashboardPage({
     !dismissed &&
     checklistState.completedCount < checklistState.totalSteps;
 
+  const commandCounts =
+    metrics != null
+      ? summarizeDashboardQueues(operationalQueues, poLifecycleQueues)
+      : null;
+
   return (
     <>
       <PageHeader
         title={greeting(user.name, user.email)}
-        subtitle={`${workspaceLabel} · operational overview`}
+        subtitle={`${workspaceLabel} · operations command center`}
       />
       {error === 'forbidden' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
@@ -112,31 +121,66 @@ export default async function DashboardPage({
         <OnboardingChecklistCard state={checklistState} role={user.role} />
       ) : null}
 
-      {metrics ? (
+      {metrics && commandCounts ? (
         <>
+          <DashboardCommandSummary
+            counts={commandCounts}
+            activeFilter={queueFilter}
+            showPoLifecycle={poLifecycleQueues != null}
+          />
+
+          <section
+            className="dashboard-ops-workspace mb-6 rounded-[var(--radius-bv)] border border-slate-200/90 bg-slate-100/50 p-4 shadow-[var(--shadow-bv-card)] sm:p-5"
+            aria-label="Operational queues"
+          >
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                Work queues
+              </h2>
+            </div>
+            <div className="grid gap-6 xl:grid-cols-2">
+              {operationalQueues ? (
+                <div>
+                  <h3 className="mb-2 text-[12px] font-semibold text-[var(--color-bv-text)]">
+                    Estimate · invoice · mail
+                  </h3>
+                  <DashboardOperationalQueues
+                    queues={operationalQueues}
+                    activeFilter={queueFilter}
+                    showOperatorQueues={showOperator}
+                  />
+                </div>
+              ) : null}
+              {poLifecycleQueues ? (
+                <div>
+                  <h3 className="mb-2 text-[12px] font-semibold text-[var(--color-bv-text)]">
+                    PO vendor lifecycle
+                  </h3>
+                  <DashboardPoLifecycleQueues queues={poLifecycleQueues} />
+                </div>
+              ) : null}
+            </div>
+          </section>
+
           <DashboardQuickActions role={user.role} hasClients={metrics.clientCount > 0} />
           <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
-          {poLifecycleQueues ? (
-            <DashboardPoLifecycleQueues queues={poLifecycleQueues} />
+
+          {user.tenantId && metrics.vendorPriceAlertsOpen > 0 ? (
+            <div id="vendor-price-alerts" className="scroll-mt-8">
+              <VendorPriceAlerts tenantId={user.tenantId} />
+            </div>
           ) : null}
-          {operationalQueues ? (
-            <DashboardOperationalQueues
-              queues={operationalQueues}
-              activeFilter={queueFilter}
-              showOperatorQueues={showOperator}
-            />
-          ) : null}
+
           {feed ? <DashboardOperationalSections feed={feed} showAttention={false} /> : null}
           <DashboardRecentActivity rows={metrics.recentActivity} />
         </>
       ) : null}
 
-      {user.tenantId ? (
+      {user.tenantId && metrics && metrics.vendorPriceAlertsOpen === 0 ? (
         <div id="vendor-price-alerts" className="scroll-mt-8">
           <VendorPriceAlerts tenantId={user.tenantId} />
         </div>
       ) : null}
-
     </>
   );
 }
