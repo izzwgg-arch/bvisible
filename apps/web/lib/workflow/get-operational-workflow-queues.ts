@@ -12,6 +12,10 @@ import {
 } from '@bvisible/db';
 import { reconciliationNeedsAttention } from '@/lib/estimate/estimate-fulfillment';
 import {
+  evaluateEstimateFinalizeGates,
+  POTENTIALLY_READY_LABEL,
+} from '@/lib/estimate/estimate-finalization';
+import {
   bucketForWorkflowState,
   OPERATIONAL_QUEUE_BUCKET_ORDER,
   type OperationalQueueBucket,
@@ -54,6 +58,8 @@ export interface OperationalQueueItem {
   isBlocked: boolean;
   isUnresolved: boolean;
   ownerUserId: string | null;
+  /** When set, overrides WORKFLOW_STATE_LABELS for display (e.g. heuristic queue rows). */
+  workflowStateLabel?: string;
 }
 
 export type OperationalQueueFilter = 'all' | 'stale' | 'blocked' | 'unresolved' | 'mine';
@@ -186,7 +192,16 @@ export async function getOperationalWorkflowQueues(
         client: { select: { companyName: true } },
         purchaseOrders: {
           where: { tenantId, deletedAt: null },
-          select: { qboPoNumber: true },
+          select: {
+            id: true,
+            number: true,
+            qboPoNumber: true,
+            reconciliations: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: { status: true },
+            },
+          },
         },
       },
     }),
@@ -430,6 +445,8 @@ export async function getOperationalWorkflowQueues(
     poId?: string | null;
     ocrDocumentId?: string | null;
     invoiceId?: string | null;
+    blockerReason?: string;
+    workflowStateLabel?: string;
   }): OperationalQueueItem => {
     const next = getOperationalNextAction({
       state: params.state,
@@ -452,7 +469,7 @@ export async function getOperationalWorkflowQueues(
       title: params.title,
       subtitle: params.subtitle,
       customerLabel: params.customerLabel,
-      blockerReason: getOperationalAttentionReason(params.state),
+      blockerReason: params.blockerReason ?? getOperationalAttentionReason(params.state),
       nextActionLabel: next.label,
       href: next.href,
       sortAt: params.sortAt,
@@ -462,6 +479,7 @@ export async function getOperationalWorkflowQueues(
       isBlocked: isOperationalBlocked(params.state),
       isUnresolved: isOperationalUnresolved(params.state),
       ownerUserId: params.ownerUserId,
+      workflowStateLabel: params.workflowStateLabel,
     };
   };
 
@@ -506,8 +524,26 @@ export async function getOperationalWorkflowQueues(
   for (const e of readyToFinalizeCandidates) {
     const pos = e.purchaseOrders;
     if (pos.length === 0) continue;
-    const allQbo = pos.every((p) => p.qboPoNumber != null && p.qboPoNumber.trim() !== '');
+    const linkedPos = pos.map((p) => ({
+      id: p.id,
+      number: p.number,
+      qboPoNumber: p.qboPoNumber,
+      latestReconciliationStatus: p.reconciliations[0]?.status ?? null,
+    }));
+    const allQbo = linkedPos.every((p) => p.qboPoNumber?.trim());
     if (!allQbo) continue;
+
+    const gates = evaluateEstimateFinalizeGates({
+      estimateStatus: EstimateStatus.APPROVED,
+      linkedPos,
+    });
+    if (
+      !gates.canFinalize &&
+      gates.kind !== 'reconciliation_unresolved'
+    ) {
+      continue;
+    }
+
     const state = getOperationalWorkflowState({
       estimateStatus: EstimateStatus.APPROVED,
       linkedPoCount: pos.length,
@@ -515,6 +551,8 @@ export async function getOperationalWorkflowQueues(
       finalized: false,
     });
     if (state !== 'ready_to_finalize') continue;
+
+    const potentiallyReady = !gates.canFinalize;
     push(
       buildItem({
         id: `est-finalize-${e.id}`,
@@ -522,12 +560,16 @@ export async function getOperationalWorkflowQueues(
         entityType: 'estimate',
         entityId: e.id,
         title: e.number,
-        subtitle: e.title,
+        subtitle: potentiallyReady ? POTENTIALLY_READY_LABEL : e.title,
         customerLabel: e.client.companyName,
         referenceAt: e.updatedAt,
         sortAt: e.updatedAt,
         ownerUserId: e.createdById,
         estimateId: e.id,
+        blockerReason: potentiallyReady
+          ? (gates.blockedReason ?? POTENTIALLY_READY_LABEL)
+          : undefined,
+        workflowStateLabel: potentiallyReady ? 'Potentially ready' : undefined,
       }),
     );
   }

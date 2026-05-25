@@ -19,6 +19,7 @@ import {
   requireTenantId,
 } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
+import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
 
 export interface SaveEstimateState {
   error: string | null;
@@ -50,6 +51,7 @@ export async function saveEstimateAction(
     where: { id: data.estimateId, tenantId: me.tenantId, deletedAt: null },
     select: {
       id: true,
+      status: true,
       multiplierMilli: true,
       number: true,
       lines: { select: { machineId: true }, take: 0 },
@@ -57,6 +59,11 @@ export async function saveEstimateAction(
   });
   if (!existing) {
     return { error: 'Estimate not found.' };
+  }
+  if (existing.status === EstimateStatus.FINALIZED) {
+    return {
+      error: 'Estimate is finalized. Unfinalize before editing lines or totals.',
+    };
   }
 
   // Validate every machineId belongs to this tenant. One query, not
@@ -268,15 +275,16 @@ export async function deleteEstimateAction(estimateId: string): Promise<void> {
   redirect(`/estimates?deleted=${encodeURIComponent(existing.number)}`);
 }
 
-// R-EST-04: An Estimate can only enter FINALIZED if it has at least one
-// linked, non-deleted PurchaseOrder AND at least one of those POs has a
-// non-null qboPoNumber. The check is server-only — UI affordances are
-// nice-to-have, this is the source of truth.
+// R-EST-04: An Estimate can only enter FINALIZED when closeout gates pass
+// (APPROVED, ≥1 linked PO, QBO on every linked PO, clean reconciliation).
+// Status-only update + audit — no pricing recompute.
 export type FinalizeEstimateError =
   | { kind: 'not_found' }
   | { kind: 'already_finalized' }
+  | { kind: 'not_approved' }
   | { kind: 'no_linked_po' }
   | { kind: 'no_qbo_number' }
+  | { kind: 'reconciliation_unresolved' }
   | { kind: 'invalid'; message: string };
 
 export interface FinalizeEstimateResult {
@@ -288,8 +296,10 @@ export interface FinalizeEstimateResult {
 const FINALIZE_MESSAGES: Record<FinalizeEstimateError['kind'], string> = {
   not_found: 'Estimate not found.',
   already_finalized: 'Estimate is already finalized.',
+  not_approved: 'Estimate must be Approved before finalizing.',
   no_linked_po: 'Create a PO from this estimate before finalizing.',
-  no_qbo_number: 'The linked PO needs a QuickBooks PO number first.',
+  no_qbo_number: 'Every linked PO needs a QuickBooks PO number first.',
+  reconciliation_unresolved: 'Clear reconciliation on all linked POs before finalizing.',
   invalid: 'Invalid input.',
 };
 
@@ -328,37 +338,60 @@ export async function finalizeEstimateAction(
     };
   }
 
-  // Two-step gate so the audit log can record exactly which check failed.
-  const linkedPoCount = await prisma.purchaseOrder.count({
+  const linkedPos = await prisma.purchaseOrder.findMany({
     where: {
       tenantId: me.tenantId,
       estimateId: estimate.id,
       deletedAt: null,
     },
+    select: {
+      id: true,
+      number: true,
+      qboPoNumber: true,
+      reconciliations: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { status: true },
+      },
+    },
   });
-  if (linkedPoCount === 0) {
+
+  const gates = evaluateEstimateFinalizeGates({
+    estimateStatus: estimate.status,
+    linkedPos: linkedPos.map((p) => ({
+      id: p.id,
+      number: p.number,
+      qboPoNumber: p.qboPoNumber,
+      latestReconciliationStatus: p.reconciliations[0]?.status ?? null,
+    })),
+  });
+
+  if (!gates.canFinalize) {
+    const kind: FinalizeEstimateError['kind'] =
+      gates.kind === 'missing_qbo'
+        ? 'no_qbo_number'
+        : gates.kind === 'already_finalized'
+          ? 'already_finalized'
+          : gates.kind === 'not_approved'
+            ? 'not_approved'
+            : gates.kind === 'no_linked_po'
+              ? 'no_linked_po'
+              : gates.kind === 'reconciliation_unresolved'
+                ? 'reconciliation_unresolved'
+                : 'invalid';
+    const error: FinalizeEstimateError =
+      kind === 'invalid'
+        ? { kind: 'invalid', message: gates.blockedReason ?? FINALIZE_MESSAGES.invalid }
+        : { kind };
     return {
       ok: false,
-      error: { kind: 'no_linked_po' },
-      message: FINALIZE_MESSAGES.no_linked_po,
+      error,
+      message: gates.blockedReason ?? FINALIZE_MESSAGES[kind],
     };
   }
 
-  const withQboCount = await prisma.purchaseOrder.count({
-    where: {
-      tenantId: me.tenantId,
-      estimateId: estimate.id,
-      deletedAt: null,
-      qboPoNumber: { not: null },
-    },
-  });
-  if (withQboCount === 0) {
-    return {
-      ok: false,
-      error: { kind: 'no_qbo_number' },
-      message: FINALIZE_MESSAGES.no_qbo_number,
-    };
-  }
+  const linkedPoCount = linkedPos.length;
+  const withQboCount = linkedPos.filter((p) => p.qboPoNumber?.trim()).length;
 
   await prisma.estimate.update({
     where: { id: estimate.id, tenantId: me.tenantId },

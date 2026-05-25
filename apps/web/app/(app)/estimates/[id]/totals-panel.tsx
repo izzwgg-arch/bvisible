@@ -14,6 +14,7 @@ import { parseMoney } from '@/lib/estimate/format';
 import type { SaveEstimateState } from './actions';
 import type { EditorBootstrap } from './editor';
 import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
+import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
 
 const DEFAULT_MULTIPLIER_MILLI = 3000;
 
@@ -109,13 +110,18 @@ export function TotalsPanel(props: TotalsPanelProps) {
   const linkedPos = bootstrap.linkedPos;
   const canStartEstimatePoHandoff =
     bootstrap.estimate.status === EstimateStatus.APPROVED && !isFinalized;
-  const hasPo = linkedPos.length > 0;
-  const hasQboPo = linkedPos.some((p) => !!p.qboPoNumber);
-  const finalizeBlockedReason = !hasPo
-    ? 'Create a PO from this estimate first.'
-    : !hasQboPo
-      ? 'Linked PO needs a QuickBooks PO number first.'
-      : null;
+  const finalizeGates = evaluateEstimateFinalizeGates({
+    estimateStatus: bootstrap.estimate.status,
+    linkedPos: linkedPos.map((p) => ({
+      id: p.id,
+      number: p.number,
+      qboPoNumber: p.qboPoNumber,
+      latestReconciliationStatus: p.latestReconciliationStatus,
+    })),
+  });
+  const finalizeBlockedReason = isFinalized
+    ? null
+    : finalizeGates.blockedReason;
 
   const multiplierLabel = (multiplierMilli / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
   const multiplierIsCustom = multiplierMilli !== DEFAULT_MULTIPLIER_MILLI;
@@ -203,7 +209,8 @@ export function TotalsPanel(props: TotalsPanelProps) {
           <button
             type="button"
             onClick={onSave}
-            disabled={saving || !dirty}
+            disabled={saving || !dirty || isFinalized}
+            title={isFinalized ? 'Unfinalize to edit this estimate.' : undefined}
             className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? 'Saving…' : dirty ? 'Save changes (⌘S)' : 'Saved'}
@@ -361,6 +368,10 @@ export function TotalsPanel(props: TotalsPanelProps) {
               {finalizeBlockedReason ? (
                 <p className="text-[11.5px] text-[var(--color-bv-muted)]">
                   {finalizeBlockedReason}
+                </p>
+              ) : finalizeGates.canFinalize ? (
+                <p className="text-[11.5px] text-emerald-800">
+                  Closeout gates passed — finalize locks status and line edits.
                 </p>
               ) : null}
               {finalizeMsg ? (

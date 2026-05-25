@@ -5,6 +5,50 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT E — SMOKE QA READINESS]
+
+**Problem:** Browser smoke is routinely skipped because `BVISIBLE_ADMIN_PASSWORD` is operator-only and unavailable to agents. The runbook needed platform-specific setup steps and a safe pre-flight env check.
+
+**Smoke setup (operator)**
+
+1. Copy `server-scripts/smoke/.bvisible-smoke.env.example` → `~/.bvisible-smoke.env` (Windows: `%USERPROFILE%\.bvisible-smoke.env`).
+2. Set `BVISIBLE_ADMIN_PASSWORD` locally — never commit.
+3. Unix: `chmod 600 ~/.bvisible-smoke.env`.
+4. Verify: `bash server-scripts/smoke/check-smoke-env.sh` (exit 0 = ready).
+5. Run: `bash server-scripts/smoke/run-smoke.sh all` or individual `pnpm --filter @bvisible/web run smoke:*` scripts.
+
+**Files touched**
+
+- `server-scripts/smoke/check-smoke-env.sh` — **new** read-only credential pre-flight
+- `server-scripts/smoke/run-smoke.sh` — delegates env check; supports `USERPROFILE` on Windows
+- `server-scripts/smoke/.bvisible-smoke.env.example` — Windows + Unix setup comments
+- `docs/ai-context/DEBUGGING.md` — § 0c expanded: PowerShell, Git Bash, suite table, output meanings, common failures, smoke data inventory/cleanup
+- `docs/ai-context/UI_SYSTEM.md` — dashboard smoke bullet points to `check-smoke-env.sh`
+
+**Env checker behavior**
+
+- Loads `~/.bvisible-smoke.env` (or `%USERPROFILE%\.bvisible-smoke.env`) if present
+- Prints base URL + email only; password shown as `(set, not shown)`
+- Exit `2` with `MISSING: BVISIBLE_*` lines when vars absent; never mutates files
+
+**Verification (local operator laptop, 2026-05-25)**
+
+| Command | Result |
+|---------|--------|
+| `bash server-scripts/smoke/check-smoke-env.sh` | exit **2** — clean `MISSING:` output, no password leak |
+| `bash server-scripts/db/.list-smoke-data.sh` | exit **1** — `cd /opt/bvisible/app` not found (expected off-host; run via SSH on app host) |
+| `bash server-scripts/db/.cleanup-smoke-data.sh` | exit **1** — same (dry-run/delete logic only reachable on app host) |
+
+**Remaining gaps**
+
+- Full Playwright smoke not run in this session (no operator password in agent environment).
+- List/cleanup scripts still require app host path; no local-docker shortcut documented.
+- Agents will continue to skip browser smoke — by design until operator runs pre-flight.
+
+**Deploy:** none.
+
+---
+
 ## 2026-05-25 — [AGENT B — FINALIZATION CLOSEOUT]
 
 **Audit findings (before changes)**
@@ -102,7 +146,7 @@ Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estim
 - `runVendorPriceExtractionAfterMaterialize` only in `materializeOnPo`; unmatched branch does not call it
 - OCR worker / `REVIEW_REQUIRED` never calls `persistApprovedOcrPriceLines`; approve action gates on `REVIEW_REQUIRED`
 
-**Tests (local, uncommitted on `aeef805` base)**
+**Tests (`8266993`)**
 
 | Command | Result |
 |---------|--------|
@@ -112,15 +156,7 @@ Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estim
 | `verify:ocr-quality` | **23/23** passed, **1** skipped (optional host tesseract) |
 | `typecheck` | **pass** |
 
-**Files touched**
-
-- `apps/web/lib/email-ingest/fixtures/mime.ts`, `ingest-fixtures.test.ts`, `operational-safety.test.ts`
-- `apps/web/lib/ocr/fixtures/sample-invoices.ts`, `parse-receipt-lines.test.ts`, `ocr-quality.test.ts`
-- Docs: `EMAIL_INGESTION.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `SECURITY_RULES.md`, `CHANGELOG_AI.md`
-
 **Bugs fixed:** none (fixtures only; no matcher or pricing rule changes).
-
-**Deploy:** commit + push required before deploy; no migrations. Post-deploy: `bash server-scripts/db/.verify-email-ingestion-flow.sh` and `bash server-scripts/db/.verify-ocr-quality.sh`.
 
 **Remaining gaps:** no live IMAP replay of fixtures; hand-built PDF may still `pdf_no_extractable_text` in some hosts; Playwright email smoke not run without `BVISIBLE_*`; table-invoice rows with multiple dollar columns may miss qty (display-only OCR candidates).
 
@@ -149,7 +185,7 @@ Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estim
 
 **Smoke** — `smoke:core`: `/estimates/new` route smoke; editor shell step (Line items / Catalog / Pricing helper); status column index fixed (Workflow column); create button **Create & add lines**. **Skipped locally** — missing `BVISIBLE_ADMIN_EMAIL` (fail fast, not faked).
 
-**Verification (local)**
+**Verification (`6567929`)**
 
 | Command | Result |
 |---------|--------|
@@ -157,8 +193,6 @@ Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estim
 | `verify:vendor-catalog` | 52/52 |
 | `verify:estimate-quote` | 53/53 |
 | `typecheck` | pass |
-
-**Deploy** — Pushed to `feat/estimate-ux-polish` (not merged to main). No deploy from this branch until PR review.
 
 **Remaining gaps** — List “ready to finalize” chip still heuristic (no QBO check on list); collapsible quote section defaults closed on Draft (expand manually or use strip CTA); Playwright smoke needs operator `~/.bvisible-smoke.env`.
 

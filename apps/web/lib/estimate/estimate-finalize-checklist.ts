@@ -1,6 +1,7 @@
 import type { InvoiceStatus, POReconciliationStatus } from '@bvisible/db';
 import { EstimateStatus, InvoiceStatus as InvS } from '@bvisible/db';
 import { reconciliationNeedsAttention } from '@/lib/estimate/estimate-fulfillment';
+import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
 
 export type FinalizeChecklistItem = {
   key: string;
@@ -132,22 +133,13 @@ export function buildEstimateFinalizeChecklist(input: {
     },
   ];
 
-  const readyToFinalize =
-    isApproved && !isFinalized && hasPo && allQbo && allReconClean;
-
-  let blockedSummary: string | null = null;
-  if (isFinalized) {
-    blockedSummary = null;
-  } else if (!isApproved) {
-    blockedSummary = 'Estimate must be Approved before finalize.';
-  } else if (!hasPo) {
-    blockedSummary = 'Link at least one purchase order.';
-  } else if (!allQbo) {
-    blockedSummary =
-      'Enter QuickBooks PO numbers on every linked PO — that proves finance issued the buy.';
-  } else if (!allReconClean) {
-    blockedSummary = 'Clear reconciliation on all linked POs first.';
-  }
+  const gates = evaluateEstimateFinalizeGates({
+    estimateStatus: input.estimateStatus,
+    linkedPos: input.linkedPos,
+  });
+  const readyToFinalize = gates.canFinalize;
+  const blockedSummary =
+    isFinalized || readyToFinalize ? null : gates.blockedReason;
 
   return { items, readyToFinalize, blockedSummary };
 }

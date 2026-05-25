@@ -146,7 +146,7 @@ function QueueRow({ row }: { row: OperationalQueueItem }) {
           </span>
         ) : null}
         <span className="rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-bv-text)]">
-          {WORKFLOW_STATE_LABELS[row.workflowState]}
+          {row.workflowStateLabel ?? WORKFLOW_STATE_LABELS[row.workflowState]}
         </span>
         <span className="text-[11.5px] font-medium text-[var(--color-bv-accent)] group-hover:underline">
           {row.nextActionLabel} →

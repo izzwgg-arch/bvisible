@@ -1,4 +1,5 @@
 import { EstimateStatus } from '@bvisible/db';
+import { POTENTIALLY_READY_LABEL } from '@/lib/estimate/estimate-finalization';
 import { WORKFLOW_STATE_LABELS } from '@/lib/workflow/operational-state';
 
 export type EstimateListWorkflowChip = {
@@ -31,7 +32,7 @@ export function getEstimateListWorkflowChips(input: {
       }
       return [
         { label: 'PO + invoice', tone: 'neutral' },
-        { label: WORKFLOW_STATE_LABELS.ready_to_finalize, tone: 'ready' },
+        { label: POTENTIALLY_READY_LABEL, tone: 'ready' },
       ];
     case EstimateStatus.FINALIZED:
       return [{ label: 'Finalized', tone: 'muted' }];
