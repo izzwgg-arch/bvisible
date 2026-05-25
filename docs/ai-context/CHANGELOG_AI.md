@@ -5,6 +5,165 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT B — FINALIZATION CLOSEOUT]
+
+**Audit findings (before changes)**
+
+| Area | Prior behavior | Gap |
+|------|----------------|-----|
+| Server `finalizeEstimateAction` | ≥1 linked PO + ≥1 with QBO | Did not require `APPROVED`, all PO QBO #s, or clean recon; weaker than UI checklist |
+| Totals panel finalize button | Blocked on any QBO (not all) | Mismatch with checklist “every linked PO” copy |
+| Dashboard ready-to-finalize queue | QBO on all POs only | No recon gate; could imply ready when detail checklist blocked |
+| Estimates list chips | “Ready to finalize” when PO+invoice | Heuristic skipped QBO/recon |
+| `saveEstimateAction` | No status check | FINALIZED estimates could still save line/total mutations |
+| Checklist UI | Banner `blockedSummary` above rows | Operator asked for compact rows |
+
+**Finalization rules (R-EST-04, aligned server + UI)**
+
+Shared helper: `evaluateEstimateFinalizeGates()` in `apps/web/lib/estimate/estimate-finalization.ts`.
+
+| Gate | Required | Server | UI checklist | Invoice |
+|------|----------|--------|--------------|---------|
+| Estimate status | `APPROVED` | yes | yes | — |
+| Linked PO | ≥1 non-deleted | yes | yes | — |
+| QBO numbers | on **every** linked PO | yes | yes | — |
+| Reconciliation | latest snapshot `MATCHED` or `RESOLVED` (or none) | yes | yes | — |
+| Invoice paid | — | no (informational) | optional row | — |
+| Financial mutation on finalize | none | status + `estimate_finalized` audit only | — | — |
+| Double finalize | rejected `already_finalized` | yes | — | — |
+| Edits while FINALIZED | blocked | `saveEstimateAction` refuses; status buttons locked | Save disabled | — |
+
+**UI changes**
+
+- **Closeout checklist** — compact row list (`EstimateFinalizeChecklistPanel`); “N remaining” / **Ready to finalize** badge; invoice row marked **Optional**; removed banner summary.
+- **Totals panel** — finalize disable reason from shared gates; green helper when ready; Save disabled while FINALIZED.
+- **Dashboard queue** — ready-to-finalize fetch includes recon; rows with open recon show **Potentially ready — open to confirm.** badge/subtitle.
+- **Estimates list** — approved PO+invoice chip uses same “Potentially ready” copy (list has no QBO/recon data).
+
+**Files touched**
+
+- `apps/web/lib/estimate/estimate-finalization.ts`, `estimate-finalization.test.ts`
+- `apps/web/lib/estimate/estimate-finalize-checklist.ts`, `estimate-finalize-checklist.test.ts`
+- `apps/web/lib/estimate/estimate-list-workflow-chip.ts`
+- `apps/web/app/(app)/estimates/[id]/actions.ts`, `totals-panel.tsx`
+- `apps/web/components/estimate/estimate-finalize-checklist.tsx`
+- `apps/web/lib/workflow/get-operational-workflow-queues.ts`
+- `apps/web/app/(app)/dashboard/dashboard-operational-queues.tsx`
+- `apps/web/package.json` — `verify:estimate-finalization`
+- Docs: `ESTIMATE_ENGINE.md`, `PO_SYSTEM.md`, `UI_SYSTEM.md`, `DEBUGGING.md`, `SECURITY_RULES.md`, `KNOWN_RULES.md`
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run verify:estimate-finalization` | **17/17** |
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
+| `pnpm --filter @bvisible/web run verify:po-receipt-workflow` | **21/21** |
+| `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
+| `pnpm --filter @bvisible/web run typecheck` | pass |
+
+**Deploy notes** — Requires commit + push before deploy (git-first). No migration. After deploy: open an APPROVED estimate with linked POs, confirm checklist rows + finalize button agree; attempt finalize with missing QBO or open recon → server error matches UI; confirm FINALIZED estimate cannot save line edits.
+
+**Remaining gaps** — List page still uses heuristic chips (labeled “Potentially ready”); Playwright finalize smoke not run in this session; editor line grid not fully read-only when FINALIZED (server save block is the enforcement).
+
+---
+
+## 2026-05-25 — [AGENT C — IMAP OCR EDGE FIXTURES]
+
+**Phase 1 audit (before changes)**
+
+| Area | Existing coverage | Gaps addressed |
+|------|-------------------|----------------|
+| Email parse | `ingest-fixtures.test.ts` (RE/FW, forward snippet, multi-PDF) | Nested subjects, vendor header forward, inline spam, empty attach, mixed MIME, path traversal via `safeOriginalFilename` |
+| Match | `match.test.ts` (PO/QBO/vendor rules) | Body-only dual PO tokens → `MULTIPLE_PO_MATCHES` |
+| Attachment storage | `storage.test.ts` (oversize) | Unsupported MIME reject before `writeFile` in fixtures |
+| Review reasons | `review-reasons.test.ts` | Skipped-row `ATTACHMENT_REJECTED` in fixtures + operational-safety |
+| OCR parse | `parse-receipt-lines.test.ts` (wrapped, qty, invoice #) | Table invoice, `qty @`, unit suffixes, OCR noise, rotated-scan meta |
+| OCR safety | `ocr-safety.test.ts` (approve gate) | Worker/enqueue static contracts in `operational-safety.test.ts` |
+
+**Email fixtures added** (`lib/email-ingest/fixtures/mime.ts`, `ingest-fixtures.test.ts`)
+
+- Nested `RE:/FW:` subjects; forwarded chain with original vendor `From`/`Subject`
+- Multi-PDF; inline image spam + valid PDF; zero-byte part dropped
+- Duplicate filename+bytes collapsed; same bytes different filenames kept (dedupe key contract)
+- Path traversal filename sanitized at persist (`safeOriginalFilename`)
+- Unsupported binary + valid PDF in one message
+- Body dual PO tokens; filename PO token without subject token
+
+**OCR text fixtures added** (`lib/ocr/fixtures/sample-invoices.ts`)
+
+- `FIXTURE_TABLE_INVOICE`, `FIXTURE_QTY_AT_RECEIPT`, `FIXTURE_UNIT_SUFFIX_RECEIPT`
+- `FIXTURE_OCR_NOISE_RECEIPT`, `FIXTURE_ROTATED_SCAN_RECEIPT`
+
+**Safety rules verified (static + unit)**
+
+- Per-message `seenAttachmentKeys` dedupe; skipped rows carry `skipReason` → `ATTACHMENT_REJECTED`
+- `enqueueOcrJobForPoAttachment` idempotent on `poAttachmentId` (`P2002` → `duplicate`)
+- `runVendorPriceExtractionAfterMaterialize` only in `materializeOnPo`; unmatched branch does not call it
+- OCR worker / `REVIEW_REQUIRED` never calls `persistApprovedOcrPriceLines`; approve action gates on `REVIEW_REQUIRED`
+
+**Tests (local, uncommitted on `aeef805` base)**
+
+| Command | Result |
+|---------|--------|
+| `verify:email-ingestion` | **57/57** |
+| `verify:email-ingestion-fixtures` | **18/18** |
+| `verify:email-operational-safety` | **17/17** |
+| `verify:ocr-quality` | **23/23** passed, **1** skipped (optional host tesseract) |
+| `typecheck` | **pass** |
+
+**Files touched**
+
+- `apps/web/lib/email-ingest/fixtures/mime.ts`, `ingest-fixtures.test.ts`, `operational-safety.test.ts`
+- `apps/web/lib/ocr/fixtures/sample-invoices.ts`, `parse-receipt-lines.test.ts`, `ocr-quality.test.ts`
+- Docs: `EMAIL_INGESTION.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `SECURITY_RULES.md`, `CHANGELOG_AI.md`
+
+**Bugs fixed:** none (fixtures only; no matcher or pricing rule changes).
+
+**Deploy:** commit + push required before deploy; no migrations. Post-deploy: `bash server-scripts/db/.verify-email-ingestion-flow.sh` and `bash server-scripts/db/.verify-ocr-quality.sh`.
+
+**Remaining gaps:** no live IMAP replay of fixtures; hand-built PDF may still `pdf_no_extractable_text` in some hosts; Playwright email smoke not run without `BVISIBLE_*`; table-invoice rows with multiple dollar columns may miss qty (display-only OCR candidates).
+
+---
+
+## 2026-05-25 — [AGENT A — ESTIMATE UX POLISH]
+
+**Phase 1 audit (friction)**
+
+| Route / surface | Finding |
+|-----------------|---------|
+| `/estimates` | Workflow + Status columns overlap visually; empty drafts showed generic “Continue draft” instead of “Add lines”; Next column lacked affordance |
+| `/estimates/new` | Flow worked but first action not numbered; smoke still clicked old **Create estimate** label |
+| `/estimates/[id]` | Editor buried below fulfillment + quote summary + timeline + link panel (~4 cards before line grid); header duplicated Preview/Send CTAs already on daily strip |
+| Catalog / pricing helper | Duplicated “focus a row” guidance in catalog picker |
+| Vendor rail | Verbose idle copy; vendor table shown for single-vendor matches |
+| Quote link panel | Empty state did not point operators to Preview → Send |
+
+**UI changes**
+
+- **List** — draft rows with zero lines → **Add lines** (`#estimate-line-grid`); workflow chips slightly larger; primary Next links show → arrow.
+- **New estimate** — numbered 1·2·3 helper copy; subtitle tightened.
+- **Detail (Draft / Sent / Rejected)** — **line grid + editor first**; fulfillment + quote stack moved into collapsible **Quote & customer response** (`EstimateCollapsibleSection`, open by default when Sent). **Approved / Finalized** keep fulfillment above editor.
+- **Header** — single primary CTA from `getEstimateEditorPrimaryAction()` + **All estimates** (removed duplicate Preview/Send buttons).
+- **Panels** — catalog/pricing/vendor/line-empty/quote-link copy tightened; vendor table hidden when only one vendor row; daily strip button drops redundant trailing arrow.
+
+**Smoke** — `smoke:core`: `/estimates/new` route smoke; editor shell step (Line items / Catalog / Pricing helper); status column index fixed (Workflow column); create button **Create & add lines**. **Skipped locally** — missing `BVISIBLE_ADMIN_EMAIL` (fail fast, not faked).
+
+**Verification (local)**
+
+| Command | Result |
+|---------|--------|
+| `verify:estimate-pricing` | 70/70 |
+| `verify:vendor-catalog` | 52/52 |
+| `verify:estimate-quote` | 53/53 |
+| `typecheck` | pass |
+
+**Deploy** — Not pushed. Commit after review; `git push origin main` before deploy per `DEPLOY_QUEUE.md`.
+
+**Remaining gaps** — List “ready to finalize” chip still heuristic (no QBO check on list); collapsible quote section defaults closed on Draft (expand manually or use strip CTA); Playwright smoke needs operator `~/.bvisible-smoke.env`.
+
+---
+
 ## 2026-05-25 — Email review PO suggestions (deterministic ranking) (`199c3a1`) — production
 
 **Phase 1 audit**

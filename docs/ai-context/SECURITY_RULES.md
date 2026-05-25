@@ -48,6 +48,11 @@
    (`po-lifecycle-actions.ts`) append `POEvent` + `audit_logs` (`po_lifecycle_*` actions) — they
    do not change `POLineItem` pricing, estimate totals, or QBO fields. Stale badges never trigger
    side effects.
+10. **Estimate finalize is status-only.** `finalizeEstimateAction` runs
+    `evaluateEstimateFinalizeGates()` then sets `Estimate.status` to **`FINALIZED`** and writes
+    **`estimate_finalized`** audit metadata — it never calls `computeEstimate` or mutates line
+    pricing. **`saveEstimateAction`** refuses edits while FINALIZED. Dashboard/list “Potentially
+    ready” labels are heuristics only; detail checklist + server gates are authoritative.
 
 ## Customer estimate quotes
 
@@ -189,6 +194,10 @@
 
 ## Email ingestion posture
 
+- **Inbound attachment filenames.** `parseRawMessage` may retain raw
+  `Content-Disposition` names; ingest always runs `safeOriginalFilename`
+  before persist and dedupe (`emailAttachmentDedupeKey`). Regression:
+  `ingest-fixtures.test.ts` (path traversal) + `verify:email-ingestion`.
 - **IMAP credentials at rest.** Per-tenant IMAP passwords live in
   `tenant_email_inboxes.passwordCipher` as base64(IV ‖ tag ‖ ciphertext)
   produced by AES-256-GCM in `apps/web/lib/email-ingest/crypto.ts`. The

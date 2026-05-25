@@ -7,7 +7,7 @@ import {
   buildMinimalTextPdf,
   buildReceiptPngBuffer,
 } from './fixtures/generate-binary';
-import { FIXTURE_MULTI_LINE_INVOICE } from './fixtures/sample-invoices';
+import { FIXTURE_MULTI_LINE_INVOICE, FIXTURE_TABLE_STYLE_INVOICE } from './fixtures/sample-invoices';
 import { extractPlainTextFromAttachment } from './extract-plain-text';
 import { parseReceiptLineCandidates } from './parse-receipt-lines';
 
@@ -55,6 +55,15 @@ describe('OCR quality — deterministic parsing', () => {
     const candidates = parseReceiptLineCandidates(FIXTURE_MULTI_LINE_INVOICE);
     for (const c of candidates) {
       expect(c.itemRaw).not.toMatch(/^(subtotal|tax|total)$/i);
+    }
+  });
+
+  it('table-style invoice fixture skips invoice number and summary rows', () => {
+    const candidates = parseReceiptLineCandidates(FIXTURE_TABLE_STYLE_INVOICE);
+    expect(candidates.length).toBeGreaterThanOrEqual(2);
+    expect(candidates.some((c) => /inv-2026-9911/i.test(c.itemRaw))).toBe(false);
+    for (const c of candidates) {
+      expect(c.itemRaw).not.toMatch(/^(subtotal|shipping|sales tax|total)$/i);
     }
   });
 });

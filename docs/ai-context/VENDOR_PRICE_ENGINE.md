@@ -113,7 +113,7 @@ After a **successful** history insert, if there was a **prior** row for the same
 
 1. Inserts `VendorPriceNotification` (`dismissedAt = null` until an operator posts
    the dismiss action).
-On the estimate editor, the **vendor intelligence rail** sits below the line grid and only applies to focused **MATERIAL** rows — compact copy when no match; nothing auto-applies unit cost.
+On the estimate editor, the **vendor intelligence rail** sits below catalog + pricing helper and only applies to focused **MATERIAL** rows — one-line idle copy; multi-vendor table only when **>1** latest row; nothing auto-applies unit cost.
 
 2. Appends `POEventKind.VENDOR_LOWER_PRICE` on the linked PO with sanitized message +
    structured metadata (includes `sourceEmailId`).
@@ -160,9 +160,13 @@ quantity-tier normalization yet.
   `runPoReconciliationSnapshot` (dedupe key from OCR doc + included line ids). Automatic OCR
   never writes pricing rows. `REVIEW_REQUIRED` is suggestions only. UI links operators to PO
   reconciliation after approve.
-- **Verification:** `pnpm --filter @bvisible/web run verify:ocr-quality`;
+- **Verification:** `pnpm --filter @bvisible/web run verify:ocr-quality` (23 vitest passed + 1 optional host tesseract skipped);
   `bash server-scripts/db/.verify-ocr-quality.sh` (host + vitest);
   `bash server-scripts/db/.verify-ocr-receipt-parse.sh` (parse-only, no binaries).
+  Text fixtures in `sample-invoices.ts` cover wrapped lines, table invoices, `qty @`, unit suffixes
+  (EA/ROLL/SQ FT/SHEET), OCR noise, and rotated-scan meta lines (skipped as item rows).
+  Email ingest safety: `verify:email-operational-safety` asserts vendor extraction runs only inside
+  `materializeOnPo` and OCR never auto-persists `OCR_APPROVED` prices.
 
 ## Estimate editor catalog hints (read-only)
 

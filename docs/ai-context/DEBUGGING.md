@@ -26,9 +26,9 @@ pnpm --filter @bvisible/web run verify:ocr-reconciliation-flow
 pnpm --filter @bvisible/web run verify:po-receipt-workflow
 pnpm --filter @bvisible/web run verify:po-lifecycle
 pnpm --filter @bvisible/web run verify:workflow-queues
-pnpm --filter @bvisible/web run verify:email-ingestion   # match + storage + ingest-fixtures + operational-safety + review-reasons + email-review-po-suggestions
-pnpm --filter @bvisible/web run verify:email-ingestion-fixtures   # alias: ingest-fixtures only
-pnpm --filter @bvisible/web run verify:email-operational-safety
+pnpm --filter @bvisible/web run verify:email-ingestion   # 57 tests: match + storage + ingest-fixtures + operational-safety + review-reasons + email-review-po-suggestions
+pnpm --filter @bvisible/web run verify:email-ingestion-fixtures   # 18 tests: MIME parse + dedupe fixtures only
+pnpm --filter @bvisible/web run verify:email-operational-safety   # 17 tests: review-reasons + dedupe/OCR/vendor-price static safety
 pnpm --filter @bvisible/web run typecheck
 bash server-scripts/db/.verify-email-ingestion-flow.sh
 ```
@@ -85,7 +85,7 @@ pnpm --filter @bvisible/web run smoke:all
 
 | Suite | What it checks |
 |-------|----------------|
-| `smoke:core` | Dashboard queues, `/estimates/new`, route smoke, `SMOKE-CoreWorkflow` quote path (catalog Apply on draft) |
+| `smoke:core` | Dashboard queues, `/estimates` + `/estimates/new` route smoke, editor shell (Line items / Catalog / Pricing helper), `SMOKE-CoreWorkflow` quote path (catalog Apply on draft; **Create & add lines** button; status column index 3) |
 | `smoke:vendor-normalization` | Vendor rail + OCR review copy (`SMOKE-VendorNorm`) |
 | `smoke:po-lifecycle` | Lifecycle rail + operator buttons; **mutations only on `SMOKE-*` PO numbers**; read-only rail on `PO-90100*` fixtures if no `SMOKE-` PO |
 
@@ -1073,29 +1073,50 @@ $PSQL -c "
 
 ### Symptom: "Finalize" button is greyed out on an estimate
 
-The button is gated by R-EST-04 — server-side enforcement is in
-`finalizeEstimateAction`, the UI just mirrors it. Two failure modes:
+The button uses **`evaluateEstimateFinalizeGates()`** — same rules as
+`finalizeEstimateAction` (server is source of truth). Common failure modes:
 
 | Reason shown | Fix |
 |---|---|
-| "no_linked_po" | Click "Create PO from estimate" in the totals panel (or build a blank PO and set its `estimateId`). |
-| "no_qbo_number" | Open the linked PO and paste the QuickBooks PO number into the QBO field; it commits on blur. |
+| not approved | Mark estimate **Approved** after customer acceptance. |
+| no linked PO | Click "Create PO from estimate" in the totals panel (or link an existing PO). |
+| missing QBO | Open each linked PO and paste QuickBooks PO numbers; commits on blur. |
+| reconciliation unresolved | Open PO reconciliation; resolve variance or accept match. |
+| already finalized | Unfinalize (ADMIN+) before retrying. |
 
-Server-side query (what the action actually checks):
+Verify gates locally:
+
+```bash
+pnpm --filter @bvisible/web run verify:estimate-finalization
+```
+
+Server-side PO + QBO + recon snapshot query:
 
 ```bash
 $PSQL -c "
-  SELECT e.number AS est_no, po.number AS po_no, po.qbo_po_number
+  SELECT e.number AS est_no, e.status, po.number AS po_no, po.qbo_po_number,
+         r.status AS latest_recon
   FROM estimates e
   LEFT JOIN purchase_orders po
-    ON po.estimate_id = e.id
-   AND po.tenant_id = e.tenant_id
-   AND po.deleted_at IS NULL
+    ON po.estimate_id = e.id AND po.tenant_id = e.tenant_id AND po.deleted_at IS NULL
+  LEFT JOIN LATERAL (
+    SELECT status FROM po_reconciliations pr
+    WHERE pr.purchase_order_id = po.id AND pr.tenant_id = po.tenant_id
+    ORDER BY pr.created_at DESC LIMIT 1
+  ) r ON true
   WHERE e.id = '<estimateId>'
   ORDER BY po.created_at;"
 ```
 
-If at least one row has `qbo_po_number IS NOT NULL`, finalize will pass.
+Finalize succeeds only when status is **APPROVED**, every linked PO has
+`qbo_po_number`, and no row shows recon status outside **MATCHED**/**RESOLVED**
+(null recon is OK).
+
+### Symptom: FINALIZED estimate still allows edits in the UI
+
+**Save** is disabled client-side; **`saveEstimateAction`** returns an error if
+status is FINALIZED. Line grid may still focus — server refuses persistence.
+Unfinalize (ADMIN+) to edit again.
 
 ### Symptom: PO timeline missing an event you expect
 
@@ -1308,8 +1329,9 @@ pnpm --filter @bvisible/web run verify:ocr-quality
 bash server-scripts/db/.verify-ocr-quality.sh   # Linux server: host binaries + vitest
 ```
 
-Text fixtures live in `apps/web/lib/ocr/fixtures/sample-invoices.ts`; PDF/PNG bytes
+Text fixtures live in `apps/web/lib/ocr/fixtures/sample-invoices.ts` (simple/multi-line/wrapped/blurry/table/qty-@/unit-suffix/noise/rotated-meta); PDF/PNG bytes
 are generated on demand by `fixtures/generate-binary.ts` (not stored in git).
+Email MIME builders: `apps/web/lib/email-ingest/fixtures/mime.ts` (no binary blobs in git).
 
 **Production smoke (deploy box, after deploy):** attach generated fixture to a PO,
 enqueue OCR, run worker tick until `REVIEW_REQUIRED`:

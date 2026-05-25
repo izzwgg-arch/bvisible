@@ -228,6 +228,41 @@ describe('matchEmail', () => {
     expectPo(r, 'attPo', 'PO_NUMBER');
   });
 
+  it('returns NONE when body has two PO tokens and subject has none', async () => {
+    mock.setPurchases([
+      {
+        id: 'a',
+        tenantId,
+        number: 'PO-9101',
+        qboPoNumber: null,
+        vendorId: 'v1',
+        status: POStatus.SENT,
+        updatedAt: new Date('2025-01-10'),
+        deletedAt: null,
+      },
+      {
+        id: 'b',
+        tenantId,
+        number: 'PO-9102',
+        qboPoNumber: null,
+        vendorId: 'v1',
+        status: POStatus.SENT,
+        updatedAt: new Date('2025-01-09'),
+        deletedAt: null,
+      },
+    ]);
+    mock.setVendors([{ id: 'v1', email: 'vendor@vendor.com', tenantId }]);
+    const r = await matchEmail({
+      tenantId,
+      attachmentNames: [],
+      email: baseEmail({
+        subject: 'Please review',
+        bodyTextSnippet: 'Refs PO-9101 and PO-9102 in the thread.',
+      }),
+    });
+    expectNone(r, 'v1', ['MULTIPLE_PO_MATCHES']);
+  });
+
   it('returns NONE when multiple internal PO numbers match different rows', async () => {
     mock.setPurchases([
       {

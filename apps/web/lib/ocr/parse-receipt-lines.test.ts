@@ -4,6 +4,11 @@ import {
   FIXTURE_SIMPLE_RECEIPT,
   FIXTURE_WRAPPED_LINE_RECEIPT,
   FIXTURE_BLURRY_STYLE_RECEIPT,
+  FIXTURE_TABLE_INVOICE,
+  FIXTURE_QTY_AT_RECEIPT,
+  FIXTURE_UNIT_SUFFIX_RECEIPT,
+  FIXTURE_OCR_NOISE_RECEIPT,
+  FIXTURE_ROTATED_SCAN_RECEIPT,
 } from './fixtures/sample-invoices';
 import { parseReceiptLineCandidates } from './parse-receipt-lines';
 
@@ -72,5 +77,46 @@ describe('parseReceiptLineCandidates', () => {
     const lines = parseReceiptLineCandidates(FIXTURE_BLURRY_STYLE_RECEIPT);
     expect(lines.some((l) => /shipping/i.test(l.itemRaw))).toBe(false);
     expect(lines.some((l) => /ink cartridge/i.test(l.itemRaw))).toBe(true);
+  });
+
+  it('parses table-style invoice rows and skips freight/tax/total', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_TABLE_INVOICE);
+    expect(lines.some((l) => /vinyl banner/i.test(l.itemRaw))).toBe(true);
+    expect(lines.some((l) => /grommet/i.test(l.itemRaw))).toBe(true);
+    expect(lines.some((l) => /^subtotal$/i.test(l.itemRaw))).toBe(false);
+    expect(lines.some((l) => /freight/i.test(l.itemRaw))).toBe(false);
+    expect(lines.some((l) => /^tax$/i.test(l.itemRaw))).toBe(false);
+    expect(lines.some((l) => /^total$/i.test(l.itemRaw))).toBe(false);
+    expect(lines.some((l) => /invoice inv-2026/i.test(l.itemRaw))).toBe(false);
+  });
+
+  it('parses qty @ unit price lines', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_QTY_AT_RECEIPT);
+    const coro = lines.find((l) => /coroplast/i.test(l.itemRaw));
+    expect(coro?.priceCents).toBe(4500);
+    expect(coro?.quantityMilli).toBe(2000);
+    expect(coro?.parseReason).toBe('qty_at_unit_price');
+  });
+
+  it('extracts unit suffixes from item labels', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_UNIT_SUFFIX_RECEIPT);
+    expect(lines.find((l) => /acm panel/i.test(l.itemRaw))?.unit).toBe('SHEET');
+    expect(lines.find((l) => /banner mesh/i.test(l.itemRaw))?.unit).toBe('SQ FT');
+    expect(lines.find((l) => /wire standoff/i.test(l.itemRaw))?.unit).toBe('EA');
+  });
+
+  it('still extracts items from noisy OCR text and skips shipping', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_OCR_NOISE_RECEIPT);
+    expect(lines.length).toBeGreaterThanOrEqual(1);
+    expect(lines.some((l) => /cartr/i.test(l.itemRaw))).toBe(true);
+    expect(lines.some((l) => /shipp/i.test(l.itemRaw))).toBe(false);
+  });
+
+  it('ignores rotated-scan meta line and merges wrapped price', () => {
+    const lines = parseReceiptLineCandidates(FIXTURE_ROTATED_SCAN_RECEIPT);
+    expect(lines.some((l) => /rotated/i.test(l.itemRaw))).toBe(false);
+    const banner = lines.find((l) => /vinyl banner/i.test(l.itemRaw));
+    expect(banner?.priceCents).toBe(8950);
+    expect(banner?.parseReason).toBe('wrapped_item_name');
   });
 });
