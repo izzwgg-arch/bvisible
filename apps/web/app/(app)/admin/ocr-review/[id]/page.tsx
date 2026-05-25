@@ -4,9 +4,14 @@ import { OcrJobStatus, prisma, Role } from '@bvisible/db';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import {
-  OcrApprovalForm,
+  OcrDecisionRail,
+  OcrLineReviewTable,
   type ApprovalLineRow,
 } from '@/app/(app)/admin/ocr-review/ocr-approval-form';
+import {
+  OcrStatusChip,
+  ocrFailureHint,
+} from '@/app/(app)/admin/ocr-review/ocr-review-ui';
 import { labelOcrJobStatus } from '@/lib/ui/status-labels';
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +60,9 @@ export default async function OcrReviewDetailPage({
     doc.poAttachment &&
     `/api/po/${doc.poAttachment.purchaseOrderId}/attachments/${doc.poAttachment.id}`;
 
+  const poId = doc.poAttachment?.purchaseOrderId ?? null;
+  const poNumber = doc.poAttachment?.purchaseOrder.number ?? null;
+
   const lines: ApprovalLineRow[] = doc.lineItems.map((l) => ({
     id: l.id,
     rawLineText: l.rawLineText,
@@ -65,133 +73,136 @@ export default async function OcrReviewDetailPage({
     confidence: l.confidence,
   }));
 
+  const isReview = doc.status === OcrJobStatus.REVIEW_REQUIRED;
+  const isFailed = doc.status === OcrJobStatus.FAILED;
+  const isConfirmed = doc.status === OcrJobStatus.CONFIRMED;
+  const failureHint = isFailed ? ocrFailureHint(doc.lastError) : null;
+
   return (
-    <div className="flex max-w-5xl flex-col gap-6">
+    <div className="-mx-1 rounded-xl bg-[var(--color-bv-bg)] px-1 pb-2">
       <PageHeader
         title={doc.poAttachment?.originalFilename ?? 'Receipt OCR'}
-        subtitle={`${labelOcrJobStatus(doc.status)} · ${doc.lineItems.length} line candidate${doc.lineItems.length === 1 ? '' : 's'}`}
-        actions={
-          <Link
-            href="/admin/ocr-review"
-            className="rounded-md border border-[var(--color-bv-border)] px-3 py-1.5 text-[13px] font-medium text-[var(--color-bv-text)]"
-          >
-            Back to queue
-          </Link>
-        }
+        subtitle={`${labelOcrJobStatus(doc.status)} · ${doc.lineItems.length} line${doc.lineItems.length === 1 ? '' : 's'}`}
       />
 
-      <div className="grid gap-4 rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 text-[13px]">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
-            {labelOcrJobStatus(doc.status)}
-          </span>
-          <span className="text-[12px] text-[var(--color-bv-muted)]">{doc.engineLabel}</span>
-          {doc.rawTextCharCount != null ? (
-            <span className="text-[12px] text-[var(--color-bv-muted)]">
-              · {doc.rawTextCharCount.toLocaleString()} chars
-            </span>
-          ) : null}
-        </div>
-        {doc.poAttachment ? (
-          <div className="flex flex-col gap-1">
-            <span className="font-medium text-[var(--color-bv-text)]">
-              {doc.poAttachment.originalFilename}
-            </span>
-            <span className="text-[var(--color-bv-muted)]">
-              PO{' '}
-              <Link
-                className="text-emerald-700 underline"
-                href={`/purchase-orders/${doc.poAttachment.purchaseOrderId}`}
-              >
-                {doc.poAttachment.purchaseOrder.number}
-              </Link>
-              {' · '}
-              Vendor:{' '}
-              {doc.poAttachment.purchaseOrder.vendor?.name ?? '— (assign vendor on PO)'}
-            </span>
-            {previewHref ? (
-              <a
-                href={previewHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex text-[13px] font-medium text-emerald-700 underline"
-              >
-                Open source attachment
-              </a>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-2 text-[12px]">
+            <OcrStatusChip status={doc.status} />
+            {doc.poAttachment ? (
+              <>
+                <span className="text-[var(--color-bv-muted)]">·</span>
+                <Link
+                  className="font-medium text-emerald-700 underline-offset-2 hover:underline"
+                  href={`/purchase-orders/${doc.poAttachment.purchaseOrderId}`}
+                >
+                  PO {doc.poAttachment.purchaseOrder.number}
+                </Link>
+                <span className="text-[var(--color-bv-muted)]">·</span>
+                <span className="truncate text-[var(--color-bv-muted)]">
+                  {doc.poAttachment.purchaseOrder.vendor?.name ?? 'No vendor on PO'}
+                </span>
+              </>
             ) : null}
+            {previewHref ? (
+              <>
+                <span className="text-[var(--color-bv-muted)]">·</span>
+                <a
+                  href={previewHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-emerald-700 underline-offset-2 hover:underline"
+                >
+                  Open attachment
+                </a>
+              </>
+            ) : null}
+            <span className="ml-auto text-[11px] text-[var(--color-bv-muted)]">{doc.engineLabel}</span>
           </div>
-        ) : null}
 
-        <dl className="grid gap-2 sm:grid-cols-2">
-          <div>
-            <dt className="text-[11px] font-semibold uppercase text-[var(--color-bv-muted)]">
-              Vendor guess
-            </dt>
-            <dd>{doc.vendorNameGuess ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase text-[var(--color-bv-muted)]">
-              Invoice #
-            </dt>
-            <dd>{doc.invoiceNumberGuess ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase text-[var(--color-bv-muted)]">
-              Receipt #
-            </dt>
-            <dd>{doc.receiptNumberGuess ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase text-[var(--color-bv-muted)]">
-              Totals guess
-            </dt>
-            <dd>
-              Subtotal {formatMoney(doc.subtotalCentsGuess)} · Tax{' '}
-              {formatMoney(doc.taxCentsGuess)} · Total{' '}
-              {formatMoney(doc.totalCentsGuess)}
-            </dd>
-          </div>
-        </dl>
+          {isFailed && doc.lastError ? (
+            <div className="rounded-lg border border-red-500/25 bg-red-500/8 px-3 py-2 text-[12px]">
+              <p className="font-medium text-red-950">OCR engine failed</p>
+              <p className="mt-0.5 text-red-900/90">{doc.lastError}</p>
+              {failureHint ? (
+                <p className="mt-1 text-[11px] text-red-800/80">{failureHint}</p>
+              ) : null}
+              <p className="mt-1.5 text-[11px] text-[var(--color-bv-muted)]">
+                Failed jobs did not produce reviewable lines. Re-upload from the PO attachments panel
+                or open the source file to enter prices manually.
+              </p>
+            </div>
+          ) : null}
 
-        {doc.lastError ? (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-900">
-            Last error: {doc.lastError}
-          </p>
-        ) : null}
+          {isReview ? (
+            <OcrLineReviewTable documentId={doc.id} lines={lines} />
+          ) : null}
 
-        <div>
-          <h2 className="mb-2 text-[14px] font-semibold text-[var(--color-bv-text)]">
-            OCR text preview (truncated)
-          </h2>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--color-bv-bg)] p-3 font-mono text-[11px] text-[var(--color-bv-muted)]">
-            {doc.rawTextSnippet ?? '—'}
-          </pre>
+          <details className="rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]">
+            <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]">
+              Document metadata & OCR preview
+            </summary>
+            <div className="border-t border-[var(--color-bv-border)] px-3 py-2 text-[12px]">
+              <dl className="mb-3 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+                <Meta label="Vendor guess" value={doc.vendorNameGuess} />
+                <Meta label="Invoice #" value={doc.invoiceNumberGuess} />
+                <Meta label="Receipt #" value={doc.receiptNumberGuess} />
+                <Meta
+                  label="Totals guess"
+                  value={`Sub ${formatMoney(doc.subtotalCentsGuess)} · Tax ${formatMoney(doc.taxCentsGuess)} · ${formatMoney(doc.totalCentsGuess)}`}
+                />
+                {doc.rawTextCharCount != null ? (
+                  <Meta label="OCR chars" value={doc.rawTextCharCount.toLocaleString()} />
+                ) : null}
+              </dl>
+              <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--color-bv-bg)] p-2 font-mono text-[10px] leading-snug text-[var(--color-bv-muted)]">
+                {doc.rawTextSnippet ?? '—'}
+              </pre>
+            </div>
+          </details>
         </div>
+
+        <OcrDecisionRail
+          documentId={doc.id}
+          lines={lines}
+          previewHref={previewHref}
+          purchaseOrderId={poId}
+          purchaseOrderNumber={poNumber}
+          disabled={!isReview}
+        />
       </div>
 
-      {doc.status === OcrJobStatus.REVIEW_REQUIRED ? (
-        <div className="rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4">
-          <h2 className="mb-3 text-[14px] font-semibold text-[var(--color-bv-text)]">
-            Review line candidates
-          </h2>
-          <OcrApprovalForm documentId={doc.id} lines={lines} />
-        </div>
-      ) : doc.status === OcrJobStatus.CONFIRMED && doc.poAttachment ? (
-        <p className="text-[13px] text-[var(--color-bv-muted)]">
-          Approved — vendor price history was written for selected lines. A reconciliation snapshot
-          was created (or already existed for this approval).{' '}
+      {isConfirmed && doc.poAttachment ? (
+        <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-3 py-2 text-[12px] text-emerald-950">
+          <span className="font-medium">Approved</span>
+          {' — '}
+          vendor price history was written for selected lines. A reconciliation snapshot was created
+          (or already existed).{' '}
           <Link
             href={`/purchase-orders/${doc.poAttachment.purchaseOrderId}/reconciliation`}
-            className="font-medium text-emerald-700 underline-offset-2 hover:underline"
+            className="font-medium underline-offset-2 hover:underline"
           >
             Open PO reconciliation
           </Link>
-        </p>
-      ) : (
-        <p className="text-[13px] text-[var(--color-bv-muted)]">
+        </div>
+      ) : null}
+
+      {!isReview && !isConfirmed && !isFailed ? (
+        <p className="mt-3 text-[12px] text-[var(--color-bv-muted)]">
           This job is not awaiting review ({labelOcrJobStatus(doc.status)}).
         </p>
-      )}
+      ) : null}
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="shrink-0 text-[10px] font-semibold uppercase text-[var(--color-bv-muted)]">
+        {label}
+      </dt>
+      <dd className="min-w-0 truncate text-[var(--color-bv-text)]">{value ?? '—'}</dd>
     </div>
   );
 }
