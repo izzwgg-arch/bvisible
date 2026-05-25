@@ -13,20 +13,29 @@ export function DashboardOperationalSections({
   showAttention?: boolean;
 }) {
   return (
-    <div className="mb-10 grid gap-8 xl:grid-cols-2">
+    <details className="group mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+      <summary className="cursor-pointer list-none px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)] marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="inline-flex items-center gap-2">
+          Recent records
+          <span className="rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-[var(--color-bv-muted)]">
+            {feed.recentEstimates.length + feed.recentPurchaseOrders.length} rows
+          </span>
+        </span>
+      </summary>
+      <div className="grid gap-4 border-t border-[var(--color-bv-border)] px-4 pb-4 pt-3 xl:grid-cols-2">
       <section>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-          Recent estimates
-        </h2>
+        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+          Estimates
+        </h3>
         {feed.recentEstimates.length === 0 ? (
           <EmptyRail>No estimates yet.</EmptyRail>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-1">
             {feed.recentEstimates.map((e) => (
               <li key={e.id}>
                 <Link
                   href={`/estimates/${e.id}` as never}
-                  className="flex items-start justify-between gap-3 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-[var(--color-bv-bg)]"
+                  className="flex items-start justify-between gap-2 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 transition-colors hover:bg-[var(--color-bv-surface)]"
                 >
                   <div className="min-w-0">
                     <span className="font-mono text-[13px] font-semibold text-[var(--color-bv-accent)]">
@@ -45,18 +54,18 @@ export function DashboardOperationalSections({
       </section>
 
       <section>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-          Recent purchase orders
-        </h2>
+        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+          Purchase orders
+        </h3>
         {feed.recentPurchaseOrders.length === 0 ? (
           <EmptyRail>No purchase orders yet.</EmptyRail>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-1">
             {feed.recentPurchaseOrders.map((p) => (
               <li key={p.id}>
                 <Link
                   href={`/purchase-orders/${p.id}` as never}
-                  className="flex items-start justify-between gap-3 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-[var(--color-bv-bg)]"
+                  className="flex items-start justify-between gap-2 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 transition-colors hover:bg-[var(--color-bv-surface)]"
                 >
                   <div className="min-w-0">
                     <span className="font-mono text-[13px] font-semibold text-[var(--color-bv-accent)]">
@@ -113,7 +122,8 @@ export function DashboardOperationalSections({
         )}
       </section>
       ) : null}
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -175,11 +185,8 @@ export function DashboardQuickActions({
   }
 
   return (
-    <section className="mb-8">
-      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-        Quick actions
-      </h2>
-      <div className="flex flex-wrap gap-2">{actions}</div>
+    <section className="mb-4">
+      <div className="flex flex-wrap gap-1.5">{actions}</div>
     </section>
   );
 }
@@ -196,7 +203,7 @@ function QuickLink({
   hint?: string;
 }) {
   const base =
-    'inline-flex flex-col items-start rounded-[10px] px-3.5 py-2.5 text-[13px] font-medium shadow-[var(--shadow-bv-card)] transition-colors';
+    'inline-flex flex-col items-start rounded-[8px] px-3 py-1.5 text-[12.5px] font-medium shadow-[var(--shadow-bv-card)] transition-colors';
   const styles =
     variant === 'primary'
       ? 'bg-[var(--color-bv-accent)] text-[var(--color-bv-accent-foreground)] hover:opacity-92'
@@ -268,11 +275,8 @@ export function DashboardMetricGrid({
   });
 
   return (
-    <section className="mb-10">
-      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-        At a glance
-      </h2>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <section className="mb-4">
+      <div className="flex flex-wrap gap-2">
         {cards.map((c) => (
           <MetricCard key={c.title} {...c} />
         ))}
@@ -304,44 +308,35 @@ function MetricCard({
   return (
     <Link
       href={href as never}
-      className={`rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-[var(--color-bv-bg)] ${toneRing}`}
+      className={`inline-flex min-w-[9.5rem] flex-col rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-2 shadow-[var(--shadow-bv-card)] transition-colors hover:bg-[var(--color-bv-bg)] ${toneRing}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-          {title}
-        </span>
-        {value > 0 ? (
-          <span className="rounded-full bg-[var(--color-bv-accent)]/12 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--color-bv-accent)]">
-            Open
-          </span>
-        ) : (
-          <span className="rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[var(--color-bv-muted)]">
-            Clear
-          </span>
-        )}
-      </div>
-      <div className="mt-3 text-[28px] font-semibold tabular-nums tracking-tight text-[var(--color-bv-text)]">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
+        {title}
+      </span>
+      <span className="mt-0.5 text-[22px] font-semibold tabular-nums leading-none tracking-tight text-[var(--color-bv-text)]">
         {value}
-      </div>
-      <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">{subtitle}</p>
+      </span>
+      <span className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--color-bv-muted)]">
+        {subtitle}
+      </span>
     </Link>
   );
 }
 
 export function DashboardRecentActivity({ rows }: { rows: DashboardAuditRow[] }) {
   return (
-    <section className="mb-10">
-      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-        Audit timeline
-      </h2>
+    <details className="mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+      <summary className="cursor-pointer list-none px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)] marker:content-none [&::-webkit-details-marker]:hidden">
+        Audit timeline ({rows.length})
+      </summary>
       {rows.length === 0 ? (
-        <div className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-5 py-8 text-[13.5px] text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
-          Nothing logged yet. Saves, status moves, and admin actions will roll up here automatically.
-        </div>
+        <p className="border-t border-[var(--color-bv-border)] px-4 pb-4 pt-2 text-[12.5px] text-[var(--color-bv-muted)]">
+          Nothing logged yet. Saves and status moves roll up here automatically.
+        </p>
       ) : (
-        <ul className="divide-y divide-[var(--color-bv-border)] overflow-hidden rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+        <ul className="max-h-64 divide-y divide-[var(--color-bv-border)] overflow-y-auto border-t border-[var(--color-bv-border)]">
           {rows.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 py-3 text-[13px]">
+            <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2 text-[12px]">
               <div className="min-w-0 text-[var(--color-bv-text)]">
                 <span className="font-medium">{humanizeAction(r.action)}</span>
                 {r.targetType ? (
@@ -367,7 +362,7 @@ export function DashboardRecentActivity({ rows }: { rows: DashboardAuditRow[] })
           ))}
         </ul>
       )}
-    </section>
+    </details>
   );
 }
 

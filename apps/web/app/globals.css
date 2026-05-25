@@ -28,6 +28,15 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Dashboard command center — scoped ops surfaces (does not change global theme). */
+.dashboard-ops-zone {
+  --dashboard-ops-bg: #0f1729;
+}
+
+.dashboard-ops-workspace {
+  --color-bv-surface: #fafbfc;
+}
+
 @media print {
   body {
     background: #fff !important;
