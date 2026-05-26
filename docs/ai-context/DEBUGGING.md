@@ -73,6 +73,19 @@ After deploy (or against local `pnpm dev`), exercise the **staff UI + public quo
 
 **Who runs this:** the human operator on a laptop — **not** CI agents and **not** from `/opt/bvisible/shared/env/.env` on the server. Agents skip browser smoke when `BVISIBLE_ADMIN_PASSWORD` is unavailable; that is expected. Operators must create a local credential file once.
 
+**Post-deploy checklist + triage:** `server-scripts/smoke/POST_DEPLOY_SMOKE.md` (canonical operator runbook).
+
+### Smoke account strategy
+
+| Rule | Detail |
+|------|--------|
+| Login | Reuse `admin@bvisible.local` (SUPER_ADMIN) or your real staff email — **no** second smoke user with a repo-known password |
+| Password | **Only** in `~/.bvisible-smoke.env` / `%USERPROFILE%\.bvisible-smoke.env` on the operator laptop |
+| Server | **Never** store smoke password in `/opt/bvisible/shared/env/.env` |
+| CI / GitHub | Default pipelines do **not** run Playwright login; do **not** commit `BVISIBLE_ADMIN_PASSWORD` |
+| Forgot password | On app host: `pnpm --filter @bvisible/web run reset-super-admin-password` (interactive); update local env only |
+| DB check (host) | `bash server-scripts/smoke/verify-smoke-admin.sh` — confirms user + password hash exist; **never** prints password |
+
 ### Required env (never commit passwords)
 
 | Variable | Example |
@@ -113,7 +126,13 @@ Install Chromium once (any shell):
 pnpm --filter @bvisible/web exec playwright install chromium
 ```
 
-Run smoke via Git Bash:
+Run smoke — **one command** (PowerShell, repo root):
+
+```powershell
+.\server-scripts\smoke\run-smoke.ps1 all
+```
+
+Or via Git Bash:
 
 ```powershell
 & "C:\Program Files\Git\bin\bash.exe" server-scripts/smoke/run-smoke.sh all
@@ -136,9 +155,25 @@ Alternatively export `BVISIBLE_*` in the shell for the session (same three vars)
 
 ### Verify env before running (read-only)
 
+**Laptop (credentials):**
+
 ```bash
 bash server-scripts/smoke/check-smoke-env.sh
 ```
+
+**App host (DB user — SSH, no password printed):**
+
+```bash
+cd /opt/bvisible/app
+bash server-scripts/smoke/verify-smoke-admin.sh
+```
+
+| Script | Exit `0` | Exit `2` | Exit `3` / `4` |
+|--------|----------|----------|----------------|
+| `check-smoke-env.sh` | All three `BVISIBLE_*` vars set locally | Missing vars / no file | — |
+| `verify-smoke-admin.sh` | User exists, active, has password hash | Compose / DB / env failure | `3` missing user; `4` no password hash |
+
+### Verify env before running (read-only) — exit codes
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -169,7 +204,9 @@ pnpm --filter @bvisible/web run smoke:all                # all specs in smoke/
 |-------|----------------|
 | `smoke:core` | Dashboard command-center queues (sticky filters, dual-column work queues), `/estimates` + `/estimates/new` route smoke, editor shell (Line items / Catalog / Pricing helper), `SMOKE-CoreWorkflow` quote path (catalog Apply on draft; **Create & add lines** button; status column index 3) |
 
-**Dashboard layout regression (no browser):** after dashboard UI changes, run `verify:workflow-queues` + `verify:po-lifecycle` — derivation unchanged; Vitest locks queue predicates. Command summary counts are computed client-side from queue rows in `dashboard-command-summary.tsx` (not new DB queries).
+**Dashboard layout regression (no browser):** after dashboard UI changes, run `verify:workflow-queues` + `verify:po-lifecycle` — derivation unchanged; Vitest locks queue predicates. Command summary counts are computed client-side from queue rows in `dashboard-command-summary.tsx` (not new DB queries). Retired dashboard section components (`dashboard-estimate-po-flow.tsx`, `dashboard-estimate-invoice-flow.tsx`) were removed 2026-05-25; **`getDashboardEstimatePoFlow`** / **`getDashboardEstimateInvoiceFlow`** libs remain for Vitest only.
+
+**Dead UI cleanup (2026-05-25):** removed unused shells with zero import graph — `components/workflow/{estimate-workflow-rail,po-operational-rail}.tsx`, `components/po/po-receipt-workflow-summary.tsx`. Shipped surfaces: **`EstimateFulfillmentPanel`** + **`EstimateDailyWorkflowStrip`** (estimate detail), **`PoExecutionWorkspace`** (PO detail). Verify: `typecheck`, `verify:workflow-queues`, `verify:po-lifecycle`, `verify:estimate-quote`.
 | `smoke:vendor-normalization` | Vendor rail + OCR review copy (`SMOKE-VendorNorm`) |
 | `smoke:po-lifecycle` | Lifecycle rail + operator buttons; **mutations only on `SMOKE-*` PO numbers**; read-only rail on `PO-90100*` fixtures if no `SMOKE-` PO |
 
@@ -186,9 +223,23 @@ pnpm --filter @bvisible/web run smoke:all                # all specs in smoke/
 
 Do **not** treat console output or CI artifacts as secret-safe — `playwright.config.ts` disables screenshots/video/trace by default.
 
-### Common failures
+### Failure triage
 
-1. **`bash: command not found` (Windows)** — use Git Bash: `"C:\Program Files\Git\bin\bash.exe" server-scripts/smoke/check-smoke-env.sh`
+| Symptom | Likely cause | Fix |
+|---------|----------------|-----|
+| `check-smoke-env` exit `2` | No `~/.bvisible-smoke.env` | Copy `.bvisible-smoke.env.example`; set password locally |
+| `verify-smoke-admin` exit `3` | Wrong email or missing user | Match `BVISIBLE_ADMIN_EMAIL`; bootstrap on fresh DB |
+| `verify-smoke-admin` exit `4` | User has no password hash | `reset-super-admin-password` on host; update local env |
+| Playwright stuck on `/login` | Wrong password / URL | Re-run `check-smoke-env.sh`; confirm deploy `commit` on base URL |
+| `timeout` after login | App slow or down | `curl` health on host; retry |
+| `bash: command not found` (Windows) | No Git Bash in PATH | `run-smoke.ps1` or full path to `bash.exe` |
+| Chromium missing | Playwright not installed | `pnpm --filter @bvisible/web exec playwright install chromium` |
+| `SMOKE-CoreWorkflow` FINALIZED | Stale fixture row | `.list-smoke-data.sh` → optional cleanup |
+| Server `check-smoke-env` exit `2` | Expected — no server credentials | Run Playwright from laptop only |
+
+### Common failures (quick list)
+
+1. **`bash: command not found` (Windows)** — use `.\server-scripts\smoke\run-smoke.ps1` or Git Bash full path
 2. **All specs skipped / env missing** — operator file not created; agents cannot invent the password
 3. **Login failure** — typo in password or email; staging URL mismatch in `BVISIBLE_BASE_URL`
 4. **Chromium not installed** — run `pnpm --filter @bvisible/web exec playwright install chromium`

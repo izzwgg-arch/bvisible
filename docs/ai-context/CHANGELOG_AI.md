@@ -5,6 +5,41 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT N — DEAD CODE CLEANUP / UI CONSOLIDATION]
+
+**Problem:** Rapid workflow UI buildout left superseded React shells in the tree while docs still described them as active on estimate/PO detail and dashboard.
+
+**Removed (grep/import graph: zero consumers outside own file)**
+
+| File | Proof |
+|------|--------|
+| `apps/web/components/workflow/po-operational-rail.tsx` | No imports; superseded by `PoExecutionWorkspace` |
+| `apps/web/components/workflow/estimate-workflow-rail.tsx` | No imports; superseded by `EstimateFulfillmentPanel` + `EstimateDailyWorkflowStrip` |
+| `apps/web/components/po/po-receipt-workflow-summary.tsx` | `PoReceiptWorkflowSummaryCard` unused; receipt strip inlined in `po-execution-workspace.tsx` |
+| `apps/web/app/(app)/dashboard/dashboard-estimate-po-flow.tsx` | `DashboardEstimatePoFlowSections` not mounted on `/dashboard` |
+| `apps/web/app/(app)/dashboard/dashboard-estimate-invoice-flow.tsx` | `DashboardEstimateInvoiceFlowSections` not mounted on `/dashboard` |
+
+**Kept (still used or Vitest-backed libs):** `getPoReceiptWorkflowSummary`, `buildPoReceiptNextActions`, `PoLifecycleRail`, `getDashboardEstimatePoFlow`, `getDashboardEstimateInvoiceFlow`, `getDashboardQuoteAttention`, shared `DashboardQueueRow` + `status-labels.ts`.
+
+**Docs:** `UI_SYSTEM.md`, `PO_SYSTEM.md`, `DEBUGGING.md`, `API_STRUCTURE.md` (dashboard route row).
+
+**Risk:** Low — display-only deletions; no pricing/email/OCR/reconciliation rule changes.
+
+**Verification**
+
+| Command | Result |
+|---------|--------|
+| `pnpm --filter @bvisible/web run typecheck` | **pass** |
+| `pnpm --filter @bvisible/web run verify:workflow-queues` | **26/26** |
+| `pnpm --filter @bvisible/web run verify:po-lifecycle` | **19/19** |
+| `pnpm --filter @bvisible/web run verify:estimate-quote` | **67/67** |
+
+**Deploy:** none (cleanup only).
+
+**Remaining gaps:** Playwright PO/estimate detail smoke not run; `components/workflow/` directory empty (removed). `PoLifecycleRail` still a separate module embedded by execution workspace — optional future inline only if desired.
+
+---
+
 ## 2026-05-25 — [AGENT D3 — FINAL OPS BATCH MERGE + DEPLOY]
 
 **Prior production:** `0a7d8ba54a1a938b2f37c024f1c4cf68aa6d2ff4` (Agent D2 — OCR workspace, dashboard command center, PO execution workspace).
