@@ -11,7 +11,14 @@ import {
   type OperationalQueueBucket,
 } from '@/lib/workflow/operational-matrix';
 import { WORKFLOW_STATE_LABELS } from '@/lib/workflow/operational-state';
+import { DASHBOARD_QUEUE_PREVIEW_LIMIT } from '@/lib/ui/queue-pagination';
 import { DashboardQueueRow, sortQueueRowsByPriority } from './dashboard-queue-row';
+
+const FULL_QUEUE_HREF: Partial<Record<OperationalQueueBucket, string>> = {
+  ocr_review: '/admin/ocr-review?status=review',
+  reconciliation_variance: '/admin/reconciliation',
+  unmatched_email: '/admin/email-ingestion?filter=unmatched',
+};
 
 const FILTER_OPTIONS: { key: OperationalQueueFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -145,13 +152,25 @@ function QueueSection({
   bucket: OperationalQueueBucket;
   rows: OperationalQueueItem[];
 }) {
+  const fullHref = FULL_QUEUE_HREF[bucket];
+  const atPreviewCap = rows.length >= DASHBOARD_QUEUE_PREVIEW_LIMIT;
+
   return (
     <div>
-      <h3 className="mb-1.5 flex items-baseline gap-2 text-[11.5px] font-semibold text-[var(--color-bv-text)]">
+      <h3 className="mb-1.5 flex flex-wrap items-baseline gap-2 text-[11.5px] font-semibold text-[var(--color-bv-text)]">
         {OPERATIONAL_QUEUE_BUCKET_LABELS[bucket]}
         <span className="font-normal tabular-nums text-[var(--color-bv-muted)]">
           {rows.length}
+          {atPreviewCap ? '+' : ''}
         </span>
+        {fullHref ? (
+          <Link
+            href={fullHref}
+            className="text-[10.5px] font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+          >
+            {atPreviewCap ? 'Full queue →' : 'Open queue →'}
+          </Link>
+        ) : null}
       </h3>
       <ul className="flex flex-col gap-1">
         {rows.map((row) => (

@@ -9,12 +9,19 @@ import { PageHeader } from '@/components/app-shell';
 import { loadInboxDiag } from '@/lib/email-ingest/config';
 import { InboxConfigCard } from './inbox-config-card';
 import {
+  buildEmailReasonPrismaWhere,
   countEmailReasonFilter,
   isEmailReasonFilter,
-  matchesEmailReasonFilter,
   parseStoredReviewReasonCodes,
   type EmailReasonFilter,
 } from '@/lib/email-ingest/review-reasons';
+import { QueuePaginationBar } from '@/components/app/queue-pagination-bar';
+import {
+  buildQueueLoadMoreHref,
+  parseQueuePage,
+  queueFetchTake,
+  resolveQueuePage,
+} from '@/lib/ui/queue-pagination';
 import {
   getEmailReviewPoSuggestions,
   type PoSuggestionCandidate,
@@ -41,6 +48,7 @@ const REASON_FILTERS: { key: EmailReasonFilter; label: string }[] = [
 interface SearchParams {
   filter?: string;
   reason?: string;
+  page?: string;
 }
 
 export default async function EmailIngestionPage({
@@ -57,17 +65,26 @@ export default async function EmailIngestionPage({
     filter === 'unmatched' && sp.reason && isEmailReasonFilter(sp.reason)
       ? sp.reason
       : 'all';
+  const page = parseQueuePage(sp.page);
 
   const statusFilter = mapFilter(filter);
+  const emailWhere = {
+    tenantId: me.tenantId,
+    ...(statusFilter ? { status: { in: statusFilter } } : {}),
+    ...(filter === 'unmatched' ? buildEmailReasonPrismaWhere(reasonFilter) : {}),
+  };
 
-  const [emails, pos, diag, counts, recentRuns] = await Promise.all([
+  const unmatchedBucketWhere = {
+    tenantId: me.tenantId,
+    status: { in: mapFilter('unmatched')! },
+  };
+
+  const [emailsRaw, pos, diag, counts, recentRuns, emailTotal, reasonCounts] =
+    await Promise.all([
     prisma.ingestedEmail.findMany({
-      where: {
-        tenantId: me.tenantId,
-        ...(statusFilter ? { status: { in: statusFilter } } : {}),
-      },
-      orderBy: [{ createdAt: 'desc' }],
-      take: 100,
+      where: emailWhere,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: queueFetchTake(page),
       select: {
         id: true,
         subject: true,
@@ -150,7 +167,19 @@ export default async function EmailIngestionPage({
         errorMessage: true,
       },
     }),
+    prisma.ingestedEmail.count({ where: emailWhere }),
+    filter === 'unmatched'
+      ? Promise.all(
+          REASON_FILTERS.map((rf) =>
+            prisma.ingestedEmail.count({
+              where: { ...unmatchedBucketWhere, ...buildEmailReasonPrismaWhere(rf.key) },
+            }),
+          ),
+        )
+      : Promise.resolve(null as number[] | null),
   ]);
+
+  const { rows: emails, hasMore, loadedCount } = resolveQueuePage(emailsRaw, page);
 
   const suggestionCandidates: PoSuggestionCandidate[] = pos
     .filter((p): p is typeof p & { vendorId: string } => p.vendorId != null)
@@ -211,11 +240,6 @@ export default async function EmailIngestionPage({
       }),
     };
   });
-
-  const filteredRows =
-    filter === 'unmatched' && reasonFilter !== 'all'
-      ? rows.filter((r) => matchesEmailReasonFilter(r.reviewReasonCodes, reasonFilter))
-      : rows;
 
   const poChoices: PoChoice[] = pos.map((p) => ({
     id: p.id,
@@ -301,9 +325,9 @@ export default async function EmailIngestionPage({
 
           {filter === 'unmatched' ? (
             <nav className="mb-2 flex flex-wrap items-center gap-1 text-[10px]">
-              {REASON_FILTERS.map((rf) => {
+              {REASON_FILTERS.map((rf, idx) => {
                 const active = reasonFilter === rf.key;
-                const count = countEmailReasonFilter(rows, rf.key);
+                const count = reasonCounts?.[idx] ?? countEmailReasonFilter(rows, rf.key);
                 const params = new URLSearchParams({ filter: 'unmatched' });
                 if (rf.key !== 'all') params.set('reason', rf.key);
                 return (
@@ -324,20 +348,26 @@ export default async function EmailIngestionPage({
             </nav>
           ) : null}
 
-          <p className="mb-2 text-[11px] text-[var(--color-bv-muted)]">
-            Showing {filteredRows.length}
-            {filter === 'unmatched' && reasonFilter !== 'all'
-              ? ` · ${REASON_FILTERS.find((r) => r.key === reasonFilter)?.label ?? reasonFilter}`
-              : ''}
-            {filter === 'unmatched' && filteredRows.length !== rows.length
-              ? ` (${rows.length} in bucket)`
-              : ''}
-          </p>
+          <EmailIngestionReviewTable rows={rows} pos={poChoices} filter={filter} />
 
-          <EmailIngestionReviewTable
-            rows={filteredRows}
-            pos={poChoices}
-            filter={filter}
+          <QueuePaginationBar
+            loaded={loadedCount}
+            total={emailTotal}
+            hasMore={hasMore}
+            loadMoreHref={buildQueueLoadMoreHref(
+              '/admin/email-ingestion',
+              {
+                filter,
+                reason: filter === 'unmatched' && reasonFilter !== 'all' ? reasonFilter : undefined,
+                page: page > 1 ? String(page) : undefined,
+              },
+              page,
+            )}
+            suffix={
+              filter === 'unmatched' && reasonFilter !== 'all'
+                ? `· ${REASON_FILTERS.find((r) => r.key === reasonFilter)?.label ?? reasonFilter}`
+                : undefined
+            }
           />
         </section>
 

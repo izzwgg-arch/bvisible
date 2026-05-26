@@ -60,7 +60,7 @@ The look, feel, and behavior of the web app.
   shows a dismissible checklist whose completion state is computed from real tenant data
   (`lib/onboarding/checklist-data.ts`; dismiss cookie via `lib/onboarding/dismiss-action.ts`).
   Existing **VendorPriceAlerts** list + **SpendOperationAlerts** strip remain beneath the summary (no fake stats).
-  **Browser smoke** (operator laptop only — `%USERPROFILE%\.bvisible-smoke.env` on Windows, `~/.bvisible-smoke.env` elsewhere; **not** server `.env`): verify with `bash server-scripts/smoke/check-smoke-env.sh`, then `smoke:core`, `smoke:vendor-normalization`, `smoke:po-lifecycle`, or wrapper `bash server-scripts/smoke/run-smoke.sh all`. Agents skip smoke without the operator password. See `DEBUGGING.md` § 0c.
+  **Browser smoke** (operator laptop only — `%USERPROFILE%\.bvisible-smoke.env` on Windows, `~/.bvisible-smoke.env` elsewhere; **not** server `.env`): preflight `check-smoke-env.sh`; post-deploy runbook `server-scripts/smoke/POST_DEPLOY_SMOKE.md`; Windows one-command `.\server-scripts\smoke\run-smoke.ps1 all` or `bash server-scripts/smoke/run-smoke.sh all`. App-host DB check: `verify-smoke-admin.sh` (no password printed). Agents skip smoke without the operator password. See `DEBUGGING.md` § 0c.
   **Regression bundles** (operator/CI): `verify:po-lifecycle`, `verify:workflow-queues`, `verify:estimate-pricing`, `verify:estimate-quote`, `verify:estimate-po-flow`, `verify:estimate-invoice-flow`, `verify:ocr-reconciliation-flow` — see `DEBUGGING.md` § 0b.
 - **Presentation status labels** — internal enums stay as-is in Prisma; user-facing copy maps through
   `apps/web/lib/ui/status-labels.ts` (e.g. OCR jobs, email ingest, reconciliation, estimate/PO/**invoice** statuses)
@@ -127,7 +127,8 @@ The look, feel, and behavior of the web app.
 - **Receipt OCR review** at `/admin/ocr-review` (ADMIN+): **operational approval workspace** —
   dense queue rows (status chips, vendor, line count, relative updated time, **Stale** badge after
   2d via `STALE_OCR_REVIEW_MS`), tab pills with always-on counts (Queue / Confirmed / Rejected / Failed),
-  optional **Stale** sub-filter on Queue (`?stale=1`), “Showing N” summary, **Review →** column,
+  optional **Stale** sub-filter on Queue (`?stale=1`), **Showing N of total** + **Load more**
+  (`?page=` cumulative 50-row steps via `lib/ui/queue-pagination.ts`), **Review →** column,
   and `j`/`k` keyboard focus between row links (Shift+click opens). Detail `/admin/ocr-review/[id]`:
   two-column layout — left: context strip (PO, vendor, attachment), compact **line candidate table**
   (qty / price hierarchy, parse + confidence chips, collapsed source line), collapsible metadata +
@@ -136,7 +137,8 @@ The look, feel, and behavior of the web app.
   are visually distinct. Confirmed rows link to PO reconciliation. No workflow logic changes — polish only.
   **Regression:** `verify:ocr-quality`, `verify:ocr-reconciliation-flow`. **Smoke:** `smoke:vendor-normalization`.
 - **PO reconciliation** (ADMIN+): inbox `/admin/reconciliation`, detail
-  `/purchase-orders/[id]/reconciliation`. **Agent K polish:** card-based variance rows
+  `/purchase-orders/[id]/reconciliation`. Inbox and PO spend-alert history use the same
+  **Load more** / **Showing X of Y** pattern (`?page=` / `?alertsPage=`). **Agent K polish:** card-based variance rows
   (`components/reconciliation/variance-line-row.tsx`) with PO vs receipt compare cells,
   signed Δ price, match + resolution chips, action `title` hints (confirm / accept variance /
   reject / merge / mark reconciled / dismiss), snapshot summary bar, **Needs review** vs

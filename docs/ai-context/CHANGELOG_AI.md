@@ -5,6 +5,55 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-05-25 — [AGENT M — QUEUE PAGINATION + SCALE LIMITS]
+
+**What changed:** Replaced silent `take: 100` / `take: 40` caps on operational queues with cumulative **Load more** pagination (50 rows per step), stable `orderBy` tie-breakers (`id desc`), visible **Showing X of Y** counts, and shared helpers (`lib/ui/queue-pagination.ts`, `QueuePaginationBar`). Email ingestion reason sub-filters now apply at the Prisma layer (`buildEmailReasonPrismaWhere`) so pagination matches chip semantics. Dashboard operator buckets link to full admin queues; spend-alert strip shows preview vs total.
+
+**Files touched:** `lib/ui/queue-pagination.ts`, `components/app/queue-pagination-bar.tsx`, `admin/ocr-review/page.tsx`, `admin/email-ingestion/page.tsx`, `lib/email-ingest/review-reasons.ts`, `admin/reconciliation/page.tsx`, `purchase-orders/[id]/reconciliation/page.tsx`, `dashboard/reconciliation-widgets.tsx`, `dashboard/dashboard-operational-queues.tsx`, `package.json`, docs below.
+
+**Risks:** Medium — query shape only (no matcher/OCR/recon math). Cumulative `?page=N` loads N×50 rows per request.
+
+**Verification:** `typecheck` pass; `verify:email-ingestion` 59/59; `verify:ocr-quality` 23+1 skipped; `verify:workflow-queues` 31/31; `verify:po-receipt-workflow` 21/21. **Deploy:** none.
+
+**Remaining gaps:** Email PO picker still `take: 200`. Dashboard workflow fetchers remain preview-capped (6–20/bucket). No Playwright smoke. Offset pagination can shift if rows insert mid-session (mitigated by `id` tie-break).
+
+---
+
+## 2026-05-25 — [AGENT O — OPERATOR SMOKE ACCOUNT / POST-DEPLOY SMOKE PLAN]
+
+**Problem:** Browser smoke is skipped when operators lack a documented account strategy, post-deploy checklist, Windows one-command entrypoint, and DB preflight that never prints passwords.
+
+**Smoke account plan**
+
+1. Reuse `admin@bvisible.local` (SUPER_ADMIN) — no repo-known smoke user.
+2. Password only in operator `~/.bvisible-smoke.env` / `%USERPROFILE%\.bvisible-smoke.env`.
+3. Never in Git, server `.env`, or default CI.
+4. Forgot password → interactive `reset-super-admin-password` on app host; update local env only.
+
+**Files touched**
+
+- `server-scripts/smoke/verify-smoke-admin.sh` — **new** DB user + hash check (app host; no password printed)
+- `server-scripts/smoke/run-smoke.ps1` — **new** Windows one-command wrapper
+- `server-scripts/smoke/POST_DEPLOY_SMOKE.md` — **new** post-deploy checklist, CI guidance, triage table
+- `server-scripts/smoke/.bvisible-smoke.env.example` — account strategy comments
+- `server-scripts/smoke/check-smoke-env.sh`, `run-smoke.sh` — next-step hints
+- `docs/ai-context/DEBUGGING.md` — § 0c: strategy, `verify-smoke-admin`, `run-smoke.ps1`, triage table
+- `docs/ai-context/SECURITY_RULES.md` — browser smoke credential rules
+- `docs/ai-context/UI_SYSTEM.md`, `TESTING.md` — smoke runbook pointers
+
+**Verification**
+
+| Command | Result |
+|---------|--------|
+| `bash server-scripts/smoke/check-smoke-env.sh` | exit **2** if no operator env (expected in agent workspace) |
+| `pnpm --filter @bvisible/web run typecheck` | see session output |
+
+**Deploy:** not run (docs/scripts only).
+
+**Remaining gaps:** Playwright still needs operator password on laptop; `verify-smoke-admin.sh` requires app host + Docker DB; no GitHub workflow added (intentional).
+
+---
+
 ## 2026-05-25 — [AGENT N — DEAD CODE CLEANUP / UI CONSOLIDATION]
 
 **Problem:** Rapid workflow UI buildout left superseded React shells in the tree while docs still described them as active on estimate/PO detail and dashboard.

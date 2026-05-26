@@ -25,18 +25,29 @@ import {
   RECON_EMPTY_NO_SNAPSHOT,
 } from '@/lib/reconciliation/ui-copy';
 import { fmtReconMoney } from '@/lib/reconciliation/ui-format';
+import { QueuePaginationBar } from '@/components/app/queue-pagination-bar';
+import {
+  buildQueueLoadMoreHref,
+  parseQueuePage,
+  queueFetchTake,
+  resolveQueuePage,
+} from '@/lib/ui/queue-pagination';
 
 export const metadata = { title: 'PO reconciliation' };
 export const dynamic = 'force-dynamic';
 
 export default async function PurchaseOrderReconciliationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ alertsPage?: string }>;
 }) {
   const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const tenantId = me.tenantId;
   const { id } = await params;
+  const sp = await searchParams;
+  const alertsPage = parseQueuePage(sp.alertsPage);
 
   const po = await prisma.purchaseOrder.findFirst({
     where: { id, tenantId, deletedAt: null },
@@ -50,7 +61,7 @@ export default async function PurchaseOrderReconciliationPage({
   });
   if (!po) notFound();
 
-  const [latest, spendAlertsHistory] = await Promise.all([
+  const [latest, spendAlertsHistoryRaw, spendAlertTotal, openAlertCount] = await Promise.all([
     prisma.pOReconciliation.findFirst({
       where: { tenantId, purchaseOrderId: id },
       orderBy: { createdAt: 'desc' },
@@ -68,8 +79,8 @@ export default async function PurchaseOrderReconciliationPage({
     }),
     prisma.spendAlert.findMany({
       where: { tenantId, purchaseOrderId: id },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: queueFetchTake(alertsPage),
       select: {
         id: true,
         status: true,
@@ -82,11 +93,17 @@ export default async function PurchaseOrderReconciliationPage({
         supersededByReconciliationId: true,
       },
     }),
+    prisma.spendAlert.count({ where: { tenantId, purchaseOrderId: id } }),
+    prisma.spendAlert.count({
+      where: { tenantId, purchaseOrderId: id, status: SpendAlertStatus.OPEN },
+    }),
   ]);
 
-  const openAlertCount = spendAlertsHistory.filter(
-    (a) => a.status === SpendAlertStatus.OPEN,
-  ).length;
+  const {
+    rows: spendAlertsHistory,
+    hasMore: alertsHasMore,
+    loadedCount: alertsLoaded,
+  } = resolveQueuePage(spendAlertsHistoryRaw, alertsPage);
 
   const staleMark = Boolean(
     po.operatorMarkedReconciledAt &&
@@ -308,6 +325,19 @@ export default async function PurchaseOrderReconciliationPage({
             ))}
           </ul>
         )}
+        {spendAlertTotal > 0 ? (
+          <QueuePaginationBar
+            loaded={alertsLoaded}
+            total={spendAlertTotal}
+            hasMore={alertsHasMore}
+            loadMoreHref={buildQueueLoadMoreHref(
+              `/purchase-orders/${id}/reconciliation`,
+              { alertsPage: alertsPage > 1 ? String(alertsPage) : undefined },
+              alertsPage,
+            )}
+            suffix="spend alerts"
+          />
+        ) : null}
       </section>
     </>
   );

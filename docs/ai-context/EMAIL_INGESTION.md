@@ -320,8 +320,10 @@ shows compact chips plus a one-line **Why** on collapsed rows when no reason
 codes are present (matched rows always show match explain). When reason codes
 exist, short chip labels suffice on the collapsed row; full **Review:** sentence
 moves to the **Body** expand. Reason sub-filters on **Unmatched**: All / Attachment
-rejected / Ambiguous match / OCR pending (`matchesEmailReasonFilter` in
-`review-reasons.ts`). **Link**, **Retry**, and **Dismiss** stay visible on
+rejected / Ambiguous match / OCR pending (`matchesEmailReasonFilter` /
+`buildEmailReasonPrismaWhere` for server queries). List pagination: **50 rows per step**,
+**Load more** via `?page=` (cumulative), **Showing X of Y**; tab/reason chip counts from
+`count()` queries (not limited to the loaded page). **Link**, **Retry**, and **Dismiss** stay visible on
 actionable rows without expanding Body.
 
 **Deterministic PO suggestions (operator review only)** — `getEmailReviewPoSuggestions()` in `apps/web/lib/email-ingest/email-review-po-suggestions.ts` ranks up to **three** POs for **UNMATCHED** / **PENDING** rows using the same token rules as the matcher (internal `PO-#`, QBO-like tokens, vendor sender, filename, open status, recency, estimate/client title overlap). **Does not** change `matchEmail` or auto-link. UI: `EmailReviewPoSuggestionsPanel` — PO number, vendor, status, age, reason chips, confidence label (**Strong / Possible / Weak**), **Link to this PO** (explicit `manualLinkEmailToPoAction`). Copy: *Suggestions only — operator must choose.*

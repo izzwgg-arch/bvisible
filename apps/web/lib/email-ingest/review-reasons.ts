@@ -1,4 +1,4 @@
-import type { EmailMatchReason, OcrJobStatus } from '@bvisible/db';
+import type { EmailMatchReason, OcrJobStatus, Prisma } from '@bvisible/db';
 import type { MatchResult } from './match';
 
 /**
@@ -257,4 +257,26 @@ export function countEmailReasonFilter(
 ): number {
   if (filter === 'all') return rows.length;
   return rows.filter((r) => matchesEmailReasonFilter(r.reviewReasonCodes, filter)).length;
+}
+
+/** Prisma WHERE for reason sub-filters — same semantics as `matchesEmailReasonFilter`. */
+export function buildEmailReasonPrismaWhere(
+  filter: EmailReasonFilter,
+): Prisma.IngestedEmailWhereInput {
+  if (filter === 'all') return {};
+  const contains = (code: EmailReviewReasonCode): Prisma.IngestedEmailWhereInput => ({
+    reviewReasonCodes: { array_contains: code },
+  });
+  switch (filter) {
+    case 'attachment_rejected':
+      return { OR: [contains('ATTACHMENT_REJECTED'), contains('NO_ATTACHMENTS')] };
+    case 'ambiguous':
+      return {
+        OR: [...AMBIGUOUS_CODES].map((code) => contains(code)),
+      };
+    case 'ocr_pending':
+      return { OR: [contains('OCR_PENDING'), contains('OCR_FAILED')] };
+    default:
+      return {};
+  }
 }

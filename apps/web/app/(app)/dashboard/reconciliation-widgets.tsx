@@ -3,11 +3,14 @@ import { prisma, SpendAlertStatus } from '@bvisible/db';
 import { RECON_COMPARE_ONLY_BANNER } from '@/lib/reconciliation/ui-copy';
 import { SpendAlertRow } from '@/components/reconciliation/spend-alert-row';
 
+import { DASHBOARD_QUEUE_PREVIEW_LIMIT } from '@/lib/ui/queue-pagination';
+
 export async function SpendOperationAlerts({ tenantId }: { tenantId: string }) {
-  const rows = await prisma.spendAlert.findMany({
+  const [rows, openTotal] = await Promise.all([
+    prisma.spendAlert.findMany({
     where: { tenantId, status: SpendAlertStatus.OPEN },
-    orderBy: { createdAt: 'desc' },
-    take: 14,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: DASHBOARD_QUEUE_PREVIEW_LIMIT,
     select: {
       id: true,
       title: true,
@@ -19,7 +22,11 @@ export async function SpendOperationAlerts({ tenantId }: { tenantId: string }) {
       vendor: { select: { name: true } },
       purchaseOrder: { select: { number: true } },
     },
-  });
+  }),
+    prisma.spendAlert.count({
+      where: { tenantId, status: SpendAlertStatus.OPEN },
+    }),
+  ]);
 
   if (rows.length === 0) return null;
 
@@ -30,13 +37,19 @@ export async function SpendOperationAlerts({ tenantId }: { tenantId: string }) {
           <h2 className="text-[15px] font-semibold tracking-tight text-rose-950">
             Spend & reconciliation alerts
           </h2>
-          <p className="mt-1 text-[12px] text-rose-900/90">{RECON_COMPARE_ONLY_BANNER}</p>
+          <p className="mt-1 text-[12px] text-rose-900/90">
+            {RECON_COMPARE_ONLY_BANNER}{' '}
+            <span className="tabular-nums">
+              Showing {rows.length}
+              {openTotal > rows.length ? ` of ${openTotal}` : ''}
+            </span>
+          </p>
         </div>
         <Link
           href="/admin/reconciliation"
           className="shrink-0 text-[12.5px] font-medium text-rose-900 underline-offset-2 hover:underline"
         >
-          Full inbox →
+          {openTotal > rows.length ? `All ${openTotal} in inbox →` : 'Full inbox →'}
         </Link>
       </div>
 

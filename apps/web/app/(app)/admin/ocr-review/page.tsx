@@ -5,6 +5,13 @@ import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
 import { isOcrQueueStale } from '@/app/(app)/admin/ocr-review/ocr-review-ui';
 import { OcrQueueTable, type OcrQueueRow } from '@/app/(app)/admin/ocr-review/ocr-queue-table';
+import { QueuePaginationBar } from '@/components/app/queue-pagination-bar';
+import {
+  buildQueueLoadMoreHref,
+  parseQueuePage,
+  queueFetchTake,
+  resolveQueuePage,
+} from '@/lib/ui/queue-pagination';
 import { STALE_OCR_REVIEW_MS } from '@/lib/workflow/operational-stale';
 
 export const metadata = { title: 'Receipt OCR review' };
@@ -26,7 +33,7 @@ const TAB_DEFS = [
 export default async function OcrReviewIndexPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; stale?: string }>;
+  searchParams: Promise<{ status?: string; stale?: string; page?: string }>;
 }) {
   const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const sp = await searchParams;
@@ -34,22 +41,25 @@ export default async function OcrReviewIndexPage({
   const activeTab = TAB_DEFS.find((t) => t.key === statusRaw) ?? TAB_DEFS[0];
   const statusFilter = [...activeTab.statuses];
   const staleOnly = sp.stale === '1' && activeTab.key === 'review';
+  const page = parseQueuePage(sp.page);
   const now = new Date();
 
-  const [docs, statusCounts, queueDocsForStaleCount] = await Promise.all([
+  const listWhere = {
+    tenantId: me.tenantId,
+    status: { in: statusFilter },
+    ...(staleOnly
+      ? {
+          updatedAt: {
+            lt: new Date(now.getTime() - STALE_OCR_REVIEW_MS),
+          },
+        }
+      : {}),
+  };
+
+  const [docsRaw, statusCounts, queueDocsForStaleCount, tabTotal] = await Promise.all([
     prisma.ocrDocument.findMany({
-      where: {
-        tenantId: me.tenantId,
-        status: { in: statusFilter },
-        ...(staleOnly
-          ? {
-              updatedAt: {
-                lt: new Date(now.getTime() - STALE_OCR_REVIEW_MS),
-              },
-            }
-          : {}),
-      },
-      orderBy: [{ updatedAt: 'desc' }],
+      where: listWhere,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       include: {
         _count: { select: { lineItems: true } },
         poAttachment: {
@@ -66,7 +76,7 @@ export default async function OcrReviewIndexPage({
           },
         },
       },
-      take: 100,
+      take: queueFetchTake(page),
     }),
     prisma.ocrDocument.groupBy({
       where: { tenantId: me.tenantId },
@@ -82,7 +92,14 @@ export default async function OcrReviewIndexPage({
           select: { id: true, status: true, updatedAt: true },
         })
       : Promise.resolve([]),
+    staleOnly
+      ? prisma.ocrDocument.count({ where: listWhere })
+      : prisma.ocrDocument.count({
+          where: { tenantId: me.tenantId, status: { in: statusFilter } },
+        }),
   ]);
+
+  const { rows: docs, hasMore, loadedCount } = resolveQueuePage(docsRaw, page);
 
   const countByStatus = Object.fromEntries(
     statusCounts.map((r) => [r.status, r._count._all])
@@ -161,20 +178,27 @@ export default async function OcrReviewIndexPage({
         ) : null}
       </div>
 
-      <p className="mb-2 text-[11px] text-[var(--color-bv-muted)]">
-        Showing {docs.length}
-        {staleOnly ? ' stale' : ''} in {activeTab.label.toLowerCase()}
-        {tabCount(activeTab) !== docs.length && !staleOnly
-          ? ` · ${tabCount(activeTab)} total`
-          : staleOnly
-            ? ` · ${tabCount(activeTab)} in queue`
-            : ''}
-      </p>
-
       {docs.length === 0 ? (
         <OcrEmptyState statusRaw={statusRaw} staleOnly={staleOnly} />
       ) : (
-        <OcrQueueTable rows={queueRows} nowIso={now.toISOString()} />
+        <>
+          <OcrQueueTable rows={queueRows} nowIso={now.toISOString()} />
+          <QueuePaginationBar
+            loaded={loadedCount}
+            total={staleOnly ? tabTotal : tabCount(activeTab)}
+            hasMore={hasMore}
+            loadMoreHref={buildQueueLoadMoreHref('/admin/ocr-review', {
+              status: activeTab.key,
+              stale: staleOnly ? '1' : undefined,
+              page: page > 1 ? String(page) : undefined,
+            }, page)}
+            suffix={
+              staleOnly
+                ? `stale in ${activeTab.label.toLowerCase()}`
+                : `in ${activeTab.label.toLowerCase()}`
+            }
+          />
+        </>
       )}
     </div>
   );

@@ -6,19 +6,32 @@ import { ReconciliationSafetyBanner } from '@/components/reconciliation/reconcil
 import { ReconciliationStatusChip } from '@/components/reconciliation/reconciliation-badges';
 import { SpendAlertRow } from '@/components/reconciliation/spend-alert-row';
 import { RECON_EMPTY_NO_SNAPSHOT } from '@/lib/reconciliation/ui-copy';
+import { QueuePaginationBar } from '@/components/app/queue-pagination-bar';
+import {
+  buildQueueLoadMoreHref,
+  parseQueuePage,
+  queueFetchTake,
+  resolveQueuePage,
+} from '@/lib/ui/queue-pagination';
 
 export const metadata = { title: 'PO reconciliation inbox' };
 export const dynamic = 'force-dynamic';
 
-export default async function AdminReconciliationInboxPage() {
+export default async function AdminReconciliationInboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const tenantId = me.tenantId;
+  const sp = await searchParams;
+  const page = parseQueuePage(sp.page);
 
-  const [recentRuns, openAlerts] = await Promise.all([
+  const [recentRunsRaw, openAlertsRaw, openAlertTotal, runTotal] = await Promise.all([
     prisma.pOReconciliation.findMany({
       where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      take: 40,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: queueFetchTake(page),
       select: {
         id: true,
         status: true,
@@ -31,8 +44,8 @@ export default async function AdminReconciliationInboxPage() {
     }),
     prisma.spendAlert.findMany({
       where: { tenantId, status: SpendAlertStatus.OPEN },
-      orderBy: { createdAt: 'desc' },
-      take: 40,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: queueFetchTake(page),
       select: {
         id: true,
         title: true,
@@ -42,7 +55,23 @@ export default async function AdminReconciliationInboxPage() {
         purchaseOrder: { select: { number: true } },
       },
     }),
+    prisma.spendAlert.count({
+      where: { tenantId, status: SpendAlertStatus.OPEN },
+    }),
+    prisma.pOReconciliation.count({ where: { tenantId } }),
   ]);
+
+  const {
+    rows: openAlerts,
+    hasMore: alertsHasMore,
+    loadedCount: alertsLoaded,
+  } = resolveQueuePage(openAlertsRaw, page);
+  const {
+    rows: recentRuns,
+    hasMore: runsHasMore,
+    loadedCount: runsLoaded,
+  } = resolveQueuePage(recentRunsRaw, page);
+  const listHasMore = alertsHasMore || runsHasMore;
 
   return (
     <>
@@ -60,8 +89,8 @@ export default async function AdminReconciliationInboxPage() {
               Open spend alerts
             </h2>
             <p className="mt-0.5 text-[12px] text-[var(--color-bv-muted)]">
-              {openAlerts.length > 0
-                ? `${openAlerts.length} need review — primary action opens the PO variance workspace.`
+              {openAlertTotal > 0
+                ? `${openAlertTotal} need review — primary action opens the PO variance workspace.`
                 : 'Nothing queued from the latest snapshots.'}
             </p>
           </div>
@@ -82,20 +111,22 @@ export default async function AdminReconciliationInboxPage() {
             </Link>
           </div>
         ) : (
-          <ul className="mt-4 flex flex-col gap-2">
-            {openAlerts.map((a) => (
-              <SpendAlertRow
-                key={a.id}
-                alertId={a.id}
-                title={a.title}
-                body={a.body}
-                kind={a.kind}
-                purchaseOrderId={a.purchaseOrderId}
-                purchaseOrderNumber={a.purchaseOrder?.number}
-                variant="inbox"
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="mt-4 flex flex-col gap-2">
+              {openAlerts.map((a) => (
+                <SpendAlertRow
+                  key={a.id}
+                  alertId={a.id}
+                  title={a.title}
+                  body={a.body}
+                  kind={a.kind}
+                  purchaseOrderId={a.purchaseOrderId}
+                  purchaseOrderNumber={a.purchaseOrder?.number}
+                  variant="inbox"
+                />
+              ))}
+            </ul>
+          </>
         )}
       </section>
 
@@ -109,6 +140,7 @@ export default async function AdminReconciliationInboxPage() {
         {recentRuns.length === 0 ? (
           <p className="mt-4 text-[13px] text-[var(--color-bv-muted)]">{RECON_EMPTY_NO_SNAPSHOT}</p>
         ) : (
+          <>
           <div className="mt-4 overflow-x-auto rounded-[10px] border border-[var(--color-bv-border)]">
             <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
               <thead className="border-b border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
@@ -149,8 +181,31 @@ export default async function AdminReconciliationInboxPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
+
+      {listHasMore ? (
+        <QueuePaginationBar
+          loaded={Math.max(alertsLoaded, runsLoaded)}
+          total={Math.max(openAlertTotal, runTotal)}
+          hasMore={listHasMore}
+          loadMoreHref={buildQueueLoadMoreHref(
+            '/admin/reconciliation',
+            { page: page > 1 ? String(page) : undefined },
+            page,
+          )}
+          suffix={`open alerts (${alertsLoaded}/${openAlertTotal}) · snapshots (${runsLoaded}/${runTotal})`}
+        />
+      ) : openAlertTotal > 0 || runTotal > 0 ? (
+        <p className="mt-4 text-[11px] text-[var(--color-bv-muted)]">
+          Showing {alertsLoaded} open alert{alertsLoaded === 1 ? '' : 's'}
+          {openAlertTotal > alertsLoaded ? ` of ${openAlertTotal}` : ''}
+          {' · '}
+          {runsLoaded} snapshot{runsLoaded === 1 ? '' : 's'}
+          {runTotal > runsLoaded ? ` of ${runTotal}` : ''}
+        </p>
+      ) : null}
     </>
   );
 }

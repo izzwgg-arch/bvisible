@@ -59,7 +59,9 @@ Regression: `verify:po-lifecycle`, `verify:po-receipt-workflow`, `typecheck` (no
 
 | Step | Expect |
 |------|--------|
-| Queue `/admin/ocr-review` | Dense rows; status chips; stale badge on rows >2d; tab counts always visible; optional **Stale** filter; **Review →** column; `j`/`k` row link focus |
+| Queue `/admin/ocr-review` | Dense rows; status chips; stale badge on rows >2d; tab counts always visible; optional **Stale** filter; **Showing N of total** + **Load more** (`?page=`); **Review →** column; `j`/`k` row link focus |
+| Queue `/admin/email-ingestion` | Bucket + reason filters; **Load more** (`?page=`); reason chips use DB `count()` |
+| Inbox `/admin/reconciliation` | Open alerts + recent snapshots paginated (`?page=`); spend strip on dashboard shows preview count vs total |
 | Detail — Needs review | Sticky decision rail; line table; **Review next →** when queue has another job; attachment opens in new tab |
 | Approve | Pricing + reconciliation message; **Open reconciliation** chip appears |
 | Reject | “No pricing was written” — no VPH rows |
@@ -173,7 +175,7 @@ bash server-scripts/smoke/verify-smoke-admin.sh
 | `check-smoke-env.sh` | All three `BVISIBLE_*` vars set locally | Missing vars / no file | — |
 | `verify-smoke-admin.sh` | User exists, active, has password hash | Compose / DB / env failure | `3` missing user; `4` no password hash |
 
-### Verify env before running (read-only) — exit codes
+`check-smoke-env.sh` exit codes:
 
 | Exit code | Meaning |
 |-----------|---------|
