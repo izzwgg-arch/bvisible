@@ -41,7 +41,6 @@ export interface EditorBootstrap {
     designFlatCents: number;
     subtotalCostCents: number;
     finalPriceCents: number;
-    updatedAt: string;
     client: { id: string; companyName: string; contactName: string | null; email: string | null };
     quoteSent: boolean;
     hasInvoice: boolean;

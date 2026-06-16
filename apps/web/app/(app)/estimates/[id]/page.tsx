@@ -7,7 +7,6 @@ import {
   prisma,
   Role,
 } from '@bvisible/db';
-import { computeEstimate, type LineInput } from '@bvisible/pricing';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { getEstimateEditorPrimaryAction } from '@/lib/estimate/estimate-editor-primary-action';
 import { formatMoney } from '@/lib/estimate/format';
@@ -71,9 +70,7 @@ export default async function EstimateDetailPage({
         designFlatCents: true,
         subtotalCostCents: true,
         finalPriceCents: true,
-        updatedAt: true,
         client: { select: { id: true, companyName: true, contactName: true, email: true } },
-        createdBy: { select: { email: true, name: true } },
         lines: {
           orderBy: [{ sortOrder: 'asc' }],
           select: {
@@ -296,19 +293,6 @@ export default async function EstimateDetailPage({
     quoteLinkActive: quoteUi.quotePanelProps.activeLink != null,
   });
 
-  const headerComputed = computeEstimate({
-    multiplierMilli: estimate.multiplierMilli,
-    designFlatCents: estimate.designFlatCents,
-    lines: estimate.lines.map(
-      (line): LineInput => ({
-        id: line.id,
-        kind: line.kind,
-        qtyMilli: line.qtyMilli,
-        unitCostCents: line.unitCostCents,
-      })
-    ),
-  });
-
   const fulfillmentBlock = (
     <EstimateFulfillmentPanel
       estimateId={estimate.id}
@@ -383,7 +367,6 @@ export default async function EstimateDetailPage({
       designFlatCents: estimate.designFlatCents,
       subtotalCostCents: estimate.subtotalCostCents,
       finalPriceCents: estimate.finalPriceCents,
-      updatedAt: estimate.updatedAt.toISOString(),
       client: estimate.client,
       quoteSent: quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT,
       hasInvoice: linkedInvoiceRow != null,
@@ -412,15 +395,9 @@ export default async function EstimateDetailPage({
       <EstimateCommandHeader
         estimateId={estimate.id}
         estimateNumber={estimate.number}
-        title={estimate.title}
+        jobTitle={estimate.title}
         clientName={estimate.client.companyName}
-        createdBy={estimate.createdBy.name ?? estimate.createdBy.email}
         status={estimate.status}
-        lineCount={estimate.lines.length}
-        linkedPoCount={linkedPosRaw.length}
-        finalPriceCents={headerComputed.finalPriceCents}
-        rawCostCents={headerComputed.subtotalCostCents}
-        updatedAt={estimate.updatedAt}
         primaryHref={primary.href}
         primaryLabel={primary.label}
         primaryHint={primary.hint}
@@ -555,46 +532,36 @@ function NotesTab({ notes, estimateNumber }: { notes: string; estimateNumber: st
 function EstimateCommandHeader({
   estimateId,
   estimateNumber,
-  title,
+  jobTitle,
   clientName,
-  createdBy,
   status,
-  lineCount,
-  linkedPoCount,
-  finalPriceCents,
-  rawCostCents,
-  updatedAt,
   primaryHref,
   primaryLabel,
   primaryHint,
 }: {
   estimateId: string;
   estimateNumber: string;
-  title: string;
+  jobTitle: string;
   clientName: string;
-  createdBy: string;
   status: EstimateStatus;
-  lineCount: number;
-  linkedPoCount: number;
-  finalPriceCents: number;
-  rawCostCents: number;
-  updatedAt: Date;
   primaryHref: string;
   primaryLabel: string;
   primaryHint: string;
 }) {
+  const sendLabel = primaryLabel.toLowerCase().includes('send') ? 'Send' : primaryLabel;
+
   return (
     <section className="mx-auto max-w-[1440px] px-1">
-      <div className="flex flex-col gap-4 border-b border-slate-200/70 pb-5 pt-1 xl:flex-row xl:items-start xl:justify-between">
+      <div className="flex flex-col gap-4 pb-4 pt-1 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium text-slate-400">
             <Link href="/estimates" className="transition hover:text-slate-700">
               Estimates
             </Link>
             <span aria-hidden>/</span>
-            <span className="font-semibold text-slate-600">{estimateNumber}</span>
+            <span className="font-semibold text-slate-600">Create Estimate</span>
           </div>
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end">
+          <div className="mt-3 flex flex-col gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className={`${statusPill(status)} rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ring-1 ring-inset`}>
@@ -606,27 +573,14 @@ function EstimateCommandHeader({
               </span>
             </div>
             <h1 className="mt-3 max-w-4xl text-[32px] font-bold leading-[1.04] tracking-[-0.045em] text-slate-950 md:text-[40px]">
-              {title}
+              Estimate {estimateNumber}
             </h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] leading-relaxed text-slate-500">
+            <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-relaxed text-slate-500">
               <span className="font-semibold text-blue-700">{clientName}</span>
-              <span>Created by {createdBy}</span>
-              <span>
-                Updated{' '}
-              <time dateTime={updatedAt.toISOString()}>
-                {new Intl.DateTimeFormat(undefined, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                }).format(updatedAt)}
-              </time>
-              </span>
+              <span>{jobTitle}</span>
+              <span className="text-slate-400">Add tags</span>
             </p>
           </div>
-            <div className="flex flex-wrap gap-2 lg:pb-1">
-              <HeaderMetric label="Sell" value={formatMoney(finalPriceCents)} />
-              <HeaderMetric label="Cost" value={formatMoney(rawCostCents)} />
-              <HeaderMetric label="Rows / POs" value={`${lineCount} / ${linkedPoCount}`} />
-            </div>
           </div>
         </div>
 
@@ -649,7 +603,7 @@ function EstimateCommandHeader({
             title={primaryHint}
             className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
-            {primaryLabel}
+            {sendLabel}
           </Link>
           <Link
             href="#estimate-status-controls"
@@ -660,15 +614,6 @@ function EstimateCommandHeader({
         </div>
       </div>
     </section>
-  );
-}
-
-function HeaderMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[12px] border border-slate-200 bg-white px-3 py-2 shadow-sm">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <p className="mt-0.5 text-[15px] font-bold leading-none tabular-nums text-slate-950">{value}</p>
-    </div>
   );
 }
 

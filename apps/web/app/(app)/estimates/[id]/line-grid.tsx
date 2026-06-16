@@ -90,16 +90,29 @@ export function LineGrid({
           subtitle="The work that makes up this estimate. Costs roll up into your totals automatically."
           badge={readOnly ? <FinalizedReadOnlyChip /> : null}
           action={
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-              {lines.length} {lines.length === 1 ? 'row' : 'rows'}
-              {readOnly ? (
-                <span className="text-slate-400">· locked</span>
-              ) : (
-                <span className="hidden font-normal text-slate-400 sm:inline">
-                  · Enter ↓ · Shift+Enter ↑
-                </span>
-              )}
-            </span>
+            !readOnly ? (
+              <>
+                <a
+                  href="#estimate-tools"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[12px] font-bold text-blue-700 transition hover:bg-blue-50"
+                >
+                  <span aria-hidden>+</span>
+                  Add from Catalog
+                </a>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                  title="Row actions are available on each line."
+                >
+                  Actions
+                  <span aria-hidden className="ml-1 text-slate-400">⌄</span>
+                </button>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                {lines.length} {lines.length === 1 ? 'row' : 'rows'} · locked
+              </span>
+            )
           }
         />
       </div>
@@ -325,13 +338,10 @@ export function LineGrid({
               {lines.length === 0 ? (
                 <tr>
                   <td colSpan={readOnly ? 8 : 9} className="px-4 py-4">
-                    <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-[14px] border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-[12px] border border-dashed border-slate-200 bg-white px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-start gap-3">
-                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-blue-600 shadow-sm ring-1 ring-inset ring-blue-100">
-                          <IconRows width={19} height={19} />
-                        </div>
                         <div className="min-w-0">
-                          <p className="text-[16px] font-semibold tracking-tight text-slate-900">
+                          <p className="text-[14px] font-semibold tracking-tight text-slate-900">
                             Start building the estimate
                           </p>
                       {readOnly ? (
@@ -348,13 +358,13 @@ export function LineGrid({
                         </div>
                       </div>
                       {!readOnly ? (
-                        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                        <div className="flex shrink-0 flex-wrap gap-1.5 sm:justify-end">
                           {KIND_OPTIONS.map((k) => (
                             <button
                               key={k}
                               type="button"
                               onClick={() => dispatch({ type: 'add-line', kind: k })}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-blue-200 bg-white px-3 py-2 text-[12px] font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50"
+                              className="inline-flex items-center justify-center gap-1.5 rounded-[9px] border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-slate-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                             >
                               <span className="text-[13px] leading-none">+</span>
                               {kindLabel(k)}
@@ -372,16 +382,13 @@ export function LineGrid({
       </div>
 
       {!readOnly && lines.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/50 px-4 py-3">
-          <span className="mr-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-            Add line
-          </span>
+        <div className="grid grid-cols-2 border-t border-slate-100 bg-white sm:grid-cols-3 lg:grid-cols-6">
           {KIND_OPTIONS.map((k) => (
             <button
               key={k}
               type="button"
               onClick={() => dispatch({ type: 'add-line', kind: k })}
-              className="inline-flex items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+              className="inline-flex items-center justify-center gap-1 border-r border-slate-100 px-3 py-3 text-[12px] font-semibold text-slate-600 transition last:border-r-0 hover:bg-blue-50 hover:text-blue-700"
             >
               <span className="text-[13px] leading-none text-blue-500">+</span>
               {kindLabel(k)}

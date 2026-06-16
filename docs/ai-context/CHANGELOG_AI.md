@@ -9,7 +9,7 @@ records what changed, the files touched, the risks, and the verification.
 
 **Audit findings:** The old estimate detail rendered too many operational surfaces at once: large hero metrics, line grid, tools, totals, closeout/status, quote link, customer response, timeline, linked POs, and reconciliation details. The estimate itself was not visually dominant, and secondary workflow panels created a tall stacked-card page.
 
-**What changed:** Rebuilt `/estimates/[id]` into a premium SaaS workspace: compact header with breadcrumb/status/saved/actions; line items first in the main column; compact estimating tool tabs below line items; sticky right rail for Pricing Summary, Customer, Workflow Status, closeout/status, and collapsed danger; secondary Workflow / Files / Activity / Purchase Orders / Reconciliation / Notes tabs so only one support surface is visible at a time.
+**What changed:** Rebuilt `/estimates/[id]` into a premium SaaS workspace: compact header with breadcrumb/status/saved/actions; line items first in the main column; compact estimating tool toolbar below line items with Catalog / Pricing helper / Vendor intel collapsed until opened; sticky right rail for Pricing Summary, Customer, Workflow Status, closeout/status, and collapsed danger; secondary Workflow / Files / Activity / Purchase Orders / Reconciliation / Notes tabs so only one support surface is visible at a time.
 
 **Behavior preserved:** No pricing formulas, save action, quote/public-link security, PO/OCR/reconciliation logic, finalization gates, database schema, or routes changed. Catalog, pricing helper, and vendor intel remain explicit Apply-only. FINALIZED state remains read-only via existing client lockout and server enforcement.
 

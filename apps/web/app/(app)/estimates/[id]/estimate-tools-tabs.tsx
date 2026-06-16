@@ -63,17 +63,17 @@ export function EstimateToolsTabs({
   onApplyManagedCost?: (lineId: string, unitCostCents: number) => void;
   dispatch: React.Dispatch<Action>;
 }) {
-  const [tab, setTab] = useState<ToolTab>('catalog');
+  const [tab, setTab] = useState<ToolTab | null>(null);
   const vendorHintAvailable = vendorIntelLine != null;
 
   const tone =
     tab === 'pricing' ? 'violet' : tab === 'vendor' ? 'emerald' : 'emerald';
   const icon =
     tab === 'pricing' ? <IconCalculator /> : tab === 'vendor' ? <IconChart /> : <IconCatalog />;
-  const activeMeta = TABS.find((t) => t.id === tab)!;
+  const activeMeta = tab ? TABS.find((t) => t.id === tab)! : null;
 
   return (
-    <SectionCard className="overflow-hidden">
+    <SectionCard id="estimate-tools" className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-slate-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <IconBadge tone={tone as never}>{icon}</IconBadge>
@@ -81,7 +81,9 @@ export function EstimateToolsTabs({
             <h2 className="text-[14.5px] font-bold tracking-tight text-slate-950">
               Estimating tools
             </h2>
-            <p className="mt-0.5 truncate text-[12.5px] text-slate-500">{activeMeta.hint}</p>
+            <p className="mt-0.5 truncate text-[12.5px] text-slate-500">
+              {activeMeta?.hint ?? 'Open only when you need catalog, calculators, or vendor pricing.'}
+            </p>
           </div>
         </div>
 
@@ -98,7 +100,7 @@ export function EstimateToolsTabs({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setTab(t.id)}
+                onClick={() => setTab((current) => (current === t.id ? null : t.id))}
                 className={`relative rounded-[9px] px-3 py-1.5 text-[12px] font-bold transition ${
                   active
                     ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-inset ring-blue-200'
@@ -118,6 +120,7 @@ export function EstimateToolsTabs({
         </div>
       </div>
 
+      {tab ? (
       <div role="tabpanel">
         {tab === 'catalog' ? (
           <CatalogItemPicker
@@ -148,6 +151,7 @@ export function EstimateToolsTabs({
           />
         ) : null}
       </div>
+      ) : null}
     </SectionCard>
   );
 }
