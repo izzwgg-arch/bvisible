@@ -22,6 +22,10 @@ export default async function LoginPage({
   const { next } = await searchParams;
   // Only allow same-origin relative paths in `next` to prevent open-redirect.
   const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : undefined;
+  const devLoginEmail =
+    process.env.NODE_ENV === 'development'
+      ? process.env.DEV_LOGIN_EMAIL?.trim() || undefined
+      : undefined;
 
   return (
     <AuthCard
@@ -39,7 +43,7 @@ export default async function LoginPage({
         </>
       }
     >
-      <LoginForm next={safeNext} />
+      <LoginForm next={safeNext} devLoginEmail={devLoginEmail} />
     </AuthCard>
   );
 }

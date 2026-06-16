@@ -27,13 +27,30 @@ const KIND_OPTIONS: ReadonlyArray<EstimateLineKind> = [
   EstimateLineKind.MISC,
 ];
 
+const QUICK_ADD_OPTIONS: ReadonlyArray<EstimateLineKind> = [
+  EstimateLineKind.MATERIAL,
+  EstimateLineKind.LABOR,
+  EstimateLineKind.MACHINE,
+  EstimateLineKind.INSTALL,
+  EstimateLineKind.MISC,
+];
+
 const KIND_TONE: Record<EstimateLineKind, string> = {
-  MATERIAL: 'bg-blue-50 text-blue-700 ring-blue-200',
+  MATERIAL: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   MACHINE: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-  LABOR: 'bg-amber-50 text-amber-700 ring-amber-200',
+  LABOR: 'bg-blue-50 text-blue-700 ring-blue-200',
   DESIGN: 'bg-violet-50 text-violet-700 ring-violet-200',
-  INSTALL: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  INSTALL: 'bg-orange-50 text-orange-700 ring-orange-200',
   MISC: 'bg-slate-100 text-slate-600 ring-slate-200',
+};
+
+const KIND_UNIT: Record<EstimateLineKind, string> = {
+  MATERIAL: 'Each',
+  MACHINE: 'Each',
+  LABOR: 'Hours',
+  DESIGN: 'Each',
+  INSTALL: 'Hours',
+  MISC: 'Each',
 };
 
 interface LineGridProps {
@@ -120,17 +137,21 @@ export function LineGrid({
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/60 text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                <th className="w-[8%] px-4 py-2.5">Type</th>
-                <th className="w-[30%] px-3 py-2.5">Description</th>
-                <th className="w-[13%] px-3 py-2.5">Machine</th>
-                <th className="w-[7%] px-3 py-2.5 text-right">Qty</th>
-                <th className="w-[10%] px-3 py-2.5 text-right">Unit</th>
-                <th className="w-[10%] px-3 py-2.5 text-right">Cost</th>
-                <th className="w-[10%] px-3 py-2.5 text-right">Sell</th>
-                <th className="w-[8%] px-3 py-2.5 text-right">Margin</th>
+              <tr className="border-b border-slate-100 bg-slate-50/50 text-left text-[10px] font-bold uppercase tracking-[0.11em] text-slate-400">
+                <th className="w-[7%] px-4 py-3">
+                  <span className="sr-only">Select</span>
+                </th>
+                <th className="w-[30%] px-3 py-3">Description</th>
+                <th className="w-[12%] px-3 py-3">Type</th>
+                <th className="w-[8%] px-3 py-3 text-right">Qty</th>
+                <th className="w-[10%] px-3 py-3 text-right">Unit</th>
+                <th className="w-[11%] px-3 py-3 text-right">Cost</th>
+                <th className="w-[11%] px-3 py-3 text-right">Sell</th>
+                <th className="w-[8%] px-3 py-3 text-right">Margin</th>
                 {!readOnly ? (
-                  <th className="w-[4%] px-4 py-2.5 text-right">Actions</th>
+                  <th className="w-[3%] px-4 py-3 text-right">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 ) : null}
               </tr>
             </thead>
@@ -139,7 +160,6 @@ export function LineGrid({
                 const cost = lineCosts[line.id] ?? 0;
                 const sell = Math.round((cost * multiplierMilli) / 1000);
                 const margin = sell > 0 ? Math.round(((sell - cost) / sell) * 1000) / 10 : null;
-                const isMachine = line.kind === EstimateLineKind.MACHINE;
                 const machineName = line.machineId
                   ? machinesById.get(line.machineId)?.name ?? '—'
                   : null;
@@ -159,41 +179,17 @@ export function LineGrid({
                       readOnly ? '' : 'hover:bg-blue-50/30'
                     }`}
                   >
-                    <td className="px-4 py-2 align-middle">
-                      {readOnly ? (
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide ring-1 ring-inset ${KIND_TONE[line.kind]}`}
-                        >
-                          {kindLabel(line.kind)}
-                        </span>
-                      ) : (
-                        <select
-                          value={line.kind}
-                          onFocus={reportBoth}
-                          onChange={(e) =>
-                            dispatch({
-                              type: 'set-line',
-                              id: line.id,
-                              patch: {
-                                kind: e.currentTarget.value as EstimateLineKind,
-                                machineId:
-                                  e.currentTarget.value === EstimateLineKind.MACHINE
-                                    ? line.machineId
-                                    : null,
-                              },
-                            })
-                          }
-                          className={`w-full cursor-pointer rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wide outline-none ring-1 ring-inset focus:ring-2 focus:ring-blue-500 ${KIND_TONE[line.kind]}`}
-                        >
-                          {KIND_OPTIONS.map((k) => (
-                            <option key={k} value={k} className="bg-white text-slate-700">
-                              {kindLabel(k)}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        {!readOnly ? (
+                          <span className="cursor-grab text-[17px] leading-none" aria-hidden>
+                            ⋮⋮
+                          </span>
+                        ) : null}
+                        <span className="grid h-4 w-4 place-items-center rounded-[4px] border border-slate-200 bg-white" />
+                      </div>
                     </td>
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-3 align-middle">
                       {readOnly ? (
                         <span className="block px-1 text-[13px] text-slate-800">
                           {line.description}
@@ -217,42 +213,45 @@ export function LineGrid({
                           placeholder="What this line is for"
                         />
                       )}
+                      {line.kind === EstimateLineKind.MACHINE && machineName ? (
+                        <span className="mt-1 block px-1 text-[11px] text-slate-400">{machineName}</span>
+                      ) : null}
                     </td>
-                    <td className="px-3 py-2 align-middle">
-                      {isMachine ? (
-                        readOnly ? (
-                          <span className="block px-1 text-[12.5px] text-slate-500">
-                            {machineName ?? '—'}
-                          </span>
-                        ) : (
-                          <select
-                            value={line.machineId ?? ''}
-                            onFocus={reportBoth}
-                            onChange={(e) => {
-                              const id = e.currentTarget.value || null;
-                              const machine = id ? machinesById.get(id) ?? null : null;
-                              dispatch({
-                                type: 'pick-machine',
-                                id: line.id,
-                                machineId: id,
-                                ratePerHourCents: machine?.ratePerHourCents ?? null,
-                              });
-                            }}
-                            className="w-full rounded-md bg-transparent px-2 py-1.5 text-[12.5px] text-slate-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-                          >
-                            <option value="">— pick —</option>
-                            {machines.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.name} · {formatMoney(m.ratePerHourCents)}/hr
-                              </option>
-                            ))}
-                          </select>
-                        )
+                    <td className="px-3 py-3 align-middle">
+                      {readOnly ? (
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${KIND_TONE[line.kind]}`}
+                        >
+                          {kindLabel(line.kind)}
+                        </span>
                       ) : (
-                        <span className="block px-1 py-1.5 text-[12.5px] text-slate-300">—</span>
+                        <select
+                          value={line.kind}
+                          onFocus={reportBoth}
+                          onChange={(e) =>
+                            dispatch({
+                              type: 'set-line',
+                              id: line.id,
+                              patch: {
+                                kind: e.currentTarget.value as EstimateLineKind,
+                                machineId:
+                                  e.currentTarget.value === EstimateLineKind.MACHINE
+                                    ? line.machineId
+                                    : null,
+                              },
+                            })
+                          }
+                          className={`max-w-[92px] cursor-pointer appearance-none rounded-md px-2 py-1 text-[11px] font-semibold outline-none ring-1 ring-inset focus:ring-2 focus:ring-blue-500 ${KIND_TONE[line.kind]}`}
+                        >
+                          {KIND_OPTIONS.map((k) => (
+                            <option key={k} value={k} className="bg-white text-slate-700">
+                              {kindLabel(k)}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </td>
-                    <td className="px-3 py-2 align-middle text-right tabular-nums text-slate-700">
+                    <td className="px-3 py-3 align-middle text-right tabular-nums text-slate-700">
                       {readOnly ? (
                         formatQty(line.qtyMilli)
                       ) : (
@@ -275,60 +274,71 @@ export function LineGrid({
                         />
                       )}
                     </td>
-                    <td className="px-3 py-2 align-middle text-right tabular-nums text-slate-700">
+                    <td className="px-3 py-3 align-middle text-right text-[12.5px] text-slate-700">
+                      {KIND_UNIT[line.kind]}
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">
                       {readOnly ? (
-                        formatMoney(line.unitCostCents)
+                        formatMoney(cost)
                       ) : (
                         <NumericCell
-                          value={line.unitCostCents}
-                          onCommit={(v) =>
+                          value={cost}
+                          onCommit={(v) => {
+                            const qty = line.qtyMilli > 0 ? line.qtyMilli : 1000;
                             dispatch({
                               type: 'set-line',
                               id: line.id,
-                              patch: { unitCostCents: v },
-                            })
-                          }
+                              patch: { unitCostCents: Math.round((v * 1000) / qty) },
+                            });
+                          }}
                           format={formatMoney}
                           parse={parseMoney}
-                          ariaLabel={`Row ${idx + 1} unit cost`}
+                          ariaLabel={`Row ${idx + 1} total cost`}
                           cellRow={idx}
-                          cellCol="unit"
+                          cellCol="cost"
                           cellGrid={GRID_NAME}
                           onCellFocus={reportBoth}
                         />
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
-                      {formatMoney(cost)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
+                    <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">
                       {formatMoney(sell)}
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-emerald-700">
+                    <td className="px-3 py-3 text-right font-semibold tabular-nums text-emerald-600">
                       {margin == null ? '—' : `${margin.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}
                     </td>
                     {!readOnly ? (
-                      <td className="px-4 py-2 text-right">
-                        <div className="inline-flex items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-                          <RowBtn
-                            label="Move up"
-                            symbol="↑"
-                            onClick={() => dispatch({ type: 'move-line', id: line.id, dir: -1 })}
-                            disabled={idx === 0}
-                          />
-                          <RowBtn
-                            label="Move down"
-                            symbol="↓"
-                            onClick={() => dispatch({ type: 'move-line', id: line.id, dir: 1 })}
-                            disabled={idx === lines.length - 1}
-                          />
-                          <RowBtn
-                            label="Remove row"
-                            symbol="×"
-                            danger
-                            onClick={() => dispatch({ type: 'remove-line', id: line.id })}
-                          />
-                        </div>
+                      <td className="px-4 py-3 text-right">
+                        <details className="relative inline-block text-left">
+                          <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-lg text-[15px] font-bold leading-none text-slate-300 transition hover:bg-slate-50 hover:text-slate-500 marker:content-none [&::-webkit-details-marker]:hidden">
+                            ...
+                          </summary>
+                          <div className="absolute right-0 z-10 mt-1 flex w-32 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-lg">
+                            <button
+                              type="button"
+                              onClick={() => dispatch({ type: 'move-line', id: line.id, dir: -1 })}
+                              disabled={idx === 0}
+                              className="px-3 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:text-slate-300"
+                            >
+                              Move up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => dispatch({ type: 'move-line', id: line.id, dir: 1 })}
+                              disabled={idx === lines.length - 1}
+                              className="px-3 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:text-slate-300"
+                            >
+                              Move down
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => dispatch({ type: 'remove-line', id: line.id })}
+                              className="px-3 py-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </details>
                       </td>
                     ) : null}
                   </tr>
@@ -381,15 +391,15 @@ export function LineGrid({
       </div>
 
       {!readOnly && lines.length > 0 ? (
-        <div className="grid grid-cols-2 border-t border-slate-100 bg-white sm:grid-cols-3 lg:grid-cols-6">
-          {KIND_OPTIONS.map((k) => (
+        <div className="grid grid-cols-2 border-t border-slate-100 bg-white sm:grid-cols-5">
+          {QUICK_ADD_OPTIONS.map((k) => (
             <button
               key={k}
               type="button"
               onClick={() => dispatch({ type: 'add-line', kind: k })}
-              className="inline-flex items-center justify-center gap-1 border-r border-slate-100 px-3 py-3 text-[12px] font-semibold text-slate-600 transition last:border-r-0 hover:bg-blue-50 hover:text-blue-700"
+              className="inline-flex items-center justify-center gap-2 border-r border-slate-100 px-3 py-4 text-[12px] font-semibold text-slate-600 transition last:border-r-0 hover:bg-blue-50 hover:text-blue-700"
             >
-              <span className="text-[13px] leading-none text-blue-500">+</span>
+              <QuickAddIcon kind={k} />
               {kindLabel(k)}
             </button>
           ))}
@@ -399,33 +409,33 @@ export function LineGrid({
   );
 }
 
-function RowBtn({
-  label,
-  symbol,
-  onClick,
-  disabled,
-  danger,
-}: {
-  label: string;
-  symbol: string;
-  onClick: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
+function QuickAddIcon({ kind }: { kind: EstimateLineKind }) {
+  const tone =
+    kind === EstimateLineKind.MATERIAL
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+      : kind === EstimateLineKind.LABOR
+        ? 'bg-blue-50 text-blue-700 ring-blue-200'
+        : kind === EstimateLineKind.MACHINE
+          ? 'bg-indigo-50 text-indigo-700 ring-indigo-200'
+          : kind === EstimateLineKind.INSTALL
+            ? 'bg-orange-50 text-orange-700 ring-orange-200'
+            : 'bg-slate-50 text-slate-600 ring-slate-200';
+  const letter =
+    kind === EstimateLineKind.MATERIAL
+      ? 'M'
+      : kind === EstimateLineKind.LABOR
+        ? 'L'
+        : kind === EstimateLineKind.MACHINE
+          ? 'C'
+          : kind === EstimateLineKind.INSTALL
+            ? 'I'
+            : 'X';
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[13px] transition disabled:cursor-not-allowed disabled:opacity-30 ${
-        danger
-          ? 'border-slate-200 bg-white text-slate-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600'
-          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800'
-      }`}
+    <span
+      aria-hidden
+      className={`grid h-5 w-5 place-items-center rounded-md text-[10px] font-bold ring-1 ring-inset ${tone}`}
     >
-      {symbol}
-    </button>
+      {letter}
+    </span>
   );
 }

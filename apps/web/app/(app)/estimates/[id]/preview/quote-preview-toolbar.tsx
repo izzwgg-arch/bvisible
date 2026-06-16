@@ -8,7 +8,7 @@ export function QuotePreviewToolbar({ backHref }: { backHref: string }) {
         onClick={() => window.print()}
         className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
       >
-        Print / Save as PDF
+        Download PDF / Print
       </button>
       <a
         href="#customer-send"

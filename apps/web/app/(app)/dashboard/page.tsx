@@ -3,21 +3,7 @@ import { PageHeader } from '@/components/app-shell';
 import { Role } from '@bvisible/db';
 import { getDashboardMetrics } from '@/lib/dashboard/get-dashboard-metrics';
 import { getDashboardOperationalFeed } from '@/lib/dashboard/get-dashboard-feed';
-import { getOnboardingChecklistState } from '@/lib/onboarding/checklist-data';
-import { isOnboardingChecklistDismissed } from '@/lib/onboarding/dismiss-action';
-import { OnboardingChecklistCard } from '@/components/onboarding/onboarding-checklist-card';
-import {
-  getOperationalWorkflowQueues,
-  type OperationalQueueFilter,
-} from '@/lib/workflow/get-operational-workflow-queues';
 import { VendorPriceAlerts } from './vendor-price-alerts';
-import { DashboardOperationalQueues } from './dashboard-operational-queues';
-import { DashboardPoLifecycleQueues } from './dashboard-po-lifecycle-queues';
-import { getPoLifecycleDashboardQueues } from '@/lib/po/get-po-lifecycle-dashboard-queues';
-import {
-  DashboardCommandSummary,
-  summarizeDashboardQueues,
-} from './dashboard-command-summary';
 import {
   DashboardMetricGrid,
   DashboardOperationalSections,
@@ -28,34 +14,18 @@ import {
 export const metadata = { title: 'Dashboard' };
 export const dynamic = 'force-dynamic';
 
-const QUEUE_FILTERS = new Set<OperationalQueueFilter>([
-  'all',
-  'stale',
-  'blocked',
-  'unresolved',
-  'mine',
-]);
-
-function parseQueueFilter(raw: string | undefined): OperationalQueueFilter {
-  if (raw && QUEUE_FILTERS.has(raw as OperationalQueueFilter)) {
-    return raw as OperationalQueueFilter;
-  }
-  return 'all';
-}
-
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; queue?: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const user = await requireUserForAppShell();
-  const { error, queue: queueParam } = await searchParams;
-  const queueFilter = parseQueueFilter(queueParam);
+  const { error } = await searchParams;
 
   const showOperator =
     user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
-  const [metrics, feed, dismissed, checklistState, operationalQueues, poLifecycleQueues] =
+  const [metrics, feed] =
     user.tenantId != null
       ? await Promise.all([
           getDashboardMetrics(user.tenantId, {
@@ -64,39 +34,14 @@ export default async function DashboardPage({
           getDashboardOperationalFeed(user.tenantId, {
             includeOperatorAttention: false,
           }),
-          isOnboardingChecklistDismissed(),
-          getOnboardingChecklistState(user.tenantId, user.role),
-          getOperationalWorkflowQueues(user.tenantId, {
-            filter: queueFilter,
-            currentUserId: user.id,
-            includeOperatorQueues: showOperator,
-          }),
-          showOperator
-            ? getPoLifecycleDashboardQueues(user.tenantId, {
-                currentUserId: user.id,
-                mineOnly: queueFilter === 'mine',
-              })
-            : Promise.resolve(null),
         ])
-      : [null, null, true, null, null, null];
-
-  const workspaceLabel = user.tenant.name;
-
-  const showOnboarding =
-    checklistState != null &&
-    !dismissed &&
-    checklistState.completedCount < checklistState.totalSteps;
-
-  const commandCounts =
-    metrics != null
-      ? summarizeDashboardQueues(operationalQueues, poLifecycleQueues)
-      : null;
+      : [null, null];
 
   return (
     <>
       <PageHeader
-        title={greeting(user.name, user.email)}
-        subtitle={`${workspaceLabel} · operations command center`}
+        title="Operations cockpit"
+        subtitle="Live work, pricing, and activity in one clean view."
       />
       {error === 'forbidden' ? (
         <div className="mb-6 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] text-amber-900">
@@ -117,51 +62,8 @@ export default async function DashboardPage({
         </div>
       ) : null}
 
-      {showOnboarding && checklistState ? (
-        <OnboardingChecklistCard state={checklistState} role={user.role} />
-      ) : null}
-
-      {metrics && commandCounts ? (
+      {metrics ? (
         <>
-          <DashboardCommandSummary
-            counts={commandCounts}
-            activeFilter={queueFilter}
-            showPoLifecycle={poLifecycleQueues != null}
-          />
-
-          <section
-            className="dashboard-ops-workspace mb-6 rounded-[var(--radius-bv)] border border-slate-200/90 bg-slate-100/50 p-4 shadow-[var(--shadow-bv-card)] sm:p-5"
-            aria-label="Operational queues"
-          >
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                Work queues
-              </h2>
-            </div>
-            <div className="grid gap-6 xl:grid-cols-2">
-              {operationalQueues ? (
-                <div>
-                  <h3 className="mb-2 text-[12px] font-semibold text-[var(--color-bv-text)]">
-                    Estimate · invoice · mail
-                  </h3>
-                  <DashboardOperationalQueues
-                    queues={operationalQueues}
-                    activeFilter={queueFilter}
-                    showOperatorQueues={showOperator}
-                  />
-                </div>
-              ) : null}
-              {poLifecycleQueues ? (
-                <div>
-                  <h3 className="mb-2 text-[12px] font-semibold text-[var(--color-bv-text)]">
-                    PO vendor lifecycle
-                  </h3>
-                  <DashboardPoLifecycleQueues queues={poLifecycleQueues} />
-                </div>
-              ) : null}
-            </div>
-          </section>
-
           <DashboardQuickActions role={user.role} hasClients={metrics.clientCount > 0} />
           <DashboardMetricGrid metrics={metrics} showOperatorCards={showOperator} />
 
@@ -185,10 +87,3 @@ export default async function DashboardPage({
   );
 }
 
-function greeting(name: string | null, email: string): string {
-  const fallback = email.split('@')[0] ?? email;
-  const who = (name || fallback).split(' ')[0] ?? fallback;
-  const hour = new Date().getHours();
-  const tod = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
-  return `Good ${tod}, ${who}`;
-}

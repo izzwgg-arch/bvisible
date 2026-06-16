@@ -238,19 +238,17 @@ export function TotalsPanel(props: TotalsPanelProps) {
         </div>
 
         <div className="flex flex-col gap-2 px-5 pb-5 pt-4">
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saving || !dirty || isFinalized}
-            title={isFinalized ? 'Unfinalize to edit this estimate.' : undefined}
-            className={`inline-flex items-center justify-center rounded-[12px] px-3.5 py-3 text-[13.5px] font-bold shadow-sm transition disabled:cursor-not-allowed ${
-              dirty && !isFinalized
-                ? 'bg-blue-600 text-white hover:bg-blue-500'
-                : 'bg-slate-100 text-slate-400'
-            }`}
-          >
-            {saving ? 'Saving…' : dirty ? 'Save changes  ⌘S' : '✓ Saved'}
-          </button>
+          {dirty ? (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving || isFinalized}
+              title={isFinalized ? 'Unfinalize to edit this estimate.' : undefined}
+              className="inline-flex items-center justify-center rounded-[12px] bg-blue-600 px-3.5 py-3 text-[13.5px] font-bold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              {saving ? 'Saving...' : 'Save changes  Cmd+S'}
+            </button>
+          ) : null}
           {saveState.error ? (
             <p className="text-[12px] text-rose-700">{saveState.error}</p>
           ) : saveState.savedAt ? (
@@ -266,7 +264,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
         <SectionHeading icon={<IconReceipt />} tone="blue" title="Customer" />
         <div className="mt-3 rounded-[14px] border border-slate-200 bg-slate-50/50 px-3 py-3">
           <p className="text-[13px] font-bold text-slate-950">
-            {bootstrap.estimate.client.companyName}
+            {bootstrap.estimate.client.companyName.replace(/^DEMO\s+/i, '')}
           </p>
           <dl className="mt-2 grid gap-1.5 text-[12px]">
             <div className="flex justify-between gap-3">
@@ -286,7 +284,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
             href="/clients"
             className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
-            View customers
+            View customer
           </Link>
         </div>
       </SectionCard>

@@ -17,24 +17,16 @@ export interface LoginState {
 const GENERIC_INVALID = 'Invalid email or password.';
 const LOCKED_OUT = 'Too many failed attempts. Try again in a few minutes.';
 
-export async function loginAction(
-  _prev: LoginState,
-  formData: FormData
+function safeNextPath(raw: FormDataEntryValue | null): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  return raw.startsWith('/') && !raw.startsWith('//') ? raw : undefined;
+}
+
+async function performLogin(
+  email: string,
+  password: string,
+  next: string | undefined,
 ): Promise<LoginState> {
-  const parsed = loginSchema.safeParse({
-    email: formData.get('email'),
-    password: formData.get('password'),
-    next: formData.get('next') ?? undefined,
-  });
-
-  if (!parsed.success) {
-    return {
-      error: parsed.error.issues[0]?.message ?? GENERIC_INVALID,
-      email: typeof formData.get('email') === 'string' ? String(formData.get('email')) : '',
-    };
-  }
-
-  const { email, password, next } = parsed.data;
   const ctx = await readRequestContext();
 
   if (await isLockedForEmail(email)) {
@@ -104,8 +96,54 @@ export async function loginAction(
     userAgent: ctx.userAgent,
   });
 
-  // Same-origin relative path only. Re-validate here in case a future
-  // call site bypasses the page-level check.
-  const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
-  redirect(target);
+  redirect(next ?? '/dashboard');
+}
+
+export async function loginAction(
+  _prev: LoginState,
+  formData: FormData
+): Promise<LoginState> {
+  const parsed = loginSchema.safeParse({
+    email: formData.get('email'),
+    password: formData.get('password'),
+    next: formData.get('next') ?? undefined,
+  });
+
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? GENERIC_INVALID,
+      email: typeof formData.get('email') === 'string' ? String(formData.get('email')) : '',
+    };
+  }
+
+  return performLogin(parsed.data.email, parsed.data.password, parsed.data.next);
+}
+
+/** One-click local sign-in. Disabled in production; credentials live in server env only. */
+export async function devLoginAction(
+  _prev: LoginState,
+  formData: FormData
+): Promise<LoginState> {
+  if (process.env.NODE_ENV !== 'development') {
+    return { error: 'Dev login is not available.', email: '' };
+  }
+
+  const email = process.env.DEV_LOGIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.DEV_LOGIN_PASSWORD;
+  if (!email || !password) {
+    return {
+      error: 'Set DEV_LOGIN_EMAIL and DEV_LOGIN_PASSWORD in apps/web/.env.local.',
+      email: '',
+    };
+  }
+
+  return performLogin(email, password, safeNextPath(formData.get('next')));
+}
+
+export async function loginFormAction(
+  prev: LoginState,
+  formData: FormData
+): Promise<LoginState> {
+  if (formData.get('intent') === 'dev') return devLoginAction(prev, formData);
+  return loginAction(prev, formData);
 }

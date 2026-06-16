@@ -1,13 +1,26 @@
 'use client';
 
 import { useActionState } from 'react';
-import { loginAction, type LoginState } from '@/app/(auth)/login/actions';
+import { loginFormAction, type LoginState } from '@/app/(auth)/login/actions';
 import { FormError } from './form-error';
 
 const INITIAL: LoginState = { error: null };
 
-export function LoginForm({ next }: { next?: string }) {
-  const [state, formAction, pending] = useActionState(loginAction, INITIAL);
+export function LoginForm({
+  next,
+  devLoginEmail,
+}: {
+  next?: string;
+  devLoginEmail?: string;
+}) {
+  const [state, formAction, pending] = useActionState(loginFormAction, INITIAL);
+
+  function handleDevLogin() {
+    const formData = new FormData();
+    formData.set('intent', 'dev');
+    if (next) formData.set('next', next);
+    formAction(formData);
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -35,6 +48,16 @@ export function LoginForm({ next }: { next?: string }) {
       >
         {pending ? 'Signing in…' : 'Sign in'}
       </button>
+      {devLoginEmail ? (
+        <button
+          type="button"
+          onClick={handleDevLogin}
+          disabled={pending}
+          className="inline-flex items-center justify-center rounded-[8px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-bv-muted)] transition-colors hover:border-[var(--color-bv-accent)] hover:text-[var(--color-bv-text)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {pending ? 'Signing in…' : `Dev login (${devLoginEmail})`}
+        </button>
+      ) : null}
     </form>
   );
 }

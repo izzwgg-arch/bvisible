@@ -433,7 +433,6 @@ export function EstimateEditor({
           onAnyLineFocus={setCatalogLineId}
           dispatch={guardedDispatch}
         />
-        {supportTabs}
         <EstimateToolsTabs
           catalog={bootstrap.shopCatalog}
           machines={bootstrap.machines}
@@ -453,6 +452,7 @@ export function EstimateEditor({
           }
           dispatch={guardedDispatch}
         />
+        {supportTabs}
         <MetaCard
           title={state.title}
           notes={state.notes}

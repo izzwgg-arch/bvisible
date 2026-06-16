@@ -34,27 +34,27 @@ export function CreateShopMaterialItemForm({
   const [state, action, pending] = useActionState(createShopMaterialItemAction, initial);
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form action={action} className="grid gap-5">
       <FormError message={state.error} />
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Item name</span>
+      <label className="flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Item name</span>
         <input
           name="name"
           required
           maxLength={400}
           placeholder="e.g. ACM 4X8 WHITE"
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         />
       </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Line type</span>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Line type</span>
           <select
             name="kind"
             required
             defaultValue={EstimateLineKind.MATERIAL}
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           >
             {KINDS.map((k) => (
               <option key={k} value={k}>
@@ -63,13 +63,13 @@ export function CreateShopMaterialItemForm({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Unit</span>
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Unit</span>
           <select
             name="catalogUnit"
             required
             defaultValue={ShopCatalogUnit.EACH}
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           >
             {UNITS.map((u) => (
               <option key={u} value={u}>
@@ -77,31 +77,31 @@ export function CreateShopMaterialItemForm({
               </option>
             ))}
           </select>
-          <p className="text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
+          <p className="rounded-[14px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-[12px] leading-relaxed text-blue-900">
             SQ FT / SHEET / ROLL match how you buy material; the estimate <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> can fill sq ft, sheet count, roll usage, or banner totals on a line when you apply.
           </p>
         </label>
       </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+      <label className="flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
           Custom unit label (when unit = CUSTOM)
         </span>
         <input
           name="customUnitLabel"
           maxLength={40}
           placeholder="Only when needed"
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         />
       </label>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+      <label className="flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
           Default machine (MACHINE rows only)
         </span>
         <select
           name="machineId"
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
+          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         >
           <option value="">— optional —</option>
           {machines.map((m) => (
@@ -113,8 +113,8 @@ export function CreateShopMaterialItemForm({
       </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
             Internal unit cost (USD)
           </span>
           <input
@@ -122,11 +122,11 @@ export function CreateShopMaterialItemForm({
             required
             placeholder="0.00"
             inputMode="decimal"
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           />
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
             Markup % (quoting guidance)
           </span>
           <input
@@ -134,28 +134,28 @@ export function CreateShopMaterialItemForm({
             defaultValue="200"
             placeholder="200"
             inputMode="decimal"
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           />
-          <p className="text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
+          <p className="text-[12px] leading-snug text-slate-500">
             Default <strong className="text-[var(--color-bv-text)]">200</strong> = 200% above cost (catalog sell hint ≈ 3× cost). Use <strong className="text-[var(--color-bv-text)]">0</strong> for no markup.
           </p>
         </label>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
             Default sell (USD override, optional)
           </span>
           <input
             name="defaultSellUsd"
             placeholder="Leave blank to derive from cost + markup"
             inputMode="decimal"
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           />
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+        <label className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
             Default quantity
           </span>
           <input
@@ -163,28 +163,32 @@ export function CreateShopMaterialItemForm({
             defaultValue="1"
             placeholder="1"
             inputMode="decimal"
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           />
         </label>
       </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Notes (optional)</span>
+      <label className="flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Notes (optional)</span>
         <textarea
           name="notes"
-          rows={3}
+          rows={4}
           maxLength={2000}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] outline-none focus:border-[var(--color-bv-accent)]"
+          placeholder="Internal estimator guidance, usage constraints, or sourcing context."
+          className="rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         />
       </label>
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm disabled:opacity-60"
-      >
-        {pending ? 'Creating…' : 'Create item'}
-      </button>
+      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+        <p className="text-[12.5px] text-slate-500">New items become available for estimating once saved.</p>
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95 disabled:opacity-60"
+        >
+          {pending ? 'Creating…' : 'Create item'}
+        </button>
+      </div>
     </form>
   );
 }

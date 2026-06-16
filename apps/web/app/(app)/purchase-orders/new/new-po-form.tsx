@@ -29,15 +29,15 @@ export function NewPoForm({
   const [state, formAction, pending] = useActionState(createBlankPoAction, INITIAL);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+    <form action={formAction} className="grid gap-5">
+      <label className="group flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
           Vendor <span className="text-[var(--color-bv-muted)]">(optional — set later)</span>
         </span>
         {vendors.length === 0 ? (
-          <p className="text-[12.5px] text-[var(--color-bv-muted)]">
+          <p className="rounded-[14px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-[12.5px] text-slate-500">
             No vendors yet.{' '}
-            <Link href="/vendors/new" className="text-[var(--color-bv-accent)] underline">
+            <Link href="/vendors/new" className="font-semibold text-[var(--color-bv-accent)] underline">
               Add one
             </Link>{' '}
             if you want to attach now, or leave blank and assign later.
@@ -46,7 +46,7 @@ export function NewPoForm({
           <select
             name="vendorId"
             defaultValue=""
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           >
             <option value="">— no vendor —</option>
             {vendors.map((v) => (
@@ -58,15 +58,15 @@ export function NewPoForm({
         )}
       </label>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+      <label className="group flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
           Linked estimate{' '}
           <span className="text-[var(--color-bv-muted)]">(optional)</span>
         </span>
         <select
           name="estimateId"
           defaultValue={defaultEstimateId ?? ''}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         >
           <option value="">— no estimate —</option>
           {estimates.map((e) => (
@@ -75,27 +75,29 @@ export function NewPoForm({
             </option>
           ))}
         </select>
-        <span className="text-[11.5px] text-[var(--color-bv-muted)]">
+        <span className="rounded-[14px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-[12px] leading-relaxed text-blue-900">
           Picking an estimate here just stores the link. To copy lines from the
           estimate, open the estimate and click <em>Create PO from estimate</em>.
         </span>
       </label>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Notes</span>
+      <label className="group flex flex-col gap-2">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Notes</span>
         <textarea
           name="notes"
-          rows={2}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+          rows={4}
+          placeholder="Add purchasing instructions, quote references, or delivery notes."
+          className="rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-[14px] text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         />
       </label>
 
       <FormError message={state.error} />
-      <div className="flex items-center justify-end gap-2 pt-1">
+      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+        <p className="text-[12.5px] text-slate-500">Drafts can be edited immediately after creation.</p>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[14px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[14px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? 'Creating…' : 'Create PO'}
         </button>

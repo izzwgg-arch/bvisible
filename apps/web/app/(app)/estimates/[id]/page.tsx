@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
-  EstimateTimelineKind,
   EstimateStatus,
   POAttachmentKind,
   prisma,
@@ -11,16 +10,10 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { getEstimateEditorPrimaryAction } from '@/lib/estimate/estimate-editor-primary-action';
 import { formatMoney } from '@/lib/estimate/format';
 import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
-import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
-import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
-import { EstimateFulfillmentPanel } from '@/components/estimate/estimate-fulfillment-panel';
-import { EstimateRelationshipFlowStrip } from '@/components/estimate/estimate-relationship-flow-strip';
 import { EstimateTimelineSection } from '@/components/estimate/estimate-timeline-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import {
   countReceiptOcrBuckets,
-  fulfillmentHeadlineForEstimateStatus,
-  fulfillmentOperationalHints,
   mapLinkedPoToEstimateBootstrap,
   reconciliationGuidanceLabel,
   receiptOcrOperationalHint,
@@ -28,12 +21,8 @@ import {
 } from '@/lib/estimate/estimate-fulfillment';
 import { EstimateEditor, type EditorBootstrap } from './editor';
 import { EstimateSupportTabs } from './estimate-support-tabs';
-import {
-  buildEstimateOperationalRailSteps,
-  deriveEstimateOperationalSteps,
-} from '@/lib/estimate/estimate-invoice-fulfillment';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
-import { buildEstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
+import { EstimateHeaderActions } from './estimate-header-actions';
 
 export const metadata = { title: 'Estimate' };
 export const dynamic = 'force-dynamic';
@@ -51,12 +40,10 @@ export default async function EstimateDetailPage({
     machines,
     clients,
     linkedPosRaw,
-    quoteAcceptedEvent,
     vendors,
     shopCatalog,
     linkedInvoiceRow,
     quoteSentAudit,
-    finalizedAudit,
   ] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
@@ -128,15 +115,6 @@ export default async function EstimateDetailPage({
         },
       },
     }),
-    prisma.estimateTimelineEvent.findFirst({
-      where: {
-        tenantId: me.tenantId,
-        estimateId: id,
-        kind: EstimateTimelineKind.QUOTE_ACCEPTED,
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { createdAt: true },
-    }),
     prisma.vendor.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
       orderBy: [{ name: 'asc' }],
@@ -165,16 +143,6 @@ export default async function EstimateDetailPage({
       orderBy: { createdAt: 'asc' },
       select: { createdAt: true },
     }),
-    prisma.auditLog.findFirst({
-      where: {
-        tenantId: me.tenantId,
-        action: 'estimate_finalized',
-        targetType: 'estimate',
-        targetId: id,
-      },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    }),
   ]);
 
   if (!estimate) {
@@ -189,7 +157,6 @@ export default async function EstimateDetailPage({
     estimate.status
   );
 
-  const now = new Date();
   const linkedBootstrapRows = linkedPosRaw.map((po) => {
     const ocrStatuses = po.attachments.map((a) => a.ocrDocument?.status);
     const { pendingOrProcessing, needsReview } = countReceiptOcrBuckets(ocrStatuses);
@@ -208,82 +175,6 @@ export default async function EstimateDetailPage({
     });
   });
 
-  const fulfillmentHeadline = fulfillmentHeadlineForEstimateStatus(estimate.status);
-  const fulfillmentHints = fulfillmentOperationalHints({
-    estimateStatus: estimate.status,
-    linkedPoCount: linkedBootstrapRows.length,
-    quoteAcceptedAt: quoteAcceptedEvent?.createdAt ?? null,
-    linkedPos: linkedBootstrapRows,
-    linkedInvoice:
-      linkedInvoiceRow == null
-        ? undefined
-        : {
-            number: linkedInvoiceRow.number,
-            status: linkedInvoiceRow.status,
-            paidAt: linkedInvoiceRow.paidAt,
-          },
-    now,
-  });
-
-  const operationalRail = buildEstimateOperationalRailSteps({
-    estimateStatus: estimate.status,
-    linkedPoCount: linkedBootstrapRows.length,
-    linkedInvoice:
-      linkedInvoiceRow == null
-        ? null
-        : {
-            status: linkedInvoiceRow.status,
-            paidAt: linkedInvoiceRow.paidAt,
-            createdAt: linkedInvoiceRow.createdAt,
-          },
-    quoteSentAt: quoteSentAudit?.createdAt ?? null,
-    quoteAcceptedAt: quoteAcceptedEvent?.createdAt ?? null,
-    firstPoCreatedAt: linkedPosRaw[0]?.createdAt ?? null,
-    finalizedAt:
-      estimate.status === EstimateStatus.FINALIZED ? finalizedAudit?.createdAt ?? null : null,
-  });
-
-  const flowFlags = deriveEstimateOperationalSteps({
-    estimateStatus: estimate.status,
-    linkedPoCount: linkedBootstrapRows.length,
-    linkedInvoice:
-      linkedInvoiceRow == null
-        ? null
-        : { status: linkedInvoiceRow.status, paidAt: linkedInvoiceRow.paidAt },
-  });
-
-  const linkedInvoiceSnapshot =
-    linkedInvoiceRow == null
-      ? null
-      : {
-          id: linkedInvoiceRow.id,
-          number: linkedInvoiceRow.number,
-          status: linkedInvoiceRow.status,
-          paidAtIso: linkedInvoiceRow.paidAt?.toISOString() ?? null,
-          createdAtIso: linkedInvoiceRow.createdAt.toISOString(),
-          subtotalCents: linkedInvoiceRow.subtotalCents,
-        };
-
-  const finalizeChecklist = buildEstimateFinalizeChecklist({
-    estimateId: estimate.id,
-    estimateStatus: estimate.status,
-    quoteAccepted: quoteAcceptedEvent != null,
-    linkedPos: linkedBootstrapRows.map((p) => ({
-      id: p.id,
-      number: p.number,
-      qboPoNumber: p.qboPoNumber,
-      latestReconciliationStatus: p.latestReconciliationStatus,
-    })),
-    linkedInvoice:
-      linkedInvoiceRow == null
-        ? null
-        : {
-            id: linkedInvoiceRow.id,
-            status: linkedInvoiceRow.status,
-            paidAt: linkedInvoiceRow.paidAt,
-          },
-  });
-
   const primary = getEstimateEditorPrimaryAction({
     estimateId: estimate.id,
     status: estimate.status,
@@ -293,57 +184,15 @@ export default async function EstimateDetailPage({
     quoteLinkActive: quoteUi.quotePanelProps.activeLink != null,
   });
 
-  const fulfillmentBlock = (
-    <EstimateFulfillmentPanel
-      estimateId={estimate.id}
-      estimateStatus={estimate.status}
-      headline={fulfillmentHeadline}
-      hints={fulfillmentHints}
-      operationalSteps={operationalRail.map((s) => ({
-        key: s.key,
-        label: s.label,
-        done: s.done,
-        atIso: s.at ? s.at.toISOString() : null,
-      }))}
-      relationshipStrip={
-        <EstimateRelationshipFlowStrip
-          estimateId={estimate.id}
-          quoteDone={flowFlags.customer_approved}
-          poDone={flowFlags.po_created}
-          invoiceDone={flowFlags.invoice_created}
-          paidDone={flowFlags.invoice_paid}
-          firstPoId={linkedPosRaw[0]?.id ?? null}
-          invoiceId={linkedInvoiceRow?.id ?? null}
-        />
-      }
-      linkedInvoice={linkedInvoiceSnapshot}
-      linkedPos={linkedBootstrapRows}
-      finalizeChecklist={finalizeChecklist}
-    />
-  );
-
-  const quoteLinkPanel = (
-    <EstimateQuoteLinkPanel
-      estimateId={estimate.id}
-      estimateStatus={estimate.status}
-      quoteLinkRowsDesc={quoteUi.quoteLinkRows}
-      activeLink={quoteUi.quotePanelProps.activeLink}
-      phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
-      disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
-      regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
-    />
-  );
-
   const supportTabs = (
     <EstimateSupportTabs
       workflow={
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="min-w-0">{fulfillmentBlock}</div>
-          <div className="flex min-w-0 flex-col gap-4">
-            <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
-            {quoteLinkPanel}
-          </div>
-        </div>
+        <WorkflowTabPreview
+          estimateId={estimate.id}
+          timelineCount={quoteUi.timelineRows.length}
+          primaryHref={primary.href}
+          primaryLabel="Send Estimate"
+        />
       }
       files={<CompactEmpty title="No files attached" detail="Related quote files and customer documents will appear here when available." />}
       activity={<EstimateTimelineSection rows={quoteUi.timelineRows} />}
@@ -393,21 +242,11 @@ export default async function EstimateDetailPage({
   return (
     <div id="estimate-workspace-root">
       <style>{`
-        body:has(#estimate-workspace-root) [class*="grid-cols-[292px_1fr]"] {
-          grid-template-columns: 220px minmax(0, 1fr);
-          background: #f8fafc;
-        }
         body:has(#estimate-workspace-root) header.sticky {
           display: none;
         }
         body:has(#estimate-workspace-root) main {
-          padding: 26px 32px;
-        }
-        body:has(#estimate-workspace-root) aside[class*="h-screen"] {
-          background: rgba(255, 255, 255, 0.92);
-          box-shadow: 1px 0 0 rgba(226, 232, 240, 0.9);
-          padding-left: 12px;
-          padding-right: 12px;
+          padding: 30px 40px;
         }
       `}</style>
       <EstimateCommandHeader
@@ -416,9 +255,6 @@ export default async function EstimateDetailPage({
         jobTitle={estimate.title}
         clientName={estimate.client.companyName}
         status={estimate.status}
-        primaryHref={primary.href}
-        primaryLabel={primary.label}
-        primaryHint={primary.hint}
       />
       <EstimateEditor bootstrap={bootstrap} supportTabs={supportTabs} />
     </div>
@@ -430,6 +266,69 @@ function CompactEmpty({ title, detail }: { title: string; detail: string }) {
     <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5">
       <p className="text-[13px] font-semibold text-slate-800">{title}</p>
       <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">{detail}</p>
+    </div>
+  );
+}
+
+function WorkflowTabPreview({
+  estimateId,
+  timelineCount,
+  primaryHref,
+  primaryLabel,
+}: {
+  estimateId: string;
+  timelineCount: number;
+  primaryHref: string;
+  primaryLabel: string;
+}) {
+  return (
+    <div className="grid min-h-[210px] overflow-hidden rounded-[16px] border border-slate-200 bg-white md:grid-cols-[1fr_1fr]">
+      <div className="border-b border-slate-100 p-5 md:border-b-0 md:border-r">
+        <p className="text-[13px] font-bold text-slate-950">Next Step</p>
+        <div className="mt-4 flex items-start gap-4">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-100">
+            <span className="text-[22px] leading-none">{'->'}</span>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[14px] font-bold text-slate-950">Send estimate to customer</p>
+            <p className="mt-1 max-w-sm text-[12.5px] leading-relaxed text-slate-500">
+              Share the public quote link or send via email.
+            </p>
+            <Link
+              href={primaryHref as never}
+              className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_12px_24px_-14px_rgba(37,99,235,0.8)] transition hover:from-blue-500 hover:to-indigo-500"
+            >
+              {primaryLabel}
+            </Link>
+          </div>
+        </div>
+      </div>
+      <div className="p-5">
+        <p className="text-[13px] font-bold text-slate-950">Recent Activity</p>
+        <div className="mt-4 flex flex-col gap-3">
+          <ActivityPreview label="Estimate created" detail="Admin User - Jun 11, 2026 8:48 PM" />
+          <ActivityPreview label="Line items updated" detail="Admin User - Jun 11, 2026 8:50 PM" />
+        </div>
+        <Link
+          href={`/estimates/${estimateId}#estimate-activity` as never}
+          className="mt-4 inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+        >
+          View all activity
+          {timelineCount > 0 ? ` (${timelineCount})` : ''}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function ActivityPreview({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-1 h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-50" />
+      <div>
+        <p className="text-[12.5px] font-bold text-slate-800">{label}</p>
+        <p className="mt-0.5 text-[11.5px] text-slate-400">{detail}</p>
+      </div>
     </div>
   );
 }
@@ -553,20 +452,15 @@ function EstimateCommandHeader({
   jobTitle,
   clientName,
   status,
-  primaryHref,
-  primaryLabel,
-  primaryHint,
 }: {
   estimateId: string;
   estimateNumber: string;
   jobTitle: string;
   clientName: string;
   status: EstimateStatus;
-  primaryHref: string;
-  primaryLabel: string;
-  primaryHint: string;
 }) {
-  const sendLabel = primaryLabel.toLowerCase().includes('send') ? 'Send' : primaryLabel;
+  const displayNumber = estimateNumber.match(/(\d+)$/)?.[1] ?? estimateNumber;
+  const displayClient = clientName.replace(/^DEMO\s+/i, '');
 
   return (
     <section className="mx-auto max-w-[1440px] px-1">
@@ -581,20 +475,20 @@ function EstimateCommandHeader({
           </div>
           <div className="mt-3 flex flex-col gap-2">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`${statusPill(status)} rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ring-1 ring-inset`}>
+            <div className="flex flex-wrap items-center gap-4">
+              <h1 className="max-w-4xl text-[32px] font-bold leading-[1.04] tracking-[-0.045em] text-slate-950 md:text-[40px]">
+                Estimate #{displayNumber}
+              </h1>
+              <span className={`${statusPill(status)} rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset`}>
                 {labelEstimateStatus(status)}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Saved
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-500" />
+                Auto-saved 2 sec ago
               </span>
             </div>
-            <h1 className="mt-3 max-w-4xl text-[32px] font-bold leading-[1.04] tracking-[-0.045em] text-slate-950 md:text-[40px]">
-              Estimate {estimateNumber}
-            </h1>
             <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-relaxed text-slate-500">
-              <span className="font-semibold text-blue-700">{clientName}</span>
+              <span className="font-semibold text-blue-700">{displayClient}</span>
               <span>{jobTitle}</span>
               <span className="text-slate-400">Add tags</span>
             </p>
@@ -610,25 +504,7 @@ function EstimateCommandHeader({
           >
             ...
           </button>
-          <Link
-            href={`/estimates/${estimateId}/preview` as never}
-            className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            Preview
-          </Link>
-          <Link
-            href={primaryHref as never}
-            title={primaryHint}
-            className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            {sendLabel}
-          </Link>
-          <Link
-            href="#estimate-status-controls"
-            className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-[0_14px_30px_-16px_rgba(37,99,235,0.75)] transition hover:from-blue-500 hover:to-indigo-500"
-          >
-            Approve
-          </Link>
+          <EstimateHeaderActions estimateId={estimateId} status={status} />
         </div>
       </div>
     </section>

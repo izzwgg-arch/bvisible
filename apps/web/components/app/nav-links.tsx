@@ -99,6 +99,7 @@ function NavIcon({ label }: { label: string }) {
         </svg>
       );
     case 'Purchase orders':
+    case 'Purchase Orders':
       return (
         <svg {...common}>
           <path d="M6 7h12" />
@@ -117,6 +118,7 @@ function NavIcon({ label }: { label: string }) {
         </svg>
       );
     case 'Clients':
+    case 'Customers':
       return (
         <svg {...common}>
           <path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
@@ -126,6 +128,7 @@ function NavIcon({ label }: { label: string }) {
         </svg>
       );
     case 'Vendors':
+    case 'Reports':
       return (
         <svg {...common}>
           <path d="M4 10h16" />
@@ -135,6 +138,7 @@ function NavIcon({ label }: { label: string }) {
         </svg>
       );
     case 'Items':
+    case 'Catalog':
       return (
         <svg {...common}>
           <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
