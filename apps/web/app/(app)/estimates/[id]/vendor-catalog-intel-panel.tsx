@@ -83,10 +83,12 @@ function managedTrendLines(flags: ManagedPriceTrendFlags | null | undefined): st
 export function VendorCatalogIntelPanel({
   line,
   readOnly = false,
+  embedded = false,
   onApplyManagedCost,
 }: {
   line: DraftLine | null;
   readOnly?: boolean;
+  embedded?: boolean;
   onApplyManagedCost?: (lineId: string, unitCostCents: number) => void;
 }) {
   const [data, setData] = useState<VendorCatalogLookupResult | null>(null);
@@ -130,12 +132,36 @@ export function VendorCatalogIntelPanel({
   }, [line?.id, line?.kind, line?.description, line?.machineId]);
 
   if (!line || line.kind !== EstimateLineKind.MATERIAL) {
+    const emptyState = (
+      <div className="flex flex-col items-center gap-2 text-center">
+        <span
+          aria-hidden
+          className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/15"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18" />
+            <path d="m7 14 3-3 3 2 4-5" />
+          </svg>
+        </span>
+        <p className="max-w-xs text-[12.5px] leading-relaxed text-slate-500">
+          Focus a <strong className="font-semibold text-slate-700">material</strong> row to see
+          cheapest / preferred vendor hints. Apply only when you click a button — nothing auto-fills.
+        </p>
+      </div>
+    );
+    if (embedded) {
+      return (
+        <div className="px-5 py-8" aria-label="Vendor pricing intelligence">
+          {emptyState}
+        </div>
+      );
+    }
     return (
       <aside
-        className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]/80 px-3 py-2.5 text-[12px] leading-snug text-[var(--color-bv-muted)]"
+        className="rounded-[18px] border border-dashed border-slate-200 bg-white/80 px-5 py-8 shadow-sm"
         aria-label="Vendor pricing intelligence"
       >
-        Focus a <strong className="text-[var(--color-bv-text)]">material</strong> row to see cheapest / preferred vendor hints. Apply only when you click a button — nothing auto-fills.
+        {emptyState}
       </aside>
     );
   }
@@ -153,39 +179,36 @@ export function VendorCatalogIntelPanel({
     suggested !== null &&
     cheapestCents < suggested;
 
-  return (
-    <aside
-      className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-2.5 shadow-[var(--shadow-bv-card)]"
-      aria-label="Vendor pricing intelligence for this material line"
-    >
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-bv-muted)]">
+  const panelBody = (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">
           Vendor intelligence
         </span>
         {readOnly ? <FinalizedReadOnlyChip /> : null}
         {loading ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             Updating…
           </span>
         ) : null}
         {managed ? (
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-200">
             Managed item
           </span>
         ) : null}
         {data?.primaryCatalogItemId && data.latestObservationAt ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             OCR receipts
           </span>
         ) : null}
       </div>
 
       {loading && !data ? (
-        <p className="text-[12px] text-[var(--color-bv-muted)]">Loading hints…</p>
+        <p className="text-[12px] text-slate-400">Loading hints…</p>
       ) : null}
 
       {queryTooShort && !loading ? (
-        <p className="text-[12px] text-[var(--color-bv-muted)]">
+        <p className="text-[12px] text-slate-400">
           Type at least two characters in the description to scan catalog rows (deterministic normalized matching).
         </p>
       ) : null}
@@ -311,11 +334,11 @@ export function VendorCatalogIntelPanel({
                           </span>
                         </td>
                         <td className="px-2 py-1.5 tabular-nums font-medium">{formatMoney(r.priceCents)}</td>
-                        <td className="px-2 py-1.5 tabular-nums text-[var(--color-bv-muted)]">
+                        <td className="px-2 py-1.5 tabular-nums text-slate-400">
                           {fmtTs(r.updatedAtIso)}
                         </td>
                         <td className="px-2 py-1.5">{r.sourceLabel}</td>
-                        <td className="px-2 py-1.5 text-[var(--color-bv-muted)]">{r.confidenceLabel ?? '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-400">{r.confidenceLabel ?? '—'}</td>
                       </tr>
                     );
                   })}
@@ -384,13 +407,13 @@ export function VendorCatalogIntelPanel({
       ) : null}
 
       {!queryTooShort && !loading && data?.materialMatch.path === 'unresolved' && !data.managedItem ? (
-        <p className="text-[12px] text-[var(--color-bv-muted)]">
+        <p className="text-[12px] text-slate-400">
           {data.materialMatch.matchReason} Add an Items alias or pick from the catalog picker — pricing is never applied automatically.
         </p>
       ) : null}
 
       {data?.primaryCatalogItemId ? (
-        <div className="space-y-2 text-[12.5px] leading-snug text-[var(--color-bv-text)]">
+        <div className="space-y-2 text-[12.5px] leading-snug text-slate-700">
           <div className="flex flex-wrap gap-1.5">
             {matchKindLabel(data.matchKind) ? (
               <span className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-950">
@@ -410,39 +433,39 @@ export function VendorCatalogIntelPanel({
           </div>
 
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
-            <dt className="text-[var(--color-bv-muted)]">Latest</dt>
+            <dt className="text-slate-400">Latest</dt>
             <dd className="font-medium tabular-nums">
               {data.latestPriceCents !== null ? formatMoney(data.latestPriceCents) : '—'}{' '}
-              <span className="font-normal text-[var(--color-bv-muted)]">
+              <span className="font-normal text-slate-400">
                 @ {fmtTs(data.latestObservationAt)}
               </span>
             </dd>
-            <dt className="text-[var(--color-bv-muted)]">90d avg</dt>
+            <dt className="text-slate-400">90d avg</dt>
             <dd className="tabular-nums">
               {data.avg90PriceCents !== null ? formatMoney(data.avg90PriceCents) : '—'}{' '}
-              <span className="text-[var(--color-bv-muted)]">({data.observationCount90d} obs)</span>
+              <span className="text-slate-400">({data.observationCount90d} obs)</span>
             </dd>
-            <dt className="text-[var(--color-bv-muted)]">Cheapest</dt>
+            <dt className="text-slate-400">Cheapest</dt>
             <dd>
               {data.cheapestVendorName ?? '—'}
               {data.cheapestPriceCents !== null ? (
                 <span className="ml-1 tabular-nums font-medium">{formatMoney(data.cheapestPriceCents)}</span>
               ) : null}
             </dd>
-            <dt className="text-[var(--color-bv-muted)]">Vendors (90d)</dt>
+            <dt className="text-slate-400">Vendors (90d)</dt>
             <dd className="tabular-nums">{data.vendorCount90d}</dd>
-            <dt className="text-[var(--color-bv-muted)]">Last PO</dt>
+            <dt className="text-slate-400">Last PO</dt>
             <dd>
               {fmtTs(data.lastPoAt)}
               {data.lastPurchasedVendorName ? (
-                <span className="text-[var(--color-bv-muted)]">
+                <span className="text-slate-400">
                   {' '}
                   · {data.lastPurchasedVendorName}
                 </span>
               ) : null}
             </dd>
-            <dt className="text-[var(--color-bv-muted)]">Last OCR receipt</dt>
-            <dd className="tabular-nums text-[var(--color-bv-muted)]">{fmtTs(data.lastOcrReceiptAt)}</dd>
+            <dt className="text-slate-400">Last OCR receipt</dt>
+            <dd className="tabular-nums text-slate-400">{fmtTs(data.lastOcrReceiptAt)}</dd>
           </dl>
 
           {data.priceRecentlyIncreasedVsAvg || data.priceRecentlyIncreasedVsPrev ? (
@@ -456,18 +479,38 @@ export function VendorCatalogIntelPanel({
             <p className="text-[11px] text-amber-900">Price has varied recently (90d)</p>
           ) : null}
           {data.materialMatch.needsConfirmation ? (
-            <p className="text-[11px] text-[var(--color-bv-muted)]">
+            <p className="text-[11px] text-slate-400">
               {data.materialMatch.matchReason}
             </p>
           ) : null}
 
           {data.primaryCatalogNameNormalized ? (
-            <p className="border-t border-[var(--color-bv-border)] pt-2 font-mono text-[10px] text-[var(--color-bv-muted)]">
+            <p className="border-t border-slate-100 pt-2 font-mono text-[10px] text-slate-400">
               Catalog key: {data.primaryCatalogNameNormalized}
             </p>
           ) : null}
         </div>
       ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className="flex flex-col gap-3 px-5 pb-5 pt-4"
+        aria-label="Vendor pricing intelligence for this material line"
+      >
+        {panelBody}
+      </div>
+    );
+  }
+
+  return (
+    <aside
+      className="flex flex-col gap-3 rounded-[18px] border border-slate-200/70 bg-white/95 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,41,0.04),0_14px_36px_-18px_rgba(15,23,41,0.18)]"
+      aria-label="Vendor pricing intelligence for this material line"
+    >
+      {panelBody}
     </aside>
   );
 }

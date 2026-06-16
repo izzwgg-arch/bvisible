@@ -10,6 +10,7 @@ import {
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
+import { SectionCard, SectionHeading, IconCatalog } from '@/components/estimate/estimate-surface';
 import type { Action, DraftLine } from './editor';
 
 export function CatalogItemPicker({
@@ -18,6 +19,7 @@ export function CatalogItemPicker({
   activeLineId,
   lines,
   readOnly = false,
+  embedded = false,
   dispatch,
 }: {
   catalog: ReadonlyArray<EstimateCatalogPickerRow>;
@@ -25,6 +27,7 @@ export function CatalogItemPicker({
   activeLineId: string | null;
   lines: ReadonlyArray<DraftLine>;
   readOnly?: boolean;
+  embedded?: boolean;
   dispatch: React.Dispatch<Action>;
 }) {
   const [q, setQ] = useState('');
@@ -83,83 +86,97 @@ export function CatalogItemPicker({
   }
 
   if (readOnly) {
-    return (
-      <section className="rounded-[var(--radius-bv)] border border-violet-200/80 bg-[var(--color-bv-bg)]/50 p-4 shadow-[var(--shadow-bv-card)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-            Catalog items
-          </h2>
-          <FinalizedReadOnlyChip />
-        </div>
-        <p className="mt-2 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-          Catalog Apply is disabled while this estimate is finalized. Unfinalize from the totals panel to edit lines.
+    if (embedded) {
+      return (
+        <p className="px-5 py-5 text-[12.5px] leading-relaxed text-slate-500">
+          Catalog Apply is disabled while this estimate is finalized. Unfinalize from the totals
+          panel to edit lines.
         </p>
-      </section>
+      );
+    }
+    return (
+      <SectionCard className="p-5">
+        <SectionHeading
+          icon={<IconCatalog />}
+          title="Catalog"
+          tone="emerald"
+          badge={<FinalizedReadOnlyChip />}
+          subtitle="Catalog Apply is disabled while this estimate is finalized. Unfinalize from the totals panel to edit lines."
+        />
+      </SectionCard>
     );
   }
 
-  return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
-      <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-        Catalog items
-      </h2>
-      {!activeLineId ? (
-        <p className="mt-2 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-          Focus a line in the grid, then search and <strong className="text-[var(--color-bv-text)]">Apply</strong> — nothing changes until you click.
-        </p>
-      ) : activeLine ? (
-        <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-          Target row:{' '}
-          <span className="font-medium text-[var(--color-bv-text)]">
-            {kindLabel(activeLine.kind)} · {activeLine.description.slice(0, 56)}
-            {activeLine.description.length > 56 ? '…' : ''}
-          </span>
-          . Unit cost is internal; sell hint is guidance only.
-        </p>
-      ) : null}
+  const targetRowNumber = activeLineId
+    ? lines.findIndex((l) => l.id === activeLineId) + 1
+    : null;
 
-      <div className="mt-3 space-y-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-            Search catalog
+  const body = (
+    <>
+      <div
+        className={`flex items-center gap-2 rounded-[12px] border px-3 py-2 text-[12px] ${
+          activeLine
+            ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800'
+            : 'border-slate-200 bg-slate-50 text-slate-500'
+        }`}
+      >
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${
+            activeLine ? 'bg-emerald-500' : 'bg-slate-300'
+          }`}
+        />
+        {activeLine ? (
+          <span className="min-w-0 truncate">
+            Applying to <strong className="font-semibold">row {targetRowNumber}</strong> ·{' '}
+            {kindLabel(activeLine.kind)} · {activeLine.description.slice(0, 48) || '(blank)'}
+            {(activeLine.description.length ?? 0) > 48 ? '…' : ''}
+          </span>
+        ) : (
+          <span>Click any cell on a line first to choose where results land.</span>
+        )}
+      </div>
+
+      <div>
+        <div className="relative">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
           </span>
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Filter by name…"
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px] outline-none focus:border-[var(--color-bv-accent)]"
+            placeholder="Search catalog by name…"
+            aria-label="Search catalog"
+            className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-3 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
           />
-        </label>
-
-        <div className="rounded-[8px] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[12px] text-[var(--color-bv-muted)]">
-          {activeLine ? (
-            <>Applying to row {lines.findIndex((l) => l.id === activeLineId) + 1}.</>
-          ) : (
-            <>No row focused — click any cell on a line first.</>
-          )}
         </div>
 
-        <div className="max-h-[280px] overflow-auto rounded-[8px] border border-[var(--color-bv-border)]">
+        <div className="mt-3 max-h-[320px] overflow-auto rounded-[12px] border border-slate-200">
           <table className="w-full text-[12px]">
-            <thead className="sticky top-0 bg-[var(--color-bv-surface)] text-left text-[10px] uppercase tracking-wide text-[var(--color-bv-muted)]">
+            <thead className="sticky top-0 z-10 bg-slate-50/95 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400 backdrop-blur">
               <tr>
-                <th className="px-2 py-2 font-medium">Item</th>
-                <th className="px-2 py-2 font-medium">Type</th>
-                <th className="px-2 py-2 font-medium text-right" title="Internal or vendor unit cost written when you Apply">
+                <th className="px-3 py-2.5">Item</th>
+                <th className="px-3 py-2.5">Type</th>
+                <th className="px-3 py-2.5 text-right" title="Internal or vendor unit cost written when you Apply">
                   Unit cost
                 </th>
-                <th className="px-2 py-2 font-medium text-right" title="Catalog guidance only; estimate sell uses line totals × estimate multiplier">
+                <th className="px-3 py-2.5 text-right" title="Catalog guidance only; estimate sell uses line totals × estimate multiplier">
                   Sell hint
                 </th>
-                <th className="px-2 py-2 font-medium text-right">Qty</th>
-                <th className="px-2 py-2 font-medium"></th>
+                <th className="px-3 py-2.5 text-right">Qty</th>
+                <th className="px-3 py-2.5"></th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-[var(--color-bv-muted)]">
+                  <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
                     No catalog rows match.
                   </td>
                 </tr>
@@ -172,17 +189,18 @@ export function CatalogItemPicker({
                     (row.catalogCheapestVendorCostCents !== null ||
                       (row.preferredVendorId && row.catalogPreferredVendorName));
                   return (
-                    <tr key={row.id} className="border-t border-[var(--color-bv-border)]">
-                      <td className="px-2 py-2 align-top">
-                        <div className="font-medium text-[var(--color-bv-text)]">{row.name}</div>
+                    <tr
+                      key={row.id}
+                      className="border-t border-slate-100 transition-colors hover:bg-emerald-50/30"
+                    >
+                      <td className="px-3 py-2.5 align-top">
+                        <div className="font-semibold text-slate-800">{row.name}</div>
                       </td>
-                      <td className="px-2 py-2 align-top text-[var(--color-bv-muted)]">
-                        {kindLabel(row.kind)}
-                      </td>
-                      <td className="px-2 py-2 align-top text-right tabular-nums">
-                        <div>{formatMoney(basisCents)}</div>
+                      <td className="px-3 py-2.5 align-top text-slate-500">{kindLabel(row.kind)}</td>
+                      <td className="px-3 py-2.5 align-top text-right tabular-nums text-slate-700">
+                        <div className="font-medium">{formatMoney(basisCents)}</div>
                         {showVendorHints ? (
-                          <div className="mt-1 space-y-0.5 text-[10px] font-normal leading-snug text-[var(--color-bv-muted)]">
+                          <div className="mt-1 space-y-0.5 text-[10px] font-normal leading-snug text-slate-400">
                             {row.catalogCheapestVendorCostCents !== null && row.catalogCheapestVendorName ? (
                               <div title="Lowest latest linked vendor unit cost (informational; Apply still uses the column above)">
                                 Cheapest: {row.catalogCheapestVendorName} · {formatMoney(row.catalogCheapestVendorCostCents)}
@@ -199,14 +217,14 @@ export function CatalogItemPicker({
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-2 py-2 align-top text-right tabular-nums text-emerald-900">
+                      <td className="px-3 py-2.5 align-top text-right tabular-nums font-medium text-emerald-700">
                         {formatMoney(sellHint)}
                         {row.defaultSellPriceCents !== null && row.defaultSellPriceCents !== undefined ? (
-                          <div className="mt-1 text-[10px] font-normal text-[var(--color-bv-muted)]">
+                          <div className="mt-1 text-[10px] font-normal text-slate-400">
                             Catalog sell override (not markup × cost)
                           </div>
                         ) : row.markupPercentMilli !== 0 ? (
-                          <div className="mt-1 text-[10px] font-normal text-[var(--color-bv-muted)]">
+                          <div className="mt-1 text-[10px] font-normal text-slate-400">
                             Markup on unit cost: {(row.markupPercentMilli / 1000).toLocaleString(undefined, {
                               maximumFractionDigits: 3,
                             })}
@@ -214,15 +232,15 @@ export function CatalogItemPicker({
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-2 py-2 align-top text-right tabular-nums">
+                      <td className="px-3 py-2.5 align-top text-right tabular-nums text-slate-600">
                         {formatQty(row.defaultQtyMilli)}
                       </td>
-                      <td className="px-2 py-2 align-top text-right">
+                      <td className="px-3 py-2.5 align-top text-right">
                         <button
                           type="button"
                           disabled={!activeLineId}
                           onClick={() => applyRow(row)}
-                          className="rounded-[6px] bg-[var(--color-bv-accent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-bv-accent-foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                         >
                           Apply
                         </button>
@@ -235,6 +253,22 @@ export function CatalogItemPicker({
           </table>
         </div>
       </div>
-    </section>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="flex flex-col gap-3 px-5 pb-5 pt-4">{body}</div>;
+  }
+
+  return (
+    <SectionCard className="p-5">
+      <SectionHeading
+        icon={<IconCatalog />}
+        title="Catalog"
+        tone="emerald"
+        subtitle="Search saved items and apply pricing to a line. Unit cost is internal; sell hint is guidance only."
+      />
+      <div className="mt-4 flex flex-col gap-3">{body}</div>
+    </SectionCard>
   );
 }

@@ -181,9 +181,12 @@ quantity-tier normalization yet.
 - Trends / spikes: `apps/web/lib/vendor-pricing/trends.ts` — compares latest OCR-approved
   unit observation vs rolling average / prior point using fixed basis-point thresholds
   plus coefficient-of-variation volatility — **no embeddings**, **no substring scoring**.
-- UI: debounced rail under the estimate line grid (`vendor-catalog-intel-panel.tsx`);
-  shows match reason + confidence; compact trend lines; Apply buttons use
-  `onMouseDown` preventDefault; never auto-fills costs. Automated regression:
+- UI: debounced vendor-intelligence panel inside the estimate editor's compact
+  **Estimating tools** tabs (`vendor-catalog-intel-panel.tsx`); it appears only
+  when selected and still targets the focused MATERIAL row. Shows match reason +
+  confidence, compact trend lines, cheapest/preferred vendor hints, and explicit
+  Apply buttons using `onMouseDown` preventDefault; never auto-fills costs.
+  Automated regression:
   `pnpm --filter @bvisible/web run verify:vendor-catalog`;
   `bash server-scripts/db/.verify-vendor-normalization.sh` (bundles vendor-catalog +
   estimate-pricing + ocr-quality vitest). **Browser smoke (operator creds):**

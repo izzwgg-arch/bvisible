@@ -35,6 +35,17 @@ bash server-scripts/db/.verify-email-ingestion-flow.sh
 
 Do **not** treat passes as a substitute for **deploy queue healthcheck** after releasing (`§ 1`, `/api/health`).
 
+**Estimate editor premium workspace (operator QA):**
+
+| Step | Expect |
+|------|--------|
+| Open `/estimates/[id]` | Compact breadcrumb/header; line items are first in the main column; pricing/customer/workflow live in the sticky right rail |
+| Focus a line row | Catalog / Pricing helper / Vendor Intel apply target follows focused row; no tool auto-applies while typing |
+| Supporting tabs | Workflow is default; Files / Activity / Purchase Orders / Reconciliation / Notes switch one visible panel at a time |
+| Finalized estimate | Line grid, tools Apply buttons, multiplier/design fee, and Save are read-only; preview/PO/invoice links remain available |
+
+Regression: `typecheck`, `verify:estimate-pricing`, `verify:vendor-catalog`, `verify:estimate-quote`, `verify:estimate-finalization`, `verify:workflow-queues`.
+
 **PO receipt / reconciliation (production DB posture, on app host):**
 
 ```bash

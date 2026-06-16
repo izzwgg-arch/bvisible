@@ -5,6 +5,72 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-06-16 — [PREMIUM ESTIMATE EDITOR WORKSPACE]
+
+**Audit findings:** The old estimate detail rendered too many operational surfaces at once: large hero metrics, line grid, tools, totals, closeout/status, quote link, customer response, timeline, linked POs, and reconciliation details. The estimate itself was not visually dominant, and secondary workflow panels created a tall stacked-card page.
+
+**What changed:** Rebuilt `/estimates/[id]` into a premium SaaS workspace: compact header with breadcrumb/status/saved/actions; line items first in the main column; compact estimating tool tabs below line items; sticky right rail for Pricing Summary, Customer, Workflow Status, closeout/status, and collapsed danger; secondary Workflow / Files / Activity / Purchase Orders / Reconciliation / Notes tabs so only one support surface is visible at a time.
+
+**Behavior preserved:** No pricing formulas, save action, quote/public-link security, PO/OCR/reconciliation logic, finalization gates, database schema, or routes changed. Catalog, pricing helper, and vendor intel remain explicit Apply-only. FINALIZED state remains read-only via existing client lockout and server enforcement.
+
+**Files touched:** `apps/web/app/(app)/estimates/[id]/{page.tsx,editor.tsx,line-grid.tsx,totals-panel.tsx,estimate-tools-tabs.tsx,estimate-support-tabs.tsx,catalog-item-picker.tsx}` plus docs `UI_SYSTEM.md`, `ESTIMATE_ENGINE.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `CHANGELOG_AI.md`.
+
+**Verification:** `pnpm --filter @bvisible/web run typecheck` pass; `verify:estimate-pricing` 70/70; `verify:vendor-catalog` 52/52; `verify:estimate-quote` 67/67; `verify:estimate-finalization` 22/22; `verify:workflow-queues` 31/31. Browser inspected locally at `/estimates/cmqfxbcsz000hugbos5sq162v`.
+
+**Smoke:** Not run because no smoke file changed under the task rule. Operator can still run `smoke:core` from a laptop with `BVISIBLE_*` credentials if desired.
+
+**Remaining gaps / QA checklist:** Validate with an estimate that has multiple line rows so Sell/Margin columns are visually dense; click Catalog / Pricing helper / Vendor Intel Apply with a focused row; verify Workflow/Activity/PO/Reconciliation tabs switch without stacking; verify FINALIZED rows and pricing controls are read-only; verify Preview, Send/track quote, Approve anchor, and existing status/finalize actions.
+
+---
+
+## 2026-05-25 — Production deploy: queue pagination + dead-code cleanup (`710ffea`)
+
+**Deployed SHA:** `710ffea741f5718128be83855868c85609111527` (short `710ffea`; includes `32eda06` dead-code cleanup + `710ffea` pagination). Note: coordinator message cited suffix `…cb246` — that full hash is not in this repo; `origin/main` tip is `710ffea741f5718128be83855868c85609111527`.
+
+**Deploy job ID:** `20260526T034642-7a1afb`
+
+**Health JSON:** `{"status":"ok","service":"bvisible-web","commit":"710ffea741f5718128be83855868c85609111527"}`
+
+**Pre-deploy (local, `/opt/bvisible/app` equivalent workspace)**
+
+| Check | Result |
+|-------|--------|
+| `git rev-parse HEAD` | `710ffea741f5718128be83855868c85609111527` |
+| `git status` | clean |
+| `origin/main` | same SHA |
+| `typecheck` | pass |
+| `verify:email-ingestion` | 59/59 |
+| `verify:ocr-quality` | 23 passed, 1 skipped (PDF fixture; no host tesseract locally) |
+| `verify:workflow-queues` | 31/31 |
+| `verify:po-receipt-workflow` | 21/21 |
+| `verify:po-lifecycle` | 19/19 |
+| `verify:estimate-quote` | 67/67 |
+| `verify:estimate-finalization` | 22/22 |
+
+**Deploy:** standard queue enqueue + worker; no pending migrations (19 applied, latest `20260517143000_po_lifecycle_operator_events`); PM2 `bvisible-web` reload OK; healthcheck pass on attempt 1.
+
+**Server post-deploy (`/opt/bvisible/app`)**
+
+| Check | Result |
+|-------|--------|
+| `typecheck` | pass |
+| `verify:email-ingestion` | 59/59 |
+| `verify:ocr-quality` | 24/24 (host tesseract + pdftoppm present) |
+| `verify:workflow-queues` | 31/31 |
+| `verify:po-receipt-workflow` | 21/21 |
+| `.verify-email-ingestion-flow.sh` | OK |
+| `.verify-ocr-quality.sh` | OK (runtime tick 200, no unapproved VendorPriceHistory) |
+
+**Stale branch decision:** Did **not** merge or deploy `feat/review-queue-throughput` (superseded; touches deleted `po-receipt-workflow-summary.tsx`) or `feat/ocr-review-workspace` (conflicts with pagination/throughput on `main`). Prior merges already on `main`: reconciliation variance, dashboard command center, PO execution workspace.
+
+**Smoke:** **Skipped** — `~/.bvisible-smoke.env` absent on deploy host and agent workspace (`check-smoke-env.sh` exit 2). Operator runs Playwright from laptop per `POST_DEPLOY_SMOKE.md`.
+
+**Remaining gaps:** Browser smoke not run; email PO picker still `take: 200`; cumulative queue `?page=N` loads N×50 rows; offset pagination can shift if rows insert mid-session; `feat/ocr-review-workspace` still diverged if revisited later.
+
+**DEBUGGING.md:** no change (deploy path unchanged).
+
+---
+
 ## 2026-05-25 — [AGENT M — QUEUE PAGINATION + SCALE LIMITS]
 
 **What changed:** Replaced silent `take: 100` / `take: 40` caps on operational queues with cumulative **Load more** pagination (50 rows per step), stable `orderBy` tie-breakers (`id desc`), visible **Showing X of Y** counts, and shared helpers (`lib/ui/queue-pagination.ts`, `QueuePaginationBar`). Email ingestion reason sub-filters now apply at the Prisma layer (`buildEmailReasonPrismaWhere`) so pagination matches chip semantics. Dashboard operator buckets link to full admin queues; spend-alert strip shows preview vs total.

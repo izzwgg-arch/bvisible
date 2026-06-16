@@ -16,6 +16,7 @@ import {
 } from '@bvisible/pricing';
 import { formatMoney, parseMoney } from '@/lib/estimate/format';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
+import { SectionCard, SectionHeading, IconCalculator } from '@/components/estimate/estimate-surface';
 import type { Action, DraftLine } from './editor';
 
 type HelperMode = 'sqft' | 'sheet' | 'roll' | 'banner';
@@ -40,11 +41,13 @@ export function PricingHelperPanel({
   activeLineId,
   lines,
   readOnly = false,
+  embedded = false,
   dispatch,
 }: {
   activeLineId: string | null;
   lines: ReadonlyArray<DraftLine>;
   readOnly?: boolean;
+  embedded?: boolean;
   dispatch: React.Dispatch<Action>;
 }) {
   const [mode, setMode] = useState<HelperMode>('sqft');
@@ -201,44 +204,38 @@ export function PricingHelperPanel({
   const canApply = Boolean(activeLineId && activeLine && !readOnly);
 
   if (readOnly) {
-    return (
-      <section className="rounded-[var(--radius-bv)] border border-violet-200/80 bg-[var(--color-bv-bg)]/50 p-4 shadow-[var(--shadow-bv-card)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-            Pricing helper
-          </h2>
-          <FinalizedReadOnlyChip />
-        </div>
-        <p className="mt-2 text-[12px] leading-snug text-[var(--color-bv-muted)]">
+    if (embedded) {
+      return (
+        <p className="px-5 py-5 text-[12.5px] leading-relaxed text-slate-500">
           Pricing helper Apply is disabled while this estimate is finalized.
         </p>
-      </section>
+      );
+    }
+    return (
+      <SectionCard className="p-5">
+        <SectionHeading
+          icon={<IconCalculator />}
+          title="Pricing helper"
+          tone="violet"
+          badge={<FinalizedReadOnlyChip />}
+          subtitle="Pricing helper Apply is disabled while this estimate is finalized."
+        />
+      </SectionCard>
     );
   }
 
-  return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-[13px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-            Pricing helper
-          </h2>
-          <p className="mt-0.5 max-w-xl text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
-            Sq ft, sheets, rolls, or banner — applies to the focused grid row when you click Apply.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
+  const body = (
+    <>
+      <div className="inline-flex flex-wrap gap-1 rounded-[12px] border border-slate-200 bg-slate-50 p-1">
         {(Object.keys(MODE_LABELS) as HelperMode[]).map((m) => (
           <button
             key={m}
             type="button"
             onClick={() => setMode(m)}
-            className={`rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
+            className={`rounded-[9px] px-3 py-1.5 text-[12px] font-semibold transition ${
               mode === m
-                ? 'bg-[var(--color-bv-accent)] text-[var(--color-bv-accent-foreground)]'
-                : 'border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-text)] hover:bg-[var(--color-bv-surface)]'
+                ? 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-200'
+                : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             {MODE_LABELS[m]}
@@ -246,66 +243,77 @@ export function PricingHelperPanel({
         ))}
       </div>
 
-      <div className="mt-3 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3">
-        {!activeLineId ? (
-          <p className="text-[12px] text-[var(--color-bv-muted)]">
-            Focus a line in the grid to choose where results should land.
-          </p>
-        ) : (
-          <p className="text-[12px] text-[var(--color-bv-muted)]">
-            Target:{' '}
-            <span className="font-medium text-[var(--color-bv-text)]">
-              {activeLine?.description?.slice(0, 48) || '(blank)'}
-              {(activeLine?.description?.length ?? 0) > 48 ? '…' : ''}
+      <div className="rounded-[14px] border border-slate-200 bg-slate-50/60 p-4">
+        <div
+          className={`mb-3 flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] ${
+            activeLineId
+              ? 'border-violet-200 bg-violet-50/70 text-violet-800'
+              : 'border-slate-200 bg-white text-slate-500'
+          }`}
+        >
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              activeLineId ? 'bg-violet-500' : 'bg-slate-300'
+            }`}
+          />
+          {!activeLineId ? (
+            <span>Focus a line in the grid to choose where results land.</span>
+          ) : (
+            <span className="min-w-0 truncate">
+              Target:{' '}
+              <strong className="font-semibold">
+                {activeLine?.description?.slice(0, 48) || '(blank)'}
+                {(activeLine?.description?.length ?? 0) > 48 ? '…' : ''}
+              </strong>
             </span>
-          </p>
-        )}
+          )}
+        </div>
 
         {mode === 'sqft' ? (
           <div className="mt-3 space-y-3">
             <div className="grid gap-2 sm:grid-cols-3">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Width (in)
                 </span>
                 <input
                   value={sqW}
                   onChange={(e) => setSqW(e.target.value)}
                   inputMode="decimal"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Height (in)
                 </span>
                 <input
                   value={sqH}
                   onChange={(e) => setSqH(e.target.value)}
                   inputMode="decimal"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Pieces (count)
                 </span>
                 <input
                   value={sqPieces}
                   onChange={(e) => setSqPieces(e.target.value)}
                   inputMode="numeric"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
             </div>
-            <p className="text-[12px] leading-relaxed text-[var(--color-bv-muted)]">
-              Each piece ≈ <strong className="text-[var(--color-bv-text)]">{sqftEach.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft
+            <p className="text-[12px] leading-relaxed text-slate-500">
+              Each piece ≈ <strong className="text-slate-700">{sqftEach.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft
               (width × height ÷ 144). Total ≈{' '}
-              <strong className="text-[var(--color-bv-text)]">{sqftTotal.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft — that becomes
-              the line <strong className="text-[var(--color-bv-text)]">quantity</strong> when you apply (priced per sq ft at your unit cost).
+              <strong className="text-slate-700">{sqftTotal.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft — that becomes
+              the line <strong className="text-slate-700">quantity</strong> when you apply (priced per sq ft at your unit cost).
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 Internal $/sq ft (optional — leave blank to keep line unit cost)
               </span>
               <input
@@ -313,14 +321,14 @@ export function PricingHelperPanel({
                 onChange={(e) => setSqftCostUsd(e.target.value)}
                 placeholder="e.g. 2.50"
                 inputMode="decimal"
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               />
             </label>
             <button
               type="button"
               disabled={!canApply || sqftTotal <= 0}
               onClick={applySqft}
-              className="rounded-[6px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-bv-accent-foreground)] disabled:opacity-40"
+              className="w-full rounded-[10px] bg-violet-600 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-sm transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               Apply to focused line
             </button>
@@ -330,37 +338,37 @@ export function PricingHelperPanel({
         {mode === 'sheet' ? (
           <div className="mt-3 space-y-3">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 Total sq ft needed (all pieces)
               </span>
               <input
                 value={sheetTotalSqft}
                 onChange={(e) => setSheetTotalSqft(e.target.value)}
                 inputMode="decimal"
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 Sheet size
               </span>
               <select
                 value={sheetSize}
                 onChange={(e) => setSheetSize(e.target.value as '48' | '510')}
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               >
                 <option value="48">4×8 (32 sq ft)</option>
                 <option value="510">5×10 (50 sq ft)</option>
               </select>
             </label>
-            <p className="text-[12px] leading-relaxed text-[var(--color-bv-muted)]">
-              If the job uses less than <strong className="text-[var(--color-bv-text)]">75%</strong> of one sheet, we still bill{' '}
-              <strong className="text-[var(--color-bv-text)]">one</strong> full sheet. Otherwise we round{' '}
-              <strong className="text-[var(--color-bv-text)]">up</strong> to whole sheets. Suggested:{' '}
-              <strong className="text-[var(--color-bv-text)]">{sheetsNeeded}</strong> sheet{sheetsNeeded === 1 ? '' : 's'} at {sheetLabel}.
+            <p className="text-[12px] leading-relaxed text-slate-500">
+              If the job uses less than <strong className="text-slate-700">75%</strong> of one sheet, we still bill{' '}
+              <strong className="text-slate-700">one</strong> full sheet. Otherwise we round{' '}
+              <strong className="text-slate-700">up</strong> to whole sheets. Suggested:{' '}
+              <strong className="text-slate-700">{sheetsNeeded}</strong> sheet{sheetsNeeded === 1 ? '' : 's'} at {sheetLabel}.
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 $/sheet internal (optional)
               </span>
               <input
@@ -368,14 +376,14 @@ export function PricingHelperPanel({
                 onChange={(e) => setSheetCostUsd(e.target.value)}
                 placeholder="Leave blank to keep line unit cost"
                 inputMode="decimal"
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               />
             </label>
             <button
               type="button"
               disabled={!canApply || sheetsNeeded <= 0}
               onClick={applySheet}
-              className="rounded-[6px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-bv-accent-foreground)] disabled:opacity-40"
+              className="w-full rounded-[10px] bg-violet-600 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-sm transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               Apply to focused line
             </button>
@@ -386,41 +394,41 @@ export function PricingHelperPanel({
           <div className="mt-3 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Roll width (in)
                 </span>
                 <input
                   value={rollW}
                   onChange={(e) => setRollW(e.target.value)}
                   inputMode="decimal"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Roll length (ft)
                 </span>
                 <input
                   value={rollLenFt}
                   onChange={(e) => setRollLenFt(e.target.value)}
                   inputMode="decimal"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
             </div>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 Sq ft used on this job
               </span>
               <input
                 value={rollUsed}
                 onChange={(e) => setRollUsed(e.target.value)}
                 inputMode="decimal"
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 Minimum billable sq ft (optional shop minimum)
               </span>
               <input
@@ -428,24 +436,24 @@ export function PricingHelperPanel({
                 onChange={(e) => setRollMin(e.target.value)}
                 placeholder="Leave blank if none"
                 inputMode="decimal"
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               />
             </label>
-            <p className="text-[12px] leading-relaxed text-[var(--color-bv-muted)]">
-              Nominal roll ≈ <strong className="text-[var(--color-bv-text)]">{rollNominal.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft
+            <p className="text-[12px] leading-relaxed text-slate-500">
+              Nominal roll ≈ <strong className="text-slate-700">{rollNominal.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft
               (width in feet × length in feet). You are billing{' '}
-              <strong className="text-[var(--color-bv-text)]">{rollBillable.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft — about{' '}
-              <strong className="text-[var(--color-bv-text)]">{(rollFrac * 100).toFixed(1)}%</strong> of a full roll.
+              <strong className="text-slate-700">{rollBillable.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft — about{' '}
+              <strong className="text-slate-700">{(rollFrac * 100).toFixed(1)}%</strong> of a full roll.
               {rollLineCostPreview !== null ? (
                 <>
                   {' '}
                   At your entered $/sq ft, raw line cost ≈{' '}
-                  <strong className="text-[var(--color-bv-text)]">{formatMoney(rollLineCostPreview)}</strong> (before estimate multiplier).
+                  <strong className="text-slate-700">{formatMoney(rollLineCostPreview)}</strong> (before estimate multiplier).
                 </>
               ) : null}
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                 Internal $/sq ft (optional)
               </span>
               <input
@@ -453,14 +461,14 @@ export function PricingHelperPanel({
                 onChange={(e) => setRollCostSqftUsd(e.target.value)}
                 placeholder="Leave blank to keep line unit cost"
                 inputMode="decimal"
-                className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
               />
             </label>
             <button
               type="button"
               disabled={!canApply || rollBillable <= 0}
               onClick={applyRoll}
-              className="rounded-[6px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-bv-accent-foreground)] disabled:opacity-40"
+              className="w-full rounded-[10px] bg-violet-600 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-sm transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               Apply to focused line
             </button>
@@ -471,47 +479,63 @@ export function PricingHelperPanel({
           <div className="mt-3 space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Banner sq ft
                 </span>
                 <input
                   value={banSqft}
                   onChange={(e) => setBanSqft(e.target.value)}
                   inputMode="decimal"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                   Grommets (count)
                 </span>
                 <input
                   value={banGrommets}
                   onChange={(e) => setBanGrommets(e.target.value)}
                   inputMode="numeric"
-                  className="rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[13px]"
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50/70 px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
                 />
               </label>
             </div>
-            <p className="text-[12px] leading-relaxed text-[var(--color-bv-muted)]">
-              Uses shop banner rule: <strong className="text-[var(--color-bv-text)]">$4/sq ft</strong> on the first 200 sq ft, then{' '}
-              <strong className="text-[var(--color-bv-text)]">$3/sq ft</strong> beyond, plus{' '}
-              <strong className="text-[var(--color-bv-text)]">$0.50</strong> per grommet, with a{' '}
-              <strong className="text-[var(--color-bv-text)]">$45</strong> minimum on the banner portion. Suggested line raw cost:{' '}
-              <strong className="text-[var(--color-bv-text)]">{formatMoney(banner.cents)}</strong> as one material line (qty 1 × that unit cost — before estimate multiplier).
+            <p className="text-[12px] leading-relaxed text-slate-500">
+              Uses shop banner rule: <strong className="text-slate-700">$4/sq ft</strong> on the first 200 sq ft, then{' '}
+              <strong className="text-slate-700">$3/sq ft</strong> beyond, plus{' '}
+              <strong className="text-slate-700">$0.50</strong> per grommet, with a{' '}
+              <strong className="text-slate-700">$45</strong> minimum on the banner portion. Suggested line raw cost:{' '}
+              <strong className="text-slate-700">{formatMoney(banner.cents)}</strong> as one material line (qty 1 × that unit cost — before estimate multiplier).
               {banner.appliedMinimum ? ' Minimum charge applied.' : ''}
             </p>
             <button
               type="button"
               disabled={!canApply || banSq <= 0}
               onClick={applyBanner}
-              className="rounded-[6px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-bv-accent-foreground)] disabled:opacity-40"
+              className="w-full rounded-[10px] bg-violet-600 px-3 py-2.5 text-[12.5px] font-semibold text-white shadow-sm transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               Apply to focused line
             </button>
           </div>
         ) : null}
       </div>
-    </section>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="flex flex-col gap-4 px-5 pb-5 pt-4">{body}</div>;
+  }
+
+  return (
+    <SectionCard className="p-5">
+      <SectionHeading
+        icon={<IconCalculator />}
+        title="Pricing helper"
+        tone="violet"
+        subtitle="Sq ft, sheets, rolls, or banner — the result applies to the focused grid row when you click Apply."
+      />
+      <div className="mt-4 flex flex-col gap-4">{body}</div>
+    </SectionCard>
   );
 }

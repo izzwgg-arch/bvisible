@@ -7,10 +7,11 @@ import {
   prisma,
   Role,
 } from '@bvisible/db';
+import { computeEstimate, type LineInput } from '@bvisible/pricing';
 import { requireTenantId } from '@/lib/auth/current-user';
-import { PageHeader } from '@/components/app-shell';
-import { EstimateDailyWorkflowStrip } from '@/components/estimate/estimate-daily-workflow-strip';
 import { getEstimateEditorPrimaryAction } from '@/lib/estimate/estimate-editor-primary-action';
+import { formatMoney } from '@/lib/estimate/format';
+import { labelEstimateStatus, labelPoStatus } from '@/lib/ui/status-labels';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
 import { EstimateFulfillmentPanel } from '@/components/estimate/estimate-fulfillment-panel';
@@ -22,14 +23,17 @@ import {
   fulfillmentHeadlineForEstimateStatus,
   fulfillmentOperationalHints,
   mapLinkedPoToEstimateBootstrap,
+  reconciliationGuidanceLabel,
+  receiptOcrOperationalHint,
+  type EstimateLinkedPoBootstrap,
 } from '@/lib/estimate/estimate-fulfillment';
 import { EstimateEditor, type EditorBootstrap } from './editor';
+import { EstimateSupportTabs } from './estimate-support-tabs';
 import {
   buildEstimateOperationalRailSteps,
   deriveEstimateOperationalSteps,
 } from '@/lib/estimate/estimate-invoice-fulfillment';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
-import { EstimateCollapsibleSection } from '@/components/estimate/estimate-collapsible-section';
 import { buildEstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
 
 export const metadata = { title: 'Estimate' };
@@ -68,7 +72,7 @@ export default async function EstimateDetailPage({
         subtotalCostCents: true,
         finalPriceCents: true,
         updatedAt: true,
-        client: { select: { id: true, companyName: true } },
+        client: { select: { id: true, companyName: true, contactName: true, email: true } },
         createdBy: { select: { email: true, name: true } },
         lines: {
           orderBy: [{ sortOrder: 'asc' }],
@@ -292,26 +296,18 @@ export default async function EstimateDetailPage({
     quoteLinkActive: quoteUi.quotePanelProps.activeLink != null,
   });
 
-  const isEstimatingPhase =
-    estimate.status === EstimateStatus.DRAFT ||
-    estimate.status === EstimateStatus.SENT ||
-    estimate.status === EstimateStatus.REJECTED;
-
-  const quoteStack = (
-    <>
-      <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
-      <EstimateTimelineSection rows={quoteUi.timelineRows} />
-      <EstimateQuoteLinkPanel
-        estimateId={estimate.id}
-        estimateStatus={estimate.status}
-        quoteLinkRowsDesc={quoteUi.quoteLinkRows}
-        activeLink={quoteUi.quotePanelProps.activeLink}
-        phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
-        disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
-        regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
-      />
-    </>
-  );
+  const headerComputed = computeEstimate({
+    multiplierMilli: estimate.multiplierMilli,
+    designFlatCents: estimate.designFlatCents,
+    lines: estimate.lines.map(
+      (line): LineInput => ({
+        id: line.id,
+        kind: line.kind,
+        qtyMilli: line.qtyMilli,
+        unitCostCents: line.unitCostCents,
+      })
+    ),
+  });
 
   const fulfillmentBlock = (
     <EstimateFulfillmentPanel
@@ -342,6 +338,40 @@ export default async function EstimateDetailPage({
     />
   );
 
+  const quoteLinkPanel = (
+    <EstimateQuoteLinkPanel
+      estimateId={estimate.id}
+      estimateStatus={estimate.status}
+      quoteLinkRowsDesc={quoteUi.quoteLinkRows}
+      activeLink={quoteUi.quotePanelProps.activeLink}
+      phaseBadgeLabel={quoteUi.quotePanelProps.phaseBadgeLabel}
+      disableRegenerate={quoteUi.quotePanelProps.disableRegenerate}
+      regenerateDisabledReason={quoteUi.quotePanelProps.regenerateDisabledReason}
+    />
+  );
+
+  const supportTabs = (
+    <EstimateSupportTabs
+      workflow={
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0">{fulfillmentBlock}</div>
+          <div className="flex min-w-0 flex-col gap-4">
+            <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
+            {quoteLinkPanel}
+          </div>
+        </div>
+      }
+      files={<CompactEmpty title="No files attached" detail="Related quote files and customer documents will appear here when available." />}
+      activity={<EstimateTimelineSection rows={quoteUi.timelineRows} />}
+      purchaseOrders={<PurchaseOrderTab linkedPos={linkedBootstrapRows} />}
+      reconciliation={<ReconciliationTab linkedPos={linkedBootstrapRows} />}
+      notes={<NotesTab notes={estimate.notes ?? ''} estimateNumber={estimate.number} />}
+      purchaseOrderCount={linkedBootstrapRows.length}
+      activityCount={quoteUi.timelineRows.length}
+      reconciliationCount={linkedBootstrapRows.filter((p) => p.reconciliationNeedsAttention).length}
+    />
+  );
+
   const bootstrap: EditorBootstrap = {
     estimate: {
       id: estimate.id,
@@ -355,6 +385,9 @@ export default async function EstimateDetailPage({
       finalPriceCents: estimate.finalPriceCents,
       updatedAt: estimate.updatedAt.toISOString(),
       client: estimate.client,
+      quoteSent: quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT,
+      hasInvoice: linkedInvoiceRow != null,
+      invoicePaid: linkedInvoiceRow?.paidAt != null,
     },
     lines: estimate.lines.map((l) => ({
       id: l.id,
@@ -376,62 +409,281 @@ export default async function EstimateDetailPage({
 
   return (
     <>
-      <PageHeader
-        title={`${estimate.number} · ${estimate.title}`}
-        subtitle={`Client: ${estimate.client.companyName} · created by ${
-          estimate.createdBy.name ?? estimate.createdBy.email
-        }`}
-        actions={
-          <>
-            <Link
-              href={primary.href as never}
-              className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
-            >
-              {primary.label}
-            </Link>
-            <Link
-              href="/estimates"
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-            >
-              All estimates
-            </Link>
-          </>
-        }
+      <EstimateCommandHeader
+        estimateId={estimate.id}
+        estimateNumber={estimate.number}
+        title={estimate.title}
+        clientName={estimate.client.companyName}
+        createdBy={estimate.createdBy.name ?? estimate.createdBy.email}
+        status={estimate.status}
+        lineCount={estimate.lines.length}
+        linkedPoCount={linkedPosRaw.length}
+        finalPriceCents={headerComputed.finalPriceCents}
+        rawCostCents={headerComputed.subtotalCostCents}
+        updatedAt={estimate.updatedAt}
+        primaryHref={primary.href}
+        primaryLabel={primary.label}
+        primaryHint={primary.hint}
       />
-      <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
-        <EstimateDailyWorkflowStrip
-          status={estimate.status}
-          quoteSent={quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT}
-          hasPo={linkedPosRaw.length > 0}
-          hasInvoice={linkedInvoiceRow != null}
-          primaryHref={primary.href}
-          primaryLabel={primary.label}
-          hint={primary.hint}
-        />
-      </div>
-      {isEstimatingPhase ? (
-        <>
-          <EstimateEditor bootstrap={bootstrap} />
-          <div className="mx-auto mt-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
-            <EstimateCollapsibleSection
-              title="Quote & customer response"
-              summary="Public link, send status, timeline — expand when ready to share"
-              defaultOpen={estimate.status === EstimateStatus.SENT}
-            >
-              {fulfillmentBlock}
-              {quoteStack}
-            </EstimateCollapsibleSection>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="mx-auto mb-6 flex max-w-[1200px] flex-col gap-4 px-4 lg:px-6">
-            {fulfillmentBlock}
-            {quoteStack}
-          </div>
-          <EstimateEditor bootstrap={bootstrap} />
-        </>
-      )}
+      <EstimateEditor bootstrap={bootstrap} supportTabs={supportTabs} />
     </>
   );
+}
+
+function CompactEmpty({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="rounded-[16px] border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5">
+      <p className="text-[13px] font-semibold text-slate-800">{title}</p>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">{detail}</p>
+    </div>
+  );
+}
+
+function PurchaseOrderTab({ linkedPos }: { linkedPos: ReadonlyArray<EstimateLinkedPoBootstrap> }) {
+  if (linkedPos.length === 0) {
+    return (
+      <CompactEmpty
+        title="No purchase orders linked"
+        detail="Approved estimates can be linked to existing POs or used to create a new PO from the right rail."
+      />
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[16px] border border-slate-200 bg-white">
+      <div className="grid grid-cols-[1fr_auto] border-b border-slate-100 bg-slate-50/70 px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-[0.1em] text-slate-400">
+        <span>Purchase order</span>
+        <span>Status</span>
+      </div>
+      <ul className="divide-y divide-slate-100">
+        {linkedPos.map((po) => (
+          <li key={po.id} className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="min-w-0">
+              <Link
+                href={`/purchase-orders/${po.id}` as never}
+                className="font-mono text-[13px] font-bold text-blue-600 underline-offset-2 hover:underline"
+              >
+                {po.number}
+              </Link>
+              <p className="mt-0.5 truncate text-[12px] text-slate-500">
+                {po.vendor?.name ?? 'No vendor'} · {formatMoney(po.subtotalCents)} PO total ·{' '}
+                <time dateTime={po.createdAtIso}>
+                  {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
+                    new Date(po.createdAtIso)
+                  )}
+                </time>
+              </p>
+            </div>
+            <span className="inline-flex justify-self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-600 sm:justify-self-end">
+              {labelPoStatus(po.status)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ReconciliationTab({ linkedPos }: { linkedPos: ReadonlyArray<EstimateLinkedPoBootstrap> }) {
+  const rows = linkedPos
+    .map((po) => {
+      const recon = reconciliationGuidanceLabel(po.latestReconciliationStatus);
+      const ocr = receiptOcrOperationalHint({
+        receiptishAttachmentCount: po.receiptishAttachmentCount,
+        ocrPendingOrProcessingCount: po.ocrPendingOrProcessingCount,
+        ocrNeedsReviewCount: po.ocrNeedsReviewCount,
+      });
+      return { po, recon, ocr };
+    })
+    .filter((row) => row.po.reconciliationNeedsAttention || row.recon || row.ocr);
+
+  if (rows.length === 0) {
+    return (
+      <CompactEmpty
+        title="No reconciliation attention"
+        detail="Linked purchase orders do not currently show reconciliation or receipt OCR blockers."
+      />
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {rows.map(({ po, recon, ocr }) => (
+        <li key={po.id} className="rounded-[14px] border border-amber-200 bg-amber-50/45 px-4 py-3">
+          <Link
+            href={`/purchase-orders/${po.id}` as never}
+            className="font-mono text-[13px] font-bold text-amber-900 underline-offset-2 hover:underline"
+          >
+            {po.number}
+          </Link>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {po.reconciliationNeedsAttention ? (
+              <span className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
+                Reconciliation attention
+              </span>
+            ) : null}
+            {recon ? (
+              <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-medium text-amber-900">
+                {recon}
+              </span>
+            ) : null}
+            {ocr ? (
+              <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-medium text-amber-900">
+                {ocr}
+              </span>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function NotesTab({ notes, estimateNumber }: { notes: string; estimateNumber: string }) {
+  return (
+    <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+      <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-slate-400">
+        {estimateNumber} internal notes
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-600">
+        {notes.trim() || 'No internal notes saved yet. Use the estimate details editor above to add notes.'}
+      </p>
+    </div>
+  );
+}
+
+function EstimateCommandHeader({
+  estimateId,
+  estimateNumber,
+  title,
+  clientName,
+  createdBy,
+  status,
+  lineCount,
+  linkedPoCount,
+  finalPriceCents,
+  rawCostCents,
+  updatedAt,
+  primaryHref,
+  primaryLabel,
+  primaryHint,
+}: {
+  estimateId: string;
+  estimateNumber: string;
+  title: string;
+  clientName: string;
+  createdBy: string;
+  status: EstimateStatus;
+  lineCount: number;
+  linkedPoCount: number;
+  finalPriceCents: number;
+  rawCostCents: number;
+  updatedAt: Date;
+  primaryHref: string;
+  primaryLabel: string;
+  primaryHint: string;
+}) {
+  return (
+    <section className="mx-auto max-w-[1440px] px-1">
+      <div className="flex flex-col gap-4 border-b border-slate-200/70 pb-5 pt-1 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium text-slate-400">
+            <Link href="/estimates" className="transition hover:text-slate-700">
+              Estimates
+            </Link>
+            <span aria-hidden>/</span>
+            <span className="font-semibold text-slate-600">{estimateNumber}</span>
+          </div>
+          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`${statusPill(status)} rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ring-1 ring-inset`}>
+                {labelEstimateStatus(status)}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Saved
+              </span>
+            </div>
+            <h1 className="mt-3 max-w-4xl text-[32px] font-bold leading-[1.04] tracking-[-0.045em] text-slate-950 md:text-[40px]">
+              {title}
+            </h1>
+            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] leading-relaxed text-slate-500">
+              <span className="font-semibold text-blue-700">{clientName}</span>
+              <span>Created by {createdBy}</span>
+              <span>
+                Updated{' '}
+              <time dateTime={updatedAt.toISOString()}>
+                {new Intl.DateTimeFormat(undefined, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                }).format(updatedAt)}
+              </time>
+              </span>
+            </p>
+          </div>
+            <div className="flex flex-wrap gap-2 lg:pb-1">
+              <HeaderMetric label="Sell" value={formatMoney(finalPriceCents)} />
+              <HeaderMetric label="Cost" value={formatMoney(rawCostCents)} />
+              <HeaderMetric label="Rows / POs" value={`${lineCount} / ${linkedPoCount}`} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2 xl:pt-8">
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-slate-200 bg-white text-[18px] font-bold leading-none text-slate-500 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+            title="More estimate actions are available in the right rail."
+          >
+            ...
+          </button>
+          <Link
+            href={`/estimates/${estimateId}/preview` as never}
+            className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            Preview
+          </Link>
+          <Link
+            href={primaryHref as never}
+            title={primaryHint}
+            className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            {primaryLabel}
+          </Link>
+          <Link
+            href="#estimate-status-controls"
+            className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-[0_14px_30px_-16px_rgba(37,99,235,0.75)] transition hover:from-blue-500 hover:to-indigo-500"
+          >
+            Approve
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HeaderMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[12px] border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+      <p className="mt-0.5 text-[15px] font-bold leading-none tabular-nums text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function statusPill(status: EstimateStatus): string {
+  switch (status) {
+    case EstimateStatus.APPROVED:
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+    case EstimateStatus.SENT:
+      return 'bg-blue-50 text-blue-700 ring-blue-200';
+    case EstimateStatus.REJECTED:
+      return 'bg-rose-50 text-rose-700 ring-rose-200';
+    case EstimateStatus.FINALIZED:
+      return 'bg-violet-50 text-violet-700 ring-violet-200';
+    case EstimateStatus.DRAFT:
+    default:
+      return 'bg-slate-50 text-slate-600 ring-slate-200';
+  }
 }

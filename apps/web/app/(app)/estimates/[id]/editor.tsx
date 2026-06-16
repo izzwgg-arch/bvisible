@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { EstimateLineKind, EstimateStatus, POStatus, POReconciliationStatus } from '@bvisible/db';
 import { computeEstimate, type LineInput } from '@bvisible/pricing';
@@ -16,9 +16,7 @@ import {
 import { createPoFromEstimateAction } from '../../purchase-orders/actions';
 import { LineGrid } from './line-grid';
 import { TotalsPanel } from './totals-panel';
-import { VendorCatalogIntelPanel } from './vendor-catalog-intel-panel';
-import { CatalogItemPicker } from './catalog-item-picker';
-import { PricingHelperPanel } from './pricing-helper-panel';
+import { EstimateToolsTabs } from './estimate-tools-tabs';
 import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import {
   defaultDescription,
@@ -26,6 +24,7 @@ import {
 } from '@/lib/estimate/defaults';
 import type { SaveEstimateInput } from '@/lib/validators';
 import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
+import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/estimate-surface';
 
 // ---------------------------------------------------------------------
 // Types passed in from the server component.
@@ -43,7 +42,10 @@ export interface EditorBootstrap {
     subtotalCostCents: number;
     finalPriceCents: number;
     updatedAt: string;
-    client: { id: string; companyName: string };
+    client: { id: string; companyName: string; contactName: string | null; email: string | null };
+    quoteSent: boolean;
+    hasInvoice: boolean;
+    invoicePaid: boolean;
   };
   lines: ReadonlyArray<{
     id: string;
@@ -217,7 +219,13 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
   return base;
 }
 
-export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
+export function EstimateEditor({
+  bootstrap,
+  supportTabs,
+}: {
+  bootstrap: EditorBootstrap;
+  supportTabs?: ReactNode;
+}) {
   const readOnly = isEstimateEditorReadOnly(bootstrap.estimate.status);
   const [state, dispatch] = useReducer(reducer, bootstrap, initialFromBootstrap);
   const [vendorIntelLineId, setVendorIntelLineId] = useState<string | null>(null);
@@ -411,40 +419,28 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
   }
 
   return (
-    <div ref={rootRef} className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <div className="flex flex-col gap-4">
-        <MetaCard
-          title={state.title}
-          notes={state.notes}
-          readOnly={readOnly}
-          dispatch={guardedDispatch}
-        />
+    <div
+      ref={rootRef}
+      className="mx-auto mt-5 grid max-w-[1440px] items-start gap-6 px-1 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]"
+    >
+      <div className="flex min-w-0 flex-col gap-5">
         <LineGrid
           lines={state.lines}
           machines={bootstrap.machines}
           lineCosts={computed.lineCosts}
+          multiplierMilli={state.multiplierMilli}
           readOnly={readOnly}
           onVendorIntelLineFocus={setVendorIntelLineId}
           onAnyLineFocus={setCatalogLineId}
           dispatch={guardedDispatch}
         />
-        <CatalogItemPicker
+        <EstimateToolsTabs
           catalog={bootstrap.shopCatalog}
           machines={bootstrap.machines}
-          activeLineId={catalogLineId}
+          catalogLineId={catalogLineId}
           lines={state.lines}
           readOnly={readOnly}
-          dispatch={guardedDispatch}
-        />
-        <PricingHelperPanel
-          activeLineId={catalogLineId}
-          lines={state.lines}
-          readOnly={readOnly}
-          dispatch={guardedDispatch}
-        />
-        <VendorCatalogIntelPanel
-          line={vendorIntelLine}
-          readOnly={readOnly}
+          vendorIntelLine={vendorIntelLine}
           onApplyManagedCost={
             readOnly
               ? undefined
@@ -455,6 +451,14 @@ export function EstimateEditor({ bootstrap }: { bootstrap: EditorBootstrap }) {
                     patch: { unitCostCents: cents },
                   })
           }
+          dispatch={guardedDispatch}
+        />
+        {supportTabs}
+        <MetaCard
+          title={state.title}
+          notes={state.notes}
+          readOnly={readOnly}
+          dispatch={guardedDispatch}
         />
       </div>
 
@@ -499,45 +503,53 @@ function MetaCard({
   dispatch: React.Dispatch<Action>;
 }) {
   return (
-    <section
-      className={`rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)] ${
-        readOnly ? 'bg-[var(--color-bv-bg)]/40' : ''
-      }`}
-    >
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Title</span>
-        {readOnly ? (
-          <p className="text-[14.5px] font-medium text-[var(--color-bv-text)]">{title}</p>
-        ) : (
-          <input
-            value={title}
-            onChange={(e) =>
-              dispatch({ type: 'set-meta', field: 'title', value: e.currentTarget.value })
-            }
-            maxLength={160}
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14.5px] font-medium text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
-          />
-        )}
-      </label>
-      <label className="mt-3 flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Notes</span>
-        {readOnly ? (
-          <p className="whitespace-pre-wrap text-[13.5px] text-[var(--color-bv-text)]">
-            {notes.trim() ? notes : '—'}
-          </p>
-        ) : (
-          <textarea
-            value={notes}
-            onChange={(e) =>
-              dispatch({ type: 'set-meta', field: 'notes', value: e.currentTarget.value })
-            }
-            rows={2}
-            maxLength={4000}
-            placeholder="Optional internal notes."
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
-          />
-        )}
-      </label>
-    </section>
+    <SectionCard className="p-4">
+      <SectionHeading
+        icon={<IconDoc />}
+        title="Setup"
+        subtitle="Internal estimate title and team notes."
+      />
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.55fr)]">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+            Title
+          </span>
+          {readOnly ? (
+            <p className="text-[15px] font-semibold text-slate-900">{title}</p>
+          ) : (
+            <input
+              value={title}
+              onChange={(e) =>
+                dispatch({ type: 'set-meta', field: 'title', value: e.currentTarget.value })
+              }
+              maxLength={160}
+              placeholder="e.g. Storefront window graphics"
+              className="rounded-[12px] border border-slate-200 bg-white px-3.5 py-2.5 text-[14px] font-semibold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+            />
+          )}
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+            Internal notes
+          </span>
+          {readOnly ? (
+            <p className="whitespace-pre-wrap text-[13.5px] text-slate-700">
+              {notes.trim() ? notes : '—'}
+            </p>
+          ) : (
+            <textarea
+              value={notes}
+              onChange={(e) =>
+                dispatch({ type: 'set-meta', field: 'notes', value: e.currentTarget.value })
+              }
+              rows={2}
+              maxLength={4000}
+              placeholder="Optional internal notes — only your team can see these."
+              className="min-h-[74px] resize-y rounded-[12px] border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] leading-relaxed text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+            />
+          )}
+        </label>
+      </div>
+    </SectionCard>
   );
 }
