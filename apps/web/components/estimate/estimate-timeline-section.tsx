@@ -1,46 +1,53 @@
 import type { EstimateTimelineRowSerialized } from '@/lib/estimate/load-estimate-quote-staff-ui';
+import { SectionCard, SectionHeading, IconClock } from '@/components/estimate/estimate-surface';
 
 export function EstimateTimelineSection(props: { rows: EstimateTimelineRowSerialized[] }) {
   if (props.rows.length === 0) {
     return (
-      <section className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-6 shadow-[var(--shadow-bv-card)]">
-        <h2 className="text-[13px] font-semibold text-[var(--color-bv-text)]">Estimate timeline</h2>
-        <p className="mt-2 text-[13px] text-[var(--color-bv-muted)]">
-          No timeline entries yet — sending the quote or recording customer responses will populate this list.
-        </p>
-      </section>
+      <SectionCard className="px-4 py-5">
+        <SectionHeading
+          icon={<IconClock />}
+          tone="violet"
+          title="Estimate timeline"
+          subtitle="No timeline entries yet — sending the quote or recording customer responses will populate this list."
+        />
+      </SectionCard>
     );
   }
 
   return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
-      <h2 className="text-[13px] font-semibold text-[var(--color-bv-text)]">Estimate timeline</h2>
-      <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-bv-muted)]">
-        Read-only audit-backed history for this estimate (most recent at bottom).
-      </p>
-      <ul className="mt-4 space-y-3 border-l border-[var(--color-bv-border)] pl-4">
+    <SectionCard className="p-4">
+      <SectionHeading
+        icon={<IconClock />}
+        tone="violet"
+        title="Estimate timeline"
+        subtitle="Read-only audit-backed history for this estimate (most recent at bottom)."
+      />
+      <ul className="mt-4 space-y-4 border-l-2 border-slate-100 pl-5">
         {props.rows.map((r) => (
           <li key={r.rowKey} className="relative">
-            <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-[var(--color-bv-accent)]" />
+            <span className="absolute -left-[26px] top-1 grid h-3.5 w-3.5 place-items-center rounded-full bg-white ring-2 ring-violet-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+            </span>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-[13px] font-medium text-[var(--color-bv-text)]">{r.title}</p>
+              <p className="text-[13px] font-semibold text-slate-800">{r.title}</p>
               <time
                 dateTime={r.sortAtIso}
-                className="text-[11px] tabular-nums text-[var(--color-bv-muted)]"
+                className="text-[11px] tabular-nums text-slate-400"
               >
                 {formatShort(r.sortAtIso)}
               </time>
             </div>
             {r.subtitle ? (
-              <p className="mt-1 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">{r.subtitle}</p>
+              <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{r.subtitle}</p>
             ) : null}
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--color-bv-muted)]">
+            <span className="mt-1.5 inline-block rounded-full bg-slate-50 px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-inset ring-slate-100">
               {r.source === 'timeline_event' ? 'Timeline record' : 'Audit record'}
-            </p>
+            </span>
           </li>
         ))}
       </ul>
-    </section>
+    </SectionCard>
   );
 }
 

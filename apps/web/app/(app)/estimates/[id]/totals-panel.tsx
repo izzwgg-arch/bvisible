@@ -169,10 +169,8 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 <div className="my-1.5 border-t border-dashed border-slate-200" />
                 <Row label="Raw cost" value={subtotalCostCents} bold />
               </dl>
-            </div>
-          </details>
 
-          <div className="mt-4 flex flex-col gap-2.5 rounded-[14px] border border-slate-200 bg-slate-50/60 p-3.5">
+              <div className="mt-4 flex flex-col gap-2.5 rounded-[14px] border border-slate-200 bg-white p-3">
             <label className="flex items-center justify-between gap-3 text-[12.5px] text-slate-500">
               <span className="font-semibold text-slate-700">Design flat fee</span>
               {isFinalized ? (
@@ -234,7 +232,9 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 hints” are separate guidance only.
               </p>
             )}
-          </div>
+              </div>
+            </div>
+          </details>
         </div>
 
         <div className="flex flex-col gap-2 px-5 pb-5 pt-4">

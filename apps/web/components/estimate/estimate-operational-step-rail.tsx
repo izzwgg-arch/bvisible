@@ -1,3 +1,5 @@
+import { IconCheck } from '@/components/estimate/estimate-surface';
+
 export type EstimateOperationalStepRailRow = {
   key: string;
   label: string;
@@ -13,32 +15,43 @@ export function EstimateOperationalStepRail(props: {
       {props.steps.map((s) => (
         <div
           key={s.key}
-          className={`rounded-[10px] border px-3 py-2 ${
+          className={`flex items-start gap-2.5 rounded-[12px] border px-3 py-2.5 ${
             s.done
-              ? 'border-emerald-200 bg-emerald-50/90 text-emerald-950'
-              : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
+              ? 'border-emerald-200 bg-emerald-50/70'
+              : 'border-slate-200 bg-white'
           }`}
         >
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[12.5px] font-semibold leading-snug">{s.label}</span>
+          <span
+            className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+              s.done
+                ? 'bg-emerald-500 text-white'
+                : 'bg-slate-100 text-slate-300 ring-1 ring-inset ring-slate-200'
+            }`}
+            aria-hidden
+          >
+            {s.done ? <IconCheck width={12} height={12} /> : ''}
+          </span>
+          <div className="min-w-0">
             <span
-              className={`shrink-0 rounded-full border px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide ${
-                s.done
-                  ? 'border-emerald-300 bg-white text-emerald-900'
-                  : 'border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-muted)]'
+              className={`block text-[12.5px] font-semibold leading-snug ${
+                s.done ? 'text-emerald-900' : 'text-slate-600'
               }`}
             >
-              {s.done ? 'Done' : 'Open'}
+              {s.label}
             </span>
+            {s.atIso ? (
+              <time
+                dateTime={s.atIso}
+                className="mt-0.5 block text-[11px] tabular-nums text-slate-400"
+              >
+                {formatMedium(s.atIso)}
+              </time>
+            ) : (
+              <span className="mt-0.5 block text-[10.5px] font-medium uppercase tracking-wide text-slate-300">
+                {s.done ? 'Done' : 'Pending'}
+              </span>
+            )}
           </div>
-          {s.atIso ? (
-            <time
-              dateTime={s.atIso}
-              className="mt-1 block text-[11px] tabular-nums text-[var(--color-bv-muted)]"
-            >
-              {formatMedium(s.atIso)}
-            </time>
-          ) : null}
         </div>
       ))}
     </div>

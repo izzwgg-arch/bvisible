@@ -391,7 +391,25 @@ export default async function EstimateDetailPage({
   };
 
   return (
-    <>
+    <div id="estimate-workspace-root">
+      <style>{`
+        body:has(#estimate-workspace-root) [class*="grid-cols-[292px_1fr]"] {
+          grid-template-columns: 220px minmax(0, 1fr);
+          background: #f8fafc;
+        }
+        body:has(#estimate-workspace-root) header.sticky {
+          display: none;
+        }
+        body:has(#estimate-workspace-root) main {
+          padding: 26px 32px;
+        }
+        body:has(#estimate-workspace-root) aside[class*="h-screen"] {
+          background: rgba(255, 255, 255, 0.92);
+          box-shadow: 1px 0 0 rgba(226, 232, 240, 0.9);
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+      `}</style>
       <EstimateCommandHeader
         estimateId={estimate.id}
         estimateNumber={estimate.number}
@@ -403,7 +421,7 @@ export default async function EstimateDetailPage({
         primaryHint={primary.hint}
       />
       <EstimateEditor bootstrap={bootstrap} supportTabs={supportTabs} />
-    </>
+    </div>
   );
 }
 

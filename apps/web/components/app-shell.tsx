@@ -76,25 +76,46 @@ export function AppShell({
   const workspaceTitle = workspaceHeaderLabel(user.role, user.tenant?.name ?? null);
 
   return (
-    <div className="grid min-h-screen grid-cols-[268px_1fr] bg-[var(--color-bv-bg)] print:block">
-      <aside className="flex flex-col border-r border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-6 shadow-[2px_0_24px_rgba(15,23,42,0.04)] print:hidden">
-        <Brand className="px-2 pb-8" />
-        <NavLinks sections={navSections} />
-        <UserMenu
-          email={user.email}
-          name={user.name}
-          workspaceLabel={workspaceTitle}
-          roleLabel={roleLabel(user.role)}
+    <div className="grid h-screen grid-cols-[292px_1fr] overflow-hidden bg-[radial-gradient(circle_at_top_left,#dbeafe_0,transparent_32%),radial-gradient(circle_at_top_right,#ccfbf1_0,transparent_26%),linear-gradient(135deg,#f8fafc_0%,#eef4ff_46%,#f9fafb_100%)] print:block print:h-auto print:overflow-visible">
+      <aside className="relative flex h-screen flex-col overflow-hidden border-r border-white/80 bg-white/[0.76] px-4 py-5 shadow-[12px_0_44px_rgba(15,23,42,0.08)] backdrop-blur-2xl [--color-bv-bg:#f8fafc] [--color-bv-border:#e2e8f0] [--color-bv-muted:#64748b] [--color-bv-surface:#ffffff] [--color-bv-text:#0f172a] print:hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-28 top-0 h-64 w-64 rounded-full bg-blue-200/60 blur-3xl"
         />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute bottom-20 right-[-7rem] h-72 w-72 rounded-full bg-cyan-100/80 blur-3xl"
+        />
+        <Brand className="relative shrink-0 px-2 pb-7" />
+        <NavLinks sections={navSections} />
+        <div className="relative">
+          <UserMenu
+            email={user.email}
+            name={user.name}
+            workspaceLabel={workspaceTitle}
+            roleLabel={roleLabel(user.role)}
+          />
+        </div>
       </aside>
 
-      <div className="flex min-w-0 flex-col">
-        <header className="flex items-center justify-between border-b border-[var(--color-bv-border)] bg-[var(--color-bv-surface)]/95 px-8 py-4 backdrop-blur-sm print:hidden">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              B Visible
-            </span>
-            <span className="text-[12.5px] text-[var(--color-bv-muted)]">{workspaceTitle}</span>
+      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/70 bg-white/[0.72] px-8 py-4 shadow-[0_16px_42px_rgba(15,23,42,0.06)] backdrop-blur-xl print:hidden">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              aria-hidden
+              className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_6px_rgba(52,211,153,0.16)]"
+            />
+            <div className="min-w-0">
+              <span className="block truncate text-[14px] font-semibold tracking-tight text-slate-950">
+                {workspaceTitle}
+              </span>
+              <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                Command workspace
+              </span>
+            </div>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
+            Live
           </div>
         </header>
         <main className="flex-1 px-8 py-8 print:px-0 print:py-0">{children}</main>
@@ -113,13 +134,13 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-8 flex items-start justify-between gap-4">
+    <div className="mb-7 flex items-start justify-between gap-4">
       <div className="flex flex-col">
-        <h1 className="text-[22px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+        <h1 className="text-[34px] font-semibold tracking-[-0.04em] text-slate-950">
           {title}
         </h1>
         {subtitle ? (
-          <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-[var(--color-bv-muted)]">
+          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-slate-500">
             {subtitle}
           </p>
         ) : null}

@@ -20,6 +20,13 @@ import { EstimateFinalizeChecklistPanel } from '@/components/estimate/estimate-f
 import type { EstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
 import type { EstimateOperationalStepRailRow } from '@/components/estimate/estimate-operational-step-rail';
 import { EstimateOperationalStepRail } from '@/components/estimate/estimate-operational-step-rail';
+import {
+  SectionCard,
+  SectionHeading,
+  IconTruck,
+  IconReceipt,
+  IconArrowRight,
+} from '@/components/estimate/estimate-surface';
 
 const PO_STATUS_CHIP =
   'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide';
@@ -74,34 +81,20 @@ export function EstimateFulfillmentPanel(props: {
   const showInvoiceCta = estimateStatus === ES.APPROVED && linkedInvoice == null;
 
   return (
-    <section
-      className={`rounded-[var(--radius-bv)] border bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)] ${
-        headline.muted
-          ? 'border-[var(--color-bv-border)] opacity-80'
-          : 'border-[var(--color-bv-border)]'
-      }`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-            {headline.title}
-          </h2>
-          {headline.subtitle ? (
-            <p
-              className={`mt-1 text-[13px] leading-snug ${
-                headline.muted ? 'text-[var(--color-bv-muted)]' : 'text-[var(--color-bv-text)]'
-              }`}
-            >
-              {headline.subtitle}
-            </p>
-          ) : null}
-        </div>
-        {estimateStatus === ES.APPROVED ? (
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-950">
-            Accepted quote
-          </span>
-        ) : null}
-      </div>
+    <SectionCard className={`p-5 ${headline.muted ? 'opacity-90' : ''}`}>
+      <SectionHeading
+        icon={<IconTruck />}
+        tone="emerald"
+        title={headline.title}
+        subtitle={headline.subtitle ?? undefined}
+        badge={
+          estimateStatus === ES.APPROVED ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+              Accepted quote
+            </span>
+          ) : null
+        }
+      />
 
       <EstimateOperationalStepRail steps={operationalSteps} />
       {relationshipStrip}
@@ -112,10 +105,10 @@ export function EstimateFulfillmentPanel(props: {
       ) : null}
 
       {hints.length > 0 ? (
-        <ul className="mt-3 flex flex-col gap-1.5 text-[12.5px] leading-snug text-[var(--color-bv-muted)]">
+        <ul className="mt-4 flex flex-col gap-1.5 text-[12.5px] leading-snug text-slate-500">
           {hints.map((h, idx) => (
             <li key={`${idx}-${h.slice(0, 48)}`} className="flex gap-2">
-              <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[var(--color-bv-muted)]" />
+              <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-slate-300" />
               <span>{h}</span>
             </li>
           ))}
@@ -123,9 +116,12 @@ export function EstimateFulfillmentPanel(props: {
       ) : null}
 
       {showInvoiceCta ? (
-        <div className="mt-4 rounded-[10px] border border-indigo-200 bg-indigo-50/60 px-4 py-3">
-          <p className="text-[12.5px] font-semibold text-indigo-950">Bill the customer</p>
-          <p className="mt-1 text-[12px] leading-snug text-indigo-950/85">
+        <div className="mt-4 overflow-hidden rounded-[14px] border border-indigo-200/70 bg-gradient-to-br from-indigo-50 to-blue-50 px-4 py-3.5">
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-indigo-900">
+            <IconReceipt width={16} height={16} />
+            Bill the customer
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-indigo-900/80">
             Creates an unpaid invoice from this estimate (same customer, lines, and sell total). Nothing posts automatically — record payment when funds arrive.
           </p>
           <div className="mt-3">
@@ -138,15 +134,16 @@ export function EstimateFulfillmentPanel(props: {
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Link
             href={`/purchase-orders/new?estimateId=${estimateId}`}
-            className="inline-flex flex-1 items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-2.5 text-[13px] font-semibold text-[var(--color-bv-text)] shadow-sm hover:bg-[var(--color-bv-bg)] sm:flex-none"
+            className="inline-flex flex-1 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 sm:flex-none"
           >
             Link existing purchase order
           </Link>
           <Link
             href="#estimate-create-po"
-            className="inline-flex flex-1 items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95 sm:flex-none"
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,90,243,0.6)] transition hover:from-blue-500 hover:to-indigo-500 sm:flex-none"
           >
             Create purchase order from estimate
+            <IconArrowRight width={15} height={15} />
           </Link>
         </div>
       ) : null}
@@ -155,13 +152,13 @@ export function EstimateFulfillmentPanel(props: {
         <div className="mt-4 flex flex-wrap gap-2">
           <Link
             href={`/purchase-orders/new?estimateId=${estimateId}`}
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[12.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-surface)]"
+            className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-[12.5px] font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
             Link another PO
           </Link>
           <Link
             href="#estimate-create-po"
-            className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-2 text-[12.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
+            className="inline-flex items-center justify-center rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm transition hover:from-blue-500 hover:to-indigo-500"
           >
             Create another PO from estimate
           </Link>
@@ -169,20 +166,20 @@ export function EstimateFulfillmentPanel(props: {
       ) : null}
 
       {linkedInvoice ? (
-        <div className="mt-5 border-t border-[var(--color-bv-border)] pt-4">
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">
             Linked invoice
           </h3>
-          <div className="mt-2 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2.5">
+          <div className="mt-2 rounded-[12px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <Link
                   href={`/invoices/${linkedInvoice.id}`}
-                  className="font-mono text-[13px] font-semibold text-[var(--color-bv-accent)] hover:underline"
+                  className="font-mono text-[13px] font-semibold text-blue-600 hover:underline"
                 >
                   {linkedInvoice.number}
                 </Link>
-                <div className="mt-0.5 text-[11.5px] text-[var(--color-bv-muted)]">
+                <div className="mt-0.5 text-[11.5px] text-slate-400">
                   Sell total {formatMoney(linkedInvoice.subtotalCents)} · issued{' '}
                   <time dateTime={linkedInvoice.createdAtIso}>
                     {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
@@ -192,7 +189,7 @@ export function EstimateFulfillmentPanel(props: {
                 </div>
               </div>
               <span
-                className={`${PO_STATUS_CHIP} ${INVOICE_CHIP_PALETTE[linkedInvoice.status] ?? 'border-[var(--color-bv-border)] bg-white text-[var(--color-bv-text)]'}`}
+                className={`${PO_STATUS_CHIP} ${INVOICE_CHIP_PALETTE[linkedInvoice.status] ?? 'border-slate-200 bg-white text-slate-700'}`}
               >
                 {labelInvoiceStatus(linkedInvoice.status)}
               </span>
@@ -216,9 +213,9 @@ export function EstimateFulfillmentPanel(props: {
             <div className="mt-2">
               <Link
                 href={`/invoices/${linkedInvoice.id}`}
-                className="text-[12px] font-medium text-[var(--color-bv-accent)] hover:underline"
+                className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600 hover:underline"
               >
-                Open invoice →
+                Open invoice <IconArrowRight width={13} height={13} />
               </Link>
             </div>
           </div>
@@ -226,8 +223,8 @@ export function EstimateFulfillmentPanel(props: {
       ) : null}
 
       {linkedPos.length > 0 ? (
-        <div className="mt-5 border-t border-[var(--color-bv-border)] pt-4">
-          <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">
             Linked purchase orders
           </h3>
           <ul className="mt-2 flex flex-col gap-2">
@@ -240,21 +237,21 @@ export function EstimateFulfillmentPanel(props: {
               });
               const chipClass =
                 PO_CHIP_PALETTE[p.status] ??
-                'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-text)]';
+                'border-slate-200 bg-white text-slate-700';
               return (
                 <li
                   key={p.id}
-                  className="rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2.5"
+                  className="rounded-[12px] border border-slate-200 bg-white px-3 py-3 shadow-sm"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <Link
                         href={`/purchase-orders/${p.id}`}
-                        className="font-mono text-[13px] font-semibold text-[var(--color-bv-accent)] hover:underline"
+                        className="font-mono text-[13px] font-semibold text-blue-600 hover:underline"
                       >
                         {p.number}
                       </Link>
-                      <div className="mt-0.5 truncate text-[11.5px] text-[var(--color-bv-muted)]">
+                      <div className="mt-0.5 truncate text-[11.5px] text-slate-400">
                         {p.vendor?.name ?? 'No vendor'} · {formatMoney(p.subtotalCents)} PO total · created{' '}
                         <time dateTime={p.createdAtIso}>
                           {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
@@ -272,12 +269,12 @@ export function EstimateFulfillmentPanel(props: {
                       </span>
                     ) : null}
                     {reconPhrase ? (
-                      <span className="rounded-full border border-[var(--color-bv-border)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--color-bv-text)]">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                         {reconPhrase}
                       </span>
                     ) : null}
                     {ocrPhrase ? (
-                      <span className="rounded-full border border-[var(--color-bv-border)] bg-white px-2 py-0.5 text-[10px] font-medium text-[var(--color-bv-text)]">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                         {ocrPhrase}
                       </span>
                     ) : null}
@@ -285,9 +282,9 @@ export function EstimateFulfillmentPanel(props: {
                   <div className="mt-2">
                     <Link
                       href={`/purchase-orders/${p.id}`}
-                      className="text-[12px] font-medium text-[var(--color-bv-accent)] hover:underline"
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600 hover:underline"
                     >
-                      Open purchase order →
+                      Open purchase order <IconArrowRight width={13} height={13} />
                     </Link>
                   </div>
                 </li>
@@ -296,6 +293,6 @@ export function EstimateFulfillmentPanel(props: {
           </ul>
         </div>
       ) : null}
-    </section>
+    </SectionCard>
   );
 }

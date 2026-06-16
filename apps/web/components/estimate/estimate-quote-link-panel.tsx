@@ -11,6 +11,7 @@ import {
   issueEstimateQuoteLinkAction,
   revokeEstimateQuoteLinkAction,
 } from '@/app/(app)/estimates/[id]/estimate-quote-link-actions';
+import { SectionCard, SectionHeading, IconLink } from '@/components/estimate/estimate-surface';
 
 export type EstimateQuoteLinkPanelProps = {
   estimateId: string;
@@ -121,126 +122,125 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
     props.estimateStatus === EstimateStatus.FINALIZED;
 
   return (
-    <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[13px] font-semibold text-[var(--color-bv-text)]">Customer quote link</h2>
-          <p className="mt-1 max-w-[520px] text-[12.5px] leading-relaxed text-[var(--color-bv-muted)]">
-            Share a read-only quote page — no login required. Internal preview and editor stay staff-only.
-          </p>
-        </div>
-        <span className="shrink-0 rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
-          {props.phaseBadgeLabel}
-        </span>
-      </div>
+    <SectionCard className="p-4">
+      <SectionHeading
+        icon={<IconLink />}
+        tone="blue"
+        title="Customer quote link"
+        subtitle="Share a read-only quote page — no login required. Internal preview and editor stay staff-only."
+        badge={
+          <span className="shrink-0 rounded-full bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-200">
+            {props.phaseBadgeLabel}
+          </span>
+        }
+      />
 
       {banner ? (
-        <p className="mt-3 rounded-[8px] bg-[var(--color-bv-bg)] px-3 py-2 text-[12.5px] text-[var(--color-bv-text)]">
+        <p className="mt-3 rounded-[10px] border border-blue-200 bg-blue-50 px-3 py-2 text-[12.5px] font-medium text-blue-900">
           {banner}
         </p>
       ) : null}
 
-      <dl className="mt-4 grid gap-2 text-[12.5px] sm:grid-cols-2 lg:grid-cols-4">
-        <div className="sm:col-span-2 lg:col-span-4">
-          <dt className="text-[var(--color-bv-muted)]">Public URL status</dt>
-          <dd className="font-semibold text-[var(--color-bv-text)]">
+      <dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-[10px] border border-slate-100 bg-slate-50/60 px-3 py-2 sm:col-span-2 lg:col-span-4">
+          <dt className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+            Public URL status
+          </dt>
+          <dd className="mt-0.5 text-[12.5px] font-semibold text-slate-800">
             {props.activeLink ? (
               <>
                 Active URL{' '}
-                <span className="font-normal text-[var(--color-bv-muted)]">
+                <span className="font-normal text-slate-400">
                   ({props.phaseBadgeLabel === 'Awaiting response' ? 'customer may respond' : 'see summary above'})
                 </span>
               </>
             ) : rowForUi ? (
               <>
                 No active URL ·{' '}
-                <span className="text-[var(--color-bv-muted)]">{linkUxPhase}</span>
+                <span className="font-normal text-slate-400">{linkUxPhase}</span>
               </>
             ) : (
-              <span className="text-[var(--color-bv-muted)]">No link issued yet</span>
+              <span className="font-normal text-slate-400">No link issued yet</span>
             )}
           </dd>
         </div>
-        <div>
-          <dt className="text-[var(--color-bv-muted)]">Row detail</dt>
-          <dd className="font-medium text-[var(--color-bv-text)]">{linkUxPhase}</dd>
-        </div>
-        <div>
-          <dt className="text-[var(--color-bv-muted)]">Issued</dt>
-          <dd className="font-medium text-[var(--color-bv-text)]">
-            {rowForUi ? formatTs(rowForUi.createdAtIso) : '—'}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[var(--color-bv-muted)]">Expires</dt>
-          <dd className="font-medium text-[var(--color-bv-text)]">
-            {rowForUi?.expiresAtIso ? formatTs(rowForUi.expiresAtIso) : 'Never'}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[var(--color-bv-muted)]">Last viewed</dt>
-          <dd className="font-medium text-[var(--color-bv-text)]">
-            {rowForUi?.lastViewedAtIso ? formatTs(rowForUi.lastViewedAtIso) : '—'}
-          </dd>
-        </div>
+        <LinkField label="Row detail" value={linkUxPhase} />
+        <LinkField label="Issued" value={rowForUi ? formatTs(rowForUi.createdAtIso) : '—'} />
+        <LinkField
+          label="Expires"
+          value={rowForUi?.expiresAtIso ? formatTs(rowForUi.expiresAtIso) : 'Never'}
+        />
+        <LinkField
+          label="Last viewed"
+          value={rowForUi?.lastViewedAtIso ? formatTs(rowForUi.lastViewedAtIso) : '—'}
+        />
       </dl>
 
-      <p className="mt-3 text-[12px] text-[var(--color-bv-muted)]">
-        Estimate send status:{' '}
-        <strong className="text-[var(--color-bv-text)]">{sent ? 'Sent / progressed' : 'Draft — not emailed via Preview flow yet'}</strong>
+      <p className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
+        Estimate send status:
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+            sent
+              ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+              : 'bg-slate-50 text-slate-500 ring-slate-200'
+          }`}
+        >
+          {sent ? 'Sent / progressed' : 'Draft — not emailed yet'}
+        </span>
       </p>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-bv-muted)]">
+        <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
           Optional expiry (customer&apos;s local time)
           <input
             type="datetime-local"
             value={expiresLocal}
             onChange={(e) => setExpiresLocal(e.target.value)}
-            className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2 py-1.5 text-[13px] text-[var(--color-bv-text)]"
+            className="rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 shadow-sm transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
             disabled={pending}
           />
         </label>
       </div>
 
       {props.disableRegenerate && props.regenerateDisabledReason ? (
-        <p className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-950">
+        <p className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
           {props.regenerateDisabledReason}
         </p>
       ) : null}
 
       {issuedUrl ? (
-        <div className="mt-3 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-bv-muted)]">
+        <div className="mt-3 rounded-[10px] border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
             Link (copy now)
           </p>
-          <p className="mt-1 break-all font-mono text-[12px] text-[var(--color-bv-text)]">{issuedUrl}</p>
+          <p className="mt-1 break-all font-mono text-[12px] text-slate-800">{issuedUrl}</p>
         </div>
       ) : null}
 
-      {hintCopy ? <p className="mt-2 text-[12px] text-[var(--color-bv-muted)]">{hintCopy}</p> : null}
+      {hintCopy ? <p className="mt-2 text-[12px] text-slate-400">{hintCopy}</p> : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
         {!props.quoteLinkRowsDesc.length ? (
           <>
-            <p className="w-full text-[12px] leading-snug text-[var(--color-bv-muted)]">
+            <p className="w-full text-[12px] leading-snug text-slate-500">
               No public link yet. Use{' '}
               <Link
                 href={`/estimates/${props.estimateId}/preview#customer-send`}
-                className="font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+                className="font-semibold text-blue-600 underline-offset-2 hover:underline"
               >
                 Quote preview → Send to customer
               </Link>{' '}
               for email copy, or generate a link here.
             </p>
             <button
-            type="button"
-            disabled={pending}
-            onClick={runIssue}
-            className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95 disabled:opacity-60"
-          >
-            Generate public link
-          </button>
+              type="button"
+              disabled={pending}
+              onClick={runIssue}
+              className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,90,243,0.6)] transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
+            >
+              <IconLink width={15} height={15} />
+              Generate public link
+            </button>
           </>
         ) : (
           <>
@@ -253,7 +253,7 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
                   : undefined
               }
               onClick={runIssue}
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)] disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
             >
               Regenerate link
             </button>
@@ -261,7 +261,7 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
               type="button"
               disabled={pending || !copyEnabled}
               onClick={runCopy}
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)] disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
               title={!copyEnabled ? 'Generate or regenerate to reveal the URL for copying.' : undefined}
             >
               Copy link
@@ -270,7 +270,7 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
               type="button"
               disabled={pending}
               onClick={runRevoke}
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)] disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-[10px] border border-rose-200 bg-white px-3.5 py-2 text-[13px] font-semibold text-rose-600 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-60"
               title="Revokes every URL for this estimate (customers lose access immediately)."
             >
               Revoke all links
@@ -280,10 +280,28 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
       </div>
 
       {props.quoteLinkRowsDesc.length > 1 ? (
-        <p className="mt-3 text-[11px] text-[var(--color-bv-muted)]">
+        <p className="mt-3 text-[11px] text-slate-400">
           {props.quoteLinkRowsDesc.length} link rotations on file — newest controls shown above.
         </p>
       ) : null}
-    </section>
+    </SectionCard>
+  );
+}
+
+function LinkField({ label, value }: { label: string; value: string }) {
+  const empty = value === '—';
+  return (
+    <div className="rounded-[10px] border border-slate-100 bg-slate-50/60 px-3 py-2">
+      <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+        {label}
+      </dt>
+      <dd
+        className={`mt-0.5 text-[12.5px] tabular-nums ${
+          empty ? 'font-normal text-slate-300' : 'font-medium text-slate-800'
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

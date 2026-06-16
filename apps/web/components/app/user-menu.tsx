@@ -12,25 +12,26 @@ export function UserMenu({
   workspaceLabel: string;
   roleLabel: string;
 }) {
-  const initials = displayInitials(name, email);
-
   return (
-    <div className="mt-auto rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3 shadow-[var(--shadow-bv-card)]">
+    <div className="mt-4 shrink-0 rounded-[22px] border border-slate-200/80 bg-white/[0.82] p-3 shadow-[0_18px_42px_rgba(15,23,42,0.08)] backdrop-blur-xl">
       <div className="flex items-start gap-3">
         <div
           aria-hidden
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-bv-accent)]/14 text-[13px] font-semibold text-[var(--color-bv-accent)]"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-blue-600 shadow-[0_10px_22px_rgba(37,99,235,0.12)]"
         >
-          {initials}
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+            <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+          </svg>
         </div>
         <div className="min-w-0 flex-1 leading-snug">
-          <span className="block truncate text-[13px] font-medium text-[var(--color-bv-text)]">
+          <span className="block truncate text-[13px] font-semibold text-slate-950">
             {name || email}
           </span>
-          <span className="mt-0.5 block text-[11.5px] text-[var(--color-bv-muted)]">
+          <span className="mt-0.5 block text-[11.5px] text-slate-500">
             {workspaceLabel}
           </span>
-          <span className="mt-1 inline-flex rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bv-muted)]">
+          <span className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
             {roleLabel}
           </span>
         </div>
@@ -38,14 +39,14 @@ export function UserMenu({
       <div className="mt-4 flex gap-2">
         <Link
           href="/settings"
-          className="inline-flex flex-1 items-center justify-center rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-2 text-[12.5px] font-medium text-[var(--color-bv-text)] transition-colors hover:bg-[var(--color-bv-bg)]"
+          className="inline-flex flex-1 items-center justify-center rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
         >
           Settings
         </Link>
         <form action={logoutAction} className="flex-1">
           <button
             type="submit"
-            className="inline-flex w-full items-center justify-center rounded-[10px] bg-[var(--color-bv-text)] px-3 py-2 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
+            className="inline-flex w-full items-center justify-center rounded-[12px] bg-slate-950 px-3 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
           >
             Sign out
           </button>
@@ -53,14 +54,4 @@ export function UserMenu({
       </div>
     </div>
   );
-}
-
-function displayInitials(name: string | null, email: string): string {
-  const src = (name || email).trim();
-  if (!src) return '?';
-  const parts = src.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
-  }
-  return src.slice(0, 2).toUpperCase();
 }

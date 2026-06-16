@@ -9,17 +9,17 @@ records what changed, the files touched, the risks, and the verification.
 
 **Audit findings:** The old estimate detail rendered too many operational surfaces at once: large hero metrics, line grid, tools, totals, closeout/status, quote link, customer response, timeline, linked POs, and reconciliation details. The estimate itself was not visually dominant, and secondary workflow panels created a tall stacked-card page.
 
-**What changed:** Rebuilt `/estimates/[id]` into a premium SaaS workspace: compact header with breadcrumb/status/saved/actions; line items first in the main column; compact estimating tool toolbar below line items with Catalog / Pricing helper / Vendor intel collapsed until opened; sticky right rail for Pricing Summary, Customer, Workflow Status, closeout/status, and collapsed danger; secondary Workflow / Files / Activity / Purchase Orders / Reconciliation / Notes tabs so only one support surface is visible at a time.
+**What changed:** Rebuilt `/estimates/[id]` into a premium SaaS workspace: estimate-scoped shell cleanup (no top command bar, narrower white sidebar, light-gray workspace background); compact header with breadcrumb/status/saved/actions; populated line items first in the main column; sticky right rail for Pricing Summary, Customer, Workflow Status, closeout/status, and collapsed danger; secondary Workflow / Files / Activity / Purchase Orders / Reconciliation / Notes tabs so only one support surface is visible at a time; compact estimating tools moved lower and collapsed until opened.
 
 **Behavior preserved:** No pricing formulas, save action, quote/public-link security, PO/OCR/reconciliation logic, finalization gates, database schema, or routes changed. Catalog, pricing helper, and vendor intel remain explicit Apply-only. FINALIZED state remains read-only via existing client lockout and server enforcement.
 
 **Files touched:** `apps/web/app/(app)/estimates/[id]/{page.tsx,editor.tsx,line-grid.tsx,totals-panel.tsx,estimate-tools-tabs.tsx,estimate-support-tabs.tsx,catalog-item-picker.tsx}` plus docs `UI_SYSTEM.md`, `ESTIMATE_ENGINE.md`, `VENDOR_PRICE_ENGINE.md`, `DEBUGGING.md`, `CHANGELOG_AI.md`.
 
-**Verification:** `pnpm --filter @bvisible/web run typecheck` pass; `verify:estimate-pricing` 70/70; `verify:vendor-catalog` 52/52; `verify:estimate-quote` 67/67; `verify:estimate-finalization` 22/22; `verify:workflow-queues` 31/31. Browser inspected locally at `/estimates/cmqfxbcsz000hugbos5sq162v`.
+**Verification:** `pnpm --filter @bvisible/web run typecheck` pass; `verify:estimate-pricing` 70/70; `verify:vendor-catalog` 52/52; `verify:estimate-quote` 67/67; `verify:estimate-finalization` 22/22; `verify:workflow-queues` 31/31. Browser proof inspected locally at `/estimates/cmqfxbcsz000hugbos5sq162v` with five local demo rows so the first viewport matches the reference populated-table layout.
 
 **Smoke:** Not run because no smoke file changed under the task rule. Operator can still run `smoke:core` from a laptop with `BVISIBLE_*` credentials if desired.
 
-**Remaining gaps / QA checklist:** Validate with an estimate that has multiple line rows so Sell/Margin columns are visually dense; click Catalog / Pricing helper / Vendor Intel Apply with a focused row; verify Workflow/Activity/PO/Reconciliation tabs switch without stacking; verify FINALIZED rows and pricing controls are read-only; verify Preview, Send/track quote, Approve anchor, and existing status/finalize actions.
+**Remaining gaps / QA checklist:** Click Catalog / Pricing helper / Vendor Intel Apply with a focused row; verify Workflow/Activity/PO/Reconciliation tabs switch without stacking; verify FINALIZED rows and pricing controls are read-only; verify Preview, Send/track quote, Approve anchor, and existing status/finalize actions. Browser proof used local demo data only; no seed/data fixture was committed.
 
 ---
 

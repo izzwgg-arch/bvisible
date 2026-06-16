@@ -40,8 +40,10 @@ Do **not** treat passes as a substitute for **deploy queue healthcheck** after r
 | Step | Expect |
 |------|--------|
 | Open `/estimates/[id]` | Compact breadcrumb/header; line items are first in the main column; pricing/customer/workflow live in the sticky right rail |
+| First viewport proof | Use a populated estimate; it should show the compact header, dense line table, right pricing/customer rail, and support tabs without the old top command bar |
 | Focus a line row | Catalog / Pricing helper / Vendor Intel apply target follows focused row; no tool auto-applies while typing |
 | Supporting tabs | Workflow is default; Files / Activity / Purchase Orders / Reconciliation / Notes switch one visible panel at a time |
+| Pricing rail | Sell/Cost/Profit/Margin are visible first; pricing breakdown opens multiplier/design controls only when expanded |
 | Finalized estimate | Line grid, tools Apply buttons, multiplier/design fee, and Save are read-only; preview/PO/invoice links remain available |
 
 Regression: `typecheck`, `verify:estimate-pricing`, `verify:vendor-catalog`, `verify:estimate-quote`, `verify:estimate-finalization`, `verify:workflow-queues`.

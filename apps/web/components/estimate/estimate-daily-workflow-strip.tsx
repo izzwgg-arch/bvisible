@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { EstimateStatus } from '@bvisible/db';
 import { labelEstimateStatus } from '@/lib/ui/status-labels';
 
@@ -65,9 +64,6 @@ export function EstimateDailyWorkflowStrip({
   quoteSent,
   hasPo,
   hasInvoice,
-  primaryHref,
-  primaryLabel,
-  hint,
 }: {
   status: EstimateStatus;
   quoteSent: boolean;
@@ -78,51 +74,82 @@ export function EstimateDailyWorkflowStrip({
   hint: string;
 }) {
   const states = stepState({ status, quoteSent, hasPo, hasInvoice });
+  const doneCount = STEPS.filter((s) => states[s.key] === 'done').length;
 
   return (
-    <section className="mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <ol className="flex flex-wrap items-center gap-1.5">
-          {STEPS.map((step, i) => {
-            const s = states[step.key];
-            return (
-              <li key={step.key} className="flex items-center gap-1.5">
-                <span
-                  className={`rounded-full border px-2.5 py-0.5 text-[10.5px] font-semibold leading-tight ${
+    <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/92 shadow-[0_16px_44px_-32px_rgba(15,23,42,0.34)] backdrop-blur-xl">
+      <div className="px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-500 ring-1 ring-inset ring-slate-200">
+              Workflow
+            </span>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
+              {doneCount}/{STEPS.length} complete
+            </span>
+          </div>
+          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {STEPS.map((step, i) => {
+              const s = states[step.key];
+              return (
+                <li
+                  key={step.key}
+                  className={`flex min-w-0 items-center gap-2 rounded-[14px] border px-3 py-2.5 transition ${
                     s === 'current'
-                      ? 'border-[var(--color-bv-accent)] bg-[var(--color-bv-accent)]/10 text-[var(--color-bv-accent)]'
+                      ? 'border-blue-200 bg-blue-50 shadow-sm'
                       : s === 'done'
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                        : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
+                        ? 'border-emerald-200 bg-emerald-50/80'
+                        : 'border-slate-200 bg-white/80'
                   }`}
                 >
-                  {step.label}
-                </span>
-                {i < STEPS.length - 1 ? (
-                  <span className="text-[10px] text-[var(--color-bv-muted)]" aria-hidden>
-                    →
+                  <span
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[11px] font-bold transition-colors ${
+                      s === 'current'
+                        ? 'border-blue-500 bg-blue-600 text-white shadow-[0_8px_18px_-12px_rgba(37,99,235,0.9)]'
+                        : s === 'done'
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-slate-200 bg-white text-slate-400'
+                    }`}
+                  >
+                    {s === 'done' ? '✓' : i + 1}
                   </span>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
-        <div className="flex shrink-0 flex-col items-end gap-1 sm:items-end">
-          <Link
-            href={primaryHref as never}
-            className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
-          >
-            {primaryLabel}
-          </Link>
-          <span className="max-w-[280px] text-right text-[11px] leading-snug text-[var(--color-bv-muted)]">
-            {hint}
-          </span>
+                  <span className="min-w-0">
+                    <span
+                      className={`block truncate text-[11.5px] font-bold leading-tight ${
+                        s === 'current'
+                          ? 'text-blue-700'
+                          : s === 'done'
+                            ? 'text-emerald-800'
+                            : 'text-slate-500'
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                    <span
+                      className={`mt-0.5 block text-[9.5px] font-semibold uppercase tracking-wide ${
+                        s === 'current'
+                          ? 'text-blue-500'
+                          : s === 'done'
+                            ? 'text-emerald-600'
+                            : 'text-slate-300'
+                      }`}
+                    >
+                      {s === 'current' ? 'Current' : s === 'done' ? 'Done' : 'Next'}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </div>
       {status === EstimateStatus.REJECTED ? (
-        <p className="mt-2 text-[12px] text-[var(--color-bv-muted)]">
-          Status: <strong className="text-[var(--color-bv-text)]">{labelEstimateStatus(status)}</strong> — return to Draft or Sent after revising.
-        </p>
+        <div className="border-t border-rose-100 bg-rose-50/60 px-5 py-2.5">
+          <p className="text-[12px] text-rose-700">
+            Status: <strong className="font-semibold">{labelEstimateStatus(status)}</strong> — return
+            to Draft or Sent after revising.
+          </p>
+        </div>
       ) : null}
     </section>
   );

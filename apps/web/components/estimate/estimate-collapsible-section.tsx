@@ -16,16 +16,24 @@ export function EstimateCollapsibleSection({
   return (
     <details
       open={defaultOpen}
-      className="group rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]"
+      className="group overflow-hidden rounded-[26px] border border-white/80 bg-white/90 shadow-[0_22px_64px_-38px_rgba(15,23,42,0.36)] backdrop-blur-xl"
     >
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 marker:content-none [&::-webkit-details-marker]:hidden">
-        <span className="text-[13px] font-semibold text-[var(--color-bv-text)]">{title}</span>
-        <span className="text-[12px] text-[var(--color-bv-muted)] group-open:hidden">{summary}</span>
-        <span className="hidden text-[12px] text-[var(--color-bv-muted)] group-open:inline">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-gradient-to-br from-white to-blue-50/45 px-6 py-5 marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-3 text-[15px] font-bold tracking-tight text-slate-950">
+          <span
+            aria-hidden
+            className="grid h-8 w-8 place-items-center rounded-[10px] bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-100 transition-transform group-open:rotate-90"
+          >
+            ›
+          </span>
+          {title}
+        </span>
+        <span className="text-[12.5px] font-medium text-slate-500 group-open:hidden">{summary}</span>
+        <span className="hidden rounded-full bg-white px-2.5 py-1 text-[11.5px] font-semibold text-slate-400 ring-1 ring-inset ring-slate-200 group-open:inline">
           Click to collapse
         </span>
       </summary>
-      <div className="flex flex-col gap-4 border-t border-[var(--color-bv-border)] px-4 pb-4 pt-3">
+      <div className="border-t border-slate-100 bg-slate-50/70 px-5 pb-5 pt-5 md:px-6 md:pb-6">
         {children}
       </div>
     </details>

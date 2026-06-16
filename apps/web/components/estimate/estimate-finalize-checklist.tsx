@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { EstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
+import { IconCheck } from '@/components/estimate/estimate-surface';
 
 export function EstimateFinalizeChecklistPanel({
   checklist,
@@ -11,36 +12,36 @@ export function EstimateFinalizeChecklistPanel({
   const pending = checklist.items.filter((item) => !item.done);
 
   return (
-    <div className="mt-4 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2.5">
+    <div className="mt-4 rounded-[14px] border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+        <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">
           Closeout checklist
         </h3>
         {checklist.readyToFinalize ? (
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-950">
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
             Ready to finalize
           </span>
         ) : pending.length > 0 ? (
-          <span className="text-[10.5px] tabular-nums text-[var(--color-bv-muted)]">
+          <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-amber-700 ring-1 ring-inset ring-amber-200">
             {pending.length} remaining
           </span>
         ) : null}
       </div>
-      <ul className="mt-2 flex flex-col gap-1.5">
+      <ul className="mt-2.5 flex flex-col gap-1">
         {checklist.items.map((item) => (
           <li
             key={item.key}
-            className="flex items-center gap-2 rounded-[6px] px-1 py-0.5 text-[12px]"
+            className="flex items-center gap-2.5 rounded-[8px] px-1.5 py-1 text-[12px]"
           >
             <span
-              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold ${
+              className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold ${
                 item.done
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                  : 'border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-muted)]'
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-slate-100 text-slate-300 ring-1 ring-inset ring-slate-200'
               }`}
               aria-hidden
             >
-              {item.done ? '✓' : ''}
+              {item.done ? <IconCheck width={11} height={11} /> : ''}
             </span>
             <ChecklistRow item={item} />
           </li>
@@ -58,23 +59,25 @@ function ChecklistRow({
   return (
     <div className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <span className="font-medium text-[var(--color-bv-text)]">{item.label}</span>
+        <span className={`font-medium ${item.done ? 'text-slate-500' : 'text-slate-800'}`}>
+          {item.label}
+        </span>
         {item.key === 'invoice' && !item.done ? (
-          <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-bv-muted)]">
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">
             Optional
           </span>
         ) : null}
         {item.href && !item.done ? (
           <Link
             href={item.href as never}
-            className="text-[11px] font-medium text-[var(--color-bv-accent)] hover:underline"
+            className="text-[11px] font-semibold text-blue-600 hover:underline"
           >
             Fix →
           </Link>
         ) : null}
       </div>
       {item.detail ? (
-        <p className="text-[11px] leading-snug text-[var(--color-bv-muted)]">{item.detail}</p>
+        <p className="text-[11px] leading-snug text-slate-400">{item.detail}</p>
       ) : null}
     </div>
   );

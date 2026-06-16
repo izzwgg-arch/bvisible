@@ -87,7 +87,6 @@ export function LineGrid({
         <SectionHeading
           icon={<IconRows />}
           title="Line items"
-          subtitle="The work that makes up this estimate. Costs roll up into your totals automatically."
           badge={readOnly ? <FinalizedReadOnlyChip /> : null}
           action={
             !readOnly ? (
