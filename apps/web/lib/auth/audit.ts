@@ -74,7 +74,9 @@ export type AuditAction =
   | 'mobile_logout'
   | 'mobile_upload_presign'
   | 'mobile_upload_complete'
-  | 'smtp_config_saved';
+  | 'smtp_config_saved'
+  | 'client_csv_imported'
+  | 'shop_material_csv_imported';
 
 export interface AuditEntry {
   action: AuditAction;

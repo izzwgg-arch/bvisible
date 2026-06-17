@@ -3,6 +3,7 @@ import { prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
+import { ClientCsvButtons } from './csv-buttons';
 
 export const metadata = { title: 'Customers' };
 export const dynamic = 'force-dynamic';
@@ -44,12 +45,15 @@ export default async function ClientsPage({
         title="Customers"
         subtitle={`Customer command center for ${me.tenant.name}. Keep contacts, quote history, and account readiness easy to scan.`}
         actions={
-          <Link
-            href="/clients/new"
-            className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95"
-          >
-            Create customer
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <ClientCsvButtons />
+            <Link
+              href="/clients/new"
+              className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95"
+            >
+              Create customer
+            </Link>
+          </div>
         }
       />
 
