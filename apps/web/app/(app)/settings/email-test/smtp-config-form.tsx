@@ -187,7 +187,7 @@ export function SmtpConfigForm({ existing }: { existing: ExistingSmtpConfig | nu
       <Field
         label="From address"
         htmlFor="smtp-from"
-        hint='Shown in recipients\' inboxes. e.g. B Visible <you@gmail.com>'
+        hint="Shown in recipients' inboxes. e.g. B Visible <you@gmail.com>"
       >
         <input
           id="smtp-from"
