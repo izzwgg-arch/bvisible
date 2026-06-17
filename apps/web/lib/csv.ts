@@ -9,7 +9,7 @@ export function parseCSV(text: string): Array<Record<string, string>> {
   const rows = splitCSVRows(text);
   if (rows.length === 0) return [];
 
-  const headers = parseCSVRow(rows[0]).map((h) => h.trim().toLowerCase());
+  const headers = parseCSVRow(rows[0]!).map((h) => h.trim().toLowerCase());
   const result: Array<Record<string, string>> = [];
 
   for (let i = 1; i < rows.length; i++) {
