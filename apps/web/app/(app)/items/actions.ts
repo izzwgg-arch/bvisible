@@ -1,6 +1,5 @@
 'use server';
 
-import { redirect } from 'next/navigation';
 import {
   EstimateLineKind,
   Prisma,
@@ -33,7 +32,7 @@ function parseCatalogUnit(raw: string): ShopCatalogUnit | null {
   return UNIT_SET.has(raw) ? (raw as ShopCatalogUnit) : null;
 }
 
-export type ShopMaterialActionState = { error: string | null };
+export type ShopMaterialActionState = { error: string | null; redirectTo?: string };
 
 export async function createShopMaterialItemAction(
   _prev: ShopMaterialActionState,
@@ -104,7 +103,7 @@ export async function createShopMaterialItemAction(
       const created = await prisma.machine.upsert({
         where: { tenantId_name: { tenantId: me.tenantId, name: machineName } },
         create: { tenantId: me.tenantId, name: machineName, ratePerHourCents },
-        update: {},
+        update: { ratePerHourCents },
         select: { id: true },
       });
       machineId = created.id;
@@ -148,7 +147,7 @@ export async function createShopMaterialItemAction(
       metadata: { nameNormalized, kind },
     });
 
-    redirect(`/items/${row.id}`);
+    return { error: null, redirectTo: `/items/${row.id}` };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
       return { error: 'An item with this normalized name already exists.' };
@@ -162,7 +161,13 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
   const ctx = await readRequestContext();
 
   const id = String(formData.get('id') ?? '').trim();
-  const kind = parseKind(String(formData.get('kind') ?? ''));
+
+  // categories[] is the new multi-select; fall back to legacy kind field
+  const rawCategories = formData.getAll('categories').map((v) => String(v).trim()).filter(Boolean);
+  const validCategories = rawCategories.filter((c) => KIND_SET.has(c)) as EstimateLineKind[];
+  // Primary kind = first selected category, or fall back to what was already there
+  const kind = validCategories[0] ? validCategories[0] : parseKind(String(formData.get('kind') ?? ''));
+
   const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
   const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
   const notes = String(formData.get('notes') ?? '').trim() || null;
@@ -209,7 +214,7 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
         const created = await prisma.machine.upsert({
           where: { tenantId_name: { tenantId: me.tenantId, name: machineName } },
           create: { tenantId: me.tenantId, name: machineName, ratePerHourCents },
-          update: {},
+          update: { ratePerHourCents },
           select: { id: true },
         });
         machineId = created.id;
@@ -226,7 +231,8 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
   await prisma.shopMaterialItem.update({
     where: { id },
     data: {
-      kind,
+      kind: kind ?? EstimateLineKind.MATERIAL,
+      categories: validCategories.length > 0 ? validCategories : (kind ? [kind] : ['MATERIAL']),
       catalogUnit,
       customUnitLabel:
         catalogUnit === ShopCatalogUnit.CUSTOM ? customUnitLabel?.slice(0, 40) ?? null : null,
@@ -234,7 +240,7 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
       markupPercentMilli,
       defaultSellPriceCents,
       defaultQtyMilli,
-      machineId: kind === EstimateLineKind.MACHINE ? machineId : null,
+      machineId: (validCategories.includes(EstimateLineKind.MACHINE) || kind === EstimateLineKind.MACHINE) ? machineId : null,
       notes: notes?.slice(0, 2000) ?? null,
     },
   });
@@ -263,6 +269,58 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
 
   revalidatePath(`/items/${id}`);
   revalidatePath('/items');
+}
+
+export interface AddMachineState {
+  error: string | null;
+  machineId?: string;
+  machineName?: string;
+}
+
+/**
+ * Standalone: creates or updates a machine (name + hourly rate) without
+ * touching the item form. Returns the saved machine id so the client can
+ * select it in the machine dropdown.
+ */
+export async function addMachineAction(
+  _prev: AddMachineState,
+  formData: FormData,
+): Promise<AddMachineState> {
+  const me = await requireAdminScoped();
+  const ctx = await readRequestContext();
+
+  const name = String(formData.get('machineName') ?? '').trim();
+  const rateUsd = String(formData.get('machineRateUsd') ?? '').trim();
+
+  if (!name) return { error: 'Machine name is required.' };
+  if (name.length > 120) return { error: 'Machine name must be 120 characters or less.' };
+
+  const ratePerHourCents = Math.round(parseFloat(rateUsd || '0') * 100);
+  if (isNaN(ratePerHourCents) || ratePerHourCents < 0) {
+    return { error: 'Enter a valid hourly rate (e.g. 45.00).' };
+  }
+
+  const saved = await prisma.machine.upsert({
+    where: { tenantId_name: { tenantId: me.tenantId, name } },
+    create: { tenantId: me.tenantId, name, ratePerHourCents },
+    update: { ratePerHourCents },
+    select: { id: true, name: true },
+  });
+
+  await writeAuditLog({
+    action: 'machine_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'machine',
+    targetId: saved.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { name, ratePerHourCents },
+  });
+
+  revalidatePath('/items');
+
+  return { error: null, machineId: saved.id, machineName: saved.name };
 }
 
 export async function setShopMaterialPreferredVendorAction(formData: FormData): Promise<void> {

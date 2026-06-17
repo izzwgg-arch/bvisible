@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { EstimateLineKind, ShopCatalogUnit } from '@bvisible/db';
 import { FormError } from '@/components/auth/form-error';
 import { kindLabel } from '@/lib/estimate/format';
@@ -30,10 +31,15 @@ export function CreateShopMaterialItemForm({
 }: {
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
 }) {
+  const router = useRouter();
   const initial: ShopMaterialActionState = { error: null };
   const [state, action, pending] = useActionState(createShopMaterialItemAction, initial);
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const isNewMachine = selectedMachineId === '__new__';
+
+  useEffect(() => {
+    if (state.redirectTo) router.push(state.redirectTo);
+  }, [state.redirectTo, router]);
 
   return (
     <form action={action} className="grid gap-5">
@@ -51,7 +57,7 @@ export function CreateShopMaterialItemForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-2">
-          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Line type</span>
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Category</span>
           <select
             name="kind"
             required
@@ -99,7 +105,7 @@ export function CreateShopMaterialItemForm({
 
       <div className="flex flex-col gap-2">
         <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          Default machine (MACHINE rows only)
+          Default machine (Machine category only)
         </span>
         <select
           name="machineId"
