@@ -11,20 +11,20 @@ export default async function NewVendorPage() {
   return (
     <>
       <PageHeader
-        title="New vendor"
+        title="Add vendor"
         subtitle="Add a supplier you'll be writing POs to."
         actions={
           <Link
             href="/vendors"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white/90 px-4 py-2.5 text-[13.5px] font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white"
           >
             Cancel
           </Link>
         }
       />
-      <section className="max-w-xl rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-6 shadow-[var(--shadow-bv-card)]">
+      <div className="max-w-xl overflow-hidden rounded-[22px] border border-white/80 bg-white/90 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
         <CreateVendorForm />
-      </section>
+      </div>
     </>
   );
 }

@@ -16,12 +16,13 @@ export function CreateVendorForm() {
         <Field id="phone" label="Phone" placeholder="(555) 123-4567" />
       </div>
       <label className="flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">Notes</span>
+        <span className="text-[12.5px] font-semibold text-slate-500">Notes</span>
         <textarea
           id="notes"
           name="notes"
           rows={3}
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+          placeholder="Delivery schedule, account number, preferred contact…"
+          className="rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-[14px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
         />
       </label>
       <FormError message={state.error} />
@@ -29,7 +30,7 @@ export function CreateVendorForm() {
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[14px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-5 py-2.5 text-[14px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? 'Creating…' : 'Create vendor'}
         </button>
@@ -53,7 +54,7 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+      <span className="text-[12.5px] font-semibold text-slate-500">
         {label}
         {required ? <span className="text-rose-600"> *</span> : null}
       </span>
@@ -64,7 +65,7 @@ function Field({
         required={required}
         placeholder={placeholder}
         autoComplete="off"
-        className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
+        className="rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-[14px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
       />
     </label>
   );
