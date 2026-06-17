@@ -73,7 +73,8 @@ export type AuditAction =
   | 'mobile_refresh_failure'
   | 'mobile_logout'
   | 'mobile_upload_presign'
-  | 'mobile_upload_complete';
+  | 'mobile_upload_complete'
+  | 'smtp_config_saved';
 
 export interface AuditEntry {
   action: AuditAction;
