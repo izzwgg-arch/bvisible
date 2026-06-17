@@ -485,6 +485,30 @@ export const dismissVendorPriceNotificationSchema = z.object({
 });
 
 // ---------------------------------------------------------------------
+// Outbound SMTP configuration (/settings/email-test)
+// ---------------------------------------------------------------------
+
+export const saveSmtpConfigSchema = z.object({
+  host: z.string().trim().min(1, 'SMTP host is required'),
+  port: z.coerce.number().int().min(1).max(65535, 'Port must be 1–65535'),
+  secure: z.boolean(),
+  user: z.string().trim().min(1, 'Username is required'),
+  // Optional on edit (keep existing cipher); required on first save.
+  password: z.string().min(1).max(512).optional(),
+  from: z.string().trim().min(1, 'From address is required'),
+  replyTo: z.string().trim().max(320).optional(),
+});
+
+export const testSmtpConfigSchema = z.object({
+  host: z.string().trim().min(1, 'SMTP host is required'),
+  port: z.coerce.number().int().min(1).max(65535),
+  secure: z.boolean(),
+  user: z.string().trim().min(1, 'Username is required'),
+  password: z.string().min(1).max(512).optional(),
+  from: z.string().trim().min(1, 'From address is required'),
+});
+
+// ---------------------------------------------------------------------
 // Mobile API v1 (/api/v1/*)
 // ---------------------------------------------------------------------
 
@@ -566,3 +590,5 @@ export type MobileLoginInput = z.infer<typeof mobileLoginSchema>;
 export type MobileRefreshInput = z.infer<typeof mobileRefreshSchema>;
 export type MobileUploadPresignInput = z.infer<typeof mobileUploadPresignSchema>;
 export type MobileUploadCompleteInput = z.infer<typeof mobileUploadCompleteSchema>;
+export type SaveSmtpConfigInput = z.infer<typeof saveSmtpConfigSchema>;
+export type TestSmtpConfigInput = z.infer<typeof testSmtpConfigSchema>;

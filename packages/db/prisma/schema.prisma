@@ -1332,6 +1332,27 @@ model SpendAlert {
   @@map("spend_alerts")
 }
 
+// Global outbound SMTP configuration. Managed by SUPER_ADMIN via
+// /settings/email-test. No tenant scope — outbound mail uses one
+// shared account. Password encrypted at rest with AES-256-GCM keyed
+// off INGEST_SECRET (same scheme as TenantEmailInbox.passwordCipher).
+// Falls back to env vars (SMTP_HOST etc.) when this row is absent.
+// Only one row should ever exist; create/update via upsert on a fixed id.
+model SmtpConfig {
+  id             String   @id @default(cuid())
+  host           String
+  port           Int
+  secure         Boolean  @default(false)
+  user           String
+  passwordCipher String
+  from           String
+  replyTo        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("smtp_config")
+}
+
 // Lightweight per-tick observability log. One row per (tenantId, tick)
 // recording how many messages we scanned/ingested/matched and any
 // top-level error. Drives the inbox-config card and the tail-the-logs

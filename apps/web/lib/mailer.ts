@@ -17,10 +17,12 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type SMTPPool from 'nodemailer/lib/smtp-pool';
 import { z } from 'zod';
+import { prisma } from '@bvisible/db';
+import { openSecret } from '@/lib/email-ingest/crypto';
 
 // -- Config ------------------------------------------------------------
 
-const smtpConfigSchema = z.object({
+export const smtpConfigSchema = z.object({
   host: z.string().min(1, 'SMTP_HOST is required'),
   port: z.coerce.number().int().min(1).max(65535),
   // `secure: true` ⇒ TLS-on-connect (smtps://, port 465).
@@ -131,12 +133,65 @@ function parseSecure(raw: string | undefined, portRaw: string | undefined): bool
   return portRaw === '465';
 }
 
+// -- DB config loader --------------------------------------------------
+
+// Load SMTP config from the database. Falls back to env vars when no
+// row exists. Called by verifyTransport / sendMail so any config saved
+// via the UI takes effect on the next request without a redeploy.
+export async function loadSmtpConfigFromDb(): Promise<SmtpConfig | MailerConfigError> {
+  try {
+    const row = await prisma.smtpConfig.findFirst();
+    if (!row) return loadSmtpConfig();
+
+    const password = openSecret(row.passwordCipher);
+    const parsed = smtpConfigSchema.safeParse({
+      host: row.host,
+      port: row.port,
+      secure: row.secure,
+      user: row.user,
+      password,
+      from: row.from,
+      replyTo: row.replyTo ?? undefined,
+    });
+    if (!parsed.success) {
+      const msg = parsed.error.issues.map((i) => `${i.path.join('.') || 'config'}: ${i.message}`).join('; ');
+      return new MailerConfigError(msg);
+    }
+    return parsed.data;
+  } catch (err) {
+    if (err instanceof MailerConfigError) return err;
+    // Fall back to env vars if DB is unavailable.
+    return loadSmtpConfig();
+  }
+}
+
 // -- Transport ---------------------------------------------------------
 
 let transportCache: Transporter<SMTPPool.SentMessageInfo> | null = null;
+// Tracks the identity of the config the cached transport was built from
+// so we rebuild if host/port/user changes without a process restart.
+let transportConfigSig: string | null = null;
+
+function configSig(config: SmtpConfig): string {
+  return `${config.host}:${config.port}:${config.secure}:${config.user}`;
+}
+
+export function clearTransportCache(): void {
+  if (transportCache) {
+    try { transportCache.close(); } catch { /* ignore */ }
+    transportCache = null;
+  }
+  transportConfigSig = null;
+  configCache = null;
+}
 
 function getTransport(config: SmtpConfig): Transporter<SMTPPool.SentMessageInfo> {
-  if (transportCache) return transportCache;
+  const sig = configSig(config);
+  if (transportCache && transportConfigSig === sig) return transportCache;
+  // Config changed — close old pool before creating a new one.
+  if (transportCache) {
+    try { transportCache.close(); } catch { /* ignore */ }
+  }
   transportCache = nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -151,6 +206,7 @@ function getTransport(config: SmtpConfig): Transporter<SMTPPool.SentMessageInfo>
     maxConnections: 2,
     maxMessages: 50,
   });
+  transportConfigSig = sig;
   return transportCache;
 }
 
@@ -201,8 +257,51 @@ export interface VerifyResult {
   error?: { kind: MailerErrorKind | 'config'; message: string; code?: string | null; responseCode?: number | null };
 }
 
+// Verify a specific config without touching the module-level cache.
+// Used by the "Test connection" button to test unsaved credentials.
+export async function verifySmtpCredentials(
+  config: SmtpConfig
+): Promise<VerifyResult> {
+  const diagnostics = diagnosticsFor(config);
+  const transport = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.password },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 10_000,
+  });
+  try {
+    await transport.verify();
+    transport.close();
+    logSafe('info', 'smtp_verify_ok', diagnostics);
+    return { ok: true, diagnostics };
+  } catch (err) {
+    transport.close();
+    const mapped = mapTransportError(err);
+    logSafe('error', 'smtp_verify_failed', {
+      ...diagnostics,
+      kind: mapped.kind,
+      code: mapped.code,
+      responseCode: mapped.responseCode,
+      message: mapped.message,
+    });
+    return {
+      ok: false,
+      diagnostics,
+      error: {
+        kind: mapped.kind,
+        message: mapped.message,
+        code: mapped.code,
+        responseCode: mapped.responseCode,
+      },
+    };
+  }
+}
+
 export async function verifyTransport(): Promise<VerifyResult> {
-  const config = loadSmtpConfig();
+  const config = await loadSmtpConfigFromDb();
   if (config instanceof MailerConfigError) {
     logSafe('warn', 'smtp_verify_skipped_no_config', { message: config.message });
     return {
@@ -243,7 +342,7 @@ export async function sendMail(input: SendMailInput): Promise<
   | { ok: true; result: SendResult; diagnostics: SafeSmtpDiagnostics }
   | { ok: false; error: MailerConfigError | MailerSendError; diagnostics: SafeSmtpDiagnostics }
 > {
-  const config = loadSmtpConfig();
+  const config = await loadSmtpConfigFromDb();
   if (config instanceof MailerConfigError) {
     logSafe('warn', 'smtp_send_skipped_no_config', { message: config.message });
     return { ok: false, error: config, diagnostics: emptyDiagnostics() };
