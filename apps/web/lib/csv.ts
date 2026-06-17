@@ -13,9 +13,9 @@ export function parseCSV(text: string): Array<Record<string, string>> {
   const result: Array<Record<string, string>> = [];
 
   for (let i = 1; i < rows.length; i++) {
-    const raw = rows[i].trim();
+    const raw = rows[i]!.trim();
     if (!raw) continue;
-    const cells = parseCSVRow(rows[i]);
+    const cells = parseCSVRow(rows[i]!);
     const obj: Record<string, string> = {};
     for (let j = 0; j < headers.length; j++) {
       obj[headers[j] ?? ''] = (cells[j] ?? '').trim();
