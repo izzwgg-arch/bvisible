@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { EstimateLineKind, ShopCatalogUnit } from '@bvisible/db';
 import { formatQty } from '@/lib/estimate/format';
 import { kindLabel } from '@/lib/estimate/format';
@@ -49,6 +50,9 @@ export function ItemDetailPricingForm({
       : (item.markupPercentMilli / 1000).toFixed(3).replace(/\.?0+$/, '');
   const sellUsd =
     item.defaultSellPriceCents != null ? (item.defaultSellPriceCents / 100).toFixed(2) : '';
+
+  const [selectedMachineId, setSelectedMachineId] = useState(item.machineId ?? '');
+  const isNewMachine = selectedMachineId === '__new__';
 
   return (
     <form action={updateShopMaterialItemAttributesAction} className="mt-3 flex flex-col gap-3">
@@ -100,13 +104,14 @@ export function ItemDetailPricingForm({
         />
       </label>
 
-      <label className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
           Default machine (MACHINE only)
         </span>
         <select
           name="machineId"
-          defaultValue={item.machineId ?? ''}
+          value={selectedMachineId}
+          onChange={(e) => setSelectedMachineId(e.target.value)}
           className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
         >
           <option value="">— none —</option>
@@ -115,8 +120,33 @@ export function ItemDetailPricingForm({
               {m.name}
             </option>
           ))}
+          <option value="__new__">➕ Create new machine…</option>
         </select>
-      </label>
+        {isNewMachine && (
+          <div className="mt-2 grid gap-2 rounded-[10px] border border-blue-100 bg-blue-50/60 p-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wide text-blue-700">Machine name</span>
+              <input
+                name="machineName"
+                required
+                maxLength={120}
+                placeholder="e.g. Roland 64 Printer"
+                className="rounded-[7px] border border-blue-200 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-blue-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wide text-blue-700">Hourly rate (USD)</span>
+              <input
+                name="machineRateUsd"
+                defaultValue="0.00"
+                inputMode="decimal"
+                placeholder="0.00"
+                className="rounded-[7px] border border-blue-200 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-blue-400"
+              />
+            </label>
+          </div>
+        )}
+      </div>
 
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">

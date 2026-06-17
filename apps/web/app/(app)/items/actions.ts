@@ -94,11 +94,27 @@ export async function createShopMaterialItemAction(
 
   let machineId: string | null = null;
   if (kind === EstimateLineKind.MACHINE && machineIdRaw) {
-    const m = await prisma.machine.findFirst({
-      where: { id: machineIdRaw, tenantId: me.tenantId, isActive: true },
-      select: { id: true },
-    });
-    machineId = m?.id ?? null;
+    if (machineIdRaw === '__new__') {
+      const machineName = String(formData.get('machineName') ?? '').trim();
+      const machineRateUsd = String(formData.get('machineRateUsd') ?? '').trim();
+      if (!machineName) {
+        return { error: 'Enter a name for the new machine.' };
+      }
+      const ratePerHourCents = Math.round(parseFloat(machineRateUsd || '0') * 100);
+      const created = await prisma.machine.upsert({
+        where: { tenantId_name: { tenantId: me.tenantId, name: machineName } },
+        create: { tenantId: me.tenantId, name: machineName, ratePerHourCents },
+        update: {},
+        select: { id: true },
+      });
+      machineId = created.id;
+    } else {
+      const m = await prisma.machine.findFirst({
+        where: { id: machineIdRaw, tenantId: me.tenantId, isActive: true },
+        select: { id: true },
+      });
+      machineId = m?.id ?? null;
+    }
   }
 
   try {
@@ -185,11 +201,26 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
 
   let machineId: string | null = null;
   if (kind === EstimateLineKind.MACHINE && machineIdRaw) {
-    const m = await prisma.machine.findFirst({
-      where: { id: machineIdRaw, tenantId: me.tenantId, isActive: true },
-      select: { id: true },
-    });
-    machineId = m?.id ?? null;
+    if (machineIdRaw === '__new__') {
+      const machineName = String(formData.get('machineName') ?? '').trim();
+      const machineRateUsd = String(formData.get('machineRateUsd') ?? '').trim();
+      if (machineName) {
+        const ratePerHourCents = Math.round(parseFloat(machineRateUsd || '0') * 100);
+        const created = await prisma.machine.upsert({
+          where: { tenantId_name: { tenantId: me.tenantId, name: machineName } },
+          create: { tenantId: me.tenantId, name: machineName, ratePerHourCents },
+          update: {},
+          select: { id: true },
+        });
+        machineId = created.id;
+      }
+    } else {
+      const m = await prisma.machine.findFirst({
+        where: { id: machineIdRaw, tenantId: me.tenantId, isActive: true },
+        select: { id: true },
+      });
+      machineId = m?.id ?? null;
+    }
   }
 
   await prisma.shopMaterialItem.update({
