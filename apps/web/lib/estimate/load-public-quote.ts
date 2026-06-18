@@ -2,6 +2,7 @@ import { EstimateStatus, type PrismaClient } from '@bvisible/db';
 
 import { hashQuoteToken, isPlausibleQuoteToken } from '@/lib/estimate/quote-link-crypto';
 import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
+import { getTenantInvoiceProfile, type TenantInvoiceProfile } from '@/lib/company/tenant-invoice-profile';
 
 export type PublicQuoteCustomerResponseView = {
   respondedAtIso: string | null;
@@ -17,7 +18,7 @@ export type PublicQuotePayload = {
   linkId: string;
   tenantId: string;
   estimateId: string;
-  companyName: string;
+  company: TenantInvoiceProfile;
   estimateNumber: string;
   title: string;
   quoteDateLabel: string;
@@ -78,7 +79,7 @@ export async function resolvePublicQuoteByRawToken(
           subtotalCostCents: true,
           finalPriceCents: true,
           updatedAt: true,
-          tenant: { select: { name: true } },
+          tenant: { select: { id: true, name: true } },
           client: {
             select: {
               companyName: true,
@@ -117,7 +118,7 @@ export async function resolvePublicQuoteByRawToken(
     linkId: link.id,
     tenantId: link.tenantId,
     estimateId: link.estimateId,
-    companyName: e.tenant.name,
+    company: await getTenantInvoiceProfile(prisma, e.tenant),
     estimateNumber: e.number,
     title: e.title,
     quoteDateLabel: `Updated ${formatQuoteDate(e.updatedAt)}`,

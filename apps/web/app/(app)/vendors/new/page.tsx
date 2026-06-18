@@ -23,6 +23,9 @@ export default async function NewVendorPage() {
         }
       />
       <div className="max-w-xl overflow-hidden rounded-[22px] border border-white/80 bg-white/90 p-6 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+        <p className="mb-5 text-[13px] leading-relaxed text-slate-500">
+          Add one or more email addresses and phone numbers. You can always add more from the vendor profile after saving.
+        </p>
         <CreateVendorForm />
       </div>
     </>

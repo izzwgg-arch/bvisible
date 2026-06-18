@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma, Role, VendorPriceExtractionMethod, EstimateLineKind } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
+import { SelectControl } from '@/components/app/select-control';
 import { PageHeader } from '@/components/app-shell';
 import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
 import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
@@ -28,6 +29,12 @@ import { VendorPricingSection, type VendorPriceRow } from './vendor-pricing-sect
 
 export const dynamic = 'force-dynamic';
 
+function categoryLabel(category: string): string {
+  return Object.values(EstimateLineKind).includes(category as EstimateLineKind)
+    ? kindLabel(category as EstimateLineKind)
+    : category;
+}
+
 export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireTenantId();
   const { id } = await params;
@@ -40,6 +47,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       name: true,
       nameNormalized: true,
       kind: true,
+      categories: true,
       catalogUnit: true,
       customUnitLabel: true,
       internalCostCents: true,
@@ -186,7 +194,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         })
       : [];
 
-  const [vendors, machines] = await Promise.all([
+  const [vendors, machines, savedCategories] = await Promise.all([
     prisma.vendor.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
       orderBy: { name: 'asc' },
@@ -197,6 +205,12 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       where: { tenantId: me.tenantId, isActive: true },
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
+      take: 200,
+    }),
+    prisma.shopItemCategory.findMany({
+      where: { tenantId: me.tenantId },
+      orderBy: { name: 'asc' },
+      select: { name: true },
       take: 200,
     }),
   ]);
@@ -262,7 +276,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     <>
       <PageHeader
         title={item.name}
-        subtitle={`${kindLabel(item.kind)} · normalized key: ${item.nameNormalized}`}
+        subtitle={`${item.categories.length > 0 ? item.categories.map(categoryLabel).join(', ') : kindLabel(item.kind)} · normalized key: ${item.nameNormalized}`}
         actions={
           <Link
             href="/items"
@@ -330,8 +344,12 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             </h2>
             <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-2">
               <div>
-                <dt className="text-[var(--color-bv-muted)]">Line type</dt>
-                <dd className="font-medium">{kindLabel(item.kind)}</dd>
+                <dt className="text-[var(--color-bv-muted)]">Categories</dt>
+                <dd className="font-medium">
+                  {item.categories.length > 0
+                    ? item.categories.map(categoryLabel).join(', ')
+                    : kindLabel(item.kind)}
+                </dd>
               </div>
               <div>
                 <dt className="text-[var(--color-bv-muted)]">Catalog unit</dt>
@@ -530,12 +548,20 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
               Pricing & details
             </h2>
             {canManage ? (
-              <ItemDetailPricingForm item={item} machines={machines} />
+              <ItemDetailPricingForm
+                item={{ ...item, categories: item.categories }}
+                machines={machines}
+                savedCategories={savedCategories.map((c) => c.name)}
+              />
             ) : (
               <dl className="mt-3 space-y-2 text-[13px]">
                 <div>
-                  <dt className="text-[var(--color-bv-muted)]">Type</dt>
-                  <dd>{kindLabel(item.kind)}</dd>
+                  <dt className="text-[var(--color-bv-muted)]">Categories</dt>
+                  <dd>
+                    {item.categories.length > 0
+                      ? item.categories.map(categoryLabel).join(', ')
+                      : kindLabel(item.kind)}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-[var(--color-bv-muted)]">Unit</dt>
@@ -564,7 +590,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
             ) : canManage ? (
               <form action={setShopMaterialPreferredVendorAction} className="mt-3 flex flex-col gap-2">
                 <input type="hidden" name="id" value={item.id} />
-                <select
+                <SelectControl
                   name="preferredVendorId"
                   defaultValue={item.preferredVendorId ?? ''}
                   className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
@@ -575,7 +601,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
                       {v.name}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
                 <button
                   type="submit"
                   className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px] font-medium hover:bg-[var(--color-bv-surface)]"

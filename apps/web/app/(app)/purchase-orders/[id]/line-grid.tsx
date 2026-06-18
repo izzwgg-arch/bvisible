@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { POLineKind } from '@bvisible/db';
+import { SelectControl } from '@/components/app/select-control';
 import { CellInput, NumericCell } from '@/components/grid/cell-input';
 import {
   formatMoney,
@@ -95,7 +96,7 @@ export function PoLineGrid({ lines, lineCosts, dispatch }: LineGridProps) {
                     className="border-b border-[var(--color-bv-border)] last:border-b-0 hover:bg-[var(--color-bv-bg)]/40"
                   >
                     <td className="px-1 py-0.5 align-middle">
-                      <select
+                      <SelectControl
                         value={line.kind}
                         onChange={(e) =>
                           dispatch({
@@ -111,7 +112,7 @@ export function PoLineGrid({ lines, lineCosts, dispatch }: LineGridProps) {
                             {poKindLabel(k)}
                           </option>
                         ))}
-                      </select>
+                      </SelectControl>
                     </td>
                     <td className="px-1 py-0.5 align-middle">
                       <CellInput

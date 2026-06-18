@@ -31,7 +31,10 @@
     "smoke:all": "playwright test smoke/ --config=playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
-    "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts"
+    "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts",
+    "vehicles:import": "tsx scripts/import-vehicles.ts",
+    "vehicles:import:dry-run": "tsx scripts/import-vehicles.ts --dry-run",
+    "vehicles:import:recent": "tsx scripts/import-vehicles.ts --recent-years=10"
   },
   "dependencies": {
     "@bvisible/db": "workspace:*",

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { startTransition, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { POEventKind, POStatus } from '@bvisible/db';
+import { SelectControl } from '@/components/app/select-control';
 import { formatMoney } from '@/lib/estimate/format';
 import { setPoQboNumberAction, setPoVendorAction, type SavePoState } from './actions';
 import type { PoEditorBootstrap } from './editor';
@@ -176,7 +177,7 @@ export function PoMetaPanel(props: MetaPanelProps) {
 
       <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
         <h3 className="text-[13px] font-semibold text-[var(--color-bv-text)]">Vendor</h3>
-        <select
+        <SelectControl
           value={po.vendor?.id ?? ''}
           onChange={(e) => commitVendor(e.currentTarget.value)}
           disabled={vendorBusy}
@@ -188,7 +189,7 @@ export function PoMetaPanel(props: MetaPanelProps) {
               {v.name}
             </option>
           ))}
-        </select>
+        </SelectControl>
         {vendorMsg ? (
           <p className="mt-1 text-[11.5px] text-rose-700">{vendorMsg}</p>
         ) : null}

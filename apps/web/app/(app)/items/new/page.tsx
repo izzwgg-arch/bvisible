@@ -11,12 +11,20 @@ export default async function NewItemPage() {
   const me = await requireTenantId();
   const canManage = me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN;
 
-  const machines = await prisma.machine.findMany({
-    where: { tenantId: me.tenantId, isActive: true },
-    orderBy: [{ name: 'asc' }],
-    select: { id: true, name: true, ratePerHourCents: true },
-    take: 200,
-  });
+  const [machines, savedCategories] = await Promise.all([
+    prisma.machine.findMany({
+      where: { tenantId: me.tenantId, isActive: true },
+      orderBy: [{ name: 'asc' }],
+      select: { id: true, name: true, ratePerHourCents: true },
+      take: 200,
+    }),
+    prisma.shopItemCategory.findMany({
+      where: { tenantId: me.tenantId },
+      orderBy: [{ name: 'asc' }],
+      select: { name: true },
+      take: 200,
+    }),
+  ]);
 
   if (!canManage) {
     return (
@@ -57,7 +65,10 @@ export default async function NewItemPage() {
             </p>
           </div>
           <div className="p-6">
-            <CreateShopMaterialItemForm machines={machines} />
+            <CreateShopMaterialItemForm
+              machines={machines}
+              savedCategories={savedCategories.map((c) => c.name)}
+            />
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalMaterialKey,
+  formatVendorItemDisplayName,
   normalizeVendorItemName,
   normalizeVendorSku,
   stripTrailingUnitSuffix,
@@ -58,5 +59,17 @@ describe('normalizeVendorItemName', () => {
 
   it('normalizeVendorSku is alphanumeric exact', () => {
     expect(normalizeVendorSku(' ab-12.3 ')).toBe('AB-12.3');
+  });
+});
+
+describe('formatVendorItemDisplayName', () => {
+  it('formats normalized vendor labels for display', () => {
+    expect(formatVendorItemDisplayName('3m ij180 cast wrap film')).toBe(
+      '3M IJ180 Cast Wrap Film',
+    );
+    expect(formatVendorItemDisplayName('matte laminate roll')).toBe(
+      'Matte Laminate Roll',
+    );
+    expect(formatVendorItemDisplayName('acm panel 4x8')).toBe('ACM Panel 4X8');
   });
 });

@@ -53,8 +53,8 @@ export function EstimateSupportTabs({
   }
 
   return (
-    <section className="overflow-hidden rounded-[18px] border border-slate-200/70 bg-white/95 shadow-[0_1px_2px_rgba(15,23,41,0.04),0_14px_36px_-18px_rgba(15,23,41,0.18)]">
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-100 bg-white px-3 py-2">
+    <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/95 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_46px_-24px_rgba(15,23,42,0.26)] ring-1 ring-slate-900/[0.03]">
+      <div className="grid grid-cols-2 gap-1.5 overflow-visible border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-3 py-2.5 2xl:grid-cols-3">
         {TAB_COPY.map((tab) => {
           const selected = active === tab.id;
           const count = countFor(tab.id);
@@ -63,15 +63,19 @@ export function EstimateSupportTabs({
               key={tab.id}
               type="button"
               onClick={() => setActive(tab.id)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-[10px] px-3 py-2 text-[12px] font-bold transition ${
+              className={`inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[12px] px-2 py-2 text-center text-[12px] font-bold leading-tight transition ${
                 selected
-                  ? 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
             >
               {tab.label}
               {count != null && count > 0 ? (
-                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-slate-500 ring-1 ring-inset ring-slate-200">
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ring-1 ring-inset ${
+                  selected
+                    ? 'bg-white/20 text-white ring-white/30'
+                    : 'bg-white text-slate-500 ring-slate-200'
+                }`}>
                   {count}
                 </span>
               ) : null}
@@ -79,7 +83,7 @@ export function EstimateSupportTabs({
           );
         })}
       </div>
-      <div className="bg-slate-50/45 p-4">{content[active]}</div>
+      <div className="bg-slate-50/55 p-4">{content[active]}</div>
     </section>
   );
 }

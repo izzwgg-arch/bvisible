@@ -3,6 +3,7 @@ import { OcrJobStatus, prisma, Role } from '@bvisible/db';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
+import { AdminMetric, AdminPanel, AdminPill } from '@/components/app/admin-ui';
 import { isOcrQueueStale } from '@/app/(app)/admin/ocr-review/ocr-review-ui';
 import { OcrQueueTable, type OcrQueueRow } from '@/app/(app)/admin/ocr-review/ocr-queue-table';
 import { QueuePaginationBar } from '@/components/app/queue-pagination-bar';
@@ -112,6 +113,9 @@ export default async function OcrReviewIndexPage({
   const staleQueueCount = queueDocsForStaleCount.filter((d) =>
     isOcrQueueStale(d.status, d.updatedAt, now)
   ).length;
+  const reviewCount = tabCount(TAB_DEFS[0]);
+  const confirmedCount = countByStatus[OcrJobStatus.CONFIRMED] ?? 0;
+  const failedCount = countByStatus[OcrJobStatus.FAILED] ?? 0;
 
   const queueRows: OcrQueueRow[] = docs.map((d) => ({
     id: d.id,
@@ -132,74 +136,86 @@ export default async function OcrReviewIndexPage({
   };
 
   return (
-    <div className="-mx-1 rounded-xl bg-[var(--color-bv-bg)] px-1 pb-2">
+    <div className="grid gap-5">
       <PageHeader
         title="Receipt OCR review"
-        subtitle="Dense queue — open, confirm lines, approve. Pricing writes only after you confirm."
+        subtitle="Receipt capture operations for purchase orders. Review extracted lines before any pricing or reconciliation workflow depends on them."
       />
 
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        {TAB_DEFS.map((tab) => {
-          const count = tabCount(tab);
-          const active = tab.key === activeTab.key && !staleOnly;
-          return (
-            <Link
-              key={tab.key}
-              href={tabHref(tab.key)}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                active
-                  ? 'bg-[var(--color-bv-accent)] text-[var(--color-bv-accent-foreground)]'
-                  : 'border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-muted)] hover:bg-[var(--color-bv-bg)]'
-              }`}
-            >
-              {tab.label}
-              <span
-                className={`tabular-nums text-[10px] font-semibold ${
-                  active ? 'opacity-90' : 'text-[var(--color-bv-muted)]'
+      <section className="grid gap-3 md:grid-cols-4">
+        <AdminMetric label="Review queue" value={reviewCount} detail="Pending receipt decisions" tone="amber" />
+        <AdminMetric label="Stale" value={staleQueueCount} detail="Waiting more than two days" tone="rose" />
+        <AdminMetric label="Confirmed" value={confirmedCount} detail="Approved extraction batches" tone="emerald" />
+        <AdminMetric label="Failed" value={failedCount} detail="OCR engine or parsing failures" tone="violet" />
+      </section>
+
+      <AdminPanel
+        title="OCR work queue"
+        eyebrow="Receipt intelligence"
+        description="Open each receipt, confirm extracted lines, and keep reconciliation inputs controlled."
+        action={<AdminPill tone={staleOnly ? 'rose' : 'blue'}>{staleOnly ? 'stale only' : activeTab.label}</AdminPill>}
+      >
+        <div className="space-y-4 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {TAB_DEFS.map((tab) => {
+              const count = tabCount(tab);
+              const active = tab.key === activeTab.key && !staleOnly;
+              return (
+                <Link
+                  key={tab.key}
+                  href={tabHref(tab.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all ${
+                    active
+                      ? 'bg-[var(--color-bv-accent)] text-white shadow-[0_10px_22px_rgba(47,90,243,0.22)]'
+                      : 'border border-slate-200 bg-white text-slate-500 hover:border-blue-100 hover:bg-blue-50 hover:text-blue-700'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`tabular-nums text-[10px] ${active ? 'text-white/90' : 'text-slate-400'}`}>
+                    {count}
+                  </span>
+                </Link>
+              );
+            })}
+            {activeTab.key === 'review' && staleQueueCount > 0 ? (
+              <Link
+                href={staleOnly ? tabHref('review') : tabHref('review', true)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all ${
+                  staleOnly
+                    ? 'bg-orange-600 text-white shadow-[0_10px_22px_rgba(234,88,12,0.20)]'
+                    : 'border border-orange-200 bg-orange-50 text-orange-900 hover:bg-orange-100'
                 }`}
               >
-                {count}
-              </span>
-            </Link>
-          );
-        })}
-        {activeTab.key === 'review' && staleQueueCount > 0 ? (
-          <Link
-            href={staleOnly ? tabHref('review') : tabHref('review', true)}
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-              staleOnly
-                ? 'bg-orange-600 text-white'
-                : 'border border-orange-200 bg-orange-50 text-orange-950 hover:bg-orange-100'
-            }`}
-          >
-            Stale
-            <span className="tabular-nums text-[10px] font-semibold">{staleQueueCount}</span>
-          </Link>
-        ) : null}
-      </div>
+                Stale
+                <span className="tabular-nums text-[10px] font-semibold">{staleQueueCount}</span>
+              </Link>
+            ) : null}
+          </div>
 
-      {docs.length === 0 ? (
-        <OcrEmptyState statusRaw={statusRaw} staleOnly={staleOnly} />
-      ) : (
-        <>
-          <OcrQueueTable rows={queueRows} nowIso={now.toISOString()} />
-          <QueuePaginationBar
-            loaded={loadedCount}
-            total={staleOnly ? tabTotal : tabCount(activeTab)}
-            hasMore={hasMore}
-            loadMoreHref={buildQueueLoadMoreHref('/admin/ocr-review', {
-              status: activeTab.key,
-              stale: staleOnly ? '1' : undefined,
-              page: page > 1 ? String(page) : undefined,
-            }, page)}
-            suffix={
-              staleOnly
-                ? `stale in ${activeTab.label.toLowerCase()}`
-                : `in ${activeTab.label.toLowerCase()}`
-            }
-          />
-        </>
-      )}
+          {docs.length === 0 ? (
+            <OcrEmptyState statusRaw={statusRaw} staleOnly={staleOnly} />
+          ) : (
+            <>
+              <OcrQueueTable rows={queueRows} nowIso={now.toISOString()} />
+              <QueuePaginationBar
+                loaded={loadedCount}
+                total={staleOnly ? tabTotal : tabCount(activeTab)}
+                hasMore={hasMore}
+                loadMoreHref={buildQueueLoadMoreHref('/admin/ocr-review', {
+                  status: activeTab.key,
+                  stale: staleOnly ? '1' : undefined,
+                  page: page > 1 ? String(page) : undefined,
+                }, page)}
+                suffix={
+                  staleOnly
+                    ? `stale in ${activeTab.label.toLowerCase()}`
+                    : `in ${activeTab.label.toLowerCase()}`
+                }
+              />
+            </>
+          )}
+        </div>
+      </AdminPanel>
     </div>
   );
 }

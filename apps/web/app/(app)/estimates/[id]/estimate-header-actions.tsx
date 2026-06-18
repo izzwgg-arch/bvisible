@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EstimateStatus } from '@bvisible/db';
-import { updateEstimateStatusAction } from './actions';
+import { finalizeEstimateAction, updateEstimateStatusAction } from './actions';
 import {
   sendEstimateEmailAction,
   type SendEstimateEmailState,
@@ -26,6 +26,8 @@ export function EstimateHeaderActions({
   );
   const [approveBusy, setApproveBusy] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
+  const [finalizeBusy, setFinalizeBusy] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sendState.ok) router.refresh();
@@ -46,13 +48,26 @@ export function EstimateHeaderActions({
     router.refresh();
   }
 
+  async function finalize() {
+    setFinalizeBusy(true);
+    setFinalizeError(null);
+    const result = await finalizeEstimateAction({ estimateId });
+    setFinalizeBusy(false);
+    if (!result.ok) {
+      setFinalizeError(result.message ?? 'Could not finalize estimate.');
+      return;
+    }
+    router.refresh();
+  }
+
   const approved = status === EstimateStatus.APPROVED || status === EstimateStatus.FINALIZED;
+  const finalized = status === EstimateStatus.FINALIZED;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Link
         href={`/estimates/${estimateId}/preview` as never}
-        className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+        className="inline-flex h-9 items-center justify-center rounded-[7px] border border-slate-200 bg-white px-5 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
       >
         Preview
       </Link>
@@ -62,7 +77,7 @@ export function EstimateHeaderActions({
           type="submit"
           disabled={sendPending || status === EstimateStatus.FINALIZED}
           title="Email this estimate to the customer email on file."
-          className="inline-flex items-center justify-center rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center rounded-[7px] border border-slate-200 bg-white px-6 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {sendPending ? 'Sending...' : sendState.ok ? 'Sent' : 'Send'}
         </button>
@@ -71,9 +86,19 @@ export function EstimateHeaderActions({
         type="button"
         onClick={approve}
         disabled={approveBusy || approved}
-        className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-[0_14px_30px_-16px_rgba(37,99,235,0.75)] transition hover:from-blue-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:from-emerald-500 disabled:to-emerald-600 disabled:opacity-80"
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] bg-[#4f46e5] px-5 text-[12px] font-bold text-white shadow-[0_12px_24px_-14px_rgba(79,70,229,0.85)] transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-emerald-600 disabled:opacity-80"
       >
         {approveBusy ? 'Approving...' : approved ? 'Approved' : 'Approve'}
+        <span aria-hidden className="text-white/75">⌄</span>
+      </button>
+      <button
+        type="button"
+        onClick={finalize}
+        disabled={finalizeBusy || finalized}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] border border-violet-200 bg-white px-5 text-[12px] font-bold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+      >
+        <span aria-hidden>⚑</span>
+        {finalizeBusy ? 'Finalizing...' : finalized ? 'Finalized' : 'Finalize estimate'}
       </button>
       {sendState.error ? (
         <span className="basis-full text-right text-[11.5px] font-medium text-rose-600">
@@ -82,6 +107,10 @@ export function EstimateHeaderActions({
       ) : approveError ? (
         <span className="basis-full text-right text-[11.5px] font-medium text-rose-600">
           {approveError}
+        </span>
+      ) : finalizeError ? (
+        <span className="basis-full text-right text-[11.5px] font-medium text-rose-600">
+          {finalizeError}
         </span>
       ) : null}
     </div>

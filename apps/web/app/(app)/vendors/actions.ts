@@ -18,21 +18,32 @@ export async function createVendorAction(
   const me = await requireTenantId();
   const ctx = await readRequestContext();
 
+  const emailEntries = formData.getAll('emails').map((v) => String(v).trim()).filter(Boolean);
+  const phoneEntries = formData.getAll('phones').map((v) => String(v).trim()).filter(Boolean);
+
   const parsed = createVendorSchema.safeParse({
     name: formData.get('name'),
-    email: formData.get('email'),
-    phone: formData.get('phone'),
+    emails: emailEntries,
+    phones: phoneEntries,
     notes: formData.get('notes'),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
   }
-  const { name, email, phone, notes } = parsed.data;
+  const { name, emails, phones, notes } = parsed.data;
 
   let created;
   try {
     created = await prisma.vendor.create({
-      data: { tenantId: me.tenantId, name, email, phone, notes },
+      data: {
+        tenantId: me.tenantId,
+        name,
+        emails,
+        phones,
+        email: emails[0] ?? null,
+        phone: phones[0] ?? null,
+        notes,
+      },
       select: { id: true },
     });
   } catch (err) {
@@ -56,5 +67,5 @@ export async function createVendorAction(
     metadata: { name },
   });
 
-  redirect(`/vendors?created=${encodeURIComponent(name)}`);
+  redirect(`/vendors/${created.id}`);
 }

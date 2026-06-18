@@ -28,15 +28,19 @@ export default async function ClientsPage({
       companyName: true,
       contactName: true,
       email: true,
+      secondaryEmail: true,
       phone: true,
+      alternatePhone: true,
+      address: true,
       _count: { select: { estimates: true } },
-      updatedAt: true,
     },
     take: 500,
   });
 
   const estimateTotal = clients.reduce((sum, client) => sum + client._count.estimates, 0);
-  const contactsReady = clients.filter((client) => client.email || client.phone).length;
+  const contactsReady = clients.filter(
+    (client) => client.email || client.secondaryEmail || client.phone || client.alternatePhone,
+  ).length;
   const activeClients = clients.filter((client) => client._count.estimates > 0).length;
 
   return (
@@ -83,40 +87,59 @@ export default async function ClientsPage({
                 <h2 className="text-[15px] font-semibold text-slate-950">Customer portfolio</h2>
                 <p className="mt-1 text-[12.5px] text-slate-500">Account details formatted for quick quoting and follow-up.</p>
               </div>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-                CRM ready
+              <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
+                {clients.length} customers
               </span>
             </div>
             <div className="grid gap-3 p-4">
               {clients.map((c) => (
-                <article
+                <Link
                   key={c.id}
-                  className="grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
+                  href={`/clients/${c.id}`}
+                  className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100 transition group-hover:bg-violet-100">
                         {initials(c.companyName)}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="truncate text-[14px] font-semibold text-slate-950">{c.companyName}</h3>
-                        <p className="truncate text-[12.5px] text-slate-500">{c.contactName ?? 'No primary contact yet'}</p>
+                        <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
+                          {c.companyName}
+                        </span>
+                        <p className="truncate text-[12.5px] text-slate-500">
+                          {c.contactName ?? 'No primary contact yet'}
+                        </p>
                       </div>
                     </div>
                   </div>
                   <div className="grid gap-1 text-[12.5px] text-slate-500">
-                    <span className="truncate">{c.email ?? 'Email not set'}</span>
-                    <span className="truncate">{c.phone ?? 'Phone not set'}</span>
+                    <span className="truncate">
+                      {c.email ?? 'Email not set'}
+                      {c.secondaryEmail ? (
+                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                          +1
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="truncate">
+                      {c.phone ?? 'Phone not set'}
+                      {c.alternatePhone ? (
+                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                          +1
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   <div>
-                    <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11.5px] font-semibold text-blue-700">
+                    <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700">
                       {c._count.estimates} estimates
                     </span>
                   </div>
-                  <div className="text-[12px] text-slate-500 tabular-nums">
-                    Updated {c.updatedAt.toISOString().slice(0, 10)}
+                  <div className="text-[12px] text-slate-500 tabular-nums group-hover:text-[var(--color-bv-accent)]">
+                    Edit contacts →
                   </div>
-                </article>
+                </Link>
               ))}
             </div>
           </section>

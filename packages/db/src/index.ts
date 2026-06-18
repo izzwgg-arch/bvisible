@@ -21,6 +21,9 @@ export {
   SpendAlertStatus,
   EstimateTimelineKind,
   InvoiceStatus,
+  VehicleDimensionConfidenceLevel,
+  VehiclePhotoType,
+  VehicleTemplateFileType,
 } from '@prisma/client';
 export type {
   PrismaClient,
@@ -60,4 +63,11 @@ export type {
   EstimateTimelineEvent,
   Invoice,
   InvoiceLineItem,
+  VehicleMake,
+  VehicleModel,
+  VehicleTrim,
+  VehicleDimensionProfile,
+  VehiclePhoto,
+  VehicleTemplate,
+  EstimateVehicle,
 } from '@prisma/client';

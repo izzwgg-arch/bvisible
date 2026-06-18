@@ -12,6 +12,12 @@ import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
 export const metadata = { title: 'Catalog' };
 export const dynamic = 'force-dynamic';
 
+function categoryLabel(category: string): string {
+  return Object.values(EstimateLineKind).includes(category as EstimateLineKind)
+    ? kindLabel(category as EstimateLineKind)
+    : category;
+}
+
 type RowLink = {
   vendorId: string;
   vendor: { name: string };
@@ -103,6 +109,7 @@ export default async function ItemsPage({
       name: true,
       nameNormalized: true,
       kind: true,
+      categories: true,
       isActive: true,
       internalCostCents: true,
       markupPercentMilli: true,
@@ -223,7 +230,7 @@ export default async function ItemsPage({
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] uppercase tracking-[0.18em] text-slate-400">
                   <th className="px-4 py-3 font-semibold">Item</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold">Category</th>
                   <th className="px-4 py-3 font-semibold">Internal</th>
                   <th className="px-4 py-3 font-semibold">Sell hint</th>
                   <th className="px-4 py-3 font-semibold">Markup</th>
@@ -265,7 +272,9 @@ export default async function ItemsPage({
                       </td>
                       <td className="px-4 py-4 align-top text-[12px]">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-600">
-                          {kindLabel(it.kind)}
+                          {it.categories.length > 0
+                            ? it.categories.map(categoryLabel).join(', ')
+                            : kindLabel(it.kind)}
                         </span>
                       </td>
                       <td className="px-4 py-4 align-top tabular-nums text-slate-700">

@@ -4,7 +4,14 @@ import { formatQuoteMoney } from '@/lib/estimate/customer-quote-view';
 const STANDARD_TERMS = `This quote is valid subject to written acceptance and availability. Pricing excludes taxes unless noted.`;
 
 export function QuoteDocument(props: {
-  companyName: string;
+  company: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    slogan: string | null;
+    logoDataUrl: string | null;
+  };
   estimateNumber: string;
   title: string;
   quoteDateLabel: string;
@@ -22,13 +29,24 @@ export function QuoteDocument(props: {
     <article className="bv-quote-document mx-auto max-w-[880px] rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-10 shadow-[var(--shadow-bv-card)] print:border-0 print:shadow-none print:p-0">
       <header className="flex flex-col gap-6 border-b border-[var(--color-bv-border)] pb-8 print:pb-6">
         <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
-              B Visible
-            </span>
-            <h2 className="text-[26px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              {props.companyName}
-            </h2>
+          <div className="flex max-w-[520px] items-start gap-4">
+            {props.company.logoDataUrl ? (
+              <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[var(--color-bv-border)] bg-white p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={props.company.logoDataUrl} alt={`${props.company.name} logo`} className="max-h-full max-w-full object-contain" />
+              </div>
+            ) : null}
+            <div className="flex min-w-0 flex-col gap-1">
+              {props.company.slogan ? (
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
+                  {props.company.slogan}
+                </span>
+              ) : null}
+              <h2 className="text-[26px] font-semibold tracking-tight text-[var(--color-bv-text)]">
+                {props.company.name}
+              </h2>
+              <CompanyContact company={props.company} />
+            </div>
           </div>
           <div className="text-right">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
@@ -141,5 +159,27 @@ export function QuoteDocument(props: {
         Thank you for your business.
       </footer>
     </article>
+  );
+}
+
+function CompanyContact({
+  company,
+}: {
+  company: {
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+  };
+}) {
+  const items = [company.phone, company.email].filter(Boolean);
+  const address = company.address?.trim();
+
+  if (items.length === 0 && !address) return null;
+
+  return (
+    <div className="mt-2 space-y-0.5 text-[12.5px] leading-relaxed text-[var(--color-bv-muted)]">
+      {items.length > 0 ? <p>{items.join(' | ')}</p> : null}
+      {address ? <p className="whitespace-pre-line">{address}</p> : null}
+    </div>
   );
 }

@@ -28,6 +28,8 @@ export default async function VendorsPage({
       name: true,
       email: true,
       phone: true,
+      emails: true,
+      phones: true,
       notes: true,
       _count: { select: { purchaseOrders: true } },
       updatedAt: true,
@@ -36,7 +38,9 @@ export default async function VendorsPage({
   });
 
   const activeVendors = vendors.filter((v) => v._count.purchaseOrders > 0).length;
-  const contactReady = vendors.filter((v) => v.email || v.phone).length;
+  const contactReady = vendors.filter(
+    (v) => v.emails.length > 0 || v.email || v.phones.length > 0 || v.phone
+  ).length;
   const totalPOs = vendors.reduce((sum, v) => sum + v._count.purchaseOrders, 0);
 
   return (
@@ -89,39 +93,51 @@ export default async function VendorsPage({
             </div>
             <div className="grid gap-3 p-4">
               {vendors.map((v) => (
-                <article
+                <Link
                   key={v.id}
-                  className="grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
+                  href={`/vendors/${v.id}`}
+                  className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100 transition group-hover:bg-violet-100">
                         {initials(v.name)}
                       </div>
                       <div className="min-w-0">
-                        <Link
-                          href={`/vendors/${v.id}`}
-                          className="truncate text-[14px] font-semibold text-slate-950 hover:text-[var(--color-bv-accent)]"
-                        >
+                        <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
                           {v.name}
-                        </Link>
+                        </span>
                         <p className="truncate text-[12.5px] text-slate-500">{v.notes ?? 'No notes'}</p>
                       </div>
                     </div>
                   </div>
                   <div className="grid gap-1 text-[12.5px] text-slate-500">
-                    <span className="truncate">{v.email ?? 'Email not set'}</span>
-                    <span className="truncate">{v.phone ?? 'Phone not set'}</span>
+                    <span className="truncate">
+                      {v.emails[0] ?? v.email ?? 'Email not set'}
+                      {v.emails.length > 1 ? (
+                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                          +{v.emails.length - 1}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="truncate">
+                      {v.phones[0] ?? v.phone ?? 'Phone not set'}
+                      {v.phones.length > 1 ? (
+                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                          +{v.phones.length - 1}
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   <div>
                     <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700">
                       {v._count.purchaseOrders} POs
                     </span>
                   </div>
-                  <div className="text-[12px] text-slate-500 tabular-nums">
-                    Updated {v.updatedAt.toISOString().slice(0, 10)}
+                  <div className="text-[12px] text-slate-500 tabular-nums group-hover:text-[var(--color-bv-accent)]">
+                    Edit contacts →
                   </div>
-                </article>
+                </Link>
               ))}
             </div>
           </section>

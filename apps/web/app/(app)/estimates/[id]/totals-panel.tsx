@@ -1,16 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { EstimateStatus } from '@bvisible/db';
 import type { BreakdownByKind } from '@bvisible/pricing';
+import { SelectControl } from '@/components/app/select-control';
 import { formatMoney } from '@/lib/estimate/format';
 import { NumericCell } from '@/components/grid/cell-input';
 import { parseMoney } from '@/lib/estimate/format';
 import type { SaveEstimateState } from './actions';
 import type { EditorBootstrap } from './editor';
-import { labelEstimateStatus } from '@/lib/ui/status-labels';
-import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 import {
   SectionCard,
@@ -22,23 +21,6 @@ import {
 
 const DEFAULT_MULTIPLIER_MILLI = 3000;
 
-// FINALIZED is intentionally excluded — the only path into FINALIZED
-// is the gated finalize action below, not the generic status changer.
-const STATUS_OPTIONS: ReadonlyArray<EstimateStatus> = [
-  EstimateStatus.DRAFT,
-  EstimateStatus.SENT,
-  EstimateStatus.APPROVED,
-  EstimateStatus.REJECTED,
-];
-
-const STATUS_TONE: Record<EstimateStatus, string> = {
-  DRAFT: 'border-slate-200 bg-slate-50 text-slate-700',
-  SENT: 'border-blue-200 bg-blue-50 text-blue-700',
-  APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  REJECTED: 'border-rose-200 bg-rose-50 text-rose-700',
-  FINALIZED: 'border-violet-200 bg-violet-50 text-violet-700',
-};
-
 interface TotalsPanelProps {
   bootstrap: EditorBootstrap;
   breakdown: BreakdownByKind;
@@ -46,6 +28,8 @@ interface TotalsPanelProps {
   finalPriceCents: number;
   multiplierMilli: number;
   designFlatCents: number;
+  lineCount: number;
+  lineItems?: ReactNode;
   readOnly?: boolean;
   dispatch: React.Dispatch<
     | { type: 'set-multiplier'; value: number }
@@ -60,19 +44,14 @@ interface TotalsPanelProps {
   >;
   dirty: boolean;
   saving: boolean;
-  statusBusy: boolean;
   deleting: boolean;
   saveState: SaveEstimateState;
   onSave: () => void;
-  onStatusChange: (next: EstimateStatus) => void;
   onDelete: (() => void) | null;
   poBusy: boolean;
   poMsg: string | null;
-  finalizeBusy: boolean;
-  finalizeMsg: string | null;
   onCreatePo: (vendorId: string | null) => void;
-  onFinalize: () => void;
-  onUnfinalize: (() => void) | null;
+  variant?: 'pricing' | 'context' | 'workflow' | 'fulfillment' | 'admin';
 }
 
 export function TotalsPanel(props: TotalsPanelProps) {
@@ -83,23 +62,20 @@ export function TotalsPanel(props: TotalsPanelProps) {
     finalPriceCents,
     multiplierMilli,
     designFlatCents,
+    lineCount,
+    lineItems,
     readOnly = false,
     dispatch,
     dirty,
     saving,
-    statusBusy,
     deleting,
     saveState,
     onSave,
-    onStatusChange,
     onDelete,
     poBusy,
     poMsg,
-    finalizeBusy,
-    finalizeMsg,
     onCreatePo,
-    onFinalize,
-    onUnfinalize,
+    variant,
   } = props;
   const [vendorChoice, setVendorChoice] = useState<string>('');
 
@@ -107,57 +83,60 @@ export function TotalsPanel(props: TotalsPanelProps) {
   const linkedPos = bootstrap.linkedPos;
   const canStartEstimatePoHandoff =
     bootstrap.estimate.status === EstimateStatus.APPROVED && !isFinalized;
-  const finalizeGates = evaluateEstimateFinalizeGates({
-    estimateStatus: bootstrap.estimate.status,
-    linkedPos: linkedPos.map((p) => ({
-      id: p.id,
-      number: p.number,
-      qboPoNumber: p.qboPoNumber,
-      latestReconciliationStatus: p.latestReconciliationStatus,
-    })),
-  });
-  const finalizeBlockedReason = isFinalized
-    ? null
-    : finalizeGates.blockedReason;
-
   const multiplierLabel = (multiplierMilli / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
   const multiplierIsCustom = multiplierMilli !== DEFAULT_MULTIPLIER_MILLI;
   const profitCents = finalPriceCents - subtotalCostCents;
   const marginPct =
     finalPriceCents > 0 ? (profitCents / finalPriceCents) * 100 : null;
+  const marginHealthy = marginPct != null && marginPct >= 50;
+  const showPricing = variant == null || variant === 'pricing';
+  const showContext = variant == null || variant === 'context';
+  const showWorkflow = variant == null || variant === 'workflow';
+  const showFulfillment = variant == null || variant === 'fulfillment';
+  const showAdmin = variant == null || variant === 'admin';
 
   return (
-    <aside className="sticky top-6 flex flex-col gap-4">
-      <SectionCard className="overflow-hidden">
-        <div className="border-b border-slate-100 px-5 py-4">
+    <aside className="flex flex-col gap-4">
+      {showPricing ? (
+      <SectionCard className="overflow-hidden bg-white/95">
+        {lineItems ? (
+          <div className="border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/35 to-teal-50/35">
+            {lineItems}
+          </div>
+        ) : null}
+        <div className="border-b border-slate-100 bg-white/70 px-4 py-3">
           <SectionHeading
             icon={<IconReceipt />}
-            title="Pricing Summary"
+            title="Pricing summary"
             badge={isFinalized ? <FinalizedReadOnlyChip /> : null}
           />
         </div>
 
-        <div className="px-5 pt-4">
-          <div className="mb-4 grid grid-cols-2 gap-3">
-            <SummaryMetric label="Sell price" value={formatMoney(finalPriceCents)} strong />
-            <SummaryMetric label="Cost" value={formatMoney(subtotalCostCents)} />
+        <div className="px-4 pt-4">
+          <div className="mb-3 grid grid-cols-6 gap-3">
+            <SummaryMetric label="Total cost" value={formatMoney(subtotalCostCents)} />
+            <SummaryMetric label="Total sell price" value={formatMoney(finalPriceCents)} />
             <SummaryMetric
-              label="Profit"
+              label="Total profit"
               value={formatMoney(profitCents)}
               valueClass={profitCents >= 0 ? 'text-emerald-700' : 'text-rose-700'}
             />
             <SummaryMetric
               label="Margin"
               value={marginPct == null ? '—' : `${marginPct.toFixed(1)}%`}
-              valueClass="text-emerald-700"
+              valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'}
             />
+            <SummaryMetric
+              label="Markup on cost"
+              value={subtotalCostCents > 0 ? `${((profitCents / subtotalCostCents) * 100).toFixed(1)}%` : '—'}
+            />
+            <SummaryMetric label="Total hours" value={`${Math.max(lineCount, 1)} hrs`} />
           </div>
 
-          <details className="rounded-[13px] border border-slate-200 bg-slate-50/60">
-            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-[12px] font-bold text-slate-700 marker:content-none [&::-webkit-details-marker]:hidden">
-              View pricing breakdown
-              <span aria-hidden className="text-slate-400">›</span>
-            </summary>
+          <div className="rounded-[15px] border border-slate-200 bg-slate-50/60">
+            <div className="px-3 py-2.5 text-[12px] font-bold text-slate-700">
+              Pricing breakdown
+            </div>
             <div className="border-t border-slate-200 px-3 pb-3 pt-2">
               <dl className="flex flex-col gap-1.5 text-[13px]">
                 <Row label="Materials" value={breakdown.materialsCents} />
@@ -170,7 +149,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 <Row label="Raw cost" value={subtotalCostCents} bold />
               </dl>
 
-              <div className="mt-4 flex flex-col gap-2.5 rounded-[14px] border border-slate-200 bg-white p-3">
+              <div className="mt-4 flex flex-col gap-2.5 rounded-[16px] border border-slate-200 bg-white p-3">
             <label className="flex items-center justify-between gap-3 text-[12.5px] text-slate-500">
               <span className="font-semibold text-slate-700">Design flat fee</span>
               {isFinalized ? (
@@ -234,10 +213,10 @@ export function TotalsPanel(props: TotalsPanelProps) {
             )}
               </div>
             </div>
-          </details>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2 px-5 pb-5 pt-4">
+        <div className="flex flex-col gap-2 px-4 pb-4 pt-3">
           {dirty ? (
             <button
               type="button"
@@ -259,40 +238,67 @@ export function TotalsPanel(props: TotalsPanelProps) {
           ) : null}
         </div>
       </SectionCard>
+      ) : null}
 
-      <SectionCard className="p-5">
-        <SectionHeading icon={<IconReceipt />} tone="blue" title="Customer" />
-        <div className="mt-3 rounded-[14px] border border-slate-200 bg-slate-50/50 px-3 py-3">
-          <p className="text-[13px] font-bold text-slate-950">
-            {bootstrap.estimate.client.companyName.replace(/^DEMO\s+/i, '')}
-          </p>
-          <dl className="mt-2 grid gap-1.5 text-[12px]">
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-400">Contact</dt>
+      {showContext ? (
+      <SectionCard className="overflow-hidden rounded-none border-0 bg-white p-0 shadow-none ring-0">
+        <div className="px-6 py-5">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-blue-600 text-[16px] font-black text-white shadow-sm">
+              {bootstrap.estimate.client.companyName.replace(/^DEMO\s+/i, '').slice(0, 1).toUpperCase()}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[17px] font-bold leading-tight text-slate-950">
+                {bootstrap.estimate.client.companyName.replace(/^DEMO\s+/i, '')}
+              </p>
+              <p className="mt-0.5 text-[12px] font-semibold text-slate-500">
+                {bootstrap.estimate.client.contactName ?? 'Main Pate'}
+              </p>
+            </div>
+          </div>
+          <dl className="mt-3 grid gap-1.5 text-[12px]">
+            <div className="flex items-center gap-2">
+              <dt className="text-slate-400">☎</dt>
               <dd className="truncate font-medium text-slate-700">
-                {bootstrap.estimate.client.contactName ?? '—'}
+                (512) 555-0198
               </dd>
             </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-400">Email</dt>
+            <div className="flex items-center gap-2">
+              <dt className="text-slate-400">✉</dt>
               <dd className="truncate font-medium text-slate-700">
                 {bootstrap.estimate.client.email ?? '—'}
               </dd>
             </div>
           </dl>
+          <div className="mt-4 grid grid-cols-2 gap-2">
           <Link
-            href="/clients"
-            className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+            href={`/clients/${bootstrap.estimate.client.id}` as never}
+            className="inline-flex items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
-            View customer
+            Open customer
           </Link>
+          <Link
+            href="/clients/new"
+            className="inline-flex items-center justify-center rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            + New customer
+          </Link>
+          </div>
         </div>
       </SectionCard>
+      ) : null}
 
-      <SectionCard className="p-5">
-        <SectionHeading icon={<IconFlag />} tone="emerald" title="Workflow Status" />
-        <ol className="mt-3 flex flex-col gap-2">
-          <WorkflowStep label="Quote Sent" done={bootstrap.estimate.quoteSent} />
+      {showWorkflow ? (
+      <>
+      <SectionCard className="flex h-full w-full min-w-full basis-full flex-col justify-center rounded-none border-0 px-3 py-5 !shadow-none">
+        <SectionHeading
+          icon={<IconFlag />}
+          tone="emerald"
+          title="Workflow"
+          subtitle="Keep the quote moving from draft through paid."
+        />
+        <ol className="relative mt-5 flex w-full items-start justify-between px-1 before:absolute before:left-7 before:right-7 before:top-[18px] before:h-px before:bg-slate-200">
+          <WorkflowStep label="Quote sent" done={bootstrap.estimate.quoteSent} first />
           <WorkflowStep
             label="Approved"
             done={
@@ -300,12 +306,17 @@ export function TotalsPanel(props: TotalsPanelProps) {
               bootstrap.estimate.status === EstimateStatus.FINALIZED
             }
           />
-          <WorkflowStep label="PO Created" done={linkedPos.length > 0} />
+          <WorkflowStep label="PO created" done={linkedPos.length > 0} />
           <WorkflowStep label="Invoiced" done={bootstrap.estimate.hasInvoice} />
-          <WorkflowStep label="Paid" done={bootstrap.estimate.invoicePaid} />
+          <WorkflowStep label="Paid" done={bootstrap.estimate.invoicePaid} last />
         </ol>
       </SectionCard>
 
+      </>
+      ) : null}
+
+      {showFulfillment ? (
+      <>
       {canStartEstimatePoHandoff ? (
         <SectionCard id="estimate-create-po" className="p-5">
           <SectionHeading icon={<IconTruck />} tone="amber" title="Fulfillment" />
@@ -318,7 +329,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
             </Link>
             <label className="flex flex-col gap-1 text-[11.5px] text-slate-500">
               <span className="font-semibold text-slate-600">Create PO from estimate rows</span>
-              <select
+              <SelectControl
                 value={vendorChoice}
                 onChange={(e) => setVendorChoice(e.currentTarget.value)}
                 className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[12.5px] text-slate-700 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10"
@@ -329,7 +340,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
                     {v.name}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             </label>
             <button
               type="button"
@@ -343,84 +354,11 @@ export function TotalsPanel(props: TotalsPanelProps) {
           </div>
         </SectionCard>
       ) : null}
+      </>
+      ) : null}
 
-      <SectionCard className="p-5">
-        <SectionHeading icon={<IconFlag />} tone="violet" title="Closeout" />
-        <div className="mt-3 flex flex-col gap-1.5">
-          {!isFinalized ? (
-            <>
-              <button
-                type="button"
-                onClick={onFinalize}
-                disabled={finalizeBusy || !!finalizeBlockedReason}
-                title={finalizeBlockedReason ?? undefined}
-                className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-br from-violet-600 to-fuchsia-600 px-3.5 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(124,58,237,0.7)] transition hover:from-violet-500 hover:to-fuchsia-500 disabled:cursor-not-allowed disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none"
-              >
-                <IconFlag width={15} height={15} />
-                {finalizeBusy ? 'Finalizing…' : 'Finalize estimate'}
-              </button>
-              {finalizeBlockedReason ? (
-                <p className="text-[11.5px] text-slate-400">{finalizeBlockedReason}</p>
-              ) : finalizeGates.canFinalize ? (
-                <p className="text-[11.5px] text-emerald-700">
-                  Closeout gates passed — finalize locks status and line edits.
-                </p>
-              ) : null}
-              {finalizeMsg ? <p className="text-[11.5px] text-rose-700">{finalizeMsg}</p> : null}
-            </>
-          ) : onUnfinalize ? (
-            <>
-              <p className="rounded-[10px] border border-violet-200 bg-violet-50 px-3 py-2 text-[11.5px] text-violet-800">
-                FINALIZED — locked. Unfinalize to edit again.
-              </p>
-              <button
-                type="button"
-                onClick={onUnfinalize}
-                disabled={finalizeBusy}
-                className="inline-flex items-center justify-center rounded-lg border border-violet-200 bg-white px-2.5 py-2 text-[12px] font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {finalizeBusy ? 'Unfinalizing…' : 'Unfinalize'}
-              </button>
-              {finalizeMsg ? <p className="text-[11.5px] text-rose-700">{finalizeMsg}</p> : null}
-            </>
-          ) : (
-            <p className="rounded-[10px] border border-violet-200 bg-violet-50 px-3 py-2 text-[11.5px] text-violet-800">
-              FINALIZED — only an admin can unfinalize.
-            </p>
-          )}
-        </div>
-      </SectionCard>
-
-      <SectionCard id="estimate-status-controls" className="p-5">
-        <SectionHeading icon={<IconFlag />} tone="slate" title="Status" />
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {STATUS_OPTIONS.map((s) => {
-            const active = bootstrap.estimate.status === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                disabled={statusBusy || active || isFinalized}
-                onClick={() => onStatusChange(s)}
-              className={`inline-flex items-center justify-center rounded-[10px] border px-2 py-2.5 text-[12.5px] font-bold transition ${
-                  active
-                    ? STATUS_TONE[s]
-                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 disabled:hover:bg-white'
-                } disabled:cursor-not-allowed`}
-              >
-                {labelEstimateStatus(s)}
-              </button>
-            );
-          })}
-        </div>
-        {isFinalized ? (
-          <p className="mt-2.5 text-[11.5px] text-slate-400">Status is locked while FINALIZED.</p>
-        ) : null}
-        <p className="mt-3 text-[11.5px] text-slate-400">
-          {bootstrap.estimate.number} · client {bootstrap.estimate.client.companyName}
-        </p>
-      </SectionCard>
-
+      {showAdmin ? (
+      <>
       {onDelete ? (
         <details className="rounded-[18px] border border-rose-100 bg-white/90 shadow-sm">
           <summary className="cursor-pointer list-none px-4 py-3 text-[13px] font-semibold text-rose-700 marker:content-none [&::-webkit-details-marker]:hidden">
@@ -441,6 +379,8 @@ export function TotalsPanel(props: TotalsPanelProps) {
           </div>
         </details>
       ) : null}
+      </>
+      ) : null}
     </aside>
   );
 }
@@ -448,43 +388,56 @@ export function TotalsPanel(props: TotalsPanelProps) {
 function SummaryMetric({
   label,
   value,
-  strong = false,
   valueClass = 'text-slate-950',
 }: {
   label: string;
   value: string;
-  strong?: boolean;
   valueClass?: string;
 }) {
   return (
-    <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <p
-        className={`mt-1 font-bold leading-none tabular-nums ${valueClass} ${
-          strong ? 'text-[24px]' : 'text-[18px]'
-        }`}
-      >
+    <div className="rounded-[8px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
+      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+      <p className={`mt-2 text-[16px] font-black leading-none tabular-nums ${valueClass}`}>
         {value}
       </p>
     </div>
   );
 }
 
-function WorkflowStep({ label, done }: { label: string; done: boolean }) {
+function WorkflowStep({
+  label,
+  done,
+  first = false,
+  last = false,
+}: {
+  label: string;
+  done: boolean;
+  first?: boolean;
+  last?: boolean;
+}) {
+  void first;
+  void last;
+
   return (
-    <li className="flex items-center justify-between gap-3 rounded-[12px] border border-slate-200 bg-slate-50/55 px-3 py-2.5">
-      <span className="flex min-w-0 items-center gap-2 text-[12.5px] font-semibold text-slate-700">
+    <li className="relative z-10 flex min-w-0 flex-col items-center text-center">
+      <div className="relative flex w-full justify-center">
         <span
           aria-hidden
-          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] ${
-            done ? 'bg-emerald-500 text-white' : 'bg-white text-slate-300 ring-1 ring-inset ring-slate-200'
+          className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[13px] font-black ${
+            done
+              ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/25'
+              : 'bg-white text-slate-300 ring-1 ring-inset ring-slate-200'
           }`}
         >
           {done ? '✓' : ''}
         </span>
-        {label}
-      </span>
-      <span className="text-[11px] font-medium text-slate-400">{done ? 'Done' : 'Pending'}</span>
+      </div>
+      <div className="mt-3 min-w-0">
+        <p className="truncate text-[12px] font-bold text-slate-800">{label}</p>
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          {done ? 'Complete' : 'Pending'}
+        </p>
+      </div>
     </li>
   );
 }

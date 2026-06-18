@@ -3,6 +3,7 @@
 import { startTransition, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { POAttachmentKind } from '@bvisible/db';
+import { SelectControl } from '@/components/app/select-control';
 import {
   deletePoAttachmentAction,
   uploadPoAttachmentAction,
@@ -156,7 +157,7 @@ export function PoAttachmentsPanel({
           <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-bv-muted)]">
             Kind
           </span>
-          <select
+          <SelectControl
             value={kind}
             onChange={(e) => setKind(e.currentTarget.value as POAttachmentKind)}
             className="rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1 text-[12px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
@@ -166,7 +167,7 @@ export function PoAttachmentsPanel({
                 {kindLabel(k)}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
         <label className="flex min-w-[140px] flex-1 flex-col gap-0.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-bv-muted)]">

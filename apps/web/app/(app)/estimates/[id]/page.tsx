@@ -44,6 +44,7 @@ export default async function EstimateDetailPage({
     shopCatalog,
     linkedInvoiceRow,
     quoteSentAudit,
+    vehicleLibrary,
   ] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
@@ -58,6 +59,29 @@ export default async function EstimateDetailPage({
         subtotalCostCents: true,
         finalPriceCents: true,
         client: { select: { id: true, companyName: true, contactName: true, email: true } },
+        vehicle: {
+          select: {
+            id: true,
+            trimId: true,
+            year: true,
+            make: true,
+            model: true,
+            trim: true,
+            color: true,
+            wrapType: true,
+            coverageType: true,
+            notes: true,
+            photoUrl: true,
+            trimRef: {
+              select: {
+                bodyStyle: true,
+                model: { select: { vehicleType: true } },
+                dimensionProfiles: { orderBy: [{ updatedAt: 'desc' }], take: 1 },
+                photos: { where: { isPrimary: true }, take: 1, select: { url: true } },
+              },
+            },
+          },
+        },
         lines: {
           orderBy: [{ sortOrder: 'asc' }],
           select: {
@@ -143,6 +167,20 @@ export default async function EstimateDetailPage({
       orderBy: { createdAt: 'asc' },
       select: { createdAt: true },
     }),
+    prisma.vehicleTrim.findMany({
+      where: { tenantId: me.tenantId, deletedAt: null },
+      orderBy: [{ year: 'desc' }, { model: { make: { name: 'asc' } } }, { model: { name: 'asc' } }],
+      take: 250,
+      select: {
+        id: true,
+        year: true,
+        trimName: true,
+        bodyStyle: true,
+        model: { select: { name: true, vehicleType: true, make: { select: { name: true } } } },
+        photos: { where: { isPrimary: true }, take: 1, select: { url: true } },
+        dimensionProfiles: { orderBy: [{ updatedAt: 'desc' }], take: 1 },
+      },
+    }),
   ]);
 
   if (!estimate) {
@@ -186,19 +224,21 @@ export default async function EstimateDetailPage({
 
   const supportTabs = (
     <EstimateSupportTabs
+      key="estimate-support-tabs"
       workflow={
         <WorkflowTabPreview
+          key="workflow-preview"
           estimateId={estimate.id}
           timelineCount={quoteUi.timelineRows.length}
           primaryHref={primary.href}
           primaryLabel="Send Estimate"
         />
       }
-      files={<CompactEmpty title="No files attached" detail="Related quote files and customer documents will appear here when available." />}
-      activity={<EstimateTimelineSection rows={quoteUi.timelineRows} />}
-      purchaseOrders={<PurchaseOrderTab linkedPos={linkedBootstrapRows} />}
-      reconciliation={<ReconciliationTab linkedPos={linkedBootstrapRows} />}
-      notes={<NotesTab notes={estimate.notes ?? ''} estimateNumber={estimate.number} />}
+      files={<CompactEmpty key="files-empty" title="No files attached" detail="Related quote files and customer documents will appear here when available." />}
+      activity={<EstimateTimelineSection key="activity-timeline" rows={quoteUi.timelineRows} />}
+      purchaseOrders={<PurchaseOrderTab key="purchase-orders" linkedPos={linkedBootstrapRows} />}
+      reconciliation={<ReconciliationTab key="reconciliation" linkedPos={linkedBootstrapRows} />}
+      notes={<NotesTab key="notes" notes={estimate.notes ?? ''} estimateNumber={estimate.number} />}
       purchaseOrderCount={linkedBootstrapRows.length}
       activityCount={quoteUi.timelineRows.length}
       reconciliationCount={linkedBootstrapRows.filter((p) => p.reconciliationNeedsAttention).length}
@@ -221,6 +261,49 @@ export default async function EstimateDetailPage({
       hasInvoice: linkedInvoiceRow != null,
       invoicePaid: linkedInvoiceRow?.paidAt != null,
     },
+    estimateVehicle: estimate.vehicle
+      ? {
+          id: estimate.vehicle.id,
+          trimId: estimate.vehicle.trimId,
+          year: estimate.vehicle.year,
+          make: estimate.vehicle.make,
+          model: estimate.vehicle.model,
+          trim: estimate.vehicle.trim,
+          color: estimate.vehicle.color,
+          wrapType: estimate.vehicle.wrapType,
+          coverageType: estimate.vehicle.coverageType,
+          notes: estimate.vehicle.notes,
+          photoUrl: estimate.vehicle.photoUrl ?? estimate.vehicle.trimRef?.photos[0]?.url ?? null,
+          bodyStyle: estimate.vehicle.trimRef?.bodyStyle ?? null,
+          vehicleType: estimate.vehicle.trimRef?.model.vehicleType ?? null,
+          profile: estimate.vehicle.trimRef?.dimensionProfiles[0]
+            ? {
+                totalApproxWrapSqFt: estimate.vehicle.trimRef.dimensionProfiles[0].totalApproxWrapSqFt,
+                sideApproxSqFt: estimate.vehicle.trimRef.dimensionProfiles[0].sideApproxSqFt,
+                roofApproxSqFt: estimate.vehicle.trimRef.dimensionProfiles[0].roofApproxSqFt,
+                hoodApproxSqFt: estimate.vehicle.trimRef.dimensionProfiles[0].hoodApproxSqFt,
+                rearApproxSqFt: estimate.vehicle.trimRef.dimensionProfiles[0].rearApproxSqFt,
+                frontApproxSqFt: estimate.vehicle.trimRef.dimensionProfiles[0].frontApproxSqFt,
+              }
+            : null,
+        }
+      : null,
+    vehicleLibrary: vehicleLibrary.map((vehicle) => ({
+      id: vehicle.id,
+      year: vehicle.year,
+      make: vehicle.model.make.name,
+      model: vehicle.model.name,
+      trim: vehicle.trimName,
+      bodyStyle: vehicle.bodyStyle,
+      vehicleType: vehicle.model.vehicleType,
+      photoUrl: vehicle.photos[0]?.url ?? null,
+      totalApproxWrapSqFt: vehicle.dimensionProfiles[0]?.totalApproxWrapSqFt ?? null,
+      sideApproxSqFt: vehicle.dimensionProfiles[0]?.sideApproxSqFt ?? null,
+      roofApproxSqFt: vehicle.dimensionProfiles[0]?.roofApproxSqFt ?? null,
+      hoodApproxSqFt: vehicle.dimensionProfiles[0]?.hoodApproxSqFt ?? null,
+      rearApproxSqFt: vehicle.dimensionProfiles[0]?.rearApproxSqFt ?? null,
+      frontApproxSqFt: vehicle.dimensionProfiles[0]?.frontApproxSqFt ?? null,
+    })),
     lines: estimate.lines.map((l) => ({
       id: l.id,
       kind: l.kind,
@@ -245,14 +328,18 @@ export default async function EstimateDetailPage({
         body:has(#estimate-workspace-root) header.sticky {
           display: none;
         }
+        body:has(#estimate-workspace-root) {
+          background: #f6f7fb;
+        }
         body:has(#estimate-workspace-root) main {
-          padding: 30px 40px;
+          padding: 0;
         }
       `}</style>
       <EstimateCommandHeader
         estimateId={estimate.id}
         estimateNumber={estimate.number}
         jobTitle={estimate.title}
+        clientId={estimate.client.id}
         clientName={estimate.client.companyName}
         status={estimate.status}
       />
@@ -282,9 +369,9 @@ function WorkflowTabPreview({
   primaryLabel: string;
 }) {
   return (
-    <div className="grid min-h-[210px] overflow-hidden rounded-[16px] border border-slate-200 bg-white md:grid-cols-[1fr_1fr]">
-      <div className="border-b border-slate-100 p-5 md:border-b-0 md:border-r">
-        <p className="text-[13px] font-bold text-slate-950">Next Step</p>
+    <div className="grid min-h-[220px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm md:grid-cols-[1fr_1fr]">
+      <div className="border-b border-slate-100 bg-gradient-to-br from-blue-50 via-white to-white p-5 md:border-b-0 md:border-r">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-600">Recommended next step</p>
         <div className="mt-4 flex items-start gap-4">
           <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-100">
             <span className="text-[22px] leading-none">{'->'}</span>
@@ -296,7 +383,7 @@ function WorkflowTabPreview({
             </p>
             <Link
               href={primaryHref as never}
-              className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_12px_24px_-14px_rgba(37,99,235,0.8)] transition hover:from-blue-500 hover:to-indigo-500"
+              className="mt-4 inline-flex items-center justify-center rounded-[12px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_12px_24px_-14px_rgba(37,99,235,0.8)] transition hover:-translate-y-0.5 hover:from-blue-500 hover:to-indigo-500"
             >
               {primaryLabel}
             </Link>
@@ -304,7 +391,7 @@ function WorkflowTabPreview({
         </div>
       </div>
       <div className="p-5">
-        <p className="text-[13px] font-bold text-slate-950">Recent Activity</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Recent activity</p>
         <div className="mt-4 flex flex-col gap-3">
           <ActivityPreview label="Estimate created" detail="Admin User - Jun 11, 2026 8:48 PM" />
           <ActivityPreview label="Line items updated" detail="Admin User - Jun 11, 2026 8:50 PM" />
@@ -450,65 +537,79 @@ function EstimateCommandHeader({
   estimateId,
   estimateNumber,
   jobTitle,
+  clientId,
   clientName,
   status,
 }: {
   estimateId: string;
   estimateNumber: string;
   jobTitle: string;
+  clientId: string;
   clientName: string;
   status: EstimateStatus;
 }) {
   const displayNumber = estimateNumber.match(/(\d+)$/)?.[1] ?? estimateNumber;
-  const displayClient = clientName.replace(/^DEMO\s+/i, '');
+  void jobTitle;
+  void clientId;
+  void clientName;
 
   return (
-    <section className="mx-auto max-w-[1440px] px-1">
-      <div className="flex flex-col gap-4 pb-4 pt-1 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium text-slate-400">
-            <Link href="/estimates" className="transition hover:text-slate-700">
-              Estimates
-            </Link>
-            <span aria-hidden>/</span>
-            <span className="font-semibold text-slate-600">Create Estimate</span>
-          </div>
-          <div className="mt-3 flex flex-col gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-4">
-              <h1 className="max-w-4xl text-[32px] font-bold leading-[1.04] tracking-[-0.045em] text-slate-950 md:text-[40px]">
-                Estimate #{displayNumber}
-              </h1>
-              <span className={`${statusPill(status)} rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset`}>
+    <section className="border-b border-slate-200 bg-white">
+      <div className="flex h-[56px] w-full items-center justify-between px-6">
+          <div className="flex min-w-0 items-center gap-8">
+            <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-slate-400">
+              <Link href="/estimates" className="transition hover:text-slate-700">
+                Estimates
+              </Link>
+              <span aria-hidden>›</span>
+              <span className="font-black text-slate-950">Estimate #{displayNumber}</span>
+              <span className={`${statusPill(status)} rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset`}>
                 {labelEstimateStatus(status)}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-                <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-500" />
-                Auto-saved 2 sec ago
-              </span>
             </div>
-            <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-relaxed text-slate-500">
-              <span className="font-semibold text-blue-700">{displayClient}</span>
-              <span>{jobTitle}</span>
-              <span className="text-slate-400">Add tags</span>
-            </p>
           </div>
-          </div>
-        </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 xl:pt-8">
-          <button
-            type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-slate-200 bg-white text-[18px] font-bold leading-none text-slate-500 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            title="More estimate actions are available in the right rail."
-          >
-            ...
-          </button>
-          <EstimateHeaderActions estimateId={estimateId} status={status} />
-        </div>
+          <div className="flex shrink-0 items-center gap-4">
+            <span className="inline-flex items-start gap-1.5 text-[11px] font-semibold leading-tight text-slate-500">
+              <span className="mt-0.5 h-2 w-2 rounded-full bg-emerald-500" />
+              <span>Auto-saved<br />just now</span>
+            </span>
+              <EstimateHeaderActions estimateId={estimateId} status={status} />
+          </div>
       </div>
     </section>
   );
+}
+
+function statusActionCopy(status: EstimateStatus): { title: string; detail: string } {
+  switch (status) {
+    case EstimateStatus.SENT:
+      return {
+        title: 'Waiting on customer approval',
+        detail: 'Keep pricing and fulfillment prep visible while the quote is out.',
+      };
+    case EstimateStatus.APPROVED:
+      return {
+        title: 'Ready for fulfillment',
+        detail: 'Create or link purchase orders, reconcile costs, then finalize.',
+      };
+    case EstimateStatus.FINALIZED:
+      return {
+        title: 'Estimate finalized',
+        detail: 'Line edits are locked so accounting and fulfillment stay consistent.',
+      };
+    case EstimateStatus.REJECTED:
+      return {
+        title: 'Quote rejected',
+        detail: 'Review notes, revise scope, or duplicate when the customer reopens.',
+      };
+    case EstimateStatus.DRAFT:
+    default:
+      return {
+        title: 'Build, review, then send',
+        detail: 'Add line items first; the workspace will guide the quote through approval.',
+      };
+  }
 }
 
 function statusPill(status: EstimateStatus): string {

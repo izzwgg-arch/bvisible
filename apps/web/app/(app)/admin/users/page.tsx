@@ -3,6 +3,7 @@ import { prisma, Role } from '@bvisible/db';
 import { requireRole } from '@/lib/auth/current-user';
 import { resolveEffectiveCompany } from '@/lib/auth/effective-company';
 import { PageHeader } from '@/components/app-shell';
+import { AdminMetric, AdminPanel, AdminPill } from '@/components/app/admin-ui';
 import { InviteUserForm } from './invite-user-form';
 
 export const metadata = { title: 'Users' };
@@ -73,6 +74,12 @@ export default async function AdminUsersPage({
 
   const inviteLink = sp.invite ? await buildInviteLink(sp.invite) : null;
   const mailErrMessage = sp.mailErr ? MAIL_ERR_LABELS[sp.mailErr] ?? MAIL_ERR_LABELS.unknown : null;
+  const activeUsers = users.filter((u) => !u.disabledAt).length;
+  const adminUsers = users.filter((u) => u.role === Role.ADMIN || u.role === Role.SUPER_ADMIN).length;
+  const recentLoginUsers = users.filter((u) => {
+    if (!u.lastLoginAt) return false;
+    return Date.now() - u.lastLoginAt.getTime() < 1000 * 60 * 60 * 24 * 30;
+  }).length;
 
   return (
     <>
@@ -80,116 +87,110 @@ export default async function AdminUsersPage({
         title="Users"
         subtitle={
           me.role === Role.SUPER_ADMIN
-            ? 'All users across the organization.'
-            : `Users in ${eff.tenant.name}.`
+            ? 'Modern access control for every company, role, invite, and operator account.'
+            : `Access control for ${eff.tenant.name}: operators, admins, and pending invitations.`
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-          <div className="border-b border-[var(--color-bv-border)] px-5 py-3">
-            <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              Members
-            </h2>
-            <p className="mt-0.5 text-[12.5px] text-[var(--color-bv-muted)]">
-              {users.length} {users.length === 1 ? 'user' : 'users'}
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
-                  <th className="px-5 py-2 font-medium">Email</th>
-                  <th className="px-5 py-2 font-medium">Name</th>
-                  {me.role === Role.SUPER_ADMIN ? (
-                    <th className="px-5 py-2 font-medium">Company</th>
-                  ) : null}
-                  <th className="px-5 py-2 font-medium">Role</th>
-                  <th className="px-5 py-2 font-medium">Status</th>
-                  <th className="px-5 py-2 font-medium">Last login</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-[var(--color-bv-border)] last:border-b-0">
-                    <td className="px-5 py-2.5 text-[var(--color-bv-text)]">{u.email}</td>
-                    <td className="px-5 py-2.5 text-[var(--color-bv-text)]">{u.name || '—'}</td>
-                    {me.role === Role.SUPER_ADMIN ? (
-                      <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
-                        {u.tenant?.name ?? '— (system)'}
-                      </td>
-                    ) : null}
-                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">{u.role}</td>
-                    <td className="px-5 py-2.5">
-                      <StatusBadge disabled={!!u.disabledAt} />
-                    </td>
-                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
-                      {u.lastLoginAt ? formatDate(u.lastLoginAt) : '—'}
-                    </td>
-                  </tr>
-                ))}
-                {users.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={me.role === Role.SUPER_ADMIN ? 6 : 5}
-                      className="px-5 py-8 text-center text-[var(--color-bv-muted)]"
-                    >
-                      No users yet. Invite someone from the right.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-          {pendingInvites.length > 0 ? (
-            <div className="border-t border-[var(--color-bv-border)] px-5 py-3">
-              <h3 className="text-[13px] font-semibold text-[var(--color-bv-text)]">
-                Pending invites
-              </h3>
-              <ul className="mt-2 flex flex-col gap-1 text-[12.5px] text-[var(--color-bv-muted)]">
-                {pendingInvites.map((inv) => (
-                  <li key={inv.id} className="flex items-center justify-between">
-                    <span>
-                      {inv.email} · {inv.role}
-                      {me.role === Role.SUPER_ADMIN && inv.tenant ? ` · ${inv.tenant.name}` : ''}
-                    </span>
-                    <span>expires {formatDate(inv.expiresAt)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+      <div className="grid gap-5">
+        <section className="grid gap-3 md:grid-cols-4">
+          <AdminMetric label="Members" value={users.length} detail={`${activeUsers} active accounts`} />
+          <AdminMetric label="Admins" value={adminUsers} detail="Can manage sensitive workflows" tone="violet" />
+          <AdminMetric label="Recent logins" value={recentLoginUsers} detail="Signed in during the last 30 days" tone="emerald" />
+          <AdminMetric label="Pending invites" value={pendingInvites.length} detail="Expire after seven days" tone="amber" />
         </section>
 
-        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-          <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-            Invite a user
-          </h2>
-          <p className="mt-1 text-[12.5px] text-[var(--color-bv-muted)]">
-            Invited users join your company ({eff.tenant.name}). Link expires in 7 days after send.
-          </p>
-          <div className="mt-4">
-            <InviteUserForm canChooseAdmin={me.role === Role.SUPER_ADMIN || me.role === Role.ADMIN} />
-          </div>
-          {sp.sent && !sp.mailErr ? (
-            <div className="mt-5 rounded-[8px] border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-[12.5px] font-medium text-emerald-900">
-                Invite email sent to {sp.sent}. Link expires in 7 days.
-              </p>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <AdminPanel
+            title="Member directory"
+            eyebrow="Access control"
+            description="Operators and admins formatted for fast review, audit, and invite follow-up."
+            action={<AdminPill tone="blue">{me.role === Role.SUPER_ADMIN ? 'All companies' : eff.tenant.name}</AdminPill>}
+          >
+            <div className="grid gap-3 p-4">
+              {users.length === 0 ? (
+                <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50/70 px-5 py-8 text-center text-[13px] text-slate-500">
+                  No users yet. Invite someone from the panel on the right.
+                </div>
+              ) : (
+                users.map((u) => (
+                  <article
+                    key={u.id}
+                    className="grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_140px_150px]"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100">
+                          {initials(u.name || u.email)}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-[14px] font-semibold text-slate-950">{u.name || 'Unnamed user'}</h3>
+                          <p className="truncate text-[12.5px] text-slate-500">{u.email}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="min-w-0 text-[12.5px] text-slate-500">
+                      <div className="font-medium text-slate-700">{roleLabel(u.role)}</div>
+                      {me.role === Role.SUPER_ADMIN ? (
+                        <div className="mt-1 truncate">{u.tenant?.name ?? 'System account'}</div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <StatusBadge disabled={!!u.disabledAt} />
+                    </div>
+                    <div className="text-[12px] text-slate-500 tabular-nums">
+                      {u.lastLoginAt ? `Last login ${formatDate(u.lastLoginAt)}` : 'No login yet'}
+                    </div>
+                  </article>
+                ))
+              )}
             </div>
-          ) : null}
-          {sp.invite && inviteLink && mailErrMessage ? (
-            <div className="mt-5 flex flex-col gap-2 rounded-[8px] border border-amber-200 bg-amber-50 p-3">
-              <p className="text-[12.5px] font-medium text-amber-900">
-                Email delivery failed for {sp.invitedEmail ?? 'the new user'}. Copy this invite link and deliver it manually.
-              </p>
-              <p className="text-[12px] text-amber-800">{mailErrMessage}</p>
-              <code className="break-all rounded-md border border-amber-300 bg-white px-2 py-1 font-mono text-[11.5px] text-amber-900">
-                {inviteLink}
-              </code>
+            {pendingInvites.length > 0 ? (
+              <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4">
+                <h3 className="text-[13px] font-semibold text-slate-950">Pending invites</h3>
+                <div className="mt-3 grid gap-2">
+                  {pendingInvites.map((inv) => (
+                    <div key={inv.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-slate-100 bg-white px-3 py-2 text-[12.5px]">
+                      <span className="min-w-0 truncate font-medium text-slate-800">
+                        {inv.email} · {roleLabel(inv.role)}
+                        {me.role === Role.SUPER_ADMIN && inv.tenant ? ` · ${inv.tenant.name}` : ''}
+                      </span>
+                      <span className="shrink-0 text-slate-500">expires {formatDate(inv.expiresAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </AdminPanel>
+
+          <AdminPanel
+            title="Invite a user"
+            eyebrow="Team growth"
+            description={`Invited users join ${eff.tenant.name}. Links expire seven days after send.`}
+          >
+            <div className="p-5">
+              <InviteUserForm canChooseAdmin={me.role === Role.SUPER_ADMIN || me.role === Role.ADMIN} />
+              {sp.sent && !sp.mailErr ? (
+                <div className="mt-5 rounded-[16px] border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-[12.5px] font-semibold text-emerald-900">
+                    Invite email sent to {sp.sent}. Link expires in 7 days.
+                  </p>
+                </div>
+              ) : null}
+              {sp.invite && inviteLink && mailErrMessage ? (
+                <div className="mt-5 flex flex-col gap-2 rounded-[16px] border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-[12.5px] font-semibold text-amber-900">
+                    Email delivery failed for {sp.invitedEmail ?? 'the new user'}. Copy this invite link and deliver it manually.
+                  </p>
+                  <p className="text-[12px] text-amber-800">{mailErrMessage}</p>
+                  <code className="break-all rounded-md border border-amber-300 bg-white px-2 py-1 font-mono text-[11.5px] text-amber-900">
+                    {inviteLink}
+                  </code>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </section>
+          </AdminPanel>
+        </div>
       </div>
     </>
   );
@@ -197,21 +198,24 @@ export default async function AdminUsersPage({
 
 function StatusBadge({ disabled }: { disabled: boolean }) {
   if (disabled) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11.5px] font-medium text-amber-800">
-        Disabled
-      </span>
-    );
+    return <AdminPill tone="amber">Disabled</AdminPill>;
   }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11.5px] font-medium text-emerald-700">
-      Active
-    </span>
-  );
+  return <AdminPill tone="emerald">Active</AdminPill>;
 }
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 16).replace('T', ' ');
+}
+
+function roleLabel(role: Role): string {
+  switch (role) {
+    case Role.SUPER_ADMIN:
+      return 'Super admin';
+    case Role.ADMIN:
+      return 'Admin';
+    case Role.USER:
+      return 'User';
+  }
 }
 
 async function buildInviteLink(token: string): Promise<string> {
@@ -219,4 +223,13 @@ async function buildInviteLink(token: string): Promise<string> {
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost';
   const proto = (h.get('x-forwarded-proto') ?? 'http').split(',')[0]?.trim() ?? 'http';
   return `${proto}://${host}/invite/${encodeURIComponent(token)}`;
+}
+
+function initials(name: string) {
+  return name
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }

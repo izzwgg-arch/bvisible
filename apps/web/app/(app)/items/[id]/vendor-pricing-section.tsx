@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
+import { SelectControl } from '@/components/app/select-control';
 import { appendManualShopMaterialPriceAction, type ShopMaterialActionState } from '../actions';
 
 export interface VendorPriceRow {
@@ -138,7 +139,7 @@ export function VendorPricingSection({
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-slate-500">Vendor</span>
-                <select
+                <SelectControl
                   name="vendorId"
                   required
                   className="h-10 rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-[13px] outline-none focus:border-blue-300 focus:bg-white"
@@ -147,7 +148,7 @@ export function VendorPricingSection({
                   {vendors.map((v) => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-slate-500">Price (USD)</span>

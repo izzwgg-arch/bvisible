@@ -21,7 +21,7 @@ export function SectionCard({
   return (
     <Tag
       id={id}
-      className={`rounded-[18px] border border-slate-200/70 bg-white/95 shadow-[0_1px_2px_rgba(15,23,41,0.04),0_14px_36px_-18px_rgba(15,23,41,0.18)] backdrop-blur-sm ${className}`}
+      className={`rounded-[10px] border border-slate-200 bg-white shadow-sm ${className}`}
     >
       {children}
     </Tag>
@@ -49,11 +49,11 @@ export function SectionHeading({
         {icon ? <IconBadge tone={tone}>{icon}</IconBadge> : null}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-[14.5px] font-semibold tracking-tight text-slate-900">{title}</h2>
+          <h2 className="text-[12px] font-black uppercase tracking-[0.08em] text-slate-950">{title}</h2>
             {badge}
           </div>
           {subtitle ? (
-            <p className="mt-1 max-w-xl text-[12px] leading-relaxed text-slate-500">{subtitle}</p>
+            <p className="mt-0.5 max-w-xl text-[10.5px] leading-relaxed text-slate-500">{subtitle}</p>
           ) : null}
         </div>
       </div>
@@ -80,7 +80,7 @@ export function IconBadge({
   return (
     <span
       aria-hidden
-      className={`grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-gradient-to-br ring-1 ring-inset ${TONE_BADGE[tone] ?? TONE_BADGE.blue}`}
+      className={`grid h-7 w-7 shrink-0 place-items-center rounded-[7px] bg-gradient-to-br ring-1 ring-inset ${TONE_BADGE[tone] ?? TONE_BADGE.blue}`}
     >
       {children}
     </span>

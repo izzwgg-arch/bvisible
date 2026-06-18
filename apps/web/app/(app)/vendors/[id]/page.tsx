@@ -7,8 +7,10 @@ import {
 } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { formatVendorItemDisplayName } from '@/lib/vendor-pricing/normalize';
+import { VendorEditForm } from './vendor-edit-form';
 
-export const metadata = { title: 'Vendor pricing' };
+export const metadata = { title: 'Vendor profile' };
 export const dynamic = 'force-dynamic';
 
 function fmtMoney(cents: number): string {
@@ -34,12 +36,28 @@ export default async function VendorDetailPage({
       name: true,
       email: true,
       phone: true,
+      emails: true,
+      phones: true,
       notes: true,
     },
   });
   if (!vendor) notFound();
 
-  const [history, openSpendAlerts, latestOcrApproved] = await Promise.all([
+  // Merge legacy single fields into arrays for backward compat
+  const emails =
+    vendor.emails.length > 0
+      ? vendor.emails
+      : vendor.email
+        ? [vendor.email]
+        : [];
+  const phones =
+    vendor.phones.length > 0
+      ? vendor.phones
+      : vendor.phone
+        ? [vendor.phone]
+        : [];
+
+  const [history, openSpendAlerts, catalogItems] = await Promise.all([
     prisma.vendorPriceHistory.findMany({
       where: { tenantId: me.tenantId, vendorId: id },
       orderBy: { createdAt: 'desc' },
@@ -77,22 +95,37 @@ export default async function VendorDetailPage({
         status: SpendAlertStatus.OPEN,
       },
     }),
-    prisma.vendorPriceHistory.findFirst({
-      where: {
-        tenantId: me.tenantId,
-        vendorId: id,
-        extractionMethod: VendorPriceExtractionMethod.OCR_APPROVED,
-      },
-      orderBy: { createdAt: 'desc' },
+    // All catalog items linked to this vendor, with latest price each
+    prisma.vendorCatalogItem.findMany({
+      where: { tenantId: me.tenantId, vendorId: id },
+      orderBy: { nameNormalized: 'asc' },
       select: {
-        createdAt: true,
-        priceCents: true,
-        itemNameNormalized: true,
-        sourcePoAttachment: { select: { purchaseOrderId: true } },
+        id: true,
+        nameNormalized: true,
+        vendorSku: true,
+        shopMaterialItem: {
+          select: {
+            id: true,
+            name: true,
+            catalogUnit: true,
+            customUnitLabel: true,
+          },
+        },
+        priceHistory: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            priceCents: true,
+            unit: true,
+            createdAt: true,
+            extractionMethod: true,
+          },
+        },
       },
     }),
   ]);
 
+  // Price change detection
   const lowerThanPrior = new Set<string>();
   const byCatalog = new Map<string, typeof history>();
   for (const row of history) {
@@ -124,7 +157,7 @@ export default async function VendorDetailPage({
     <>
       <PageHeader
         title={vendor.name}
-        subtitle="Vendor profile and price observation history (matched emails + approved receipt OCR)."
+        subtitle="Vendor profile, contact details, item price list, and price observation history."
         actions={
           <Link
             href="/vendors"
@@ -135,76 +168,148 @@ export default async function VendorDetailPage({
         }
       />
 
-      <div className="mb-5 grid gap-4 lg:grid-cols-2">
-        <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-          <div className="border-b border-slate-100 px-5 py-4">
+      {/* ── Contact / Edit section ── */}
+      <section className="mb-5 overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+        <div className="flex items-center gap-4 border-b border-slate-100 px-5 py-4">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] bg-violet-50 text-[15px] font-bold text-violet-700 ring-1 ring-violet-100">
+            {vendorInitials}
+          </div>
+          <div>
             <h2 className="text-[15px] font-semibold text-slate-950">Contact details</h2>
+            <p className="text-[12px] text-slate-400">Edit vendor name, emails, phones, and notes.</p>
           </div>
-          <div className="flex gap-4 p-5">
-            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-violet-50 text-[16px] font-bold text-violet-700 ring-1 ring-violet-100">
-              {vendorInitials}
-            </div>
-            <dl className="grid flex-1 grid-cols-[100px_1fr] gap-y-2 text-[13px]">
-              <dt className="text-slate-400">Email</dt>
-              <dd className="text-slate-800">{vendor.email ?? '—'}</dd>
-              <dt className="text-slate-400">Phone</dt>
-              <dd className="text-slate-800">{vendor.phone ?? '—'}</dd>
-              {vendor.notes ? (
-                <>
-                  <dt className="text-slate-400">Notes</dt>
-                  <dd className="text-slate-600">{vendor.notes}</dd>
-                </>
-              ) : null}
-            </dl>
-          </div>
-        </section>
+        </div>
+        <div className="p-5">
+          <VendorEditForm
+            vendorId={vendor.id}
+            initialName={vendor.name}
+            initialEmails={emails}
+            initialPhones={phones}
+            initialNotes={vendor.notes}
+          />
+        </div>
+      </section>
 
-        <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-[15px] font-semibold text-slate-950">Pricing intelligence</h2>
-          </div>
-          <div className="p-5">
-            <p className="text-[12.5px] leading-relaxed text-slate-500">
-              Rows are append-only observations from regex extraction on email subjects, plain-text snippets, and attachment filenames — plus operator-approved receipt OCR.
+      {/* ── Items price list section ── */}
+      <section className="mb-5 overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-950">Item price list</h2>
+            <p className="mt-0.5 text-[12px] text-slate-500">
+              All catalog items tagged to this vendor, with the latest observed price.
             </p>
-            <dl className="mt-4 grid gap-2 text-[13px]">
-              <div className="flex items-center justify-between gap-3 rounded-[12px] bg-slate-50 px-4 py-3">
-                <dt className="text-slate-500">Open spend alerts</dt>
-                <dd className="font-semibold tabular-nums text-slate-900">
-                  {openSpendAlerts}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-[12px] bg-slate-50 px-4 py-3">
-                <dt className="text-slate-500">Latest OCR-confirmed unit</dt>
-                <dd className="text-right font-semibold text-slate-900">
-                  {latestOcrApproved ? (
-                    <>
-                      {fmtMoney(latestOcrApproved.priceCents)}{' '}
-                      <span className="block font-mono text-[11px] font-normal text-slate-400">
-                        {latestOcrApproved.itemNameNormalized}
-                      </span>
-                    </>
-                  ) : (
-                    '—'
-                  )}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-[12px] bg-slate-50 px-4 py-3">
-                <dt className="text-slate-500">PO reconciliation queue</dt>
-                <dd>
-                  <Link
-                    href="/admin/reconciliation"
-                    className="text-[13px] font-semibold text-[var(--color-bv-accent)] hover:underline underline-offset-2"
-                  >
-                    Open queue →
-                  </Link>
-                </dd>
-              </div>
-            </dl>
           </div>
-        </section>
-      </div>
+          {catalogItems.length > 0 && (
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
+              {catalogItems.length} item{catalogItems.length === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                <th className="px-5 py-3">Item name</th>
+                <th className="px-5 py-3">Vendor item</th>
+                <th className="px-5 py-3">SKU</th>
+                <th className="px-5 py-3">Latest price</th>
+                <th className="px-5 py-3">Unit</th>
+                <th className="px-5 py-3">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {catalogItems.map((ci) => {
+                const latest = ci.priceHistory[0];
+                return (
+                  <tr
+                    key={ci.id}
+                    className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/60"
+                  >
+                    <td className="max-w-[220px] px-5 py-3">
+                      {ci.shopMaterialItem ? (
+                        <Link
+                          href={`/items/${ci.shopMaterialItem.id}`}
+                          className="truncate font-semibold text-[var(--color-bv-accent)] hover:underline underline-offset-2 block"
+                        >
+                          {ci.shopMaterialItem.name}
+                        </Link>
+                      ) : (
+                        <span className="truncate text-slate-400 italic text-[12px] block">
+                          Not linked to catalog
+                        </span>
+                      )}
+                    </td>
+                    <td className="max-w-[220px] px-5 py-3">
+                      <span className="truncate text-[13px] font-medium text-slate-800 block">
+                        {formatVendorItemDisplayName(ci.nameNormalized)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-[12px] text-slate-500">
+                      {ci.vendorSku ?? '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      {latest ? (
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          {fmtMoney(latest.priceCents)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-[12px] text-slate-500">
+                      {latest?.unit ??
+                        (ci.shopMaterialItem?.customUnitLabel ||
+                          ci.shopMaterialItem?.catalogUnit) ??
+                        '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-[11px] text-slate-400 tabular-nums">
+                      {latest
+                        ? latest.createdAt.toISOString().slice(0, 10)
+                        : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+              {catalogItems.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-12 text-center text-[13px] text-slate-400">
+                    No items linked to this vendor yet. Items appear here when matched vendor emails or
+                    approved receipt OCR rows are processed.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
+      {/* ── Pricing intelligence stats ── */}
+      <section className="mb-5 overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h2 className="text-[15px] font-semibold text-slate-950">Pricing intelligence</h2>
+        </div>
+        <div className="p-5">
+          <dl className="grid gap-2 text-[13px]">
+            <div className="flex items-center justify-between gap-3 rounded-[12px] bg-slate-50 px-4 py-3">
+              <dt className="text-slate-500">Open spend alerts</dt>
+              <dd className="font-semibold tabular-nums text-slate-900">{openSpendAlerts}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-[12px] bg-slate-50 px-4 py-3">
+              <dt className="text-slate-500">PO reconciliation queue</dt>
+              <dd>
+                <Link
+                  href="/admin/reconciliation"
+                  className="text-[13px] font-semibold text-[var(--color-bv-accent)] hover:underline underline-offset-2"
+                >
+                  Open queue →
+                </Link>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      {/* ── Price history table ── */}
       <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
@@ -241,12 +346,16 @@ export default async function VendorDetailPage({
                     {h.createdAt.toISOString().slice(0, 16).replace('T', ' ')}
                   </td>
                   <td className="max-w-[240px] px-5 py-3">
-                    <div className="truncate font-mono text-[12px] text-slate-800">
-                      {h.itemNameNormalized}
+                    <div className="truncate text-[13px] font-medium text-slate-800">
+                      {formatVendorItemDisplayName(h.itemNameRaw || h.itemNameNormalized)}
                     </div>
-                    <div className="truncate text-[11px] text-slate-400">
-                      {h.itemNameRaw}
-                    </div>
+                    {h.itemNameRaw &&
+                    h.itemNameRaw.trim().toLowerCase() !==
+                      h.itemNameNormalized.trim().toLowerCase() ? (
+                      <div className="truncate text-[11px] text-slate-400">
+                        As received: {h.itemNameRaw}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="whitespace-nowrap px-5 py-3">
                     <span className="font-semibold tabular-nums text-slate-900">
@@ -302,7 +411,8 @@ export default async function VendorDetailPage({
               {history.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-12 text-center text-[13px] text-slate-400">
-                    No extracted prices yet. Observations appear when matched vendor emails contain line-like patterns, or when receipt OCR rows are approved.
+                    No extracted prices yet. Observations appear when matched vendor emails contain
+                    line-like patterns, or when receipt OCR rows are approved.
                   </td>
                 </tr>
               ) : null}

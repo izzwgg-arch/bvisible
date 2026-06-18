@@ -11,6 +11,7 @@ import { SendEstimateEmailForm } from './send-estimate-form';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
+import { getTenantInvoiceProfile } from '@/lib/company/tenant-invoice-profile';
 
 export const metadata = { title: 'Estimate quote' };
 export const dynamic = 'force-dynamic';
@@ -40,7 +41,7 @@ export default async function EstimatePreviewPage({
       subtotalCostCents: true,
       finalPriceCents: true,
       updatedAt: true,
-      tenant: { select: { name: true } },
+      tenant: { select: { id: true, name: true } },
       client: {
         select: {
           companyName: true,
@@ -82,6 +83,7 @@ export default async function EstimatePreviewPage({
 
   const backHref = `/estimates/${estimate.id}`;
   const isFinalized = estimate.status === EstimateStatus.FINALIZED;
+  const company = await getTenantInvoiceProfile(prisma, estimate.tenant);
 
   return (
     <>
@@ -123,7 +125,7 @@ export default async function EstimatePreviewPage({
       </div>
 
       <QuoteDocument
-        companyName={estimate.tenant.name}
+        company={company}
         estimateNumber={estimate.number}
         title={estimate.title}
         quoteDateLabel={`Updated ${formatQuoteDate(estimate.updatedAt)}`}

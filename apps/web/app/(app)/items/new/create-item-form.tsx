@@ -3,9 +3,17 @@
 import { useActionState, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EstimateLineKind, ShopCatalogUnit } from '@bvisible/db';
+import { SelectControl } from '@/components/app/select-control';
 import { FormError } from '@/components/auth/form-error';
 import { kindLabel } from '@/lib/estimate/format';
-import { createShopMaterialItemAction, type ShopMaterialActionState } from '../actions';
+import {
+  addMachineAction,
+  addShopItemCategoryAction,
+  createShopMaterialItemAction,
+  type AddCategoryState,
+  type AddMachineState,
+  type ShopMaterialActionState,
+} from '../actions';
 
 const KINDS: EstimateLineKind[] = [
   EstimateLineKind.MATERIAL,
@@ -26,54 +34,177 @@ const UNITS: ShopCatalogUnit[] = [
   ShopCatalogUnit.CUSTOM,
 ];
 
+const ADD_MACHINE_INITIAL: AddMachineState = { error: null };
+const ADD_CATEGORY_INITIAL: AddCategoryState = { error: null };
+
+function categoryLabel(category: string) {
+  return KINDS.includes(category as EstimateLineKind)
+    ? kindLabel(category as EstimateLineKind)
+    : category;
+}
+
 export function CreateShopMaterialItemForm({
-  machines,
+  machines: initialMachines,
+  savedCategories,
 }: {
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
+  savedCategories: ReadonlyArray<string>;
 }) {
   const router = useRouter();
   const initial: ShopMaterialActionState = { error: null };
   const [state, action, pending] = useActionState(createShopMaterialItemAction, initial);
+
+  const [machines, setMachines] = useState(Array.from(initialMachines));
+  const [categories, setCategories] = useState(() => [
+    ...KINDS,
+    ...savedCategories.filter((c) => !KINDS.includes(c as EstimateLineKind)),
+  ]);
+  const [selectedCategory, setSelectedCategory] = useState<string>(EstimateLineKind.MATERIAL);
   const [selectedMachineId, setSelectedMachineId] = useState('');
-  const isNewMachine = selectedMachineId === '__new__';
+  const [showMachineForm, setShowMachineForm] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newMachineName, setNewMachineName] = useState('');
+  const [newMachineRateUsd, setNewMachineRateUsd] = useState('0.00');
+  const isMachineCategory = selectedCategory === EstimateLineKind.MACHINE;
+
+  const [machineState, machineFormAction, machinePending] = useActionState(
+    addMachineAction,
+    ADD_MACHINE_INITIAL,
+  );
+  const [categoryState, categoryFormAction, categoryPending] = useActionState(
+    addShopItemCategoryAction,
+    ADD_CATEGORY_INITIAL,
+  );
 
   useEffect(() => {
     if (state.redirectTo) router.push(state.redirectTo);
   }, [state.redirectTo, router]);
 
-  return (
-    <form action={action} className="grid gap-5">
-      <FormError message={state.error} />
-      <label className="flex flex-col gap-2">
-        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Item name</span>
-        <input
-          name="name"
-          required
-          maxLength={400}
-          placeholder="e.g. ACM 4X8 WHITE"
-          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
-        />
-      </label>
+  useEffect(() => {
+    if (!machineState.machineId || !machineState.machineName) return;
+    setMachines((prev) =>
+      prev.some((m) => m.id === machineState.machineId)
+        ? prev
+        : [...prev, { id: machineState.machineId!, name: machineState.machineName!, ratePerHourCents: 0 }],
+    );
+    setSelectedMachineId(machineState.machineId);
+    setNewMachineName('');
+    setNewMachineRateUsd('0.00');
+    setShowMachineForm(false);
+  }, [machineState.machineId, machineState.machineName]);
 
-      <div className="grid gap-4 sm:grid-cols-2">
+  useEffect(() => {
+    if (!categoryState.category) return;
+    setCategories((prev) =>
+      prev.includes(categoryState.category!) ? prev : [...prev, categoryState.category!],
+    );
+    setSelectedCategory(categoryState.category);
+    setNewCategoryName('');
+    setShowMachineForm(false);
+    setShowCategoryForm(false);
+  }, [categoryState.category]);
+
+  return (
+    <div className="grid gap-5">
+      <form action={action} className="grid gap-5">
+        <FormError message={state.error} />
         <label className="flex flex-col gap-2">
-          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Category</span>
-          <select
-            name="kind"
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Item name</span>
+          <input
+            name="name"
             required
-            defaultValue={EstimateLineKind.MATERIAL}
-            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
-          >
-            {KINDS.map((k) => (
-              <option key={k} value={k}>
-                {kindLabel(k)}
-              </option>
-            ))}
-          </select>
+            maxLength={400}
+            placeholder="e.g. ACM 4X8 WHITE"
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
+          />
         </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <label className="flex flex-col gap-2">
+              <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Category</span>
+              <SelectControl
+                name="categories"
+                required
+                value={selectedCategory}
+                onChange={(e) => {
+                  setSelectedCategory(e.target.value);
+                  setShowCategoryForm(false);
+                }}
+                className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
+              >
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {categoryLabel(category)}
+                  </option>
+                ))}
+              </SelectControl>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setShowCategoryForm(true);
+                setShowMachineForm(false);
+              }}
+              className="flex w-fit items-center gap-1.5 rounded-[10px] border border-dashed border-violet-300 bg-violet-50 px-3 py-1.5 text-[12.5px] font-semibold text-violet-700 transition hover:bg-violet-100"
+            >
+              + Add custom category
+            </button>
+
+            {showCategoryForm ? (
+              <div className="grid gap-3 rounded-[14px] border border-violet-100 bg-violet-50/70 p-4 sm:grid-cols-[1fr_auto]">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-violet-700">
+                    Custom category
+                  </span>
+                  <input
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    required
+                    maxLength={80}
+                    autoFocus
+                    placeholder="e.g. Apparel, Vehicles, Channel Letters"
+                    className="h-10 rounded-[10px] border border-violet-200 bg-white px-3 text-[13.5px] outline-none focus:border-violet-400 focus:shadow-[0_0_0_3px_rgba(124,58,237,0.10)]"
+                  />
+                  {categoryState.error ? (
+                    <span className="text-[12px] text-rose-600">{categoryState.error}</span>
+                  ) : categoryState.category ? (
+                    <span className="text-[12px] font-medium text-emerald-700">
+                      Saved: {categoryState.category}
+                    </span>
+                  ) : null}
+                </label>
+                <div className="flex items-end gap-2">
+                  <button
+                    type="button"
+                    disabled={categoryPending || !newCategoryName.trim()}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set('categoryName', newCategoryName.trim());
+                      categoryFormAction(fd);
+                    }}
+                    className="h-10 rounded-[10px] bg-violet-600 px-4 text-[13px] font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+                  >
+                    {categoryPending ? 'Saving...' : 'Save category'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCategoryForm(false);
+                      setNewCategoryName('');
+                    }}
+                    className="h-10 px-2 text-[12.5px] font-medium text-slate-500 hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         <label className="flex flex-col gap-2">
           <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Unit</span>
-          <select
+          <SelectControl
             name="catalogUnit"
             required
             defaultValue={ShopCatalogUnit.EACH}
@@ -84,68 +215,117 @@ export function CreateShopMaterialItemForm({
                 {u.replace(/_/g, ' ')}
               </option>
             ))}
-          </select>
+          </SelectControl>
           <p className="rounded-[14px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-[12px] leading-relaxed text-blue-900">
             SQ FT / SHEET / ROLL match how you buy material; the estimate <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> can fill sq ft, sheet count, roll usage, or banner totals on a line when you apply.
           </p>
         </label>
-      </div>
+        </div>
 
-      <label className="flex flex-col gap-2">
-        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          Custom unit label (when unit = CUSTOM)
-        </span>
-        <input
-          name="customUnitLabel"
-          maxLength={40}
-          placeholder="Only when needed"
-          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
-        />
-      </label>
+        <input type="hidden" name="customUnitLabel" value="" />
 
-      <div className="flex flex-col gap-2">
-        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          Default machine (Machine category only)
-        </span>
-        <select
-          name="machineId"
-          value={selectedMachineId}
-          onChange={(e) => setSelectedMachineId(e.target.value)}
-          className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
-        >
-          <option value="">— optional —</option>
-          {machines.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-          <option value="__new__">➕ Create new machine…</option>
-        </select>
-        {isNewMachine && (
-          <div className="grid gap-3 rounded-[14px] border border-blue-100 bg-blue-50/60 p-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-blue-700">Machine name</span>
-              <input
-                name="machineName"
-                required
-                maxLength={120}
-                placeholder="e.g. Roland 64 Printer"
-                className="h-10 rounded-[10px] border border-blue-200 bg-white px-3 text-[13.5px] outline-none focus:border-blue-400 focus:shadow-[0_0_0_3px_rgba(47,90,243,0.10)]"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-blue-700">Hourly rate (USD)</span>
-              <input
-                name="machineRateUsd"
-                defaultValue="0.00"
-                inputMode="decimal"
-                placeholder="0.00"
-                className="h-10 rounded-[10px] border border-blue-200 bg-white px-3 text-[13.5px] outline-none focus:border-blue-400 focus:shadow-[0_0_0_3px_rgba(47,90,243,0.10)]"
-              />
-            </label>
-          </div>
-        )}
-      </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Default machine
+          </span>
+          <SelectControl
+            name="machineId"
+            value={selectedMachineId}
+            onChange={(e) => {
+              if (e.target.value === '__new__') {
+                setShowMachineForm(true);
+                setShowCategoryForm(false);
+                setSelectedMachineId('');
+                return;
+              }
+              setSelectedMachineId(e.target.value);
+              setShowMachineForm(false);
+            }}
+            className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
+          >
+            <option value="">— optional —</option>
+            {machines.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </SelectControl>
+          <button
+            type="button"
+            onClick={() => {
+              setShowMachineForm(true);
+              setShowCategoryForm(false);
+              setSelectedMachineId('');
+            }}
+            className="flex w-fit items-center gap-1.5 rounded-[10px] border border-dashed border-blue-300 bg-blue-50 px-3 py-1.5 text-[12.5px] font-semibold text-blue-700 transition hover:bg-blue-100"
+          >
+            + Add new machine
+          </button>
+
+          {showMachineForm ? (
+            <div className="grid gap-3 rounded-[14px] border border-blue-100 bg-blue-50/60 p-4 sm:grid-cols-[1fr_1fr_auto]">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                  Machine name
+                </span>
+                <input
+                  value={newMachineName}
+                  onChange={(e) => setNewMachineName(e.target.value)}
+                  required
+                  maxLength={120}
+                  autoFocus
+                  placeholder="e.g. Roland 64 Printer"
+                  className="h-10 rounded-[10px] border border-blue-200 bg-white px-3 text-[13.5px] outline-none focus:border-blue-400 focus:shadow-[0_0_0_3px_rgba(47,90,243,0.10)]"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                  Hourly rate (USD)
+                </span>
+                <input
+                  value={newMachineRateUsd}
+                  onChange={(e) => setNewMachineRateUsd(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="h-10 rounded-[10px] border border-blue-200 bg-white px-3 text-[13.5px] outline-none focus:border-blue-400 focus:shadow-[0_0_0_3px_rgba(47,90,243,0.10)]"
+                />
+                {machineState.error ? (
+                  <span className="text-[12px] text-rose-600">{machineState.error}</span>
+                ) : machineState.machineName ? (
+                  <span className="text-[12px] font-medium text-emerald-700">
+                    Saved: {machineState.machineName}
+                  </span>
+                ) : null}
+              </label>
+              <div className="flex items-end gap-2">
+                <button
+                  type="button"
+                  disabled={machinePending || !newMachineName.trim()}
+                  onClick={() => {
+                    const fd = new FormData();
+                    fd.set('machineName', newMachineName.trim());
+                    fd.set('machineRateUsd', newMachineRateUsd.trim() || '0.00');
+                    machineFormAction(fd);
+                  }}
+                  className="h-10 rounded-[10px] bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {machinePending ? 'Saving...' : 'Save machine'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMachineForm(false);
+                    setNewMachineName('');
+                    setNewMachineRateUsd('0.00');
+                  }}
+                  className="h-10 px-2 text-[12.5px] font-medium text-slate-500 hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-2">
@@ -214,16 +394,17 @@ export function CreateShopMaterialItemForm({
         />
       </label>
 
-      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-        <p className="text-[12.5px] text-slate-500">New items become available for estimating once saved.</p>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95 disabled:opacity-60"
-        >
-          {pending ? 'Creating…' : 'Create item'}
-        </button>
-      </div>
-    </form>
+        <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+          <p className="text-[12.5px] text-slate-500">New items become available for estimating once saved.</p>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95 disabled:opacity-60"
+          >
+            {pending ? 'Creating…' : 'Create item'}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }

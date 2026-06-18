@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import Link from 'next/link';
+import { SelectControl } from '@/components/app/select-control';
 import { FormError } from '@/components/auth/form-error';
 import {
   addShopMaterialAliasAction,
@@ -60,7 +61,7 @@ export function ManualVendorPriceForm({
           <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
             Vendor
           </span>
-          <select
+          <SelectControl
             name="vendorId"
             required
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px] outline-none focus:border-[var(--color-bv-accent)]"
@@ -71,7 +72,7 @@ export function ManualVendorPriceForm({
                 {v.name}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">

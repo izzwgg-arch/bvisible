@@ -7,6 +7,7 @@ import {
   reconciliationLineResolutionFormAction,
   rejectReconciliationLineFormAction,
 } from '@/lib/reconciliation/actions';
+import { SelectControl } from '@/components/app/select-control';
 import { RECON_ACTION_HINTS } from '@/lib/reconciliation/ui-copy';
 import {
   fmtQtyMilli,
@@ -152,7 +153,7 @@ export function VarianceLineRow({
               <input type="hidden" name="receiptSideLineId" value={line.id} />
               <label className="min-w-0 flex-1 text-[10px] font-medium uppercase tracking-wide text-[var(--color-bv-muted)]">
                 Map to PO row
-                <select
+                <SelectControl
                   name="poSideLineId"
                   required
                   className="mt-0.5 w-full rounded-[6px] border border-[var(--color-bv-border)] bg-white px-2 py-1 text-[11px] text-[var(--color-bv-text)]"
@@ -163,7 +164,7 @@ export function VarianceLineRow({
                       {c.description.slice(0, 72)}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
               <button
                 type="submit"

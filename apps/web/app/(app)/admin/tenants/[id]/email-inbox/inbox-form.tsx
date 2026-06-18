@@ -8,6 +8,11 @@ import {
   testInboxConnectionAction,
 } from './actions';
 import { FormError, FormNotice } from '@/components/auth/form-error';
+import {
+  adminInputClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass,
+} from '@/components/app/admin-ui';
 
 // Default-form values used both on create and on edit. On edit, the
 // `existing` row hydrates them. The password field is ALWAYS empty on
@@ -198,8 +203,8 @@ export function InboxForm({
   const submitting = isSaving || isTesting || isDeleting;
 
   return (
-    <form onSubmit={onSave} className="flex flex-col gap-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <form onSubmit={onSave} className="grid gap-5">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="IMAP host"
           htmlFor="host"
@@ -288,7 +293,7 @@ export function InboxForm({
         />
       </Field>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Poll interval (seconds)"
           htmlFor="pollIntervalSeconds"
@@ -328,11 +333,11 @@ export function InboxForm({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5">
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[14px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className={adminPrimaryButtonClass}
         >
           {isSaving ? 'Saving…' : existing ? 'Save changes' : 'Save inbox'}
         </button>
@@ -340,7 +345,7 @@ export function InboxForm({
           type="button"
           onClick={onTest}
           disabled={submitting}
-          className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[14px] font-medium text-[var(--color-bv-text)] shadow-sm transition-colors hover:bg-[var(--color-bv-bg)] disabled:cursor-not-allowed disabled:opacity-60"
+          className={adminSecondaryButtonClass}
         >
           {isTesting ? 'Testing…' : 'Test connection'}
         </button>
@@ -349,7 +354,7 @@ export function InboxForm({
             type="button"
             onClick={onDelete}
             disabled={submitting}
-            className="ml-auto inline-flex items-center justify-center rounded-[8px] border border-rose-200 bg-rose-50 px-3.5 py-2 text-[14px] font-medium text-rose-700 shadow-sm transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="ml-auto inline-flex items-center justify-center rounded-[12px] border border-rose-200 bg-rose-50 px-4 py-2.5 text-[13.5px] font-semibold text-rose-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isDeleting ? 'Deleting…' : 'Delete inbox'}
           </button>
@@ -365,7 +370,7 @@ export function InboxForm({
 }
 
 const inputCls =
-  'rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]';
+  adminInputClass;
 
 function Field({
   label,
@@ -379,13 +384,13 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label htmlFor={htmlFor} className="flex flex-col gap-1.5">
-      <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
+    <label htmlFor={htmlFor} className="flex flex-col gap-2">
+      <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">
         {label}
       </span>
       {children}
       {hint ? (
-        <span className="text-[11.5px] text-[var(--color-bv-muted)]">{hint}</span>
+        <span className="text-[11.5px] leading-snug text-slate-500">{hint}</span>
       ) : null}
     </label>
   );
@@ -405,7 +410,7 @@ function Toggle({
   return (
     <label
       htmlFor={id}
-      className="inline-flex cursor-pointer items-center gap-2 text-[13.5px] text-[var(--color-bv-text)]"
+      className="inline-flex cursor-pointer items-center gap-2 rounded-[14px] border border-slate-100 bg-slate-50/70 px-3 py-2 text-[13.5px] font-medium text-slate-700"
     >
       <input
         id={id}
@@ -413,7 +418,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 rounded border-[var(--color-bv-border)] text-[var(--color-bv-accent)] focus:ring-0"
+        className="h-4 w-4 rounded border-slate-300 text-[var(--color-bv-accent)] focus:ring-0"
       />
       {label}
     </label>
@@ -423,7 +428,7 @@ function Toggle({
 function TestResultPanel({ state }: { state: TestPanelState }) {
   if (state.loading) {
     return (
-      <div className="rounded-[8px] border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-700">
+      <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
         Opening IMAP connection…
       </div>
     );
@@ -432,7 +437,7 @@ function TestResultPanel({ state }: { state: TestPanelState }) {
     return (
       <div
         role="status"
-        className="rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800"
+        className="rounded-[14px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800"
       >
         {state.message}
         {state.durationMs ? (
@@ -446,7 +451,7 @@ function TestResultPanel({ state }: { state: TestPanelState }) {
   return (
     <div
       role="alert"
-      className="rounded-[8px] border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-800"
+      className="rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-800"
     >
       {state.message}
       {state.durationMs ? (

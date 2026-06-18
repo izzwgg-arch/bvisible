@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma, Role, SpendAlertStatus } from '@bvisible/db';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AdminMetric, AdminPanel, AdminPill, adminSecondaryButtonClass } from '@/components/app/admin-ui';
 import { ReconciliationSafetyBanner } from '@/components/reconciliation/reconciliation-safety-banner';
 import { ReconciliationStatusChip } from '@/components/reconciliation/reconciliation-badges';
 import { SpendAlertRow } from '@/components/reconciliation/spend-alert-row';
@@ -77,42 +78,43 @@ export default async function AdminReconciliationInboxPage({
     <>
       <PageHeader
         title="PO reconciliation inbox"
-        subtitle="Variance queue after OCR-approved receipts. Review PO ↔ receipt pairs — finances never auto-adjust."
+        subtitle="Compare purchase orders against OCR-approved receipts. Keep finance decisions explicit and operator-reviewed."
       />
 
-      <ReconciliationSafetyBanner compact />
+      <section className="mb-5 grid gap-3 md:grid-cols-4">
+        <AdminMetric label="Open alerts" value={openAlertTotal} detail="Need spend review" tone={openAlertTotal > 0 ? 'amber' : 'emerald'} />
+        <AdminMetric label="Snapshots" value={runTotal} detail="Append-only reconciliation runs" />
+        <AdminMetric label="Visible alerts" value={alertsLoaded} detail="Loaded in this queue" tone="violet" />
+        <AdminMetric label="Visible runs" value={runsLoaded} detail="Recent snapshot rows" tone="slate" />
+      </section>
 
-      <section className="mb-10 mt-4">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-[14px] font-semibold text-[var(--color-bv-text)]">
-              Open spend alerts
-            </h2>
-            <p className="mt-0.5 text-[12px] text-[var(--color-bv-muted)]">
-              {openAlertTotal > 0
-                ? `${openAlertTotal} need review — primary action opens the PO variance workspace.`
-                : 'Nothing queued from the latest snapshots.'}
-            </p>
-          </div>
-        </div>
+      <div className="mb-5">
+        <ReconciliationSafetyBanner compact />
+      </div>
 
+      <AdminPanel
+        title="Open spend alerts"
+        eyebrow="Variance control"
+        description={openAlertTotal > 0 ? `${openAlertTotal} need review. Primary action opens the PO variance workspace.` : 'Nothing queued from the latest snapshots.'}
+        action={<AdminPill tone={openAlertTotal > 0 ? 'amber' : 'emerald'}>{openAlertTotal > 0 ? 'review needed' : 'clean'}</AdminPill>}
+        className="mb-5"
+      >
         {openAlerts.length === 0 ? (
-          <div className="mt-4 rounded-[var(--radius-bv)] border border-dashed border-emerald-200 bg-emerald-50/40 px-5 py-8 shadow-[var(--shadow-bv-card)]">
-            <p className="text-[13.5px] font-medium text-emerald-950">Reconciliation inbox is clean</p>
+          <div className="m-4 rounded-[20px] border border-dashed border-emerald-200 bg-emerald-50/60 px-5 py-8">
+            <p className="text-[14px] font-semibold text-emerald-950">Reconciliation inbox is clean</p>
             <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-emerald-900/80">
               No OPEN spend alerts. Alerts appear when a snapshot finds variance or coverage gaps
               between PO lines and OCR-approved receipts.
             </p>
             <Link
               href="/purchase-orders"
-              className="mt-4 inline-flex text-[13px] font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+              className={adminSecondaryButtonClass + ' mt-4'}
             >
               Browse purchase orders
             </Link>
           </div>
         ) : (
-          <>
-            <ul className="mt-4 flex flex-col gap-2">
+            <ul className="flex flex-col gap-3 p-4">
               {openAlerts.map((a) => (
                 <SpendAlertRow
                   key={a.id}
@@ -126,24 +128,20 @@ export default async function AdminReconciliationInboxPage({
                 />
               ))}
             </ul>
-          </>
         )}
-      </section>
+      </AdminPanel>
 
-      <section>
-        <h2 className="text-[14px] font-semibold text-[var(--color-bv-text)]">
-          Recent reconciliation snapshots
-        </h2>
-        <p className="mt-0.5 text-[12px] text-[var(--color-bv-muted)]">
-          Append-only runs — deduped per OCR approval batch or manual refresh.
-        </p>
+      <AdminPanel
+        title="Recent reconciliation snapshots"
+        eyebrow="Audit trail"
+        description="Append-only runs deduped per OCR approval batch or manual refresh."
+      >
         {recentRuns.length === 0 ? (
-          <p className="mt-4 text-[13px] text-[var(--color-bv-muted)]">{RECON_EMPTY_NO_SNAPSHOT}</p>
+          <p className="p-5 text-[13px] text-slate-500">{RECON_EMPTY_NO_SNAPSHOT}</p>
         ) : (
-          <>
-          <div className="mt-4 overflow-x-auto rounded-[10px] border border-[var(--color-bv-border)]">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
-              <thead className="border-b border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[11px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+              <thead className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                 <tr>
                   <th className="px-3 py-2.5">PO</th>
                   <th className="px-3 py-2.5">Vendor</th>
@@ -156,22 +154,22 @@ export default async function AdminReconciliationInboxPage({
                 {recentRuns.map((r) => (
                   <tr
                     key={r.id}
-                    className="border-b border-[var(--color-bv-border)] last:border-0"
+                    className="border-b border-slate-100 last:border-0 hover:bg-blue-50/35"
                   >
-                    <td className="px-3 py-2.5 font-medium">{r.purchaseOrder.number}</td>
-                    <td className="px-3 py-2.5 text-[var(--color-bv-muted)]">
+                    <td className="px-3 py-3 font-semibold text-slate-950">{r.purchaseOrder.number}</td>
+                    <td className="px-3 py-3 text-slate-500">
                       {r.purchaseOrder.vendor?.name ?? '—'}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-3">
                       <ReconciliationStatusChip status={r.status} />
                     </td>
-                    <td className="px-3 py-2.5 text-[12px] tabular-nums text-[var(--color-bv-muted)]">
+                    <td className="px-3 py-3 text-[12px] tabular-nums text-slate-500">
                       {r.createdAt.toISOString().slice(0, 16).replace('T', ' ')}
                     </td>
-                    <td className="px-3 py-2.5 text-right">
+                    <td className="px-3 py-3 text-right">
                       <Link
                         href={`/purchase-orders/${r.purchaseOrder.id}/reconciliation`}
-                        className="text-[12.5px] font-medium text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
+                        className="text-[12.5px] font-semibold text-[var(--color-bv-accent)] underline-offset-2 hover:underline"
                       >
                         Review variance →
                       </Link>
@@ -181,9 +179,8 @@ export default async function AdminReconciliationInboxPage({
               </tbody>
             </table>
           </div>
-          </>
         )}
-      </section>
+      </AdminPanel>
 
       {listHasMore ? (
         <QueuePaginationBar

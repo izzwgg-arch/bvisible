@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { prisma } from '@bvisible/db';
 import { requireSuperAdmin } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AdminMetric, AdminPanel, AdminPill, adminSecondaryButtonClass } from '@/components/app/admin-ui';
 import { InboxForm } from './inbox-form';
 
 export const metadata = { title: 'Tenant inbox' };
@@ -117,31 +118,28 @@ export default async function TenantEmailInboxPage({
         actions={
           <Link
             href="/admin/email-ingestion/inboxes"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[13px] text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            className={adminSecondaryButtonClass}
           >
             All inboxes
           </Link>
         }
       />
 
+      <section className="mb-5 grid gap-3 md:grid-cols-4">
+        <AdminMetric label="Status" value={!inbox ? 'New' : healthy ? 'Healthy' : inbox.enabled ? 'Errored' : 'Disabled'} detail="Current IMAP configuration state" tone={!inbox ? 'slate' : healthy ? 'emerald' : inbox.enabled ? 'amber' : 'slate'} />
+        <AdminMetric label="Pending" value={counterMap.get('PENDING') ?? 0} detail="Emails waiting for processing" tone="amber" />
+        <AdminMetric label="Matched" value={counterMap.get('MATCHED') ?? 0} detail="Mail linked to purchase orders" tone="emerald" />
+        <AdminMetric label="Failed" value={counterMap.get('FAILED') ?? 0} detail="Messages needing attention" tone="rose" />
+      </section>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              {inbox ? 'Edit inbox' : 'Configure inbox'}
-            </h2>
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                !inbox
-                  ? 'border-slate-200 bg-slate-50 text-slate-600'
-                  : healthy
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-amber-200 bg-amber-50 text-amber-800'
-              }`}
-            >
-              {!inbox ? 'not configured' : healthy ? 'healthy' : inbox.enabled ? 'errored' : 'disabled'}
-            </span>
-          </div>
+        <AdminPanel
+          title={inbox ? 'Edit inbox' : 'Configure inbox'}
+          eyebrow="IMAP setup"
+          description="Configure the mailbox that receives vendor quotes, receipts, and purchase-order documents."
+          action={<AdminPill tone={!inbox ? 'slate' : healthy ? 'emerald' : 'amber'}>{!inbox ? 'not configured' : healthy ? 'healthy' : inbox.enabled ? 'errored' : 'disabled'}</AdminPill>}
+        >
+          <div className="p-5">
           <InboxForm
             tenantId={tenant.id}
             existing={
@@ -158,39 +156,37 @@ export default async function TenantEmailInboxPage({
                 : null
             }
           />
-        </section>
+          </div>
+        </AdminPanel>
 
         <aside className="flex flex-col gap-4">
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              Diagnostics
-            </h2>
+          <AdminPanel title="Diagnostics" eyebrow="Connection insight" description="Masked account data, last poll state, and ingestion counts.">
             {!inbox ? (
-              <p className="mt-2 text-[12.5px] text-[var(--color-bv-muted)]">
+              <p className="p-5 text-[12.5px] text-slate-500">
                 No inbox configured yet. After saving, this panel will show
                 last-polled time, last error, and ingest counts.
               </p>
             ) : (
-              <dl className="mt-3 grid grid-cols-[120px_1fr] gap-y-1.5 text-[12.5px]">
-                <dt className="text-[var(--color-bv-muted)]">Username</dt>
-                <dd className="text-[var(--color-bv-text)]">{maskUsername(inbox.username)}</dd>
-                <dt className="text-[var(--color-bv-muted)]">Last polled</dt>
-                <dd className="text-[var(--color-bv-text)]">{fmt(inbox.lastPolledAt)}</dd>
-                <dt className="text-[var(--color-bv-muted)]">Last error</dt>
-                <dd className="text-[var(--color-bv-text)]">{fmt(inbox.lastErrorAt)}</dd>
-                <dt className="text-[var(--color-bv-muted)]">Created</dt>
-                <dd className="text-[var(--color-bv-text)]">{fmt(inbox.createdAt)}</dd>
-                <dt className="text-[var(--color-bv-muted)]">Updated</dt>
-                <dd className="text-[var(--color-bv-text)]">{fmt(inbox.updatedAt)}</dd>
+              <dl className="grid grid-cols-[120px_1fr] gap-y-2 p-5 text-[12.5px]">
+                <dt className="text-slate-500">Username</dt>
+                <dd className="font-mono text-[12px] text-slate-900">{maskUsername(inbox.username)}</dd>
+                <dt className="text-slate-500">Last polled</dt>
+                <dd className="text-slate-900">{fmt(inbox.lastPolledAt)}</dd>
+                <dt className="text-slate-500">Last error</dt>
+                <dd className="text-slate-900">{fmt(inbox.lastErrorAt)}</dd>
+                <dt className="text-slate-500">Created</dt>
+                <dd className="text-slate-900">{fmt(inbox.createdAt)}</dd>
+                <dt className="text-slate-500">Updated</dt>
+                <dd className="text-slate-900">{fmt(inbox.updatedAt)}</dd>
               </dl>
             )}
             {inbox?.lastErrorMessage ? (
-              <p className="mt-3 rounded-[6px] border border-rose-200 bg-rose-50 p-2 text-[12px] text-rose-800">
+              <p className="mx-5 rounded-[14px] border border-rose-200 bg-rose-50 p-3 text-[12px] text-rose-800">
                 {inbox.lastErrorMessage}
               </p>
             ) : null}
 
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[12.5px]">
+            <div className="grid grid-cols-2 gap-2 p-5 pt-3 text-[12.5px]">
               <CountChip label="Pending" value={counterMap.get('PENDING') ?? 0} />
               <CountChip label="Matched" value={counterMap.get('MATCHED') ?? 0} />
               <CountChip
@@ -199,22 +195,19 @@ export default async function TenantEmailInboxPage({
               />
               <CountChip label="Failed" value={counterMap.get('FAILED') ?? 0} />
             </div>
-          </section>
+          </AdminPanel>
 
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              Recent ticks
-            </h2>
+          <AdminPanel title="Recent ticks" eyebrow="Timer health" description="Latest polling runs for this tenant.">
             {recentRuns.length === 0 ? (
-              <p className="mt-2 text-[12.5px] text-[var(--color-bv-muted)]">
+              <p className="p-5 text-[12.5px] text-slate-500">
                 No ticks yet for this tenant.
               </p>
             ) : (
-              <ul className="mt-2 flex flex-col gap-1.5 text-[12px]">
+              <ul className="flex flex-col gap-2 p-4 text-[12px]">
                 {recentRuns.map((r) => (
                   <li
                     key={r.id}
-                    className="flex flex-wrap items-center gap-2 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5"
+                    className="flex flex-wrap items-center gap-2 rounded-[14px] border border-slate-100 bg-white px-3 py-2 shadow-sm"
                   >
                     <span className="font-mono text-[11px] tabular-nums text-[var(--color-bv-muted)]">
                       {r.startedAt.toISOString().slice(11, 16)}
@@ -237,22 +230,19 @@ export default async function TenantEmailInboxPage({
                 ))}
               </ul>
             )}
-          </section>
+          </AdminPanel>
 
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              Recent ingested email
-            </h2>
+          <AdminPanel title="Recent ingested email" eyebrow="Mail flow" description="Latest messages captured from this inbox.">
             {recentEmails.length === 0 ? (
-              <p className="mt-2 text-[12.5px] text-[var(--color-bv-muted)]">
+              <p className="p-5 text-[12.5px] text-slate-500">
                 Nothing ingested yet.
               </p>
             ) : (
-              <ul className="mt-2 flex flex-col gap-1 text-[12px]">
+              <ul className="flex flex-col gap-2 p-4 text-[12px]">
                 {recentEmails.map((e) => (
                   <li
                     key={e.id}
-                    className="flex flex-col gap-0.5 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5"
+                    className="flex flex-col gap-0.5 rounded-[14px] border border-slate-100 bg-white px-3 py-2 shadow-sm"
                   >
                     <span className="font-medium text-[var(--color-bv-text)]">
                       {e.subject || '(no subject)'}
@@ -270,7 +260,7 @@ export default async function TenantEmailInboxPage({
                 ))}
               </ul>
             )}
-          </section>
+          </AdminPanel>
         </aside>
       </div>
     </>
@@ -279,9 +269,9 @@ export default async function TenantEmailInboxPage({
 
 function CountChip({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5">
-      <span className="text-[var(--color-bv-muted)]">{label}</span>
-      <span className="font-mono tabular-nums text-[var(--color-bv-text)]">
+    <div className="flex items-center justify-between rounded-[14px] border border-slate-100 bg-white px-3 py-2 shadow-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="font-mono tabular-nums text-slate-950">
         {value}
       </span>
     </div>

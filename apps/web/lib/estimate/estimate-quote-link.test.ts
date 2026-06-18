@@ -133,7 +133,14 @@ function minimalValidLinkRow(
       subtotalCostCents: 10_000,
       finalPriceCents: 30_000,
       updatedAt: new Date('2026-05-01T12:00:00Z'),
-      tenant: { name: 'Shop Inc' },
+      tenant: {
+        name: 'Shop Inc',
+        phone: null,
+        email: null,
+        address: null,
+        slogan: null,
+        logoDataUrl: null,
+      },
       client: {
         companyName: 'Buyer LLC',
         contactName: 'Sam',

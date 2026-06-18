@@ -135,6 +135,24 @@ const optionalShort = (max: number) =>
     .nullish()
     .transform((v) => (v && v.length > 0 ? v : null));
 
+export const updateTenantInvoiceProfileSchema = z.object({
+  tenantId: z.string().min(1),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters.').max(120),
+  phone: optionalShort(40),
+  email: optionalEmail,
+  address: longText(500),
+  slogan: optionalShort(160),
+  logoDataUrl: z
+    .string()
+    .trim()
+    .max(650_000, 'Logo is too large. Upload a smaller image.')
+    .nullish()
+    .transform((v) => (v && v.length > 0 ? v : null))
+    .refine((v) => v == null || v.startsWith('data:image/png;base64,'), {
+      message: 'Logo must be a converted PNG image.',
+    }),
+});
+
 export const createClientSchema = z.object({
   companyName: shortText(160),
   contactName: optionalShort(120),
@@ -143,9 +161,107 @@ export const createClientSchema = z.object({
   notes: longText(2000),
 });
 
+export const updateClientSchema = z.object({
+  companyName: shortText(160),
+  contactName: optionalShort(120),
+  email: optionalEmail,
+  secondaryEmail: optionalEmail,
+  phone: optionalShort(40),
+  alternatePhone: optionalShort(40),
+  address: optionalShort(500),
+  notes: longText(2000),
+});
+export type UpdateClientInput = z.infer<typeof updateClientSchema>;
+
 export const createEstimateSchema = z.object({
   clientId: z.string().min(1, 'Pick a client.').max(60),
   title: shortText(160),
+});
+
+const optionalNumberFromForm = z
+  .union([z.string(), z.number(), z.null(), z.undefined()])
+  .transform((value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : Number.NaN;
+  })
+  .refine((value) => value === null || Number.isFinite(value), 'Enter a valid number.');
+
+const optionalIntFromForm = optionalNumberFromForm.transform((value) =>
+  value === null ? null : Math.trunc(value)
+);
+
+const vehicleDimensionConfidenceLevelSchema = z
+  .enum(['MANUAL', 'IMPORTED', 'ESTIMATED', 'VERIFIED'])
+  .default('MANUAL');
+
+export const vehicleUpsertSchema = z.object({
+  id: z.string().max(60).optional(),
+  year: optionalIntFromForm.refine((value) => value === null || (value >= 1900 && value <= new Date().getFullYear() + 2), {
+    message: 'Enter a valid vehicle year.',
+  }),
+  make: shortText(160),
+  model: shortText(180),
+  trim: optionalShort(180),
+  bodyStyle: optionalShort(120),
+  vehicleType: optionalShort(120),
+  doors: optionalIntFromForm,
+  drivetrain: optionalShort(80),
+  fuelType: optionalShort(80),
+  engine: optionalShort(160),
+  transmission: optionalShort(120),
+  lengthIn: optionalNumberFromForm,
+  widthIn: optionalNumberFromForm,
+  heightIn: optionalNumberFromForm,
+  wheelbaseIn: optionalNumberFromForm,
+  curbWeightLb: optionalNumberFromForm,
+  grossWeightLb: optionalNumberFromForm,
+  cargoLengthIn: optionalNumberFromForm,
+  cargoWidthIn: optionalNumberFromForm,
+  cargoHeightIn: optionalNumberFromForm,
+  bedLengthIn: optionalNumberFromForm,
+  roofLengthIn: optionalNumberFromForm,
+  roofWidthIn: optionalNumberFromForm,
+  hoodLengthIn: optionalNumberFromForm,
+  hoodWidthIn: optionalNumberFromForm,
+  sideApproxSqFt: optionalNumberFromForm,
+  roofApproxSqFt: optionalNumberFromForm,
+  hoodApproxSqFt: optionalNumberFromForm,
+  rearApproxSqFt: optionalNumberFromForm,
+  frontApproxSqFt: optionalNumberFromForm,
+  totalApproxWrapSqFt: optionalNumberFromForm,
+  sourceName: optionalShort(180),
+  sourceUrl: optionalShort(1000),
+  confidenceLevel: vehicleDimensionConfidenceLevelSchema,
+  photoUrl: optionalShort(1000),
+  photoAltText: optionalShort(240),
+  photoSourceName: optionalShort(180),
+  photoSourceUrl: optionalShort(1000),
+  photoLicenseNote: optionalShort(1000),
+  notes: longText(4000),
+});
+export type VehicleUpsertInput = z.infer<typeof vehicleUpsertSchema>;
+
+export const estimateVehicleAttachSchema = z.object({
+  estimateId: z.string().min(1).max(60),
+  trimId: z.string().min(1).max(60),
+  coverageType: optionalShort(120),
+  wrapType: optionalShort(120),
+});
+
+export const estimateVehicleManualSchema = z.object({
+  estimateId: z.string().min(1).max(60),
+  year: optionalIntFromForm,
+  make: optionalShort(160),
+  model: optionalShort(180),
+  trim: optionalShort(180),
+  vin: optionalShort(80),
+  licensePlate: optionalShort(40),
+  color: optionalShort(80),
+  wrapType: optionalShort(120),
+  coverageType: optionalShort(120),
+  notes: longText(4000),
+  photoUrl: optionalShort(1000),
 });
 
 // One row in the editor grid as it leaves the client.
@@ -250,10 +366,18 @@ export const submitPublicQuoteResponseSchema = z.object({
 
 export const createVendorSchema = z.object({
   name: shortText(160),
-  email: optionalEmail,
-  phone: optionalShort(40),
+  emails: z.array(z.string().trim().toLowerCase().max(254).email('Enter a valid email address.')).max(20),
+  phones: z.array(z.string().trim().max(40)).max(20),
   notes: longText(2000),
 });
+
+export const updateVendorSchema = z.object({
+  name: shortText(160),
+  emails: z.array(z.string().trim().toLowerCase().max(254).email('Enter a valid email address.')).max(20),
+  phones: z.array(z.string().trim().max(40)).max(20),
+  notes: longText(2000),
+});
+export type UpdateVendorInput = z.infer<typeof updateVendorSchema>;
 
 // Helper for nullable id refs. Accepts null/undefined/empty-string and
 // emits null. Callers pass `null` to clear, undefined to leave alone is

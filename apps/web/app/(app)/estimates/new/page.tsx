@@ -7,8 +7,13 @@ import { NewEstimateForm } from './new-estimate-form';
 export const metadata = { title: 'New estimate' };
 export const dynamic = 'force-dynamic';
 
-export default async function NewEstimatePage() {
+export default async function NewEstimatePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ clientId?: string }>;
+}) {
   const me = await requireTenantId();
+  const sp = await searchParams;
 
   const clients = await prisma.client.findMany({
     where: { tenantId: me.tenantId, deletedAt: null },
@@ -51,7 +56,7 @@ export default async function NewEstimatePage() {
               <span className="font-medium text-[var(--color-bv-text)]">2.</span> Name the job ·{' '}
               <span className="font-medium text-[var(--color-bv-text)]">3.</span> Add catalog or pricing-helper lines on the next screen.
             </p>
-            <NewEstimateForm clients={clients} />
+            <NewEstimateForm clients={clients} defaultClientId={sp.clientId ?? null} />
           </>
         )}
       </section>

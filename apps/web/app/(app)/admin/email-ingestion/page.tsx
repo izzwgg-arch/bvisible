@@ -6,6 +6,7 @@ import {
 } from '@bvisible/db';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AdminMetric, AdminPanel, AdminPill, adminSecondaryButtonClass } from '@/components/app/admin-ui';
 import { loadInboxDiag } from '@/lib/email-ingest/config';
 import { InboxConfigCard } from './inbox-config-card';
 import {
@@ -260,17 +261,18 @@ export default async function EmailIngestionPage({
   };
 
   const isSuperAdmin = me.role === Role.SUPER_ADMIN;
+  const allTotal = totals.unmatched + totals.matched + totals.failed + totals.dismissed;
 
   return (
     <>
       <PageHeader
         title="Email ingestion"
-        subtitle="Scan unmatched mail, link to POs, retry or dismiss. Actions stay explicit — nothing auto-links."
+        subtitle="Vendor email operations for signage purchasing: review incoming mail, connect documents to POs, and keep every match explicit."
         actions={
           isSuperAdmin ? (
             <a
               href={`/admin/tenants/${me.tenantId}/email-inbox`}
-              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[13px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+              className={adminSecondaryButtonClass}
             >
               Configure inbox
             </a>
@@ -278,9 +280,23 @@ export default async function EmailIngestionPage({
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <section>
-          <nav className="mb-2 flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="grid gap-5">
+        <section className="grid gap-3 md:grid-cols-4">
+          <AdminMetric label="Needs review" value={totals.unmatched} detail="Unmatched or pending vendor mail" tone="amber" />
+          <AdminMetric label="Matched" value={totals.matched} detail="Filed to purchase orders" tone="emerald" />
+          <AdminMetric label="Failures" value={totals.failed} detail="Connectivity or processing errors" tone="rose" />
+          <AdminMetric label="Total mail" value={allTotal} detail={`${loadedCount} visible in this filter`} />
+        </section>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <AdminPanel
+            title="Inbound review queue"
+            eyebrow="Email operations"
+            description="Every vendor message is kept operator-controlled: suggest, inspect, link, retry, or dismiss."
+            action={<AdminPill tone={filter === 'unmatched' ? 'amber' : 'blue'}>{filter}</AdminPill>}
+          >
+            <div className="space-y-3 p-4">
+          <nav className="flex flex-wrap items-center gap-2 text-[12px]">
             {FILTERS.map((f) => {
               const active = f === filter;
               const label = `${f.charAt(0).toUpperCase()}${f.slice(1)}`;
@@ -302,18 +318,18 @@ export default async function EmailIngestionPage({
                 <a
                   key={f}
                   href={href}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-medium ${
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold transition-all ${
                     active
-                      ? 'border-[var(--color-bv-text)] bg-[var(--color-bv-text)] text-white'
-                      : 'border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]'
+                      ? 'bg-[var(--color-bv-accent)] text-white shadow-[0_10px_22px_rgba(47,90,243,0.22)]'
+                      : 'border border-slate-200 bg-white text-slate-500 hover:border-blue-100 hover:bg-blue-50 hover:text-blue-700'
                   }`}
                 >
                   {label}
                   <span
-                    className={`inline-flex h-3.5 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] tabular-nums ${
+                    className={`inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
                       active
                         ? 'bg-white/20 text-white'
-                        : 'bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)]'
+                        : 'bg-slate-100 text-slate-500'
                     }`}
                   >
                     {badge}
@@ -324,7 +340,7 @@ export default async function EmailIngestionPage({
           </nav>
 
           {filter === 'unmatched' ? (
-            <nav className="mb-2 flex flex-wrap items-center gap-1 text-[10px]">
+            <nav className="flex flex-wrap items-center gap-2 text-[11px]">
               {REASON_FILTERS.map((rf, idx) => {
                 const active = reasonFilter === rf.key;
                 const count = reasonCounts?.[idx] ?? countEmailReasonFilter(rows, rf.key);
@@ -334,10 +350,10 @@ export default async function EmailIngestionPage({
                   <a
                     key={rf.key}
                     href={`/admin/email-ingestion?${params.toString()}`}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium ${
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold ${
                       active
                         ? 'border-violet-300 bg-violet-50 text-violet-950'
-                        : 'border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[var(--color-bv-muted)] hover:bg-[var(--color-bv-surface)]'
+                        : 'border border-slate-200 bg-slate-50 text-slate-500 hover:bg-white'
                     }`}
                   >
                     {rf.label}
@@ -369,30 +385,28 @@ export default async function EmailIngestionPage({
                 : undefined
             }
           />
-        </section>
+            </div>
+          </AdminPanel>
 
         <aside className="flex flex-col gap-4">
           <InboxConfigCard diag={diag} />
 
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-bv-text)]">
-              Recent ticks
-            </h2>
+          <AdminPanel title="Recent ticks" eyebrow="Timer health" description="Latest IMAP polling runs from the server timer.">
             {recentRuns.length === 0 ? (
-              <p className="mt-2 text-[12.5px] text-[var(--color-bv-muted)]">
+              <p className="p-5 text-[12.5px] text-slate-500">
                 No ticks yet. The systemd timer fires every minute.
               </p>
             ) : (
-              <ul className="mt-2 flex flex-col gap-1.5 text-[12px]">
+              <ul className="flex flex-col gap-2 p-4 text-[12px]">
                 {recentRuns.map((r) => (
                   <li
                     key={r.id}
-                    className="flex flex-wrap items-center gap-2 rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5"
+                    className="flex flex-wrap items-center gap-2 rounded-[14px] border border-slate-100 bg-white px-3 py-2 shadow-sm"
                   >
-                    <span className="font-mono text-[11px] tabular-nums text-[var(--color-bv-muted)]">
+                    <span className="font-mono text-[11px] tabular-nums text-slate-500">
                       {r.startedAt.toISOString().slice(11, 16)}
                     </span>
-                    <span className="text-[var(--color-bv-text)]">
+                    <span className="font-medium text-slate-800">
                       {r.scannedCount} scanned · {r.ingestedCount} ingested ·{' '}
                       {r.matchedCount} matched
                     </span>
@@ -402,7 +416,7 @@ export default async function EmailIngestionPage({
                       </span>
                     ) : null}
                     {r.durationMs ? (
-                      <span className="text-[11px] text-[var(--color-bv-muted)]">
+                      <span className="text-[11px] text-slate-500">
                         {r.durationMs} ms
                       </span>
                     ) : null}
@@ -410,8 +424,9 @@ export default async function EmailIngestionPage({
                 ))}
               </ul>
             )}
-          </section>
+          </AdminPanel>
         </aside>
+        </div>
       </div>
     </>
   );

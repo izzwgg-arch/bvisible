@@ -12,6 +12,7 @@ const BASE_NAV: ReadonlyArray<NavItem> = [
   { href: '/clients', label: 'Customers' },
   { href: '/vendors', label: 'Vendors' },
   { href: '/items', label: 'Catalog' },
+  { href: '/vehicles', label: 'Vehicles' },
   { href: '/reports', label: 'Reports' },
 ];
 
@@ -100,25 +101,6 @@ export function AppShell({
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/70 bg-white/[0.72] px-8 py-4 shadow-[0_16px_42px_rgba(15,23,42,0.06)] backdrop-blur-xl print:hidden">
-          <div className="flex min-w-0 items-center gap-3">
-            <div
-              aria-hidden
-              className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_6px_rgba(52,211,153,0.16)]"
-            />
-            <div className="min-w-0">
-              <span className="block truncate text-[14px] font-semibold tracking-tight text-slate-950">
-                {workspaceTitle}
-              </span>
-              <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                Command workspace
-              </span>
-            </div>
-          </div>
-          <div className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
-            Live
-          </div>
-        </header>
         <main className="flex-1 px-8 py-8 print:px-0 print:py-0">{children}</main>
       </div>
     </div>

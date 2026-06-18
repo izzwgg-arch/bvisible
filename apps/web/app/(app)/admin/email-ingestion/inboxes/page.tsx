@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma } from '@bvisible/db';
 import { requireSuperAdmin } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AdminMetric, AdminPanel, AdminPill, adminSecondaryButtonClass } from '@/components/app/admin-ui';
 
 export const metadata = { title: 'Email inboxes' };
 export const dynamic = 'force-dynamic';
@@ -70,31 +71,22 @@ export default async function AllInboxesPage() {
     <>
       <PageHeader
         title="Email inboxes"
-        subtitle="System-wide view. SUPER_ADMIN can configure, rotate credentials, and disable any tenant's IMAP inbox here."
+        subtitle="System-wide inbox command center for vendor email ingestion across every company."
       />
 
-      <div className="mb-4 grid gap-2 text-[12.5px] sm:grid-cols-4">
-        <Stat label="Configured" value={totals.configured} />
-        <Stat label="Healthy" value={totals.healthy} tone="ok" />
-        <Stat label="Errored" value={totals.errored} tone="bad" />
-        <Stat label="Disabled" value={totals.disabled} tone="muted" />
-      </div>
+      <section className="mb-5 grid gap-3 md:grid-cols-4">
+        <AdminMetric label="Configured" value={totals.configured} detail="Companies with IMAP settings" />
+        <AdminMetric label="Healthy" value={totals.healthy} detail="Enabled without last error" tone="emerald" />
+        <AdminMetric label="Errored" value={totals.errored} detail="Need connection review" tone="rose" />
+        <AdminMetric label="Disabled" value={totals.disabled} detail="Configured but paused" tone="slate" />
+      </section>
 
-      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">
-                <th className="px-5 py-2 font-medium">Tenant</th>
-                <th className="px-5 py-2 font-medium">Status</th>
-                <th className="px-5 py-2 font-medium">Host</th>
-                <th className="px-5 py-2 font-medium">Mailbox</th>
-                <th className="px-5 py-2 font-medium">Username</th>
-                <th className="px-5 py-2 font-medium">Last polled</th>
-                <th className="px-5 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
+      <AdminPanel
+        title="Inbox fleet"
+        eyebrow="Email operations"
+        description="Configure, rotate credentials, and monitor IMAP ingestion health without exposing passwords."
+      >
+        <div className="grid gap-3 p-4">
               {tenants.map((t) => {
                 const inbox = t.emailInbox;
                 const status = !inbox
@@ -105,101 +97,59 @@ export default async function AllInboxesPage() {
                       ? ('errored' as const)
                       : ('healthy' as const);
                 return (
-                  <tr
+                  <article
                     key={t.id}
-                    className="border-b border-[var(--color-bv-border)] last:border-b-0"
+                    className="grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] xl:grid-cols-[minmax(0,1fr)_150px_minmax(0,1fr)_140px_120px]"
                   >
-                    <td className="px-5 py-2.5">
-                      <div className="flex flex-col">
-                        <span className="text-[var(--color-bv-text)]">{t.name}</span>
-                        <span className="font-mono text-[11.5px] text-[var(--color-bv-muted)]">
-                          {t.slug}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-2.5">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-[14px] font-semibold text-slate-950">{t.name}</h3>
+                      <p className="mt-1 font-mono text-[11.5px] text-slate-500">{t.slug}</p>
+                    </div>
+                    <div>
                       <StatusChip status={status} />
-                    </td>
-                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
+                    </div>
+                    <div className="min-w-0 text-[12.5px] text-slate-500">
                       {inbox ? (
-                        <span className="font-mono text-[12px]">
+                        <span className="font-mono text-[12px] text-slate-700">
                           {inbox.host}:{inbox.port}
                           {inbox.secure ? '' : ' (STARTTLS/plain)'}
                         </span>
                       ) : (
-                        '—'
+                        'No inbox configured'
                       )}
-                    </td>
-                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
+                      <div className="mt-1 font-mono text-[11.5px] text-slate-500">
+                        {inbox ? inbox.mailbox : '—'}
+                      </div>
+                    </div>
+                    <div className="font-mono text-[12px] text-slate-500">
                       {inbox ? (
-                        <span className="font-mono text-[12px]">{inbox.mailbox}</span>
+                        maskUsername(inbox.username)
                       ) : (
                         '—'
                       )}
-                    </td>
-                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
-                      {inbox ? (
-                        <span className="font-mono text-[12px]">
-                          {maskUsername(inbox.username)}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="px-5 py-2.5 text-[var(--color-bv-muted)]">
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 xl:justify-end">
+                      <span className="text-[12px] text-slate-500 tabular-nums">
                       {inbox ? fmt(inbox.lastPolledAt) : '—'}
-                    </td>
-                    <td className="px-5 py-2.5 text-right">
+                      </span>
                       <Link
                         href={`/admin/tenants/${t.id}/email-inbox`}
-                        className="inline-flex items-center justify-center rounded-[6px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-surface)]"
+                        className={adminSecondaryButtonClass}
                       >
                         {inbox ? 'Edit' : 'Configure'}
                       </Link>
-                    </td>
-                  </tr>
+                    </div>
+                  </article>
                 );
               })}
               {tenants.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-5 py-8 text-center text-[var(--color-bv-muted)]"
-                  >
+                <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50/70 px-5 py-8 text-center text-[13px] text-slate-500">
                     No tenants yet.
-                  </td>
-                </tr>
+                </div>
               ) : null}
-            </tbody>
-          </table>
         </div>
-      </section>
+      </AdminPanel>
     </>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: number;
-  tone?: 'default' | 'ok' | 'bad' | 'muted';
-}) {
-  const cls =
-    tone === 'ok'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-      : tone === 'bad'
-        ? 'border-rose-200 bg-rose-50 text-rose-800'
-        : tone === 'muted'
-          ? 'border-slate-200 bg-slate-50 text-slate-700'
-          : 'border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] text-[var(--color-bv-text)]';
-  return (
-    <div className={`flex items-center justify-between rounded-[8px] border px-3 py-2 ${cls}`}>
-      <span className="text-[12px] uppercase tracking-wider opacity-80">{label}</span>
-      <span className="font-mono text-[14px] tabular-nums">{value}</span>
-    </div>
   );
 }
 
@@ -208,19 +158,9 @@ function StatusChip({
 }: {
   status: 'healthy' | 'errored' | 'disabled' | 'not-configured';
 }) {
-  const map = {
-    healthy: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    errored: 'border-amber-200 bg-amber-50 text-amber-800',
-    disabled: 'border-slate-200 bg-slate-50 text-slate-600',
-    'not-configured': 'border-slate-200 bg-slate-50 text-slate-500',
-  } as const;
   const label =
     status === 'not-configured' ? 'not configured' : status;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${map[status]}`}
-    >
-      {label}
-    </span>
-  );
+  const tone =
+    status === 'healthy' ? 'emerald' : status === 'errored' ? 'amber' : 'slate';
+  return <AdminPill tone={tone}>{label}</AdminPill>;
 }

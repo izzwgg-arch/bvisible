@@ -28,6 +28,26 @@ function parseKind(raw: string): EstimateLineKind | null {
   return KIND_SET.has(raw) ? (raw as EstimateLineKind) : null;
 }
 
+function cleanCategory(raw: string): string | null {
+  const value = raw.trim().replace(/\s+/g, ' ');
+  if (!value || value.length > 80) return null;
+  return value;
+}
+
+function categoryPrimaryKind(categories: string[]): EstimateLineKind {
+  const builtIn = categories.map((c) => parseKind(c)).find((k): k is EstimateLineKind => Boolean(k));
+  return builtIn ?? EstimateLineKind.MISC;
+}
+
+function parseCategoriesFromForm(formData: FormData): string[] {
+  const raw = formData.getAll('categories').map((v) => String(v));
+  const legacy = String(formData.get('kind') ?? '');
+  const cleaned = [...raw, legacy]
+    .map(cleanCategory)
+    .filter((c): c is string => Boolean(c));
+  return [...new Set(cleaned)];
+}
+
 function parseCatalogUnit(raw: string): ShopCatalogUnit | null {
   return UNIT_SET.has(raw) ? (raw as ShopCatalogUnit) : null;
 }
@@ -42,7 +62,8 @@ export async function createShopMaterialItemAction(
   const ctx = await readRequestContext();
 
   const name = String(formData.get('name') ?? '').trim();
-  const kind = parseKind(String(formData.get('kind') ?? ''));
+  const categories = parseCategoriesFromForm(formData);
+  const kind = categoryPrimaryKind(categories);
   const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
   const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
   const notes = String(formData.get('notes') ?? '').trim() || null;
@@ -57,15 +78,14 @@ export async function createShopMaterialItemAction(
   if (nameNormalized.length < 2) {
     return { error: 'Enter an item name (at least two meaningful characters).' };
   }
-  if (!kind) {
-    return { error: 'Choose a valid line type.' };
+  if (categories.length === 0) {
+    return { error: 'Choose or save a category.' };
   }
   if (!catalogUnit) {
     return { error: 'Choose a unit.' };
   }
-  if (catalogUnit === ShopCatalogUnit.CUSTOM && !(customUnitLabel && customUnitLabel.length > 0)) {
-    return { error: 'Add a custom unit label when unit is Custom.' };
-  }
+  const storedCustomUnitLabel =
+    catalogUnit === ShopCatalogUnit.CUSTOM ? (customUnitLabel ?? 'custom') : null;
 
   const internalCostCents = parseUsdToCents(internalUsd);
   if (internalCostCents === null || internalCostCents < 0) {
@@ -92,7 +112,7 @@ export async function createShopMaterialItemAction(
   }
 
   let machineId: string | null = null;
-  if (kind === EstimateLineKind.MACHINE && machineIdRaw) {
+  if (machineIdRaw) {
     if (machineIdRaw === '__new__') {
       const machineName = String(formData.get('machineName') ?? '').trim();
       const machineRateUsd = String(formData.get('machineRateUsd') ?? '').trim();
@@ -123,9 +143,9 @@ export async function createShopMaterialItemAction(
         name: name.slice(0, 400),
         nameNormalized,
         kind,
+        categories,
         catalogUnit,
-        customUnitLabel:
-          catalogUnit === ShopCatalogUnit.CUSTOM ? customUnitLabel?.slice(0, 40) ?? null : null,
+        customUnitLabel: storedCustomUnitLabel?.slice(0, 40) ?? null,
         internalCostCents,
         markupPercentMilli,
         defaultSellPriceCents,
@@ -144,7 +164,7 @@ export async function createShopMaterialItemAction(
       targetId: row.id,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
-      metadata: { nameNormalized, kind },
+      metadata: { nameNormalized, kind, categories },
     });
 
     return { error: null, redirectTo: `/items/${row.id}` };
@@ -162,11 +182,8 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
 
   const id = String(formData.get('id') ?? '').trim();
 
-  // categories[] is the new multi-select; fall back to legacy kind field
-  const rawCategories = formData.getAll('categories').map((v) => String(v).trim()).filter(Boolean);
-  const validCategories = rawCategories.filter((c) => KIND_SET.has(c)) as EstimateLineKind[];
-  // Primary kind = first selected category, or fall back to what was already there
-  const kind = validCategories[0] ? validCategories[0] : parseKind(String(formData.get('kind') ?? ''));
+  const categories = parseCategoriesFromForm(formData);
+  const kind = categories.length > 0 ? categoryPrimaryKind(categories) : null;
 
   const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
   const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
@@ -182,11 +199,10 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
     where: { id, tenantId: me.tenantId },
     select: { id: true },
   });
-  if (!existing || !kind || !catalogUnit) return;
+  if (!existing || !kind || !catalogUnit || categories.length === 0) return;
 
-  if (catalogUnit === ShopCatalogUnit.CUSTOM && !(customUnitLabel && customUnitLabel.length > 0)) {
-    return;
-  }
+  const storedCustomUnitLabel =
+    catalogUnit === ShopCatalogUnit.CUSTOM ? (customUnitLabel ?? 'custom') : null;
 
   const internalCostCents = parseUsdToCents(internalUsd);
   if (internalCostCents === null || internalCostCents < 0) return;
@@ -205,7 +221,7 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
   if (defaultQtyMilli === null || defaultQtyMilli <= 0) return;
 
   let machineId: string | null = null;
-  if (kind === EstimateLineKind.MACHINE && machineIdRaw) {
+  if (machineIdRaw) {
     if (machineIdRaw === '__new__') {
       const machineName = String(formData.get('machineName') ?? '').trim();
       const machineRateUsd = String(formData.get('machineRateUsd') ?? '').trim();
@@ -231,16 +247,15 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
   await prisma.shopMaterialItem.update({
     where: { id },
     data: {
-      kind: kind ?? EstimateLineKind.MATERIAL,
-      categories: validCategories.length > 0 ? validCategories : (kind ? [kind] : ['MATERIAL']),
+      kind,
+      categories,
       catalogUnit,
-      customUnitLabel:
-        catalogUnit === ShopCatalogUnit.CUSTOM ? customUnitLabel?.slice(0, 40) ?? null : null,
+      customUnitLabel: storedCustomUnitLabel?.slice(0, 40) ?? null,
       internalCostCents,
       markupPercentMilli,
       defaultSellPriceCents,
       defaultQtyMilli,
-      machineId: (validCategories.includes(EstimateLineKind.MACHINE) || kind === EstimateLineKind.MACHINE) ? machineId : null,
+      machineId,
       notes: notes?.slice(0, 2000) ?? null,
     },
   });
@@ -256,6 +271,7 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
     metadata: {
       fields: [
         'kind',
+        'categories',
         'catalogUnit',
         'internalCostCents',
         'markupPercentMilli',
@@ -275,6 +291,11 @@ export interface AddMachineState {
   error: string | null;
   machineId?: string;
   machineName?: string;
+}
+
+export interface AddCategoryState {
+  error: string | null;
+  category?: string;
 }
 
 /**
@@ -321,6 +342,42 @@ export async function addMachineAction(
   revalidatePath('/items');
 
   return { error: null, machineId: saved.id, machineName: saved.name };
+}
+
+export async function addShopItemCategoryAction(
+  _prev: AddCategoryState,
+  formData: FormData,
+): Promise<AddCategoryState> {
+  const me = await requireAdminScoped();
+  const ctx = await readRequestContext();
+
+  const name = cleanCategory(String(formData.get('categoryName') ?? ''));
+  if (!name) {
+    return { error: 'Enter a category name, up to 80 characters.' };
+  }
+
+  const saved = await prisma.shopItemCategory.upsert({
+    where: { tenantId_name: { tenantId: me.tenantId, name } },
+    create: { tenantId: me.tenantId, name },
+    update: {},
+    select: { id: true, name: true },
+  });
+
+  await writeAuditLog({
+    action: 'shop_item_category_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'shop_item_category',
+    targetId: saved.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { name },
+  });
+
+  revalidatePath('/items');
+  revalidatePath('/items/new');
+
+  return { error: null, category: saved.name };
 }
 
 export async function setShopMaterialPreferredVendorAction(formData: FormData): Promise<void> {

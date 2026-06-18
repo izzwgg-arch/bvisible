@@ -88,7 +88,7 @@ export default async function PublicQuotePage({
         customerResponse={quote.customerResponse}
       />
       <QuoteDocument
-        companyName={quote.companyName}
+        company={quote.company}
         estimateNumber={quote.estimateNumber}
         title={quote.title}
         quoteDateLabel={quote.quoteDateLabel}

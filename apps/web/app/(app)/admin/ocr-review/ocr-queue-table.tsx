@@ -58,9 +58,9 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
   }, [rows.length]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-      <table className="w-full border-collapse text-left text-[12px]">
-        <thead className="border-b border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-bv-muted)]">
+    <div className="overflow-hidden rounded-[20px] border border-slate-100 bg-white shadow-sm">
+      <table className="w-full border-collapse text-left text-[12.5px]">
+        <thead className="border-b border-slate-100 bg-slate-50/80 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-slate-400">
           <tr>
             <th className="px-2.5 py-1.5">Status</th>
             <th className="px-2.5 py-1.5">PO</th>
@@ -75,7 +75,7 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
           {rows.map((d) => (
             <tr
               key={d.id}
-              className="group border-t border-[var(--color-bv-border)] hover:bg-[var(--color-bv-bg)]/60"
+              className="group border-t border-slate-100 hover:bg-blue-50/35"
             >
               <td className="px-2.5 py-1">
                 <div className="flex flex-wrap items-center gap-1">
@@ -93,16 +93,16 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
                     {d.poNumber}
                   </Link>
                 ) : (
-                  <span className="text-[var(--color-bv-muted)]">—</span>
+                  <span className="text-slate-400">—</span>
                 )}
               </td>
-              <td className="max-w-[120px] truncate px-2.5 py-1 text-[var(--color-bv-muted)]">
+              <td className="max-w-[120px] truncate px-2.5 py-1 text-slate-500">
                 {d.vendorName ?? '—'}
               </td>
               <td className="max-w-[200px] px-2.5 py-1">
                 <Link
                   data-ocr-queue-row
-                  className="block truncate font-medium text-[var(--color-bv-text)] underline-offset-2 hover:text-emerald-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bv-accent)]"
+                  className="block truncate font-semibold text-slate-950 underline-offset-2 hover:text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bv-accent)]"
                   href={`/admin/ocr-review/${d.id}`}
                   title={d.attachmentTitle}
                 >
@@ -110,12 +110,12 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
                 </Link>
               </td>
               <td className="px-2.5 py-1 text-center tabular-nums">
-                <span className="inline-flex min-w-[1.5rem] justify-center rounded-full bg-[var(--color-bv-bg)] px-1 py-0.5 text-[10px] font-medium text-[var(--color-bv-muted)]">
+                <span className="inline-flex min-w-[1.5rem] justify-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-blue-700">
                   {d.lineCount}
                 </span>
               </td>
               <td
-                className="px-2.5 py-1 text-right tabular-nums text-[11px] text-[var(--color-bv-muted)]"
+                className="px-2.5 py-1 text-right tabular-nums text-[11px] text-slate-500"
                 title={d.updatedAt}
               >
                 {formatOcrRelativeTime(new Date(d.updatedAt), now)}
@@ -124,7 +124,7 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
                 <Link
                   data-ocr-queue-row
                   href={`/admin/ocr-review/${d.id}`}
-                  className="inline-flex items-center rounded-md border border-transparent px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 opacity-70 transition-opacity group-hover:opacity-100 hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bv-accent)]"
+                  className="inline-flex items-center rounded-[10px] border border-transparent px-2.5 py-1 text-[11.5px] font-semibold text-blue-700 opacity-80 transition-opacity group-hover:opacity-100 hover:border-blue-100 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bv-accent)]"
                 >
                   Review →
                 </Link>
@@ -133,7 +133,7 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
           ))}
         </tbody>
       </table>
-      <p className="border-t border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-1 text-[10px] text-[var(--color-bv-muted)]">
+      <p className="border-t border-slate-100 bg-gradient-to-r from-blue-50/70 to-cyan-50/60 px-3 py-2 text-[10.5px] text-slate-500">
         Tip: focus a row link, then <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{' '}
         to move · Shift+click opens review
       </p>

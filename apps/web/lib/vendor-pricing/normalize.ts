@@ -95,3 +95,21 @@ export function normalizeVendorItemName(raw: string): string {
 
   return s.toUpperCase();
 }
+
+const DISPLAY_ACRONYMS = new Set(['acm', 'pvc', 'abs', 'eps', 'petg', 'uv', 'led']);
+
+/** Human-readable label for vendor catalog / price rows (UI only). */
+export function formatVendorItemDisplayName(raw: string): string {
+  return raw
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (/^\d+x\d+$/.test(lower)) return lower.toUpperCase();
+      if (/\d/.test(lower)) return lower.toUpperCase();
+      if (DISPLAY_ACRONYMS.has(lower)) return lower.toUpperCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}

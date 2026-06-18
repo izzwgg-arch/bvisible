@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useActionState } from 'react';
 import { createBlankPoAction, type CreatePoState } from '../actions';
+import { SelectControl } from '@/components/app/select-control';
 import { FormError } from '@/components/auth/form-error';
 
 const INITIAL: CreatePoState = { error: null };
@@ -43,7 +44,7 @@ export function NewPoForm({
             if you want to attach now, or leave blank and assign later.
           </p>
         ) : (
-          <select
+          <SelectControl
             name="vendorId"
             defaultValue=""
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
@@ -54,7 +55,7 @@ export function NewPoForm({
                 {v.name}
               </option>
             ))}
-          </select>
+          </SelectControl>
         )}
       </label>
 
@@ -63,7 +64,7 @@ export function NewPoForm({
           Linked estimate{' '}
           <span className="text-[var(--color-bv-muted)]">(optional)</span>
         </span>
-        <select
+        <SelectControl
           name="estimateId"
           defaultValue={defaultEstimateId ?? ''}
           className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
@@ -74,7 +75,7 @@ export function NewPoForm({
               {e.number} · {e.title}
             </option>
           ))}
-        </select>
+        </SelectControl>
         <span className="rounded-[14px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-[12px] leading-relaxed text-blue-900">
           Picking an estimate here just stores the link. To copy lines from the
           estimate, open the estimate and click <em>Create PO from estimate</em>.

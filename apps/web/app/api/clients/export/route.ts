@@ -16,20 +16,44 @@ export async function GET() {
       companyName: true,
       contactName: true,
       email: true,
+      secondaryEmail: true,
       phone: true,
+      alternatePhone: true,
+      address: true,
       notes: true,
     },
   });
 
-  const headers = ['Customer Name', 'Contact Name', 'Email', 'Phone', 'Notes'];
+  const headers = [
+    'Company',
+    'Customer',
+    'Contact Name',
+    'Main Email',
+    'Secondary Email',
+    'Main Phone',
+    'Alt. Phone',
+    'Bill to 1',
+    'Bill to 2',
+    'Bill to 3',
+    'Notes',
+  ];
 
-  const rows = clients.map((c) => [
-    c.companyName,
-    c.contactName ?? '',
-    c.email ?? '',
-    c.phone ?? '',
-    c.notes ?? '',
-  ]);
+  const rows = clients.map((c) => {
+    const [billTo1, billTo2, billTo3] = (c.address ?? '').split('\n');
+    return [
+      c.companyName,
+      c.companyName,
+      c.contactName ?? '',
+      c.email ?? '',
+      c.secondaryEmail ?? '',
+      c.phone ?? '',
+      c.alternatePhone ?? '',
+      billTo1 ?? '',
+      billTo2 ?? '',
+      billTo3 ?? '',
+      c.notes ?? '',
+    ];
+  });
 
   const csv = buildCSV(headers, rows);
   const filename = `customers-${new Date().toISOString().slice(0, 10)}.csv`;

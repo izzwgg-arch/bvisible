@@ -14,8 +14,10 @@ export type AuditAction =
   | 'user_disabled'
   | 'user_enabled'
   | 'tenant_created'
+  | 'tenant_invoice_profile_saved'
   | 'super_admin_bootstrapped'
   | 'client_created'
+  | 'client_updated'
   | 'estimate_created'
   | 'estimate_saved'
   | 'estimate_status_changed'
@@ -30,6 +32,7 @@ export type AuditAction =
   | 'invoice_created_from_estimate'
   | 'invoice_marked_paid'
   | 'vendor_created'
+  | 'vendor_updated'
   | 'po_created'
   | 'po_created_from_estimate'
   | 'po_saved'
@@ -55,6 +58,8 @@ export type AuditAction =
   | 'vendor_price_notification_dismissed'
   | 'shop_material_item_created'
   | 'shop_material_item_saved'
+  | 'shop_item_category_saved'
+  | 'machine_saved'
   | 'shop_material_manual_price_recorded'
   | 'shop_material_catalog_linked'
   | 'po_reconciliation_run'
@@ -77,7 +82,11 @@ export type AuditAction =
   | 'smtp_config_saved'
   | 'client_csv_imported'
   | 'shop_material_csv_imported'
-  | 'vendor_csv_imported';
+  | 'vendor_csv_imported'
+  | 'vehicle_created'
+  | 'vehicle_updated'
+  | 'vehicle_archived'
+  | 'vehicles_imported';
 
 export interface AuditEntry {
   action: AuditAction;

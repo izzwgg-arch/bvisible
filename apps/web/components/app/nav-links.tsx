@@ -154,6 +154,15 @@ function NavIcon({ label }: { label: string }) {
           <path d="M12 12v9" />
         </svg>
       );
+    case 'Vehicles':
+      return (
+        <svg {...common}>
+          <path d="M4 13h2l2.5-5h7l2.5 5h2v4H4v-4Z" />
+          <circle cx="8" cy="17" r="2" />
+          <circle cx="16" cy="17" r="2" />
+          <path d="M9 8h6" />
+        </svg>
+      );
     case 'Users':
       return (
         <svg {...common}>

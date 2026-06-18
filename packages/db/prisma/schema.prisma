@@ -266,44 +266,83 @@ enum SpendAlertStatus {
   SUPERSEDED
 }
 
-model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum VehicleDimensionConfidenceLevel {
+  MANUAL
+  IMPORTED
+  ESTIMATED
+  VERIFIED
+}
 
-  users        User[]
-  invites      UserInvite[]
-  clients      Client[]
-  machines     Machine[]
-  estimates    Estimate[]
-  lineItems    EstimateLineItem[]
-  vendors      Vendor[]
-  purchaseOrders PurchaseOrder[]
-  poLineItems  POLineItem[]
-  poAttachments POAttachment[]
-  poEvents     POEvent[]
-  emailInbox            TenantEmailInbox?
-  ingestedEmails        IngestedEmail[]
+enum VehiclePhotoType {
+  FRONT
+  SIDE
+  REAR
+  INTERIOR
+  HERO
+  PLACEHOLDER
+}
+
+enum VehicleTemplateFileType {
+  SVG
+  PDF
+  AI
+  EPS
+  PNG
+  JPG
+  OTHER
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  phone       String?
+  email       String?
+  address     String?
+  slogan      String?
+  logoDataUrl String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users                    User[]
+  invites                  UserInvite[]
+  clients                  Client[]
+  machines                 Machine[]
+  estimates                Estimate[]
+  lineItems                EstimateLineItem[]
+  vendors                  Vendor[]
+  purchaseOrders           PurchaseOrder[]
+  poLineItems              POLineItem[]
+  poAttachments            POAttachment[]
+  poEvents                 POEvent[]
+  emailInbox               TenantEmailInbox?
+  ingestedEmails           IngestedEmail[]
   ingestedEmailAttachments IngestedEmailAttachment[]
-  emailIngestRuns       EmailIngestRun[]
-  vendorCatalogItems  VendorCatalogItem[]
-  vendorItemAliases   VendorItemAlias[]
-  vendorPriceHistories VendorPriceHistory[]
+  emailIngestRuns          EmailIngestRun[]
+  vendorCatalogItems       VendorCatalogItem[]
+  vendorItemAliases        VendorItemAlias[]
+  vendorPriceHistories     VendorPriceHistory[]
   vendorPriceNotifications VendorPriceNotification[]
-  mobileSessions       MobileSession[]
-  mobilePendingUploads MobilePendingUpload[]
-  ocrDocuments         OcrDocument[]
-  poReconciliations    POReconciliation[]
-  poReconciliationLines POReconciliationLine[]
-  spendAlerts          SpendAlert[]
-  shopMaterialItems    ShopMaterialItem[]
-  shopMaterialItemAliases ShopMaterialItemAlias[]
+  mobileSessions           MobileSession[]
+  mobilePendingUploads     MobilePendingUpload[]
+  ocrDocuments             OcrDocument[]
+  poReconciliations        POReconciliation[]
+  poReconciliationLines    POReconciliationLine[]
+  spendAlerts              SpendAlert[]
+  shopMaterialItems        ShopMaterialItem[]
+  shopMaterialItemAliases  ShopMaterialItemAlias[]
+  shopItemCategories       ShopItemCategory[]
   estimateQuoteLinks       EstimateQuoteLink[]
-  estimateTimelineEvents EstimateTimelineEvent[]
-  invoices               Invoice[]
-  invoiceLineItems       InvoiceLineItem[]
+  estimateTimelineEvents   EstimateTimelineEvent[]
+  invoices                 Invoice[]
+  invoiceLineItems         InvoiceLineItem[]
+  vehicleMakes             VehicleMake[]
+  vehicleModels            VehicleModel[]
+  vehicleTrims             VehicleTrim[]
+  vehicleDimensionProfiles VehicleDimensionProfile[]
+  vehiclePhotos            VehiclePhoto[]
+  vehicleTemplates         VehicleTemplate[]
+  estimateVehicles         EstimateVehicle[]
 
   @@map("tenants")
 }
@@ -318,33 +357,33 @@ model User {
 
   // Auth lifecycle. All nullable so we can model invited-but-not-accepted
   // and disabled-but-not-deleted accounts without sentinels.
-  lastLoginAt       DateTime?
-  disabledAt        DateTime?
-  invitedAt         DateTime?
-  inviteAcceptedAt  DateTime?
+  lastLoginAt      DateTime?
+  disabledAt       DateTime?
+  invitedAt        DateTime?
+  inviteAcceptedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant            Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sessions          Session[]
-  resetTokens       PasswordResetToken[]
-  invitesIssued     UserInvite[]         @relation("UserInviteInviter")
-  estimatesCreated  Estimate[]           @relation("EstimateCreator")
-  purchaseOrdersCreated PurchaseOrder[]  @relation("POCreator")
-  poAttachmentsUploaded POAttachment[]   @relation("POAttachmentUploader")
-  poEventsAuthored  POEvent[]            @relation("POEventActor")
-  mobileSessions    MobileSession[]
-  mobilePendingUploads MobilePendingUpload[]
-  ocrDocumentsConfirmed OcrDocument[]    @relation("OcrDocumentConfirmedBy")
-  ocrDocumentsRejected  OcrDocument[]    @relation("OcrDocumentRejectedBy")
-  purchaseOrdersMarkedReconciled PurchaseOrder[] @relation("PoMarkedReconciledBy")
-  poReconciliationsResolved       POReconciliation[]       @relation("POReconciliationResolvedBy")
-  poReconciliationLinesResolved   POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
-  spendAlertsDismissed            SpendAlert[]             @relation("SpendAlertDismissedBy")
-  spendAlertsResolvedSpend        SpendAlert[]             @relation("SpendAlertResolvedBy")
-  estimateQuoteLinksCreated       EstimateQuoteLink[]      @relation("QuoteLinkCreator")
-  invoicesCreated                 Invoice[]                @relation("InvoiceCreator")
+  tenant                         Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions                       Session[]
+  resetTokens                    PasswordResetToken[]
+  invitesIssued                  UserInvite[]           @relation("UserInviteInviter")
+  estimatesCreated               Estimate[]             @relation("EstimateCreator")
+  purchaseOrdersCreated          PurchaseOrder[]        @relation("POCreator")
+  poAttachmentsUploaded          POAttachment[]         @relation("POAttachmentUploader")
+  poEventsAuthored               POEvent[]              @relation("POEventActor")
+  mobileSessions                 MobileSession[]
+  mobilePendingUploads           MobilePendingUpload[]
+  ocrDocumentsConfirmed          OcrDocument[]          @relation("OcrDocumentConfirmedBy")
+  ocrDocumentsRejected           OcrDocument[]          @relation("OcrDocumentRejectedBy")
+  purchaseOrdersMarkedReconciled PurchaseOrder[]        @relation("PoMarkedReconciledBy")
+  poReconciliationsResolved      POReconciliation[]     @relation("POReconciliationResolvedBy")
+  poReconciliationLinesResolved  POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
+  spendAlertsDismissed           SpendAlert[]           @relation("SpendAlertDismissedBy")
+  spendAlertsResolvedSpend       SpendAlert[]           @relation("SpendAlertResolvedBy")
+  estimateQuoteLinksCreated      EstimateQuoteLink[]    @relation("QuoteLinkCreator")
+  invoicesCreated                Invoice[]              @relation("InvoiceCreator")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -481,16 +520,19 @@ model AuditLog {
 // CRM (contacts, addresses, segmentation) lands in a future phase.
 // `deletedAt` enables soft-delete: list queries filter `deletedAt: null`.
 model Client {
-  id          String    @id @default(cuid())
-  tenantId    String
-  companyName String
-  contactName String?
-  email       String?
-  phone       String?
-  notes       String?
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  tenantId       String
+  companyName    String
+  contactName    String?
+  email          String?
+  secondaryEmail String?
+  phone          String?
+  alternatePhone String?
+  address        String?
+  notes          String?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   estimates Estimate[]
@@ -514,8 +556,8 @@ model Machine {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lines  EstimateLineItem[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines             EstimateLineItem[]
   shopMaterialItems ShopMaterialItem[]
 
   @@unique([tenantId, name])
@@ -552,14 +594,15 @@ model Estimate {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client         Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  createdBy      User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client         Client                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy      User                    @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
   lines          EstimateLineItem[]
   purchaseOrders PurchaseOrder[]
-  quoteLinks          EstimateQuoteLink[]
-  timelineEvents    EstimateTimelineEvent[]
-  invoices          Invoice[]
+  quoteLinks     EstimateQuoteLink[]
+  timelineEvents EstimateTimelineEvent[]
+  invoices       Invoice[]
+  vehicle        EstimateVehicle?
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -570,20 +613,20 @@ model Estimate {
 
 /// Tenant invoice (sales). Created explicitly from an approved estimate — no auto-generation.
 model Invoice {
-  id              String        @id @default(cuid())
-  tenantId        String
-  estimateId      String?
-  clientId        String
-  number          String
-  status          InvoiceStatus @default(UNPAID)
+  id            String        @id @default(cuid())
+  tenantId      String
+  estimateId    String?
+  clientId      String
+  number        String
+  status        InvoiceStatus @default(UNPAID)
   /// Sum of line sell allocations at creation time (matches estimate final sell snapshot).
-  subtotalCents   Int           @default(0)
-  notes           String?
-  paidAt          DateTime?
-  createdById     String
-  deletedAt       DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  subtotalCents Int           @default(0)
+  notes         String?
+  paidAt        DateTime?
+  createdById   String
+  deletedAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   estimate  Estimate?         @relation(fields: [estimateId], references: [id], onDelete: SetNull)
@@ -667,20 +710,20 @@ model EstimateQuoteLink {
   createdAt    DateTime  @default(now())
 
   /// Customer acceptance via public quote (exclusive with decline fields below).
-  acceptedAt      DateTime?
-  acceptedByName  String?
-  acceptedNote    String?
-  declinedAt      DateTime?
-  declinedByName  String?
-  declinedNote    String?
+  acceptedAt        DateTime?
+  acceptedByName    String?
+  acceptedNote      String?
+  declinedAt        DateTime?
+  declinedByName    String?
+  declinedNote      String?
   /// First response timestamp (accept or decline).
-  respondedAt DateTime?
-  responseIp         String?
-  responseUserAgent  String?
+  respondedAt       DateTime?
+  responseIp        String?
+  responseUserAgent String?
 
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  estimate  Estimate  @relation(fields: [estimateId], references: [id], onDelete: Cascade)
-  createdBy User      @relation("QuoteLinkCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate  Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("QuoteLinkCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([tenantId, estimateId])
   @@map("estimate_quote_links")
@@ -701,6 +744,203 @@ model EstimateTimelineEvent {
   @@map("estimate_timeline_events")
 }
 
+/// Tenant-scoped vehicle manufacturer library. Vehicle data is shared within a
+/// tenant and can be attached optionally to estimates without affecting pricing.
+model VehicleMake {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String   @db.VarChar(160)
+  slug      String   @db.VarChar(180)
+  country   String?  @db.VarChar(120)
+  logoUrl   String?  @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  models VehicleModel[]
+  photos VehiclePhoto[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, name])
+  @@map("vehicle_makes")
+}
+
+model VehicleModel {
+  id          String   @id @default(cuid())
+  tenantId    String
+  makeId      String
+  name        String   @db.VarChar(180)
+  slug        String   @db.VarChar(200)
+  bodyClass   String?  @db.VarChar(120)
+  vehicleType String?  @db.VarChar(120)
+  firstYear   Int?
+  lastYear    Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  make   VehicleMake    @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  trims  VehicleTrim[]
+  photos VehiclePhoto[]
+
+  @@unique([tenantId, makeId, slug])
+  @@index([tenantId, makeId, slug])
+  @@index([tenantId, name])
+  @@map("vehicle_models")
+}
+
+model VehicleTrim {
+  id           String    @id @default(cuid())
+  tenantId     String
+  modelId      String
+  year         Int
+  trimName     String?   @db.VarChar(180)
+  generation   String?   @db.VarChar(120)
+  bodyStyle    String?   @db.VarChar(120)
+  doors        Int?
+  drivetrain   String?   @db.VarChar(80)
+  fuelType     String?   @db.VarChar(80)
+  engine       String?   @db.VarChar(160)
+  transmission String?   @db.VarChar(120)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  model             VehicleModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  dimensionProfiles VehicleDimensionProfile[]
+  photos            VehiclePhoto[]
+  templates         VehicleTemplate[]
+  estimateVehicles  EstimateVehicle[]
+
+  @@index([tenantId, modelId, year])
+  @@index([tenantId, year])
+  @@index([tenantId, deletedAt])
+  @@map("vehicle_trims")
+}
+
+model VehicleDimensionProfile {
+  id                  String                          @id @default(cuid())
+  tenantId            String
+  trimId              String
+  sourceName          String?                         @db.VarChar(180)
+  sourceUrl           String?                         @db.VarChar(1000)
+  confidenceLevel     VehicleDimensionConfidenceLevel @default(IMPORTED)
+  lengthIn            Float?
+  widthIn             Float?
+  heightIn            Float?
+  wheelbaseIn         Float?
+  curbWeightLb        Float?
+  grossWeightLb       Float?
+  cargoLengthIn       Float?
+  cargoWidthIn        Float?
+  cargoHeightIn       Float?
+  bedLengthIn         Float?
+  roofLengthIn        Float?
+  roofWidthIn         Float?
+  hoodLengthIn        Float?
+  hoodWidthIn         Float?
+  sideApproxSqFt      Float?
+  roofApproxSqFt      Float?
+  hoodApproxSqFt      Float?
+  rearApproxSqFt      Float?
+  frontApproxSqFt     Float?
+  totalApproxWrapSqFt Float?
+  notes               String?                         @db.VarChar(4000)
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trim   VehicleTrim @relation(fields: [trimId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, trimId])
+  @@index([tenantId, confidenceLevel])
+  @@map("vehicle_dimension_profiles")
+}
+
+model VehiclePhoto {
+  id          String           @id @default(cuid())
+  tenantId    String
+  trimId      String?
+  modelId     String?
+  makeId      String?
+  url         String           @db.VarChar(1000)
+  storageKey  String?          @db.VarChar(200)
+  altText     String?          @db.VarChar(240)
+  photoType   VehiclePhotoType @default(HERO)
+  sourceName  String?          @db.VarChar(180)
+  sourceUrl   String?          @db.VarChar(1000)
+  licenseNote String?          @db.VarChar(1000)
+  isPrimary   Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trim   VehicleTrim?  @relation(fields: [trimId], references: [id], onDelete: Cascade)
+  model  VehicleModel? @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  make   VehicleMake?  @relation(fields: [makeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, trimId, isPrimary])
+  @@index([tenantId, modelId])
+  @@index([tenantId, makeId])
+  @@map("vehicle_photos")
+}
+
+model VehicleTemplate {
+  id               String                  @id @default(cuid())
+  tenantId         String
+  trimId           String
+  templateName     String                  @db.VarChar(180)
+  fileUrl          String                  @db.VarChar(1000)
+  fileType         VehicleTemplateFileType @default(OTHER)
+  sourceName       String?                 @db.VarChar(180)
+  sourceUrl        String?                 @db.VarChar(1000)
+  licenseNote      String?                 @db.VarChar(1000)
+  driverSideUrl    String?                 @db.VarChar(1000)
+  passengerSideUrl String?                 @db.VarChar(1000)
+  frontUrl         String?                 @db.VarChar(1000)
+  rearUrl          String?                 @db.VarChar(1000)
+  roofUrl          String?                 @db.VarChar(1000)
+  notes            String?                 @db.VarChar(4000)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trim   VehicleTrim @relation(fields: [trimId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, trimId])
+  @@map("vehicle_templates")
+}
+
+model EstimateVehicle {
+  id           String   @id @default(cuid())
+  tenantId     String
+  estimateId   String   @unique
+  trimId       String?
+  year         Int?
+  make         String?  @db.VarChar(160)
+  model        String?  @db.VarChar(180)
+  trim         String?  @db.VarChar(180)
+  vin          String?  @db.VarChar(80)
+  licensePlate String?  @db.VarChar(40)
+  color        String?  @db.VarChar(80)
+  wrapType     String?  @db.VarChar(120)
+  coverageType String?  @db.VarChar(120)
+  notes        String?  @db.VarChar(4000)
+  photoUrl     String?  @db.VarChar(1000)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate Estimate     @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  trimRef  VehicleTrim? @relation(fields: [trimId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, estimateId])
+  @@index([tenantId, estimateId])
+  @@index([tenantId, year, make, model])
+  @@map("estimate_vehicles")
+}
+
 // Tenant-scoped vendor reference. Foundation only — no contacts, no
 // addresses, no pricing intelligence. Soft-deleted via deletedAt so a
 // PO that references a retired vendor still resolves the name.
@@ -710,20 +950,22 @@ model Vendor {
   name      String
   email     String?
   phone     String?
+  emails    String[]
+  phones    String[]
   notes     String?
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrders PurchaseOrder[]
-  ingestedEmails IngestedEmail[] @relation("MatchedVendor")
-  catalogItems   VendorCatalogItem[]
-  itemAliases    VendorItemAlias[]
-  priceHistory   VendorPriceHistory[]
-  priceNotifications VendorPriceNotification[]
-  spendAlerts    SpendAlert[]
-  preferredForShopMaterials ShopMaterialItem[] @relation("ShopMaterialPreferredVendor")
+  tenant                    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrders            PurchaseOrder[]
+  ingestedEmails            IngestedEmail[]           @relation("MatchedVendor")
+  catalogItems              VendorCatalogItem[]
+  itemAliases               VendorItemAlias[]
+  priceHistory              VendorPriceHistory[]
+  priceNotifications        VendorPriceNotification[]
+  spendAlerts               SpendAlert[]
+  preferredForShopMaterials ShopMaterialItem[]        @relation("ShopMaterialPreferredVendor")
 
   @@unique([tenantId, name])
   @@index([tenantId, deletedAt])
@@ -748,35 +990,35 @@ model Vendor {
 // (rare, but supported for retro-PO entry), and we don't want deleting
 // the source estimate to cascade-delete the spending record.
 model PurchaseOrder {
-  id            String    @id @default(cuid())
-  tenantId      String
-  estimateId    String?
-  vendorId      String?
-  number        String
-  qboPoNumber   String?
-  status        POStatus  @default(DRAFT)
-  subtotalCents Int       @default(0)
-  notes         String?
-  createdById   String
-  deletedAt     DateTime?
+  id                           String    @id @default(cuid())
+  tenantId                     String
+  estimateId                   String?
+  vendorId                     String?
+  number                       String
+  qboPoNumber                  String?
+  status                       POStatus  @default(DRAFT)
+  subtotalCents                Int       @default(0)
+  notes                        String?
+  createdById                  String
+  deletedAt                    DateTime?
   /// Operator attestation only — does not mutate PO lines or finances.
   operatorMarkedReconciledAt   DateTime?
   operatorMarkedReconciledById String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 
-  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  estimate    Estimate?      @relation(fields: [estimateId], references: [id], onDelete: SetNull)
-  vendor      Vendor?        @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  createdBy   User           @relation("POCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  lines       POLineItem[]
-  attachments POAttachment[]
-  events      POEvent[]
-  matchedEmails IngestedEmail[] @relation("MatchedPO")
-  mobilePendingUploads MobilePendingUpload[]
-  reconciliations POReconciliation[]
-  spendAlerts     SpendAlert[]
-  operatorMarkedReconciledBy User? @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
+  tenant                     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate                   Estimate?             @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  vendor                     Vendor?               @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdBy                  User                  @relation("POCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines                      POLineItem[]
+  attachments                POAttachment[]
+  events                     POEvent[]
+  matchedEmails              IngestedEmail[]       @relation("MatchedPO")
+  mobilePendingUploads       MobilePendingUpload[]
+  reconciliations            POReconciliation[]
+  spendAlerts                SpendAlert[]
+  operatorMarkedReconciledBy User?                 @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -805,8 +1047,8 @@ model POLineItem {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder       PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   reconciliationLines POReconciliationLine[]
 
   @@index([tenantId, purchaseOrderId, sortOrder])
@@ -844,7 +1086,7 @@ model POAttachment {
   uploadedBy    User           @relation("POAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
   sourceEmail   IngestedEmail? @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
 
-  ocrDocument OcrDocument?
+  ocrDocument                OcrDocument?
   vendorPriceHistoriesSource VendorPriceHistory[]
 
   @@index([tenantId, purchaseOrderId, createdAt])
@@ -904,7 +1146,7 @@ model TenantEmailInbox {
   secure              Boolean   @default(true)
   mailbox             String    @default("INBOX")
   username            String
-  passwordCipher      String                                       // base64(iv|tag|ciphertext); see crypto.ts
+  passwordCipher      String // base64(iv|tag|ciphertext); see crypto.ts
   pollIntervalSeconds Int       @default(60)
   enabled             Boolean   @default(true)
   lastPolledAt        DateTime?
@@ -930,38 +1172,38 @@ model TenantEmailInbox {
 // the row leaks. `subject` and `from` are kept in full — both are
 // already present in any mail-server log on the path.
 model IngestedEmail {
-  id                String           @id @default(cuid())
-  tenantId          String
-  messageId         String                                          // RFC 5322 Message-ID header
-  fromAddress       String
-  fromName          String?
-  toAddress         String?
-  subject           String
-  receivedAt        DateTime                                        // envelope `Date:` header
-  status            EmailIngestStatus @default(PENDING)
-  matchReason       EmailMatchReason  @default(NONE)
+  id                     String            @id @default(cuid())
+  tenantId               String
+  messageId              String // RFC 5322 Message-ID header
+  fromAddress            String
+  fromName               String?
+  toAddress              String?
+  subject                String
+  receivedAt             DateTime // envelope `Date:` header
+  status                 EmailIngestStatus @default(PENDING)
+  matchReason            EmailMatchReason  @default(NONE)
   matchedPurchaseOrderId String?
-  matchedVendorId   String?
-  matchHint         String?                                         // matched token (qbo number, PO number, vendor email)
-  bodyTextSnippet   String?                                         // first ~2 KB of plain text, sanitized
-  hasAttachments    Boolean           @default(false)
-  attachmentCount   Int               @default(0)
+  matchedVendorId        String?
+  matchHint              String? // matched token (qbo number, PO number, vendor email)
+  bodyTextSnippet        String? // first ~2 KB of plain text, sanitized
+  hasAttachments         Boolean           @default(false)
+  attachmentCount        Int               @default(0)
   /// Deterministic review tags (string codes), e.g. MULTIPLE_PO_MATCHES, ATTACHMENT_REJECTED.
   /// Populated from matcher + attachment outcomes + OCR job state; never AI-derived.
-  reviewReasonCodes Json              @default("[]")
-  errorMessage      String?
-  processedAt       DateTime?                                       // set on first successful match/unmatch write
-  retriedAt         DateTime?                                       // last manual retry attempt
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  reviewReasonCodes      Json              @default("[]")
+  errorMessage           String?
+  processedAt            DateTime? // set on first successful match/unmatch write
+  retriedAt              DateTime? // last manual retry attempt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
-  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  matchedPurchaseOrder PurchaseOrder?         @relation("MatchedPO", fields: [matchedPurchaseOrderId], references: [id], onDelete: SetNull)
-  matchedVendor     Vendor?                   @relation("MatchedVendor", fields: [matchedVendorId], references: [id], onDelete: SetNull)
-  attachments       IngestedEmailAttachment[]
-  poAttachments     POAttachment[]
-  poEvents          POEvent[]
-  vendorPriceHistoryRows VendorPriceHistory[]
+  tenant                   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  matchedPurchaseOrder     PurchaseOrder?            @relation("MatchedPO", fields: [matchedPurchaseOrderId], references: [id], onDelete: SetNull)
+  matchedVendor            Vendor?                   @relation("MatchedVendor", fields: [matchedVendorId], references: [id], onDelete: SetNull)
+  attachments              IngestedEmailAttachment[]
+  poAttachments            POAttachment[]
+  poEvents                 POEvent[]
+  vendorPriceHistoryRows   VendorPriceHistory[]
   vendorPriceNotifications VendorPriceNotification[]
 
   @@unique([tenantId, messageId])
@@ -986,17 +1228,17 @@ model IngestedEmailAttachment {
   id               String   @id @default(cuid())
   tenantId         String
   ingestedEmailId  String
-  storageKey       String                                            // random; see uploads.ts safeExtension rules
-  originalFilename String                                            // sanitized; display only
-  mimeType         String                                            // server-detected
+  storageKey       String // random; see uploads.ts safeExtension rules
+  originalFilename String // sanitized; display only
+  mimeType         String // server-detected
   sizeBytes        Int
-  sha256           String                                            // hex; for dedupe + integrity
-  skipped          Boolean  @default(false)                          // true when MIME outside allowlist
+  sha256           String // hex; for dedupe + integrity
+  skipped          Boolean  @default(false) // true when MIME outside allowlist
   skipReason       String?
   createdAt        DateTime @default(now())
 
-  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ingestedEmail  IngestedEmail @relation(fields: [ingestedEmailId], references: [id], onDelete: Cascade)
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ingestedEmail          IngestedEmail        @relation(fields: [ingestedEmailId], references: [id], onDelete: Cascade)
   vendorPriceHistoryRows VendorPriceHistory[]
 
   @@index([tenantId, ingestedEmailId])
@@ -1009,19 +1251,19 @@ model IngestedEmailAttachment {
 // unified Items catalog UI (same normalized key within the shop item).
 // nameNormalized is produced by apps/web/lib/vendor-pricing/normalize.ts.
 model VendorCatalogItem {
-  id               String   @id @default(cuid())
-  tenantId         String
-  vendorId         String
-  nameNormalized   String   @db.VarChar(400)
+  id                 String   @id @default(cuid())
+  tenantId           String
+  vendorId           String
+  nameNormalized     String   @db.VarChar(400)
   shopMaterialItemId String?
-  vendorSku        String?  @db.VarChar(120)
-  createdAt        DateTime @default(now())
+  vendorSku          String?  @db.VarChar(120)
+  createdAt          DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  shopMaterialItem ShopMaterialItem? @relation(fields: [shopMaterialItemId], references: [id], onDelete: SetNull)
-  aliases VendorItemAlias[]
-  priceHistory VendorPriceHistory[]
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor             Vendor                    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  shopMaterialItem   ShopMaterialItem?         @relation(fields: [shopMaterialItemId], references: [id], onDelete: SetNull)
+  aliases            VendorItemAlias[]
+  priceHistory       VendorPriceHistory[]
   priceNotifications VendorPriceNotification[]
   ocrLineItemsMapped OcrLineItem[]
 
@@ -1035,37 +1277,52 @@ model VendorCatalogItem {
 /// Tenant-level estimating catalog item ("Items"). Links to VendorCatalogItem rows
 /// for MATERIAL vendor pricing. Other kinds use internalCostCents / machine defaults.
 model ShopMaterialItem {
-  id                  String   @id @default(cuid())
-  tenantId            String
-  name                String   @db.VarChar(400)
-  nameNormalized      String   @db.VarChar(400)
-  kind                EstimateLineKind @default(MATERIAL)
-  catalogUnit         ShopCatalogUnit @default(EACH)
-  customUnitLabel     String?  @db.VarChar(40)
-  internalCostCents   Int      @default(0)
+  id                    String           @id @default(cuid())
+  tenantId              String
+  name                  String           @db.VarChar(400)
+  nameNormalized        String           @db.VarChar(400)
+  kind                  EstimateLineKind @default(MATERIAL)
+  categories            String[]
+  catalogUnit           ShopCatalogUnit  @default(EACH)
+  customUnitLabel       String?          @db.VarChar(40)
+  internalCostCents     Int              @default(0)
   /// Markup on internal/vendor unit cost for quoting guidance, stored as percent × 1000
   /// (30000 → 30%). Default 200000 = 200% above cost → catalog sell hint ≈ 3× cost unless overridden.
-  markupPercentMilli  Int      @default(200000)
+  markupPercentMilli    Int              @default(200000)
   defaultSellPriceCents Int?
-  defaultQtyMilli     Int      @default(1000)
-  machineId           String?
-  notes               String?  @db.VarChar(2000)
-  preferredVendorId   String?
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  defaultQtyMilli       Int              @default(1000)
+  machineId             String?
+  notes                 String?          @db.VarChar(2000)
+  preferredVendorId     String?
+  isActive              Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  tenant           Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  preferredVendor  Vendor? @relation("ShopMaterialPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
-  machine          Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preferredVendor    Vendor?                 @relation("ShopMaterialPreferredVendor", fields: [preferredVendorId], references: [id], onDelete: SetNull)
+  machine            Machine?                @relation(fields: [machineId], references: [id], onDelete: SetNull)
   vendorCatalogLinks VendorCatalogItem[]
-  aliases          ShopMaterialItemAlias[]
+  aliases            ShopMaterialItemAlias[]
 
   @@unique([tenantId, nameNormalized])
   @@index([tenantId, isActive])
   @@index([tenantId, kind])
   @@index([tenantId, machineId])
   @@map("shop_material_items")
+}
+
+model ShopItemCategory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String   @db.VarChar(80)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, name])
+  @@map("shop_item_categories")
 }
 
 model ShopMaterialItemAlias {
@@ -1087,12 +1344,12 @@ model ShopMaterialItemAlias {
 // Lookup before creating a new VendorCatalogItem (R-VEN-02-style,
 // deterministic exact match only).
 model VendorItemAlias {
-  id                   String   @id @default(cuid())
-  tenantId             String
-  vendorId             String
-  vendorCatalogItemId  String
-  aliasNormalized      String   @db.VarChar(400)
-  createdAt            DateTime @default(now())
+  id                  String   @id @default(cuid())
+  tenantId            String
+  vendorId            String
+  vendorCatalogItemId String
+  aliasNormalized     String   @db.VarChar(400)
+  createdAt           DateTime @default(now())
 
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor      Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -1108,14 +1365,14 @@ model VendorItemAlias {
 // after operator approval, from OCR'd receipts/invoices (Phase 13).
 // Idempotent replays use dedupeKey (SHA-256 hex, 64 chars) per tenant.
 model VendorPriceHistory {
-  id                   String                     @id @default(cuid())
+  id                   String                      @id @default(cuid())
   tenantId             String
   vendorId             String
   vendorCatalogItemId  String
-  itemNameRaw          String                     @db.VarChar(500)
-  itemNameNormalized   String                     @db.VarChar(400)
+  itemNameRaw          String                      @db.VarChar(500)
+  itemNameNormalized   String                      @db.VarChar(400)
   priceCents           Int
-  unit                 String?                    @db.VarChar(40)
+  unit                 String?                     @db.VarChar(40)
   quantityMilli        Int?
   /// Present for email-ingestion extractions; null for OCR-approved PO uploads.
   sourceEmailId        String?
@@ -1123,21 +1380,21 @@ model VendorPriceHistory {
   /// PO attachment that was OCR'd (mobile/manual/email-promoted).
   sourcePoAttachmentId String?
   /// When this row was created from an approved OCR line item.
-  ocrLineItemId        String?                    @unique
+  ocrLineItemId        String?                     @unique
   confidence           VendorPriceConfidence
   extractionMethod     VendorPriceExtractionMethod
-  dedupeKey            String                     @db.VarChar(64)
+  dedupeKey            String                      @db.VarChar(64)
   /// Optional economic date for manual observations; falls back to createdAt when null.
   effectiveAt          DateTime?
-  createdAt            DateTime                   @default(now())
+  createdAt            DateTime                    @default(now())
 
-  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor           Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  catalogItem      VendorCatalogItem      @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
-  sourceEmail      IngestedEmail?         @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
-  sourceAttachment IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
-  sourcePoAttachment POAttachment?        @relation(fields: [sourcePoAttachmentId], references: [id], onDelete: SetNull)
-  ocrLineItem      OcrLineItem?           @relation(fields: [ocrLineItemId], references: [id], onDelete: SetNull)
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor              Vendor                   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem         VendorCatalogItem        @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail         IngestedEmail?           @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
+  sourceAttachment    IngestedEmailAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
+  sourcePoAttachment  POAttachment?            @relation(fields: [sourcePoAttachmentId], references: [id], onDelete: SetNull)
+  ocrLineItem         OcrLineItem?             @relation(fields: [ocrLineItemId], references: [id], onDelete: SetNull)
   reconciliationLines POReconciliationLine[]
 
   @@unique([tenantId, dedupeKey])
@@ -1161,11 +1418,11 @@ model VendorPriceNotification {
   dismissedAt         DateTime?
   createdAt           DateTime  @default(now())
 
-  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor             Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  catalogItem        VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
-  sourceEmail        IngestedEmail?    @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
-  sourceOcrDocument  OcrDocument?      @relation(fields: [sourceOcrDocumentId], references: [id], onDelete: SetNull)
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor            Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  catalogItem       VendorCatalogItem @relation(fields: [vendorCatalogItemId], references: [id], onDelete: Cascade)
+  sourceEmail       IngestedEmail?    @relation(fields: [sourceEmailId], references: [id], onDelete: SetNull)
+  sourceOcrDocument OcrDocument?      @relation(fields: [sourceOcrDocumentId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, dismissedAt, createdAt])
   @@index([tenantId, vendorId])
@@ -1174,11 +1431,11 @@ model VendorPriceNotification {
 
 /// Locally OCR'd PO attachment — suggestion-only until operator confirms.
 model OcrDocument {
-  id        String @id @default(cuid())
-  tenantId  String
-  status    OcrJobStatus @default(PENDING)
+  id             String       @id @default(cuid())
+  tenantId       String
+  status         OcrJobStatus @default(PENDING)
   /// One OCR job per PO attachment (replay-safe enqueue).
-  poAttachmentId String? @unique
+  poAttachmentId String?      @unique
 
   attemptCount Int       @default(0)
   lastError    String?   @db.VarChar(400)
@@ -1189,28 +1446,28 @@ model OcrDocument {
   /// Truncated OCR/plain-text preview for UI — never log full dumps.
   rawTextSnippet   String? @db.VarChar(8000)
 
-  vendorNameGuess      String?   @db.VarChar(500)
-  invoiceNumberGuess   String?   @db.VarChar(120)
-  receiptNumberGuess   String?   @db.VarChar(120)
-  subtotalCentsGuess   Int?
-  taxCentsGuess        Int?
-  totalCentsGuess      Int?
-  documentDateGuess    DateTime?
+  vendorNameGuess    String?   @db.VarChar(500)
+  invoiceNumberGuess String?   @db.VarChar(120)
+  receiptNumberGuess String?   @db.VarChar(120)
+  subtotalCentsGuess Int?
+  taxCentsGuess      Int?
+  totalCentsGuess    Int?
+  documentDateGuess  DateTime?
 
-  confirmedAt    DateTime?
-  confirmedById  String?
-  rejectedAt     DateTime?
-  rejectedById   String?
-  reviewNotes    String?   @db.VarChar(2000)
+  confirmedAt   DateTime?
+  confirmedById String?
+  rejectedAt    DateTime?
+  rejectedById  String?
+  reviewNotes   String?   @db.VarChar(2000)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  poAttachment   POAttachment? @relation(fields: [poAttachmentId], references: [id], onDelete: Cascade)
-  confirmedBy    User?         @relation("OcrDocumentConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
-  rejectedBy     User?         @relation("OcrDocumentRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
-  lineItems      OcrLineItem[]
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  poAttachment       POAttachment?             @relation(fields: [poAttachmentId], references: [id], onDelete: Cascade)
+  confirmedBy        User?                     @relation("OcrDocumentConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  rejectedBy         User?                     @relation("OcrDocumentRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  lineItems          OcrLineItem[]
   priceNotifications VendorPriceNotification[]
 
   @@index([tenantId, status, createdAt])
@@ -1219,19 +1476,19 @@ model OcrDocument {
 
 /// Candidate line extracted from OCR/plain text — not pricing truth until approval.
 model OcrLineItem {
-  id             String @id @default(cuid())
-  ocrDocumentId  String
-  sortOrder      Int
-  rawLineText    String @db.VarChar(2000)
-  itemLabelNormalized String? @db.VarChar(400)
-  quantityMilliGuess  Int?
-  unitPriceCentsGuess Int?
-  confidence          VendorPriceConfidence @default(LOW)
-  extractionSource    String @db.VarChar(80)
+  id                        String                @id @default(cuid())
+  ocrDocumentId             String
+  sortOrder                 Int
+  rawLineText               String                @db.VarChar(2000)
+  itemLabelNormalized       String?               @db.VarChar(400)
+  quantityMilliGuess        Int?
+  unitPriceCentsGuess       Int?
+  confidence                VendorPriceConfidence @default(LOW)
+  extractionSource          String                @db.VarChar(80)
   mappedVendorCatalogItemId String?
 
-  ocrDocument   OcrDocument         @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
-  mappedCatalog VendorCatalogItem? @relation(fields: [mappedVendorCatalogItemId], references: [id], onDelete: SetNull)
+  ocrDocument           OcrDocument         @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
+  mappedCatalog         VendorCatalogItem?  @relation(fields: [mappedVendorCatalogItemId], references: [id], onDelete: SetNull)
   vendorPriceHistoryRow VendorPriceHistory?
 
   @@index([ocrDocumentId, sortOrder])
@@ -1242,23 +1499,23 @@ model OcrLineItem {
 /// OCR_APPROVED VendorPriceHistory rows on this PO). Replay-safe via
 /// @@unique([tenantId, triggerDedupeKey]).
 model POReconciliation {
-  id                String                 @id @default(cuid())
-  tenantId          String
-  purchaseOrderId   String
-  status            POReconciliationStatus @default(PENDING)
-  triggerDedupeKey  String                 @db.VarChar(64)
-  summary           Json?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  resolvedAt        DateTime?
-  resolvedById      String?
+  id               String                 @id @default(cuid())
+  tenantId         String
+  purchaseOrderId  String
+  status           POReconciliationStatus @default(PENDING)
+  triggerDedupeKey String                 @db.VarChar(64)
+  summary          Json?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  resolvedAt       DateTime?
+  resolvedById     String?
 
-  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder   PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  resolvedBy      User?                   @relation("POReconciliationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
-  lines           POReconciliationLine[]
-  spendAlerts     SpendAlert[]
-  supersededSpendAlerts SpendAlert[] @relation("SpendAlertSupersededBy")
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder         PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  resolvedBy            User?                  @relation("POReconciliationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  lines                 POReconciliationLine[]
+  spendAlerts           SpendAlert[]
+  supersededSpendAlerts SpendAlert[]           @relation("SpendAlertSupersededBy")
 
   @@unique([tenantId, triggerDedupeKey])
   @@index([tenantId, purchaseOrderId, createdAt])
@@ -1266,10 +1523,10 @@ model POReconciliation {
 }
 
 model POReconciliationLine {
-  id                     String                       @id @default(cuid())
+  id                     String                         @id @default(cuid())
   tenantId               String
   poReconciliationId     String
-  sortOrder              Int                          @default(0)
+  sortOrder              Int                            @default(0)
   poLineItemId           String?
   vendorPriceHistoryId   String?
   match                  POReconciliationLineMatch
@@ -1283,11 +1540,11 @@ model POReconciliationLine {
   resolvedAt             DateTime?
   resolvedById           String?
 
-  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  poReconciliation   POReconciliation   @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
-  poLineItem         POLineItem?        @relation(fields: [poLineItemId], references: [id], onDelete: SetNull)
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  poReconciliation   POReconciliation    @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
+  poLineItem         POLineItem?         @relation(fields: [poLineItemId], references: [id], onDelete: SetNull)
   vendorPriceHistory VendorPriceHistory? @relation(fields: [vendorPriceHistoryId], references: [id], onDelete: SetNull)
-  resolvedBy         User?              @relation("POReconciliationLineResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedBy         User?               @relation("POReconciliationLineResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@unique([poReconciliationId, sortOrder])
   @@index([tenantId, poReconciliationId])
@@ -1296,34 +1553,34 @@ model POReconciliationLine {
 
 /// Operational spend / reconciliation alerts — candidates only; humans dismiss or resolve.
 model SpendAlert {
-  id                  String           @id @default(cuid())
-  tenantId            String
-  purchaseOrderId     String?
-  vendorId            String?
-  poReconciliationId  String?
-  kind                SpendAlertKind
-  status              SpendAlertStatus @default(OPEN)
+  id                           String           @id @default(cuid())
+  tenantId                     String
+  purchaseOrderId              String?
+  vendorId                     String?
+  poReconciliationId           String?
+  kind                         SpendAlertKind
+  status                       SpendAlertStatus @default(OPEN)
   /// Deterministic cross-snapshot identity (no reconciliation id — used for supersede + audits).
-  identityKey         String           @db.VarChar(64)
-  title               String           @db.VarChar(200)
-  body                String           @db.VarChar(900)
-  dedupeKey           String           @db.VarChar(64)
-  metadata            Json?
-  dismissedAt         DateTime?
-  dismissedById       String?
-  resolvedAt          DateTime?
-  resolvedById        String?
-  supersededAt        DateTime?
+  identityKey                  String           @db.VarChar(64)
+  title                        String           @db.VarChar(200)
+  body                         String           @db.VarChar(900)
+  dedupeKey                    String           @db.VarChar(64)
+  metadata                     Json?
+  dismissedAt                  DateTime?
+  dismissedById                String?
+  resolvedAt                   DateTime?
+  resolvedById                 String?
+  supersededAt                 DateTime?
   supersededByReconciliationId String?
-  createdAt           DateTime         @default(now())
+  createdAt                    DateTime         @default(now())
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  purchaseOrder    PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  vendor           Vendor?           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  poReconciliation POReconciliation? @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
+  tenant                     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder              PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  vendor                     Vendor?           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  poReconciliation           POReconciliation? @relation(fields: [poReconciliationId], references: [id], onDelete: Cascade)
   supersededByReconciliation POReconciliation? @relation("SpendAlertSupersededBy", fields: [supersededByReconciliationId], references: [id], onDelete: SetNull)
-  dismissedBy      User?             @relation("SpendAlertDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
-  resolvedBy       User?             @relation("SpendAlertResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  dismissedBy                User?             @relation("SpendAlertDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  resolvedBy                 User?             @relation("SpendAlertResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, status, createdAt])

@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { createEstimateAction, type CreateEstimateState } from '../actions';
+import { SelectControl } from '@/components/app/select-control';
 import { FormError } from '@/components/auth/form-error';
 
 const INITIAL: CreateEstimateState = { error: null };
@@ -11,8 +12,18 @@ interface ClientOption {
   companyName: string;
 }
 
-export function NewEstimateForm({ clients }: { clients: ReadonlyArray<ClientOption> }) {
+export function NewEstimateForm({
+  clients,
+  defaultClientId = null,
+}: {
+  clients: ReadonlyArray<ClientOption>;
+  defaultClientId?: string | null;
+}) {
   const [state, formAction, pending] = useActionState(createEstimateAction, INITIAL);
+  const initialClientId =
+    defaultClientId && clients.some((client) => client.id === defaultClientId)
+      ? defaultClientId
+      : '';
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -20,10 +31,10 @@ export function NewEstimateForm({ clients }: { clients: ReadonlyArray<ClientOpti
         <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
           Client <span className="text-rose-600">*</span>
         </span>
-        <select
+        <SelectControl
           name="clientId"
           required
-          defaultValue=""
+          defaultValue={initialClientId}
           className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
         >
           <option value="" disabled>
@@ -34,7 +45,7 @@ export function NewEstimateForm({ clients }: { clients: ReadonlyArray<ClientOpti
               {c.companyName}
             </option>
           ))}
-        </select>
+        </SelectControl>
       </label>
       <label className="flex flex-col gap-1.5">
         <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
