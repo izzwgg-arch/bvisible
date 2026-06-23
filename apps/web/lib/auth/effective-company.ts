@@ -25,14 +25,13 @@ export async function resolveEffectiveCompany(user: {
   tenant: TenantSummary | null;
   role: Role;
 }): Promise<{ tenantId: string; tenant: TenantSummary }> {
-  const defaultCompany = await ensureDefaultCompany();
-
-  if (user.role === Role.SUPER_ADMIN) {
-    return { tenantId: defaultCompany.id, tenant: asTenantShape(defaultCompany) };
+  if (user.role !== Role.SUPER_ADMIN && user.tenantId && user.tenant) {
+    return { tenantId: user.tenantId, tenant: user.tenant };
   }
 
-  if (user.tenantId && user.tenant) {
-    return { tenantId: user.tenantId, tenant: user.tenant };
+  const defaultCompany = await ensureDefaultCompany();
+  if (user.role === Role.SUPER_ADMIN) {
+    return { tenantId: defaultCompany.id, tenant: asTenantShape(defaultCompany) };
   }
 
   return { tenantId: defaultCompany.id, tenant: asTenantShape(defaultCompany) };

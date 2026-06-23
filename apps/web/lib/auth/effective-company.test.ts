@@ -38,7 +38,7 @@ describe('resolveEffectiveCompany', () => {
     });
     expect(eff.tenantId).toBe('t-acme');
     expect(eff.tenant.slug).toBe('acme');
-    expect(mockedEnsure).toHaveBeenCalledTimes(1);
+    expect(mockedEnsure).not.toHaveBeenCalled();
   });
 
   it('falls back USER without tenant to default company', async () => {
