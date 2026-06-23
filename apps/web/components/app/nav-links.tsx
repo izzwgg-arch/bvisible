@@ -35,8 +35,8 @@ export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) 
                   className={cn(
                     'group relative flex items-center gap-3 rounded-[14px] border px-3 py-2.5 text-[13px] font-medium transition-all',
                     active
-                      ? 'border-blue-100 bg-blue-50/90 text-blue-700 shadow-[0_12px_30px_rgba(37,99,235,0.10)]'
-                      : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white/80 hover:text-slate-950'
+                      ? 'border-[#F28744]/28 bg-[#fff0e5] text-[#1C4972] shadow-[0_14px_34px_rgba(242,135,68,0.13)]'
+                      : 'border-transparent text-[#53606d] hover:border-[#eadfd3] hover:bg-white/80 hover:text-[#1C4972]'
                   )}
                 >
                   <span
@@ -44,8 +44,8 @@ export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) 
                     className={cn(
                       'grid h-8 w-8 place-items-center rounded-[11px] transition-colors',
                       active
-                        ? 'bg-blue-600 text-white shadow-[0_14px_28px_rgba(37,99,235,0.22)]'
-                        : 'bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600',
+                        ? 'bg-[#F28744] text-white shadow-[0_14px_28px_rgba(242,135,68,0.30)]'
+                        : 'bg-[#eef3f7] text-[#6f8799] group-hover:bg-[#fff0e5] group-hover:text-[#F28744]',
                     )}
                   >
                     <NavIcon label={item.label} />

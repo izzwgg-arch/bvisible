@@ -57,7 +57,11 @@ export function EstimateHeaderActions({
       setFinalizeError(result.message ?? 'Could not finalize estimate.');
       return;
     }
-    router.refresh();
+    if (result.purchaseOrderId) {
+      router.push(`/purchase-orders/${result.purchaseOrderId}` as never);
+    } else {
+      router.refresh();
+    }
   }
 
   const approved = status === EstimateStatus.APPROVED || status === EstimateStatus.FINALIZED;

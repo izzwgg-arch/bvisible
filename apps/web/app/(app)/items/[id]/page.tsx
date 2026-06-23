@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { prisma, Role, VendorPriceExtractionMethod, EstimateLineKind } from '@bvisible/db';
+import { prisma, Role, VendorPriceExtractionMethod, EstimateLineKind, ShopMaterialItemType } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
-import { SelectControl } from '@/components/app/select-control';
 import { PageHeader } from '@/components/app-shell';
 import { formatMoney, formatQty, kindLabel } from '@/lib/estimate/format';
 import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
@@ -17,15 +16,10 @@ import {
   labelVendorPriceConfidenceProduct,
   labelVendorPriceSourceProduct,
 } from '@/lib/vendor-pricing/vendor-price-source-label';
-import {
-  linkVendorCatalogToShopItemAction,
-  removeShopMaterialAliasAction,
-  setShopMaterialActiveAction,
-  setShopMaterialPreferredVendorAction,
-} from '../actions';
-import { ShopAliasForm } from './item-admin-forms';
-import { ItemDetailPricingForm } from './item-detail-pricing-form';
-import { VendorPricingSection, type VendorPriceRow } from './vendor-pricing-section';
+import { CatalogItemEditor } from '../catalog-item-editor';
+import type { CatalogVendorDisplayRow } from '../catalog-item-pricing-tools';
+import { BundleForm } from '../bundles/bundle-form';
+import { bundleInitialFromItem, loadBundleSources } from '../bundles/bundle-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +27,23 @@ function categoryLabel(category: string): string {
   return Object.values(EstimateLineKind).includes(category as EstimateLineKind)
     ? kindLabel(category as EstimateLineKind)
     : category;
+}
+
+function pricingMethodLabel(method: string): string {
+  switch (method) {
+    case 'SQUARE_FOOTAGE':
+      return 'Square Footage';
+    case 'SHEET_GOODS':
+      return 'Sheet Goods';
+    case 'ROLL_MATERIAL':
+      return 'Roll Material';
+    case 'BANNER':
+      return 'Banner';
+    case 'CUSTOM':
+      return 'Custom';
+    default:
+      return method.replace(/_/g, ' ');
+  }
 }
 
 export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +57,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       id: true,
       name: true,
       nameNormalized: true,
+      itemCode: true,
+      itemType: true,
       kind: true,
       categories: true,
       catalogUnit: true,
@@ -54,27 +67,66 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       markupPercentMilli: true,
       defaultSellPriceCents: true,
       defaultQtyMilli: true,
+      pricingMethod: true,
+      pricingEngine: true,
+      pricingInputsJson: true,
+      pricingOutputJson: true,
+      formulaVersion: true,
+      calculatedCostCents: true,
+      calculatedSellCents: true,
+      pricingNotes: true,
       machineId: true,
+      customerDescription: true,
       notes: true,
       isActive: true,
       preferredVendorId: true,
+      selectedVendorId: true,
+      selectedVendorMode: true,
       preferredVendor: { select: { id: true, name: true } },
+      createdAt: true,
       updatedAt: true,
       aliases: {
         orderBy: { aliasNormalized: 'asc' },
         select: { id: true, aliasNormalized: true },
+      },
+      bundleComponents: {
+        orderBy: [{ sortOrder: 'asc' }],
+        select: {
+          componentCatalogItemId: true,
+          componentName: true,
+          componentType: true,
+          categories: true,
+          quantityMilli: true,
+          unit: true,
+          customUnitLabel: true,
+          internalUnitCostCents: true,
+          markupPercentMilli: true,
+          defaultSellCents: true,
+          totalCostCents: true,
+          totalSellCents: true,
+          preferredVendorId: true,
+          cheapestVendorId: true,
+          selectedVendorId: true,
+          vendorSnapshotJson: true,
+          pricingMethod: true,
+          pricingInputsJson: true,
+          notes: true,
+        },
       },
       vendorCatalogLinks: {
         select: {
           id: true,
           vendorId: true,
           vendorSku: true,
+          leadTimeDays: true,
+          notes: true,
           vendor: { select: { name: true } },
           priceHistory: {
             orderBy: { createdAt: 'desc' },
             take: 1,
             select: {
               priceCents: true,
+              unit: true,
               createdAt: true,
               effectiveAt: true,
               extractionMethod: true,
@@ -87,6 +139,108 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
   });
 
   if (!item) notFound();
+
+  if (item.itemType === ShopMaterialItemType.BUNDLE) {
+    const [sources, savedCategories] = await Promise.all([
+      loadBundleSources(me.tenantId),
+      prisma.shopItemCategory.findMany({
+        where: { tenantId: me.tenantId },
+        orderBy: [{ name: 'asc' }],
+        select: { name: true },
+        take: 200,
+      }),
+    ]);
+    const sellTotal = item.defaultSellPriceCents ?? item.calculatedSellCents ?? 0;
+    const marginPct = sellTotal > 0
+      ? ((sellTotal - item.internalCostCents) / sellTotal) * 100
+      : null;
+
+    return (
+      <>
+        <PageHeader
+          title={item.name}
+          subtitle={`Bundle · ${item.categories.length > 0 ? item.categories.map(categoryLabel).join(', ') : kindLabel(item.kind)} · normalized key: ${item.nameNormalized}`}
+          actions={
+            <Link
+              href="/items"
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              All items
+            </Link>
+          }
+        />
+
+        <div className="mb-6 grid gap-4 md:grid-cols-4">
+          <BundleMetric label="Internal cost" value={formatMoney(item.internalCostCents)} />
+          <BundleMetric label="Bundle sell" value={formatMoney(sellTotal)} />
+          <BundleMetric label="Margin" value={marginPct == null ? '—' : `${marginPct.toFixed(1)}%`} />
+          <BundleMetric label="Components" value={item.bundleComponents.length.toString()} />
+        </div>
+
+        <section className="mb-6 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+                Internal component breakdown
+              </h2>
+              <p className="mt-1 text-[12.5px] text-[var(--color-bv-muted)]">
+                Customer previews use only the bundle name/description and total sell. Component rows stay internal.
+              </p>
+            </div>
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-700">
+              Bundle
+            </span>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[900px] text-[12.5px]">
+              <thead>
+                <tr className="border-b border-[var(--color-bv-border)] text-left text-[10.5px] uppercase tracking-[0.14em] text-[var(--color-bv-muted)]">
+                  <th className="py-2 pr-3">Component</th>
+                  <th className="py-2 pr-3">Type</th>
+                  <th className="py-2 pr-3">Qty</th>
+                  <th className="py-2 pr-3">Unit cost</th>
+                  <th className="py-2 pr-3">Total cost</th>
+                  <th className="py-2 pr-3">Total sell</th>
+                  <th className="py-2 pr-3">Vendors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.bundleComponents.map((component) => {
+                  const vendorRows = Array.isArray(component.vendorSnapshotJson)
+                    ? component.vendorSnapshotJson as Array<{ vendorName?: string; latestPriceCents?: number | null; isPreferred?: boolean; isCheapest?: boolean }>
+                    : [];
+                  return (
+                    <tr key={`${component.componentName}-${component.quantityMilli}`} className="border-b border-[var(--color-bv-border)]/70 last:border-0">
+                      <td className="py-3 pr-3 font-semibold text-[var(--color-bv-text)]">{component.componentName}</td>
+                      <td className="py-3 pr-3">{kindLabel(component.componentType)}</td>
+                      <td className="py-3 pr-3 tabular-nums">{formatQty(component.quantityMilli)}</td>
+                      <td className="py-3 pr-3 tabular-nums">{formatMoney(component.internalUnitCostCents)}</td>
+                      <td className="py-3 pr-3 tabular-nums">{formatMoney(component.totalCostCents)}</td>
+                      <td className="py-3 pr-3 tabular-nums font-semibold">{formatMoney(component.totalSellCents)}</td>
+                      <td className="py-3 pr-3 text-[11.5px] text-[var(--color-bv-muted)]">
+                        {vendorRows.length === 0
+                          ? '—'
+                          : vendorRows.map((vendor) => `${vendor.vendorName ?? 'Vendor'}${vendor.latestPriceCents != null ? ` ${formatMoney(vendor.latestPriceCents)}` : ''}${vendor.isPreferred ? ' preferred' : vendor.isCheapest ? ' cheapest' : ''}`).join(' · ')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {canManage ? (
+          <BundleForm
+            mode="edit"
+            sources={sources}
+            savedCategories={savedCategories.map((category) => category.name)}
+            initial={bundleInitialFromItem(item)}
+          />
+        ) : null}
+      </>
+    );
+  }
 
   const catalogIds = item.vendorCatalogLinks.map((l) => l.id);
 
@@ -204,7 +358,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     prisma.machine.findMany({
       where: { tenantId: me.tenantId, isActive: true },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true },
+      select: { id: true, name: true, ratePerHourCents: true },
       take: 200,
     }),
     prisma.shopItemCategory.findMany({
@@ -235,7 +389,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           (a, b) => a.vendorName.localeCompare(b.vendorName) || a.vendorId.localeCompare(b.vendorId),
         )
       : [];
-  const vendorPriceRows: VendorPriceRow[] = item.kind === EstimateLineKind.MATERIAL
+  const vendorPriceRows: CatalogVendorDisplayRow[] = item.kind === EstimateLineKind.MATERIAL
     ? vendorAggregatedRows.map((row) => {
         const trend = classifyPriceTrendForVendorHistory(
           intelHistoriesForTrend.filter((h) => h.vendorId === row.vendorId),
@@ -249,15 +403,17 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
         else if (trend.priceRecentlyIncreasedVsAvg || trend.priceRecentlyIncreasedVsPrev) trendNote = 'Price increased recently';
         const when = row.effectiveAt ?? row.createdAt;
         return {
+          id: row.vendorCatalogItemId,
           vendorId: row.vendorId,
           vendorName: row.vendorName,
           priceCents: row.priceCents,
+          vendorSku: skuLabels[0] ?? null,
+          unit: item.vendorCatalogLinks.find((l) => l.id === row.vendorCatalogItemId)?.priceHistory[0]?.unit ?? null,
+          leadTimeDays: item.vendorCatalogLinks.find((l) => l.id === row.vendorCatalogItemId)?.leadTimeDays ?? null,
+          notes: item.vendorCatalogLinks.find((l) => l.id === row.vendorCatalogItemId)?.notes ?? null,
           updatedAt: when.toISOString().slice(0, 10),
           isCheapest: intelCheapest?.vendorId === row.vendorId,
           isPreferred: item.preferredVendorId === row.vendorId,
-          skus: skuLabels,
-          trendNote,
-          source: labelVendorPriceSourceProduct(row.extractionMethod),
         };
       })
     : [];
@@ -272,11 +428,20 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     item.defaultSellPriceCents ??
     sellPriceFromCostAndMarkup(costBasisForSellHint, item.markupPercentMilli);
 
-  return (
+  return canManage ? (
+    <CatalogItemEditor
+      mode="edit"
+      item={item}
+      machines={machines}
+      savedCategories={savedCategories.map((c) => c.name)}
+      vendors={vendors}
+      vendorRows={vendorPriceRows}
+    />
+  ) : (
     <>
       <PageHeader
         title={item.name}
-        subtitle={`${item.categories.length > 0 ? item.categories.map(categoryLabel).join(', ') : kindLabel(item.kind)} · normalized key: ${item.nameNormalized}`}
+        subtitle={`${item.categories.length > 0 ? item.categories.map(categoryLabel).join(', ') : kindLabel(item.kind)} · read only`}
         actions={
           <Link
             href="/items"
@@ -286,399 +451,23 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           </Link>
         }
       />
-
-      {!item.isActive ? (
-        <div className="mb-5 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950">
-          This item is <strong>inactive</strong> — it stays in the catalog for audit but should not receive new pricing without review.
-        </div>
-      ) : null}
-
-      {strayCatalogRows.length > 0 ? (
-        <div className="mb-5 rounded-[var(--radius-bv)] border border-amber-200/90 bg-amber-50/60 px-4 py-3 text-[13px] text-amber-950 shadow-[var(--shadow-bv-card)]">
-          <p className="font-semibold">Possible duplicate vendor catalog rows</p>
-          <p className="mt-1 text-[12.5px] leading-snug text-amber-950/90">
-            Other vendor pricing rows share this normalized key but are not linked to this item. Add aliases for spelling variants or link rows when the normalized keys truly match.
-          </p>
-          <ul className="mt-2 space-y-2 text-[12.5px]">
-            {strayCatalogRows.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2">
-                <span>
-                  <span className="font-medium">{r.vendor.name}</span>
-                  <span className="text-[var(--color-bv-muted)]">
-                    {' '}
-                    · catalog row <span className="font-mono text-[11px]">{r.id.slice(0, 8)}…</span>
-                  </span>
-                  {r.shopMaterialItemId ? (
-                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
-                      Linked elsewhere
-                    </span>
-                  ) : (
-                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
-                      Unlinked
-                    </span>
-                  )}
-                </span>
-                {canManage && !r.shopMaterialItemId ? (
-                  <form action={linkVendorCatalogToShopItemAction}>
-                    <input type="hidden" name="shopMaterialItemId" value={item.id} />
-                    <input type="hidden" name="vendorCatalogItemId" value={r.id} />
-                    <button
-                      type="submit"
-                      className="rounded-[6px] border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-950 hover:bg-amber-50"
-                    >
-                      Link row
-                    </button>
-                  </form>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-6">
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Pricing overview
-            </h2>
-            <dl className="mt-3 grid gap-3 text-[13px] sm:grid-cols-2">
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Categories</dt>
-                <dd className="font-medium">
-                  {item.categories.length > 0
-                    ? item.categories.map(categoryLabel).join(', ')
-                    : kindLabel(item.kind)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Catalog unit</dt>
-                <dd className="font-medium">
-                  {formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Internal unit cost</dt>
-                <dd className="font-medium tabular-nums">{formatMoney(item.internalCostCents)}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Markup</dt>
-                <dd className="font-medium tabular-nums">
-                  {item.markupPercentMilli === 0
-                    ? '—'
-                    : `${(item.markupPercentMilli / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })}%`}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Sell hint (guidance)</dt>
-                <dd className="font-medium tabular-nums text-emerald-900">{formatMoney(sellHint)}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Default qty</dt>
-                <dd className="font-medium tabular-nums">{formatQty(item.defaultQtyMilli)}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Cheapest vendor (MATERIAL)</dt>
-                <dd className="font-medium">
-                  {item.kind === EstimateLineKind.MATERIAL && cheapestDisplay
-                    ? `${cheapestDisplay.vendor} · ${formatMoney(cheapestDisplay.cents)}`
-                    : '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[var(--color-bv-muted)]">Preferred vendor latest</dt>
-                <dd className="font-medium">
-                  {item.kind !== EstimateLineKind.MATERIAL ? (
-                    '—'
-                  ) : item.preferredVendor ? (
-                    prefLatestObservation ? (
-                      <>
-                        {formatMoney(prefLatestObservation.priceCents)} ·{' '}
-                        {labelVendorPriceSourceProduct(prefLatestObservation.extractionMethod)}
-                        {labelVendorPriceConfidenceProduct(prefLatestObservation.confidence ?? null) ? (
-                          <span className="text-[var(--color-bv-muted)]">
-                            {' '}
-                            · {labelVendorPriceConfidenceProduct(prefLatestObservation.confidence ?? null)}
-                          </span>
-                        ) : null}
-                      </>
-                    ) : (
-                      'No observations yet'
-                    )
-                  ) : (
-                    'No preferred vendor set'
-                  )}
-                </dd>
-              </div>
-              {item.kind === EstimateLineKind.MATERIAL &&
-              item.preferredVendor &&
-              prefLatestObservation &&
-              cheapestDisplay &&
-              prefLatestObservation.priceCents > cheapestDisplay.cents ? (
-                <div className="sm:col-span-2">
-                  <dt className="text-[var(--color-bv-muted)]">Preferred vs cheapest</dt>
-                  <dd className="text-[12.5px] text-[var(--color-bv-text)]">
-                    Preferred vendor is{' '}
-                    <span className="font-semibold tabular-nums">
-                      {formatMoney(prefLatestObservation.priceCents - cheapestDisplay.cents)}
-                    </span>{' '}
-                    higher than cheapest.
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-          </section>
-
-          {item.kind === EstimateLineKind.MATERIAL ? (
-            <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-                    Vendor pricing
-                  </h2>
-                  <p className="mt-0.5 text-[12px] text-[var(--color-bv-muted)]">
-                    Sorted cheapest first. The system uses the cheapest (or preferred) price when building estimates.
-                  </p>
-                </div>
-                {cheapestDisplay ? (
-                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[12px] font-semibold text-emerald-800">
-                    Cheapest: {cheapestDisplay.vendor} · {formatMoney(cheapestDisplay.cents)}
-                  </div>
-                ) : null}
-              </div>
-              {canManage ? (
-                <VendorPricingSection
-                  shopMaterialItemId={item.id}
-                  vendors={vendors}
-                  vendorRows={vendorPriceRows}
-                  catalogUnitHint={formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}
-                  cheapestVendorId={cheapestDisplay?.vendorId ?? null}
-                />
-              ) : (
-                vendorPriceRows.length === 0 ? (
-                  <p className="text-[13px] text-[var(--color-bv-muted)]">No vendor prices recorded yet.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {[...vendorPriceRows].sort((a, b) => a.priceCents - b.priceCents).map((row) => (
-                      <li key={row.vendorId} className={`flex flex-wrap items-center justify-between gap-2 rounded-[10px] border px-3 py-2.5 ${row.isCheapest ? 'border-emerald-200 bg-emerald-50' : 'border-[var(--color-bv-border)]'}`}>
-                        <span className="font-medium">{row.vendorName}</span>
-                        <span className="tabular-nums">{formatMoney(row.priceCents)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              )}
-            </section>
-          ) : null}
-
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Price history (append-only)
-            </h2>
-            {history.length === 0 ? (
-              <p className="mt-3 text-[13px] text-[var(--color-bv-muted)]">No observations recorded yet.</p>
-            ) : (
-              <div className="mt-3 max-h-[420px] overflow-auto">
-                <table className="w-full text-[12.5px]">
-                  <thead className="sticky top-0 bg-[var(--color-bv-surface)]">
-                    <tr className="border-b border-[var(--color-bv-border)] text-left text-[10px] uppercase tracking-wide text-[var(--color-bv-muted)]">
-                      <th className="py-2 pr-2 font-medium">When</th>
-                      <th className="py-2 pr-2 font-medium">Vendor</th>
-                      <th className="py-2 pr-2 font-medium">Price</th>
-                      <th className="py-2 pr-2 font-medium">Source</th>
-                      <th className="py-2 pr-2 font-medium">Confidence</th>
-                      <th className="py-2 font-medium">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((h) => (
-                      <tr key={h.id} className="border-b border-[var(--color-bv-border)]/70">
-                        <td className="py-2 pr-2 tabular-nums text-[var(--color-bv-muted)]">
-                          {(h.effectiveAt ?? h.createdAt).toISOString().slice(0, 16).replace('T', ' ')}
-                        </td>
-                        <td className="py-2 pr-2">{h.vendor.name}</td>
-                        <td className="py-2 pr-2 tabular-nums font-medium">
-                          {formatMoney(h.priceCents)}
-                          {h.unit ? (
-                            <span className="font-normal text-[var(--color-bv-muted)]"> / {h.unit}</span>
-                          ) : null}
-                        </td>
-                        <td className="py-2 pr-2">{labelVendorPriceSourceProduct(h.extractionMethod)}</td>
-                        <td className="py-2 pr-2 text-[var(--color-bv-muted)]">
-                          {labelVendorPriceConfidenceProduct(h.confidence ?? null) ?? '—'}
-                        </td>
-                        <td className="py-2 text-[11px] text-[var(--color-bv-muted)]">{h.itemNameRaw}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Recent OCR / email-text observations
-            </h2>
-            <p className="mt-1 text-[12px] text-[var(--color-bv-muted)]">
-              Receipt/email extraction only — same paths as vendor intelligence (no parsing changes here).
-            </p>
-            {recentOcrish.length === 0 ? (
-              <p className="mt-3 text-[13px] text-[var(--color-bv-muted)]">None on linked vendor rows.</p>
-            ) : (
-              <ul className="mt-3 space-y-2 text-[13px]">
-                {recentOcrish.map((r) => (
-                  <li key={r.id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2">
-                    <span className="font-medium">{r.vendor.name}</span>
-                    <span className="tabular-nums">{formatMoney(r.priceCents)}</span>
-                    <span className="text-[11px] text-[var(--color-bv-muted)]">
-                      {labelVendorPriceSourceProduct(r.extractionMethod)} ·{' '}
-                      {r.createdAt.toISOString().slice(0, 16).replace('T', ' ')}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-
-        <aside className="flex flex-col gap-5">
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Pricing & details
-            </h2>
-            {canManage ? (
-              <ItemDetailPricingForm
-                item={{ ...item, categories: item.categories }}
-                machines={machines}
-                savedCategories={savedCategories.map((c) => c.name)}
-              />
-            ) : (
-              <dl className="mt-3 space-y-2 text-[13px]">
-                <div>
-                  <dt className="text-[var(--color-bv-muted)]">Categories</dt>
-                  <dd>
-                    {item.categories.length > 0
-                      ? item.categories.map(categoryLabel).join(', ')
-                      : kindLabel(item.kind)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--color-bv-muted)]">Unit</dt>
-                  <dd>{formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--color-bv-muted)]">Internal cost</dt>
-                  <dd>{formatMoney(item.internalCostCents)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[var(--color-bv-muted)]">Notes</dt>
-                  <dd className="whitespace-pre-wrap">{item.notes ?? '—'}</dd>
-                </div>
-              </dl>
-            )}
-          </section>
-
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Preferred vendor
-            </h2>
-            {item.kind !== EstimateLineKind.MATERIAL ? (
-              <p className="mt-3 text-[12px] text-[var(--color-bv-muted)]">
-                Vendor preference applies to MATERIAL catalog items (vendor pricing intelligence).
-              </p>
-            ) : canManage ? (
-              <form action={setShopMaterialPreferredVendorAction} className="mt-3 flex flex-col gap-2">
-                <input type="hidden" name="id" value={item.id} />
-                <SelectControl
-                  name="preferredVendorId"
-                  defaultValue={item.preferredVendorId ?? ''}
-                  className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
-                >
-                  <option value="">None</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
-                    </option>
-                  ))}
-                </SelectControl>
-                <button
-                  type="submit"
-                  className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px] font-medium hover:bg-[var(--color-bv-surface)]"
-                >
-                  Update preference
-                </button>
-              </form>
-            ) : (
-              <p className="mt-3 text-[13px]">{item.preferredVendor?.name ?? '—'}</p>
-            )}
-          </section>
-
-          {canManage ? (
-            <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-              <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-                Status
-              </h2>
-              <form action={setShopMaterialActiveAction} className="mt-3 flex flex-col gap-2">
-                <input type="hidden" name="id" value={item.id} />
-                <input type="hidden" name="isActive" value={(!item.isActive).toString()} />
-                <button
-                  type="submit"
-                  className={`rounded-[8px] px-3 py-2 text-[13px] font-medium ${
-                    item.isActive
-                      ? 'border border-slate-300 bg-slate-50 text-slate-800'
-                      : 'border border-emerald-300 bg-emerald-50 text-emerald-900'
-                  }`}
-                >
-                  {item.isActive ? 'Deactivate item' : 'Reactivate item'}
-                </button>
-              </form>
-            </section>
-          ) : null}
-
-          <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
-              Aliases ({item.aliases.length})
-            </h2>
-            <p className="mt-1 text-[12px] leading-snug text-[var(--color-bv-muted)]">
-              Tenant-wide normalized aliases participate in estimate catalog lookup (deterministic exact match).
-            </p>
-            <ul className="mt-3 space-y-2">
-              {item.aliases.map((a) => (
-                <li
-                  key={a.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 font-mono text-[12px]"
-                >
-                  <span>{a.aliasNormalized}</span>
-                  {canManage ? (
-                    <form action={removeShopMaterialAliasAction}>
-                      <input type="hidden" name="aliasId" value={a.id} />
-                      <button
-                        type="submit"
-                        className="text-[11px] font-semibold uppercase tracking-wide text-red-700 hover:underline"
-                      >
-                        Remove
-                      </button>
-                    </form>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-            {canManage ? (
-              <div className="mt-4 border-t border-[var(--color-bv-border)] pt-4">
-                <ShopAliasForm shopMaterialItemId={item.id} />
-              </div>
-            ) : null}
-          </section>
-
-
-          <section className="rounded-[var(--radius-bv)] border border-dashed border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-3 text-[12px] text-[var(--color-bv-muted)]">
-            Use this item from an open estimate: focus a grid row, search under <strong className="text-[var(--color-bv-text)]">Catalog items</strong>, then click{' '}
-            <strong className="text-[var(--color-bv-text)]">Apply</strong> — description, line kind, qty, and unit cost fill only on that click (no typing hooks). MATERIAL rows still show vendor intelligence + optional{' '}
-            <strong className="text-[var(--color-bv-text)]">Use this cost</strong> for OCR/email-derived observations.
-          </section>
-        </aside>
-      </div>
+      <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
+        <dl className="grid gap-3 text-[13px] sm:grid-cols-2">
+          <div><dt className="text-[var(--color-bv-muted)]">Category</dt><dd>{item.categories.map(categoryLabel).join(', ') || kindLabel(item.kind)}</dd></div>
+          <div><dt className="text-[var(--color-bv-muted)]">Unit</dt><dd>{formatCatalogUnitDisplay(item.catalogUnit, item.customUnitLabel)}</dd></div>
+          <div><dt className="text-[var(--color-bv-muted)]">Internal cost</dt><dd>{formatMoney(item.internalCostCents)}</dd></div>
+          <div><dt className="text-[var(--color-bv-muted)]">Sell hint</dt><dd>{formatMoney(sellHint)}</dd></div>
+        </dl>
+      </section>
     </>
+  );
+}
+
+function BundleMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[20px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-slate-950">{value}</div>
+    </div>
   );
 }

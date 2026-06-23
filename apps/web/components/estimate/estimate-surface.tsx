@@ -21,7 +21,7 @@ export function SectionCard({
   return (
     <Tag
       id={id}
-      className={`rounded-[10px] border border-slate-200 bg-white shadow-sm ${className}`}
+      className={`rounded-[12px] border border-[#eadfd3] bg-[#fffdfa] shadow-[0_12px_30px_rgba(28,73,114,0.08)] ${className}`}
     >
       {children}
     </Tag>
@@ -49,11 +49,11 @@ export function SectionHeading({
         {icon ? <IconBadge tone={tone}>{icon}</IconBadge> : null}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[12px] font-black uppercase tracking-[0.08em] text-slate-950">{title}</h2>
+          <h2 className="text-[12px] font-black uppercase tracking-[0.08em] text-[#1C4972]">{title}</h2>
             {badge}
           </div>
           {subtitle ? (
-            <p className="mt-0.5 max-w-xl text-[10.5px] leading-relaxed text-slate-500">{subtitle}</p>
+            <p className="mt-0.5 max-w-xl text-[10.5px] leading-relaxed text-[#6d7480]">{subtitle}</p>
           ) : null}
         </div>
       </div>
@@ -63,7 +63,7 @@ export function SectionHeading({
 }
 
 const TONE_BADGE: Record<string, string> = {
-  blue: 'from-blue-500/15 to-indigo-500/15 text-blue-600 ring-blue-500/20',
+  blue: 'from-[#F28744]/20 to-[#1C4972]/10 text-[#F28744] ring-[#F28744]/25',
   emerald: 'from-emerald-500/15 to-teal-500/15 text-emerald-600 ring-emerald-500/20',
   violet: 'from-violet-500/15 to-fuchsia-500/15 text-violet-600 ring-violet-500/20',
   amber: 'from-amber-500/15 to-orange-500/15 text-amber-600 ring-amber-500/20',
@@ -89,7 +89,7 @@ export function IconBadge({
 
 export function EyebrowLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+    <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#F28744]">
       {children}
     </span>
   );

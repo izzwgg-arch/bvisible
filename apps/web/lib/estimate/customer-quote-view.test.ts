@@ -52,4 +52,32 @@ describe('buildCustomerQuoteLines', () => {
     const sum = rows.reduce((s, r) => s + r.lineSellCents, 0);
     expect(sum).toBe(300);
   });
+
+  it('shows one bundle line while hidden internal component lines stay private', () => {
+    const rows = buildCustomerQuoteLines(
+      [
+        {
+          id: 'bundle-line',
+          description: 'Internal bundle name',
+          customerDescription: 'Customer bundle package',
+          qtyMilli: 1000,
+          kind: EstimateLineKind.MATERIAL,
+          computedCostCents: 500,
+        },
+        {
+          id: 'internal-component',
+          description: 'Do not show component',
+          hiddenFromCustomer: true,
+          qtyMilli: 1000,
+          kind: EstimateLineKind.MATERIAL,
+          computedCostCents: 100,
+        },
+      ],
+      600,
+      1800,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.description).toBe('Customer bundle package');
+    expect(JSON.stringify(rows)).not.toContain('Do not show component');
+  });
 });

@@ -259,6 +259,14 @@ function CatalogCard({
   const sellHint = catalogPickerSellHintCents({ row, machinesById });
   const marginPct = sellHint > 0 ? ((sellHint - basisCents) / sellHint) * 100 : null;
   const vendor = row.catalogPreferredVendorName ?? row.catalogCheapestVendorName ?? 'Cheapest';
+  const costSource =
+    row.selectedVendorMode === 'CHEAPEST'
+      ? 'Cheapest'
+      : row.selectedVendorMode === 'PREFERRED'
+        ? 'Preferred'
+        : row.selectedVendorMode === 'MANUAL'
+          ? 'Selected'
+          : 'Internal';
 
   return (
     <article className="overflow-hidden rounded-[13px] border border-slate-200 bg-white shadow-sm">
@@ -268,7 +276,14 @@ function CatalogCard({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h4 className="line-clamp-2 text-[12px] font-black leading-snug text-slate-950">{row.name}</h4>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">{kindLabel(row.kind)}</p>
+              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+                <span>{kindLabel(row.kind)}</span>
+                {row.itemType === 'BUNDLE' ? (
+                  <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-violet-700">
+                    Bundle{row.componentCount > 0 ? ` · ${row.componentCount}` : ''}
+                  </span>
+                ) : null}
+              </p>
             </div>
             <span className={`text-[15px] ${favorite ? 'text-amber-400' : 'text-slate-300'}`}>?</span>
           </div>
@@ -284,7 +299,7 @@ function CatalogCard({
       <div className="grid grid-cols-3 border-t border-slate-100 px-3 py-2 text-[10px]">
         <Metric label="Sell hint" value={formatMoney(sellHint)} />
         <Metric label="Margin" value={marginPct == null ? '-' : `${marginPct.toFixed(1)}%`} valueClass="text-emerald-600" />
-        <Metric label="Vendor" value={vendor} />
+        <Metric label="Source" value={costSource === 'Internal' ? 'Internal' : `${costSource}: ${vendor}`} />
       </div>
       <div className="px-3 pb-3">
         <button

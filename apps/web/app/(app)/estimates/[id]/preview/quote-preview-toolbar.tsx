@@ -1,14 +1,20 @@
 'use client';
 
-export function QuotePreviewToolbar({ backHref }: { backHref: string }) {
+export function QuotePreviewToolbar({ backHref, downloadHref }: { backHref: string; downloadHref: string }) {
   return (
     <div className="mb-6 flex flex-wrap items-center gap-2 print:hidden">
+      <a
+        href={downloadHref}
+        className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
+      >
+        Download PDF
+      </a>
       <button
         type="button"
         onClick={() => window.print()}
-        className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm hover:opacity-95"
+        className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
       >
-        Download PDF / Print
+        Print
       </button>
       <a
         href="#customer-send"

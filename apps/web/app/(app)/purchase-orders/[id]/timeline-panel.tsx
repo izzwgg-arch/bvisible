@@ -30,6 +30,8 @@ const KIND_ICON: Record<POEventKind, string> = {
   OPERATOR_BLOCKED: '⊘',
   OPERATOR_BLOCKED_CLEARED: '○',
   OPERATOR_RECEIVED_COMPLETE: '▣',
+  VENDOR_PO_SENT: '→',
+  VENDOR_PO_SEND_FAILED: '!',
 };
 
 const VENDOR_KINDS = new Set<POEventKind>([

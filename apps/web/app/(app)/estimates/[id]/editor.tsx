@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { startTransition, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { EstimateLineKind, EstimateStatus, POStatus, POReconciliationStatus } from '@bvisible/db';
@@ -13,22 +14,20 @@ import {
   type SaveEstimateState,
   type FinalizeEstimateResult,
 } from './actions';
-import {
-  attachEstimateVehicleAction,
-  removeEstimateVehicleAction,
-} from '../../vehicles/actions';
 import { createPoFromEstimateAction } from '../../purchase-orders/actions';
 import { LineGrid } from './line-grid';
 import { TotalsPanel } from './totals-panel';
-import { EstimateToolsTabs } from './estimate-tools-tabs';
 import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import {
   defaultDescription,
   defaultUnitCostCents,
 } from '@/lib/estimate/defaults';
+import type { PricingEngine, VendorCostSourceMode } from '@/lib/shop-material/pricing-engine';
 import type { SaveEstimateInput } from '@/lib/validators';
 import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
 import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/estimate-surface';
+
+type EstimateTypeValue = 'CUSTOM' | 'STOCK_ITEM' | 'SQUARE_FOOTAGE';
 
 // ---------------------------------------------------------------------
 // Types passed in from the server component.
@@ -39,13 +38,20 @@ export interface EditorBootstrap {
     id: string;
     number: string;
     title: string;
+    estimateType: EstimateTypeValue;
     status: EstimateStatus;
     notes: string;
     multiplierMilli: number;
     designFlatCents: number;
     subtotalCostCents: number;
     finalPriceCents: number;
-    client: { id: string; companyName: string; contactName: string | null; email: string | null };
+    client: {
+      id: string;
+      companyName: string;
+      contactName: string | null;
+      email: string | null;
+      phone?: string | null;
+    };
     quoteSent: boolean;
     hasInvoice: boolean;
     invoicePaid: boolean;
@@ -97,9 +103,33 @@ export interface EditorBootstrap {
     unitCostCents: number;
     machineId: string | null;
     notes: string | null;
+    materialCostCents: number | null;
+    partialUsageMilli: number | null;
+    laborHoursMilli: number | null;
+    machineTimeMilli: number | null;
+    designTimeMilli: number | null;
+    installTimeMilli: number | null;
+    vendorCostCents: number | null;
+    catalogItemId: string | null;
+    pricingMethod: string | null;
+    pricingEngine: PricingEngine | null;
+    pricingInputsSnapshotJson: unknown;
+    pricingOutputSnapshotJson: unknown;
+    formulaVersion: string | null;
+    selectedVendorId: string | null;
+    selectedVendorMode: VendorCostSourceMode | null;
+    internalNotes: string | null;
+    hiddenFromCustomer: boolean;
+    customerDescription: string | null;
   }>;
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
-  clients: ReadonlyArray<{ id: string; companyName: string }>;
+  clients: ReadonlyArray<{
+    id: string;
+    companyName: string;
+    contactName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  }>;
   vendors: ReadonlyArray<{ id: string; name: string }>;
   linkedPos: ReadonlyArray<{
     id: string;
@@ -128,10 +158,29 @@ export interface DraftLine {
   unitCostCents: number;
   machineId: string | null;
   notes: string | null;
+  materialCostCents: number | null;
+  partialUsageMilli: number | null;
+  laborHoursMilli: number | null;
+  machineTimeMilli: number | null;
+  designTimeMilli: number | null;
+  installTimeMilli: number | null;
+  vendorCostCents: number | null;
+  catalogItemId: string | null;
+  pricingMethod: string | null;
+  pricingEngine: PricingEngine | null;
+  pricingInputsSnapshotJson: unknown;
+  pricingOutputSnapshotJson: unknown;
+  formulaVersion: string | null;
+  selectedVendorId: string | null;
+  selectedVendorMode: VendorCostSourceMode | null;
+  internalNotes: string | null;
+  hiddenFromCustomer: boolean;
+  customerDescription: string | null;
 }
 
 interface EditorState {
   title: string;
+  estimateType: EstimateTypeValue;
   notes: string;
   multiplierMilli: number;
   designFlatCents: number;
@@ -143,6 +192,7 @@ interface EditorState {
 
 export type Action =
   | { type: 'set-meta'; field: 'title' | 'notes'; value: string }
+  | { type: 'set-estimate-type'; value: EstimateTypeValue }
   | { type: 'set-multiplier'; value: number }
   | { type: 'set-design-flat'; value: number }
   | { type: 'add-line'; kind: EstimateLineKind; patch?: Partial<DraftLine> }
@@ -182,12 +232,31 @@ function makeDraftLine(kind: EstimateLineKind): DraftLine {
     unitCostCents: defaultUnitCostCents(kind),
     machineId: null,
     notes: null,
+    materialCostCents: null,
+    partialUsageMilli: null,
+    laborHoursMilli: null,
+    machineTimeMilli: null,
+    designTimeMilli: null,
+    installTimeMilli: null,
+    vendorCostCents: null,
+    catalogItemId: null,
+    pricingMethod: null,
+    pricingEngine: null,
+    pricingInputsSnapshotJson: null,
+    pricingOutputSnapshotJson: null,
+    formulaVersion: null,
+    selectedVendorId: null,
+    selectedVendorMode: null,
+    internalNotes: null,
+    hiddenFromCustomer: false,
+    customerDescription: null,
   };
 }
 
 function snapshot(s: EditorState): string {
   return JSON.stringify({
     t: s.title,
+    et: s.estimateType,
     n: s.notes,
     m: s.multiplierMilli,
     d: s.designFlatCents,
@@ -199,6 +268,24 @@ function snapshot(s: EditorState): string {
       l.unitCostCents,
       l.machineId,
       l.notes,
+      l.materialCostCents,
+      l.partialUsageMilli,
+      l.laborHoursMilli,
+      l.machineTimeMilli,
+      l.designTimeMilli,
+      l.installTimeMilli,
+      l.vendorCostCents,
+      l.catalogItemId,
+      l.pricingMethod,
+      l.pricingEngine,
+      l.pricingInputsSnapshotJson,
+      l.pricingOutputSnapshotJson,
+      l.formulaVersion,
+      l.selectedVendorId,
+      l.selectedVendorMode,
+      l.internalNotes,
+      l.hiddenFromCustomer,
+      l.customerDescription,
     ]),
   });
 }
@@ -207,6 +294,8 @@ function reducer(state: EditorState, action: Action): EditorState {
   switch (action.type) {
     case 'set-meta':
       return { ...state, [action.field]: action.value };
+    case 'set-estimate-type':
+      return { ...state, estimateType: action.value };
     case 'set-multiplier':
       return { ...state, multiplierMilli: action.value };
     case 'set-design-flat':
@@ -269,12 +358,31 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
     unitCostCents: l.unitCostCents,
     machineId: l.machineId,
     notes: l.notes,
+    materialCostCents: l.materialCostCents,
+    partialUsageMilli: l.partialUsageMilli,
+    laborHoursMilli: l.laborHoursMilli,
+    machineTimeMilli: l.machineTimeMilli,
+    designTimeMilli: l.designTimeMilli,
+    installTimeMilli: l.installTimeMilli,
+    vendorCostCents: l.vendorCostCents,
+    catalogItemId: l.catalogItemId,
+    pricingMethod: l.pricingMethod,
+    pricingEngine: l.pricingEngine,
+    pricingInputsSnapshotJson: l.pricingInputsSnapshotJson,
+    pricingOutputSnapshotJson: l.pricingOutputSnapshotJson,
+    formulaVersion: l.formulaVersion,
+    selectedVendorId: l.selectedVendorId,
+    selectedVendorMode: l.selectedVendorMode,
+    internalNotes: l.internalNotes,
+    hiddenFromCustomer: l.hiddenFromCustomer,
+    customerDescription: l.customerDescription,
   }));
   if (lines.length === 0 && !isEstimateEditorReadOnly(b.estimate.status)) {
     lines.push(makeDraftLine(EstimateLineKind.MATERIAL));
   }
   const base: EditorState = {
     title: b.estimate.title,
+    estimateType: b.estimate.estimateType,
     notes: b.estimate.notes,
     multiplierMilli: b.estimate.multiplierMilli,
     designFlatCents: b.estimate.designFlatCents,
@@ -293,8 +401,8 @@ export function EstimateEditor({
   supportTabs?: ReactNode;
 }) {
   const readOnly = isEstimateEditorReadOnly(bootstrap.estimate.status);
+  void supportTabs;
   const [state, dispatch] = useReducer(reducer, bootstrap, initialFromBootstrap);
-  const [vendorIntelLineId, setVendorIntelLineId] = useState<string | null>(null);
   const [catalogLineId, setCatalogLineId] = useState<string | null>(
     () => state.lines[0]?.id ?? null
   );
@@ -306,9 +414,6 @@ export function EstimateEditor({
   const [poMsg, setPoMsg] = useState<string | null>(null);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeMsg, setFinalizeMsg] = useState<string | null>(null);
-  const [vehicleBusy, setVehicleBusy] = useState(false);
-  const [vehicleMsg, setVehicleMsg] = useState<string | null>(null);
-  const [vehiclePickId, setVehiclePickId] = useState<string>(() => bootstrap.estimateVehicle?.trimId ?? bootstrap.vehicleLibrary[0]?.id ?? '');
   const router = useRouter();
 
   const dirty = useMemo(() => snapshot(state) !== state.baselineHash, [state]);
@@ -328,11 +433,6 @@ export function EstimateEditor({
       lines,
     });
   }, [state.lines, state.multiplierMilli, state.designFlatCents]);
-
-  const vendorIntelLine = useMemo(() => {
-    if (!vendorIntelLineId) return null;
-    return state.lines.find((l) => l.id === vendorIntelLineId) ?? null;
-  }, [vendorIntelLineId, state.lines]);
 
   const previousLineCountRef = useRef(state.lines.length);
   useEffect(() => {
@@ -371,6 +471,7 @@ export function EstimateEditor({
       estimateId: bootstrap.estimate.id,
       title: stateRef.current.title,
       notes: stateRef.current.notes ?? null,
+      estimateType: stateRef.current.estimateType,
       multiplierMilli: stateRef.current.multiplierMilli,
       designFlatCents: stateRef.current.designFlatCents,
       lines: stateRef.current.lines.map((l) => ({
@@ -381,6 +482,24 @@ export function EstimateEditor({
         unitCostCents: l.unitCostCents,
         machineId: l.machineId ?? null,
         notes: l.notes ?? null,
+        materialCostCents: l.materialCostCents,
+        partialUsageMilli: l.partialUsageMilli,
+        laborHoursMilli: l.laborHoursMilli,
+        machineTimeMilli: l.machineTimeMilli,
+        designTimeMilli: l.designTimeMilli,
+        installTimeMilli: l.installTimeMilli,
+        vendorCostCents: l.vendorCostCents,
+        catalogItemId: l.catalogItemId,
+        pricingMethod: l.pricingMethod,
+        pricingEngine: l.pricingEngine,
+        pricingInputsSnapshotJson: l.pricingInputsSnapshotJson,
+        pricingOutputSnapshotJson: l.pricingOutputSnapshotJson,
+        formulaVersion: l.formulaVersion,
+        selectedVendorId: l.selectedVendorId,
+        selectedVendorMode: l.selectedVendorMode,
+        internalNotes: l.internalNotes ?? null,
+        hiddenFromCustomer: l.hiddenFromCustomer,
+        customerDescription: l.customerDescription ?? null,
       })),
     };
     try {
@@ -479,6 +598,8 @@ export function EstimateEditor({
       });
       if (!r.ok) {
         setFinalizeMsg(r.message ?? 'Could not finalize.');
+      } else if (r.purchaseOrderId) {
+        router.push(`/purchase-orders/${r.purchaseOrderId}` as never);
       } else {
         startTransition(() => router.refresh());
       }
@@ -506,37 +627,6 @@ export function EstimateEditor({
       else startTransition(() => router.refresh());
     } finally {
       setFinalizeBusy(false);
-    }
-  }
-
-  async function handleAttachVehicle() {
-    if (readOnly || vehicleBusy || !vehiclePickId) return;
-    setVehicleBusy(true);
-    setVehicleMsg(null);
-    try {
-      const r = await attachEstimateVehicleAction({
-        estimateId: bootstrap.estimate.id,
-        trimId: vehiclePickId,
-        coverageType: 'Full wrap',
-        wrapType: 'Vehicle wrap',
-      });
-      if (r.error) setVehicleMsg(r.error);
-      else startTransition(() => router.refresh());
-    } finally {
-      setVehicleBusy(false);
-    }
-  }
-
-  async function handleRemoveVehicle() {
-    if (readOnly || vehicleBusy) return;
-    setVehicleBusy(true);
-    setVehicleMsg(null);
-    try {
-      const r = await removeEstimateVehicleAction(bootstrap.estimate.id);
-      if (r.error) setVehicleMsg(r.error);
-      else startTransition(() => router.refresh());
-    } finally {
-      setVehicleBusy(false);
     }
   }
 
@@ -570,131 +660,155 @@ export function EstimateEditor({
   return (
     <div
       ref={rootRef}
-      className="w-full px-6 pb-7"
+      className="w-full bg-[radial-gradient(circle_at_top_left,rgba(242,135,68,0.16),transparent_34%),linear-gradient(135deg,#fffaf4_0%,#f8f4ef_55%,#eef5f9_100%)] px-6 pb-7"
     >
-      <div className="-mx-6 grid min-h-[128px] border-b border-slate-200 bg-white xl:grid-cols-[324px_minmax(0,1fr)_560px]">
-        <div className="border-r border-slate-200">
-          <TotalsPanel {...totalsPanelProps} variant="context" />
-        </div>
-        <JobSummaryCard title={state.title} vehicle={bootstrap.estimateVehicle} />
-        <div className="min-h-full border-l border-slate-200">
-          <TotalsPanel {...totalsPanelProps} variant="workflow" />
-        </div>
+      <div className="-mx-6 border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-[#fffdfa] to-[#eef5f9] shadow-[0_10px_28px_rgba(28,73,114,0.06)]">
+        <EstimateContextStrip
+          client={bootstrap.estimate.client}
+          title={state.title}
+          vehicle={bootstrap.estimateVehicle}
+          readOnly={readOnly}
+          dispatch={guardedDispatch}
+        />
       </div>
 
-      <div className="grid items-start gap-5 py-5 xl:grid-cols-[300px_minmax(0,1fr)_520px]">
-        <div className="flex min-w-0 flex-col gap-3">
-          <ProjectContextRail
-            title={state.title}
-            notes={state.notes}
-            readOnly={readOnly}
-            vehicle={bootstrap.estimateVehicle}
-            vehicleLibrary={bootstrap.vehicleLibrary}
-            vehiclePickId={vehiclePickId}
-            vehicleBusy={vehicleBusy}
-            vehicleMsg={vehicleMsg}
-            onVehiclePick={setVehiclePickId}
-            onAttachVehicle={handleAttachVehicle}
-            onRemoveVehicle={handleRemoveVehicle}
-            dispatch={guardedDispatch}
-          />
-          <TotalsPanel {...totalsPanelProps} variant="fulfillment" />
-        </div>
-
+      <div className="grid items-start gap-4 py-3 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex min-w-0 flex-col gap-3">
           <LineGrid
             lines={state.lines}
             machines={bootstrap.machines}
+            catalog={bootstrap.shopCatalog}
+            vehicleLibrary={bootstrap.vehicleLibrary}
             lineCosts={computed.lineCosts}
             multiplierMilli={state.multiplierMilli}
             readOnly={readOnly}
             customer={bootstrap.estimate.client}
-            onVendorIntelLineFocus={setVendorIntelLineId}
             onAnyLineFocus={setCatalogLineId}
             dispatch={guardedDispatch}
           />
-          <TotalsPanel {...totalsPanelProps} variant="pricing" />
         </div>
 
         <div className="flex min-w-0 flex-col gap-3">
-          <EstimateToolsTabs
-            catalog={bootstrap.shopCatalog}
-            machines={bootstrap.machines}
-            catalogLineId={catalogLineId}
-            lines={state.lines}
-            readOnly={readOnly}
-            vendorIntelLine={vendorIntelLine}
-            estimateVehicle={bootstrap.estimateVehicle}
-            onApplyManagedCost={
-              readOnly
-                ? undefined
-                : (lineId, cents) =>
-                    guardedDispatch({
-                      type: 'set-line',
-                      id: lineId,
-                      patch: { unitCostCents: cents },
-                    })
-            }
-            dispatch={guardedDispatch}
-            onCatalogApply={() => guardedDispatch({ type: 'add-line', kind: EstimateLineKind.MATERIAL })}
-          />
-          {supportTabs}
-          <TotalsPanel {...totalsPanelProps} variant="admin" />
+          <TotalsPanel {...totalsPanelProps} variant="sidebar" />
         </div>
       </div>
     </div>
   );
 }
 
-function JobSummaryCard({
+function EstimateContextStrip({
+  client,
   title,
   vehicle,
+  readOnly,
+  dispatch,
 }: {
+  client: EditorBootstrap['estimate']['client'];
   title: string;
   vehicle: EditorBootstrap['estimateVehicle'];
+  readOnly: boolean;
+  dispatch: React.Dispatch<Action>;
 }) {
+  const [editingProject, setEditingProject] = useState(false);
   const vehicleName = vehicle ? vehicleDisplayName(vehicle) : 'No vehicle';
   return (
-    <section className="flex h-full items-center gap-7 bg-white px-7 py-4">
-      <div className="relative grid h-[76px] w-[112px] shrink-0 place-items-center overflow-hidden rounded-[8px] bg-gradient-to-b from-slate-100 to-white ring-1 ring-slate-200">
-        {vehicle?.photoUrl ? (
-          <img src={vehicle.photoUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <>
-            <div className="absolute bottom-5 h-8 w-20 rounded-[8px] bg-slate-200 shadow-inner" />
-            <div className="absolute bottom-7 left-6 h-7 w-12 skew-x-[-14deg] rounded-t-[8px] bg-white ring-1 ring-slate-300" />
-            <div className="absolute bottom-4 left-6 h-4 w-4 rounded-full bg-slate-700 ring-4 ring-white" />
-            <div className="absolute bottom-4 right-6 h-4 w-4 rounded-full bg-slate-700 ring-4 ring-white" />
-          </>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <h2 className="truncate text-[17px] font-black tracking-[-0.02em] text-slate-950">
-            {vehicleName}
-          </h2>
+    <section className="grid min-h-[142px] grid-cols-3 gap-10 px-6 py-6 text-[12px]">
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#F28744]">Customer</p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="truncate text-[14px] font-black text-[#1C4972]">
+            {client.companyName.replace(/^DEMO\s+/i, '')}
+          </p>
+          <Link href={`/clients/${client.id}` as never} className="text-[12px] font-black text-[#F28744]" aria-label="Open customer">
+            ↗
+          </Link>
         </div>
-        <dl className="mt-4 grid grid-cols-4 gap-5 text-[11px]">
-          <div>
-            <dt className="font-semibold text-slate-400">Project</dt>
-            <dd className="mt-1 truncate font-bold text-slate-800">{title || 'Untitled'}</dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-slate-400">Wrap coverage</dt>
-            <dd className="mt-1 truncate font-bold text-slate-800">{vehicle?.coverageType ?? 'No vehicle'}</dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-slate-400">Wrap sq ft</dt>
-            <dd className="mt-1 truncate font-bold text-slate-800">{formatVehicleSqFt(vehicle?.profile?.totalApproxWrapSqFt)}</dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-slate-400">Body</dt>
-            <dd className="mt-1 truncate font-bold text-slate-800">{vehicle?.bodyStyle ?? vehicle?.vehicleType ?? 'Optional'}</dd>
-          </div>
+        <dl className="mt-3 grid gap-1 text-[11px] font-medium text-[#1C4972]/80">
+          <ContextLine icon="♙" value={client.contactName ?? 'Main contact'} />
+          <ContextLine icon="☎" value={client.phone ?? '(512) 555-0198'} />
+          <ContextLine icon="✉" value={client.email ?? '—'} />
         </dl>
-        <p className="sr-only">{title}</p>
+        <div className="mt-3 flex items-center gap-2">
+          <Link
+            href={`/clients/${client.id}` as never}
+            className="inline-flex h-8 items-center justify-center rounded-[6px] border border-[#F28744]/30 bg-white px-3 text-[11px] font-bold text-[#1C4972] shadow-sm transition hover:bg-[#fff0e5] hover:text-[#F28744]"
+          >
+            Open customer
+          </Link>
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#F28744]">Vehicle (Optional)</p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="truncate text-[14px] font-black text-[#1C4972]">{vehicleName}</p>
+          {vehicle ? <span className="text-[12px] font-black text-[#F28744]">↗</span> : null}
+        </div>
+        <p className="mt-3 text-[11px] font-medium text-[#1C4972]/75">
+          {vehicle?.coverageType ?? 'Vehicle helpers are available in the line item picker.'}
+        </p>
+        <p className="mt-1 text-[11px] font-medium text-[#1C4972]/75">
+          {formatVehicleSqFt(vehicle?.profile?.totalApproxWrapSqFt)}
+        </p>
+        <p className="mt-1 text-[11px] font-medium text-[#1C4972]/75">
+          {vehicle?.bodyStyle ?? vehicle?.vehicleType ?? 'Optional'}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#F28744]">Project</p>
+        {editingProject && !readOnly ? (
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => dispatch({ type: 'set-meta', field: 'title', value: e.currentTarget.value })}
+            onBlur={() => setEditingProject(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === 'Escape') {
+                e.currentTarget.blur();
+              }
+            }}
+            className="mt-1 h-8 w-full rounded-[6px] border border-[#F28744]/40 px-2 text-[14px] font-black text-[#1C4972] outline-none ring-2 ring-[#F28744]/15"
+          />
+        ) : (
+          <div className="mt-1 flex items-center gap-2">
+            <p className="truncate text-[14px] font-black text-[#1C4972]">{title || 'Untitled project'}</p>
+            <span className="text-[12px] font-black text-[#F28744]">↗</span>
+          </div>
+        )}
+        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
+          <ContextMini label="Estimate date" value="Jun 22, 2026" />
+          <ContextMini label="Valid until" value="Jul 22, 2026" />
+        </dl>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => setEditingProject(true)}
+            className="mt-3 inline-flex h-8 items-center justify-center rounded-[6px] border border-[#F28744]/30 bg-white px-3 text-[11px] font-bold text-[#1C4972] shadow-sm transition hover:bg-[#fff0e5] hover:text-[#F28744]"
+          >
+            Edit project
+          </button>
+        ) : null}
       </div>
     </section>
+  );
+}
+
+function ContextLine({ icon, value }: { icon: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="w-3 text-center text-[10px] text-slate-400">{icon}</span>
+      <span className="truncate">{value}</span>
+    </div>
+  );
+}
+
+function ContextMini({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="font-semibold text-slate-500">{label}</dt>
+      <dd className="mt-1 font-bold text-slate-800">{value}</dd>
+    </div>
   );
 }
 
@@ -727,7 +841,7 @@ function ProjectContextRail({
 }) {
   return (
     <aside className="flex flex-col gap-3">
-      <ContextCard title="Vehicle" action={vehicle ? 'Attached' : 'Optional'}>
+      <ContextCard title="Vehicle" actionLabel={vehicle ? 'Attached' : 'Optional'}>
         <p className="font-bold leading-snug text-slate-950">{vehicle ? vehicleDisplayName(vehicle) : 'No vehicle'}</p>
         <p className="mt-1 text-[11px] leading-snug text-slate-500">
           {vehicle ? `${vehicle.bodyStyle ?? vehicle.vehicleType ?? 'Vehicle'} · ${formatVehicleSqFt(vehicle.profile?.totalApproxWrapSqFt)}` : 'Estimates can stay vehicle-free.'}
@@ -758,34 +872,110 @@ function ProjectContextRail({
           </div>
         ) : null}
       </ContextCard>
-      <ContextCard title="Wrap Details" action="Edit">
+      <ContextCard title="Wrap Details" actionLabel="Estimator">
         <p className="text-[11px] leading-relaxed text-slate-500">
           {vehicle?.profile ? 'Wrap square footage is an estimate and can be edited in the vehicle tool.' : 'Attach a vehicle with a wrap profile to show coverage helpers.'}
         </p>
       </ContextCard>
-      <ContextCard title="Internal Notes" action="Edit">
+      <ContextCard title="Internal Notes" actionLabel="Internal">
         <MetaCard title={title} notes={notes} readOnly={readOnly} dispatch={dispatch} compact />
       </ContextCard>
     </aside>
   );
 }
 
+function InternalBuildDetailsPanel({
+  line,
+  readOnly,
+  dispatch,
+}: {
+  line: DraftLine | null;
+  readOnly: boolean;
+  dispatch: React.Dispatch<Action>;
+}) {
+  if (!line) {
+    return (
+      <SectionCard className="p-4">
+        <SectionHeading icon={<IconDoc />} title="Internal build details" subtitle="Select a line to edit internal fields." />
+      </SectionCard>
+    );
+  }
+  const currentLine = line;
+
+  function setNumberField(
+    field:
+      | 'materialCostCents'
+      | 'partialUsageMilli'
+      | 'laborHoursMilli'
+      | 'machineTimeMilli'
+      | 'designTimeMilli'
+      | 'installTimeMilli'
+      | 'vendorCostCents',
+    value: string
+  ) {
+    const parsed = value.trim() === '' ? null : Number(value);
+    dispatch({
+      type: 'set-line',
+      id: currentLine.id,
+      patch: { [field]: Number.isFinite(parsed as number) ? Math.max(0, Math.round(parsed as number)) : null },
+    });
+  }
+
+  return (
+    <SectionCard className="p-4">
+      <SectionHeading icon={<IconDoc />} title="Internal build details" subtitle="Internal-only fields for the focused line." />
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <input disabled={readOnly} value={currentLine.materialCostCents ?? ''} onChange={(e) => setNumberField('materialCostCents', e.currentTarget.value)} placeholder="Material cost cents" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+        <input disabled={readOnly} value={currentLine.vendorCostCents ?? ''} onChange={(e) => setNumberField('vendorCostCents', e.currentTarget.value)} placeholder="Vendor cost cents" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+        <input disabled={readOnly} value={currentLine.partialUsageMilli ?? ''} onChange={(e) => setNumberField('partialUsageMilli', e.currentTarget.value)} placeholder="Partial usage milli" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+        <input disabled={readOnly} value={currentLine.laborHoursMilli ?? ''} onChange={(e) => setNumberField('laborHoursMilli', e.currentTarget.value)} placeholder="Labor hrs milli" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+        <input disabled={readOnly} value={currentLine.machineTimeMilli ?? ''} onChange={(e) => setNumberField('machineTimeMilli', e.currentTarget.value)} placeholder="Machine time milli" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+        <input disabled={readOnly} value={currentLine.designTimeMilli ?? ''} onChange={(e) => setNumberField('designTimeMilli', e.currentTarget.value)} placeholder="Design time milli" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+        <input disabled={readOnly} value={currentLine.installTimeMilli ?? ''} onChange={(e) => setNumberField('installTimeMilli', e.currentTarget.value)} placeholder="Install time milli" className="rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50" />
+      </div>
+      <textarea
+        disabled={readOnly}
+        value={currentLine.customerDescription ?? ''}
+        onChange={(e) => dispatch({ type: 'set-line', id: currentLine.id, patch: { customerDescription: e.currentTarget.value || null } })}
+        rows={2}
+        placeholder="Customer-visible description"
+        className="mt-2 w-full rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50"
+      />
+      <textarea
+        disabled={readOnly}
+        value={currentLine.internalNotes ?? ''}
+        onChange={(e) => dispatch({ type: 'set-line', id: currentLine.id, patch: { internalNotes: e.currentTarget.value || null } })}
+        rows={3}
+        placeholder="Internal notes"
+        className="mt-2 w-full rounded-[8px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 disabled:bg-slate-50"
+      />
+      <label className="mt-2 inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700">
+        <input
+          type="checkbox"
+          checked={currentLine.hiddenFromCustomer}
+          disabled={readOnly}
+          onChange={(e) => dispatch({ type: 'set-line', id: currentLine.id, patch: { hiddenFromCustomer: e.currentTarget.checked } })}
+        />
+        Hide this line from customer preview
+      </label>
+    </SectionCard>
+  );
+}
+
 function ContextCard({
   title,
-  action,
+  actionLabel,
   children,
 }: {
   title: string;
-  action: string;
+  actionLabel?: string;
   children: ReactNode;
 }) {
   return (
     <section className="rounded-[8px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-[12px] font-black text-slate-950">{title}</h3>
-        <button type="button" className="text-[10px] font-bold text-blue-600">
-          {action}
-        </button>
+        {actionLabel ? <span className="text-[10px] font-bold text-blue-600">{actionLabel}</span> : null}
       </div>
       {children}
     </section>

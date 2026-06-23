@@ -1,13 +1,16 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { prisma, Role, EstimateLineKind, type VendorPriceExtractionMethod } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { ItemCsvButtons } from './csv-buttons';
 import { PageHeader } from '@/components/app-shell';
+import { AutoSubmitInput } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney, kindLabel } from '@/lib/estimate/format';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { labelVendorPriceExtractionMethod } from '@/lib/ui/status-labels';
 import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
+import { CreateCatalogItemModal } from './create-catalog-item-modal';
 
 export const metadata = { title: 'Catalog' };
 export const dynamic = 'force-dynamic';
@@ -108,6 +111,7 @@ export default async function ItemsPage({
       id: true,
       name: true,
       nameNormalized: true,
+      itemType: true,
       kind: true,
       categories: true,
       isActive: true,
@@ -116,7 +120,7 @@ export default async function ItemsPage({
       defaultSellPriceCents: true,
       updatedAt: true,
       preferredVendor: { select: { name: true } },
-      _count: { select: { aliases: true, vendorCatalogLinks: true } },
+      _count: { select: { aliases: true, vendorCatalogLinks: true, bundleComponents: true } },
       vendorCatalogLinks: {
         select: {
           vendorId: true,
@@ -149,29 +153,24 @@ export default async function ItemsPage({
           canManage ? (
             <div className="flex flex-wrap items-center gap-2">
               <ItemCsvButtons />
-              <Link
-                href="/items/new"
-                className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95"
-              >
-                Create catalog item
-              </Link>
+              <CreateCatalogItemModal />
             </div>
           ) : null
         }
       />
 
       <section className="mb-5 grid gap-3 md:grid-cols-4">
-        <CatalogMetric label="Visible items" value={activeCount.toString()} detail="Active in estimate picker" />
-        <CatalogMetric label="Materials" value={materialCount.toString()} detail="Vendor-price aware lines" />
-        <CatalogMetric label="Vendor linked" value={vendorLinkedCount.toString()} detail="Have supplier intelligence" />
-        <CatalogMetric label="Showing" value={items.length.toString()} detail={`${filter} filter${rawQ ? ` · "${rawQ}"` : ''}`} />
+        <CatalogMetric label="Visible items" value={activeCount.toString()} detail="Active in estimate picker" tone="blue" />
+        <CatalogMetric label="Materials" value={materialCount.toString()} detail="Vendor-price aware lines" tone="emerald" />
+        <CatalogMetric label="Vendor linked" value={vendorLinkedCount.toString()} detail="Have supplier intelligence" tone="slate" />
+        <CatalogMetric label="Showing" value={items.length.toString()} detail={`${filter} filter${rawQ ? ` · "${rawQ}"` : ''}`} tone="violet" />
       </section>
 
       <section className="mb-5 rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <form method="get" className="flex min-w-[280px] flex-1 flex-wrap items-center gap-2">
             <input type="hidden" name="filter" value={filter} />
-            <input
+            <AutoSubmitInput
               name="q"
               defaultValue={rawQ}
               placeholder="Search catalog items..."
@@ -215,7 +214,7 @@ export default async function ItemsPage({
           }
         />
       ) : (
-        <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+        <section className="flex max-h-[calc(100vh-375px)] min-h-[320px] flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div>
               <h2 className="text-[15px] font-semibold text-slate-950">Pricing intelligence</h2>
@@ -225,119 +224,128 @@ export default async function ItemsPage({
               Estimate ready
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-[13px]">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                  <th className="px-4 py-3 font-semibold">Item</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
-                  <th className="px-4 py-3 font-semibold">Internal</th>
-                  <th className="px-4 py-3 font-semibold">Sell hint</th>
-                  <th className="px-4 py-3 font-semibold">Markup</th>
-                  <th className="px-4 py-3 font-semibold">Latest vendor</th>
-                  <th className="px-4 py-3 font-semibold">Cheapest</th>
-                  <th className="px-4 py-3 font-semibold">Preferred</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Vendors</th>
-                  <th className="px-4 py-3 font-semibold">Aliases</th>
-                  <th className="px-4 py-3 font-semibold">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it) => {
-                  const s = summarizeLinks(it.vendorCatalogLinks);
-                  const basis =
-                    it.kind === EstimateLineKind.MATERIAL && s.latestPriceCents !== null
-                      ? s.latestPriceCents
-                      : it.internalCostCents;
-                  const sellHint =
-                    it.defaultSellPriceCents ??
-                    sellPriceFromCostAndMarkup(basis, it.markupPercentMilli);
-                  const mkLabel =
-                    it.markupPercentMilli === 0
-                      ? '—'
-                      : `${(it.markupPercentMilli / 1000).toLocaleString(undefined, {
-                          maximumFractionDigits: 3,
-                        })}%`;
+          <div className="min-h-0 overflow-y-auto p-4">
+            <div className="grid gap-3">
+            <div className="hidden px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 xl:grid xl:grid-cols-[minmax(0,1.35fr)_120px_100px_100px_80px_minmax(0,1fr)_minmax(0,0.9fr)_110px_90px_80px_90px]">
+              <span>Item</span>
+              <span>Category</span>
+              <span>Internal</span>
+              <span>Sell hint</span>
+              <span>Markup</span>
+              <span>Latest vendor</span>
+              <span>Cheapest</span>
+              <span>Status</span>
+              <span>Vendors</span>
+              <span>Aliases</span>
+              <span>Updated</span>
+            </div>
+            {items.map((it) => {
+              const s = summarizeLinks(it.vendorCatalogLinks);
+              const basis =
+                it.kind === EstimateLineKind.MATERIAL && s.latestPriceCents !== null
+                  ? s.latestPriceCents
+                  : it.internalCostCents;
+              const sellHint =
+                it.defaultSellPriceCents ??
+                sellPriceFromCostAndMarkup(basis, it.markupPercentMilli);
+              const mkLabel =
+                it.markupPercentMilli === 0
+                  ? '—'
+                  : `${(it.markupPercentMilli / 1000).toLocaleString(undefined, {
+                      maximumFractionDigits: 3,
+                    })}%`;
+              const category = it.categories.length > 0
+                ? it.categories.map(categoryLabel).join(', ')
+                : kindLabel(it.kind);
 
-                  return (
-                    <tr key={it.id} className="group border-b border-slate-100 last:border-b-0 hover:bg-blue-50/35">
-                      <td className="px-4 py-4 align-top">
-                        <Link href={`/items/${it.id}`} className="font-semibold text-slate-950 transition-colors group-hover:text-blue-700">
+              return (
+                <Link
+                  key={it.id}
+                  href={`/items/${it.id}`}
+                  className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] xl:grid-cols-[minmax(0,1.35fr)_120px_100px_100px_80px_minmax(0,1fr)_minmax(0,0.9fr)_110px_90px_80px_90px]"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100 transition group-hover:bg-blue-100">
+                        {initials(it.name)}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
                           {it.name}
-                        </Link>
-                        <div className="mt-1 font-mono text-[10px] text-slate-400">
+                        </span>
+                        {it.itemType === 'BUNDLE' ? (
+                          <span className="ml-2 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                            Bundle
+                          </span>
+                        ) : null}
+                        <p className="mt-1 truncate font-mono text-[10px] text-slate-400">
                           {it.nameNormalized}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[12.5px] text-slate-500">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-600">
+                      {category}
+                    </span>
+                  </div>
+
+                  <CatalogRowValue label="Internal" value={formatMoney(it.internalCostCents)} />
+                  <CatalogRowValue label="Sell hint" value={formatMoney(sellHint)} strong />
+                  <CatalogRowValue label="Markup" value={mkLabel} />
+
+                  <div className="min-w-0 text-[12.5px] tabular-nums">
+                    <MobileLabel>Latest vendor</MobileLabel>
+                    {it.kind === EstimateLineKind.MATERIAL && s.latestPriceCents !== null ? (
+                      <>
+                        <div className="font-semibold text-slate-900">{formatMoney(s.latestPriceCents)}</div>
+                        <div className="truncate text-[11px] text-slate-500">
+                          {s.latestAtLabel ?? '—'} · {s.latestSource ?? '—'}
                         </div>
-                      </td>
-                      <td className="px-4 py-4 align-top text-[12px]">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-600">
-                          {it.categories.length > 0
-                            ? it.categories.map(categoryLabel).join(', ')
-                            : kindLabel(it.kind)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 align-top tabular-nums text-slate-700">
-                        {formatMoney(it.internalCostCents)}
-                      </td>
-                      <td className="px-4 py-4 align-top tabular-nums font-semibold text-slate-950">
-                        {formatMoney(sellHint)}
-                      </td>
-                      <td className="px-4 py-4 align-top tabular-nums text-[12px] text-slate-600">{mkLabel}</td>
-                      <td className="px-4 py-4 align-top tabular-nums">
-                        {it.kind === EstimateLineKind.MATERIAL && s.latestPriceCents !== null ? (
-                          <>
-                            <div className="font-semibold text-slate-900">{formatMoney(s.latestPriceCents)}</div>
-                            <div className="text-[11px] text-slate-500">
-                              {s.latestAtLabel ?? '—'} · {s.latestSource ?? '—'}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 align-top">
-                        {it.kind === EstimateLineKind.MATERIAL &&
-                        s.cheapestVendor &&
-                        s.cheapestCents !== null ? (
-                          <>
-                            <div className="font-semibold tabular-nums text-slate-900">{formatMoney(s.cheapestCents)}</div>
-                            <div className="text-[11px] text-slate-500">{s.cheapestVendor}</div>
-                          </>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 align-top text-[12px] text-slate-600">
-                        {it.kind === EstimateLineKind.MATERIAL ? (
-                          it.preferredVendor?.name ?? (
-                            <span className="text-slate-400">—</span>
-                          )
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 align-top">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                            it.isActive
-                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
-                              : 'border border-slate-200 bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          {it.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 align-top tabular-nums text-slate-600">{it._count.vendorCatalogLinks}</td>
-                      <td className="px-4 py-4 align-top tabular-nums text-slate-600">{it._count.aliases}</td>
-                      <td className="px-4 py-4 align-top text-[12px] text-slate-500 tabular-nums">
-                        {it.updatedAt.toISOString().slice(0, 10)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 text-[12.5px]">
+                    <MobileLabel>Cheapest</MobileLabel>
+                    {it.kind === EstimateLineKind.MATERIAL &&
+                    s.cheapestVendor &&
+                    s.cheapestCents !== null ? (
+                      <>
+                        <div className="font-semibold tabular-nums text-slate-900">{formatMoney(s.cheapestCents)}</div>
+                        <div className="truncate text-[11px] text-slate-500">{s.cheapestVendor}</div>
+                      </>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <MobileLabel>Status</MobileLabel>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                        it.isActive
+                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
+                          : 'border border-slate-200 bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      {it.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+
+                  <CatalogRowValue
+                    label="Vendors"
+                    value={it.itemType === 'BUNDLE' ? `${it._count.bundleComponents} components` : String(it._count.vendorCatalogLinks)}
+                  />
+                  <CatalogRowValue label="Aliases" value={String(it._count.aliases)} />
+                  <CatalogRowValue label="Updated" value={it.updatedAt.toISOString().slice(0, 10)} />
+                </Link>
+              );
+            })}
+            </div>
           </div>
         </section>
       )}
@@ -345,12 +353,40 @@ export default async function ItemsPage({
   );
 }
 
-function CatalogMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function CatalogMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: 'blue' | 'emerald' | 'slate' | 'violet' }) {
+  const toneClass = {
+    blue: 'from-blue-600/10 to-indigo-500/10 text-blue-700 ring-blue-500/15',
+    emerald: 'from-emerald-600/10 to-teal-500/10 text-emerald-700 ring-emerald-500/15',
+    slate: 'from-slate-600/10 to-slate-400/10 text-slate-700 ring-slate-500/15',
+    violet: 'from-violet-600/10 to-fuchsia-500/10 text-violet-700 ring-violet-500/15',
+  }[tone];
   return (
-    <div className="rounded-[20px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-      <div className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-slate-950">{value}</div>
-      <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{detail}</p>
+    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+      <div className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</div>
+      <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</div>
+      <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>
     </div>
   );
+}
+
+function CatalogRowValue({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className={`text-[12.5px] tabular-nums ${strong ? 'font-semibold text-slate-950' : 'text-slate-600'}`}>
+      <MobileLabel>{label}</MobileLabel>
+      {value}
+    </div>
+  );
+}
+
+function MobileLabel({ children }: { children: ReactNode }) {
+  return <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 xl:hidden">{children}</span>;
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }

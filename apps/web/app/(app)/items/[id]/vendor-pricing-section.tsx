@@ -3,7 +3,11 @@
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { SelectControl } from '@/components/app/select-control';
-import { appendManualShopMaterialPriceAction, type ShopMaterialActionState } from '../actions';
+import {
+  appendManualShopMaterialPriceAction,
+  createRepricingRequestAction,
+  type ShopMaterialActionState,
+} from '../actions';
 
 export interface VendorPriceRow {
   vendorId: string;
@@ -32,6 +36,10 @@ export function VendorPricingSection({
 }) {
   const initial: ShopMaterialActionState = { error: null };
   const [state, action, pending] = useActionState(appendManualShopMaterialPriceAction, initial);
+  const [repricingState, repricingAction, repricingPending] = useActionState(
+    createRepricingRequestAction,
+    initial,
+  );
   const [showForm, setShowForm] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -97,13 +105,34 @@ export function VendorPricingSection({
                   <td className="py-3 pr-4 font-mono text-[11px] text-slate-400 hidden sm:table-cell">
                     {row.skus.length > 0 ? row.skus.join(', ') : '—'}
                   </td>
-                  <td className="py-3 text-[11px] text-slate-400 hidden sm:table-cell">{row.trendNote || '—'}</td>
+                  <td className="py-3 text-[11px] text-slate-400 hidden sm:table-cell">
+                    <div>{row.trendNote || '—'}</div>
+                    <form action={repricingAction} className="mt-1">
+                      <input type="hidden" name="shopMaterialItemId" value={shopMaterialItemId} />
+                      <input type="hidden" name="vendorId" value={row.vendorId} />
+                      <input type="hidden" name="oldCostCents" value={row.priceCents} />
+                      <input type="hidden" name="reason" value="Pricing appears outdated; review vendor quote." />
+                      <input type="hidden" name="notes" value={`Requested from item detail vendor row (${row.vendorName}).`} />
+                      <button
+                        type="submit"
+                        disabled={repricingPending}
+                        className="rounded-[6px] border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 disabled:opacity-60"
+                      >
+                        Request repricing
+                      </button>
+                    </form>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {repricingState.error ? (
+        <p className="mt-2 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+          {repricingState.error}
+        </p>
+      ) : null}
 
       {/* Add price section */}
       {sorted.length > 0 && !showForm && (

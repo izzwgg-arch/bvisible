@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { EstimateStatus } from '@bvisible/db';
 import { FormError } from '@/components/auth/form-error';
 import {
@@ -14,12 +14,32 @@ export function SendEstimateEmailForm(props: {
   estimateId: string;
   clientEmail: string | null;
   status: EstimateStatus;
+  warnings: {
+    missingCustomer: boolean;
+    zeroSellPrice: boolean;
+    negativeMargin: boolean;
+    missingEmail: boolean;
+    unsavedChanges: boolean;
+    missingLineDescriptions: boolean;
+  };
 }) {
   const [state, action, pending] = useActionState(sendEstimateEmailAction, INITIAL);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const blockedFinal = props.status === EstimateStatus.FINALIZED;
   const blockedNoEmail = !(props.clientEmail?.trim() ?? '');
   const disabled = blockedFinal || blockedNoEmail || pending;
+  const warningRows = useMemo(
+    () => [
+      ['Missing customer', props.warnings.missingCustomer],
+      ['Zero sell price', props.warnings.zeroSellPrice],
+      ['Negative margin', props.warnings.negativeMargin],
+      ['Missing email', props.warnings.missingEmail],
+      ['Unsaved changes', props.warnings.unsavedChanges],
+      ['Missing required line descriptions', props.warnings.missingLineDescriptions],
+    ] as const,
+    [props.warnings],
+  );
 
   return (
     <div
@@ -53,21 +73,53 @@ export function SendEstimateEmailForm(props: {
         </p>
       ) : null}
 
-      <form action={action} className="mt-4 flex flex-wrap items-center gap-3">
-        <input type="hidden" name="estimateId" value={props.estimateId} />
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
-          type="submit"
+          type="button"
           disabled={disabled}
-          className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm disabled:opacity-50"
+          onClick={() => setReviewOpen(true)}
+          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--color-bv-text)] shadow-sm disabled:opacity-50"
         >
-          {pending ? 'Sending…' : 'Send estimate email'}
+          Final review before send
         </button>
-        {props.clientEmail?.trim() ? (
-          <span className="text-[13px] text-[var(--color-bv-muted)]">
-            To: <span className="text-[var(--color-bv-text)]">{props.clientEmail.trim()}</span>
-          </span>
-        ) : null}
-      </form>
+      </div>
+
+      {reviewOpen ? (
+        <div className="mt-4 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-4">
+          <h3 className="text-[14px] font-semibold text-[var(--color-bv-text)]">Final review</h3>
+          <ul className="mt-2 space-y-1 text-[12.5px] text-[var(--color-bv-muted)]">
+            {warningRows.map(([label, flagged]) => (
+              <li key={label} className={flagged ? 'text-amber-800' : ''}>
+                {flagged ? 'Warning: ' : 'OK: '}
+                {label}
+              </li>
+            ))}
+          </ul>
+          <form action={action} className="mt-4 flex flex-wrap items-center gap-3">
+            <input type="hidden" name="estimateId" value={props.estimateId} />
+            <input type="hidden" name="reviewConfirmed" value="true" />
+            <button
+              type="submit"
+              disabled={disabled}
+              className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm disabled:opacity-50"
+            >
+              {pending ? 'Sending…' : 'Confirm and send'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReviewOpen(false)}
+              className="rounded-[8px] border border-[var(--color-bv-border)] bg-white px-4 py-2.5 text-[13px] font-medium text-[var(--color-bv-text)]"
+            >
+              Go back and edit
+            </button>
+          </form>
+        </div>
+      ) : null}
+      {props.clientEmail?.trim() ? (
+        <span className="mt-3 inline-block text-[13px] text-[var(--color-bv-muted)]">
+          To: <span className="text-[var(--color-bv-text)]">{props.clientEmail.trim()}</span>
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -14,6 +14,11 @@ import {
   type AddMachineState,
   type ShopMaterialActionState,
 } from '../actions';
+import {
+  CatalogItemPricingTools,
+  type CatalogPricingToolChange,
+  type CatalogPricingToolValues,
+} from '../catalog-item-pricing-tools';
 
 const KINDS: EstimateLineKind[] = [
   EstimateLineKind.MATERIAL,
@@ -66,7 +71,34 @@ export function CreateShopMaterialItemForm({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newMachineName, setNewMachineName] = useState('');
   const [newMachineRateUsd, setNewMachineRateUsd] = useState('0.00');
+  const [pricingValues, setPricingValues] = useState<CatalogPricingToolValues>({
+    internalCostUsd: '0.00',
+    markupPercent: '200',
+    defaultSellUsd: '',
+    defaultQty: '1',
+    catalogUnit: ShopCatalogUnit.EACH,
+    pricing: {
+      pricingMethod: '',
+      pricingEngine: 'MANUAL',
+      pricingInputsJson: '',
+      pricingOutputJson: '',
+      formulaVersion: 'catalog-pricing-v1',
+      selectedVendorId: '',
+      selectedVendorMode: 'INTERNAL',
+      calculatedCostCents: '',
+      calculatedSellCents: '',
+      pricingNotes: '',
+    },
+  });
   const isMachineCategory = selectedCategory === EstimateLineKind.MACHINE;
+
+  function patchPricingValues(patch: CatalogPricingToolChange) {
+    setPricingValues((current) => ({
+      ...current,
+      ...patch,
+      pricing: patch.pricing ? { ...current.pricing, ...patch.pricing } : current.pricing,
+    }));
+  }
 
   const [machineState, machineFormAction, machinePending] = useActionState(
     addMachineAction,
@@ -207,7 +239,10 @@ export function CreateShopMaterialItemForm({
           <SelectControl
             name="catalogUnit"
             required
-            defaultValue={ShopCatalogUnit.EACH}
+            value={pricingValues.catalogUnit}
+            onChange={(e) =>
+              patchPricingValues({ catalogUnit: e.target.value as ShopCatalogUnit })
+            }
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           >
             {UNITS.map((u) => (
@@ -217,7 +252,7 @@ export function CreateShopMaterialItemForm({
             ))}
           </SelectControl>
           <p className="rounded-[14px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-[12px] leading-relaxed text-blue-900">
-            SQ FT / SHEET / ROLL match how you buy material; the estimate <strong className="text-[var(--color-bv-text)]">Pricing helper</strong> can fill sq ft, sheet count, roll usage, or banner totals on a line when you apply.
+            SQ FT / SHEET / ROLL match how you buy material; use the pricing tools below to save those defaults into the catalog item.
           </p>
         </label>
         </div>
@@ -335,6 +370,8 @@ export function CreateShopMaterialItemForm({
           <input
             name="internalCostUsd"
             required
+            value={pricingValues.internalCostUsd}
+            onChange={(e) => patchPricingValues({ internalCostUsd: e.target.value })}
             placeholder="0.00"
             inputMode="decimal"
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
@@ -346,7 +383,8 @@ export function CreateShopMaterialItemForm({
           </span>
           <input
             name="markupPercent"
-            defaultValue="200"
+            value={pricingValues.markupPercent}
+            onChange={(e) => patchPricingValues({ markupPercent: e.target.value })}
             placeholder="200"
             inputMode="decimal"
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
@@ -364,6 +402,8 @@ export function CreateShopMaterialItemForm({
           </span>
           <input
             name="defaultSellUsd"
+            value={pricingValues.defaultSellUsd}
+            onChange={(e) => patchPricingValues({ defaultSellUsd: e.target.value })}
             placeholder="Leave blank to derive from cost + markup"
             inputMode="decimal"
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
@@ -375,13 +415,16 @@ export function CreateShopMaterialItemForm({
           </span>
           <input
             name="defaultQty"
-            defaultValue="1"
+            value={pricingValues.defaultQty}
+            onChange={(e) => patchPricingValues({ defaultQty: e.target.value })}
             placeholder="1"
             inputMode="decimal"
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           />
         </label>
       </div>
+
+      <CatalogItemPricingTools values={pricingValues} onChange={patchPricingValues} />
 
       <label className="flex flex-col gap-2">
         <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-slate-500">Notes (optional)</span>

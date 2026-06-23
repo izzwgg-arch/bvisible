@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { EstimateStatus, prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
-import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { QuoteDocument } from './quote-document';
 import { QuotePreviewToolbar } from './quote-preview-toolbar';
@@ -11,16 +10,10 @@ import { SendEstimateEmailForm } from './send-estimate-form';
 import { EstimateQuoteResponseSummary } from '@/components/estimate/estimate-quote-response-summary';
 import { EstimateQuoteLinkPanel } from '@/components/estimate/estimate-quote-link-panel';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
-import { getTenantInvoiceProfile } from '@/lib/company/tenant-invoice-profile';
+import { estimatePdfCss, loadEstimatePdfData } from '@/lib/estimate/estimate-pdf';
 
 export const metadata = { title: 'Estimate quote' };
 export const dynamic = 'force-dynamic';
-
-function formatQuoteDate(d: Date): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-  }).format(d);
-}
 
 export default async function EstimatePreviewPage({
   params,
@@ -29,6 +22,7 @@ export default async function EstimatePreviewPage({
 }) {
   const me = await requireTenantId();
   const { id } = await params;
+  const pdfData = await loadEstimatePdfData(me.tenantId, id);
 
   const estimate = await prisma.estimate.findFirst({
     where: { id, tenantId: me.tenantId, deletedAt: null },
@@ -55,6 +49,8 @@ export default async function EstimatePreviewPage({
         select: {
           id: true,
           description: true,
+          customerDescription: true,
+          hiddenFromCustomer: true,
           qtyMilli: true,
           kind: true,
           computedCostCents: true,
@@ -66,6 +62,9 @@ export default async function EstimatePreviewPage({
   if (!estimate) {
     notFound();
   }
+  if (!pdfData) {
+    notFound();
+  }
 
   const quoteUi = await loadEstimateQuoteStaffUi(
     prisma,
@@ -75,18 +74,25 @@ export default async function EstimatePreviewPage({
     estimate.status
   );
 
-  const quoteLines = buildCustomerQuoteLines(
-    estimate.lines,
-    estimate.subtotalCostCents,
-    estimate.finalPriceCents
-  );
+  const sendWarnings = {
+    missingCustomer: !estimate.client.companyName.trim(),
+    zeroSellPrice: estimate.finalPriceCents <= 0,
+    negativeMargin: estimate.finalPriceCents < estimate.subtotalCostCents,
+    missingEmail: !(estimate.client.email?.trim() ?? ''),
+    unsavedChanges: false,
+    missingLineDescriptions: estimate.lines.some((line) => {
+      if (line.hiddenFromCustomer) return false;
+      const text = line.customerDescription?.trim() || line.description.trim();
+      return text.length === 0;
+    }),
+  };
 
   const backHref = `/estimates/${estimate.id}`;
   const isFinalized = estimate.status === EstimateStatus.FINALIZED;
-  const company = await getTenantInvoiceProfile(prisma, estimate.tenant);
 
   return (
     <>
+      <style dangerouslySetInnerHTML={{ __html: estimatePdfCss() }} />
       <div className="print:hidden">
         <PageHeader
           title="Quote preview"
@@ -109,9 +115,11 @@ export default async function EstimatePreviewPage({
         />
       </div>
 
-      <QuotePreviewToolbar backHref={backHref} />
+      <QuotePreviewToolbar backHref={backHref} downloadHref={`/estimates/${estimate.id}/preview/pdf`} />
 
-      <div className="mx-auto mb-8 flex max-w-[880px] flex-col gap-4 px-4 print:hidden">
+      <QuoteDocument data={pdfData} />
+
+      <div className="mx-auto mb-8 flex max-w-[1020px] flex-col gap-4 px-4 print:hidden">
         <EstimateQuoteResponseSummary {...quoteUi.quoteSummaryProps} />
         <EstimateQuoteLinkPanel
           estimateId={estimate.id}
@@ -124,27 +132,12 @@ export default async function EstimatePreviewPage({
         />
       </div>
 
-      <QuoteDocument
-        company={company}
-        estimateNumber={estimate.number}
-        title={estimate.title}
-        quoteDateLabel={`Updated ${formatQuoteDate(estimate.updatedAt)}`}
-        billTo={{
-          companyName: estimate.client.companyName,
-          contactName: estimate.client.contactName,
-          email: estimate.client.email,
-          phone: estimate.client.phone,
-        }}
-        lines={quoteLines}
-        totalSellCents={estimate.finalPriceCents}
-        notes={estimate.notes}
-      />
-
       <div className="mt-10">
         <SendEstimateEmailForm
           estimateId={estimate.id}
           clientEmail={estimate.client.email}
           status={estimate.status}
+          warnings={sendWarnings}
         />
       </div>
     </>

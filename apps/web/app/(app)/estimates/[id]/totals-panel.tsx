@@ -20,6 +20,7 @@ import {
 } from '@/components/estimate/estimate-surface';
 
 const DEFAULT_MULTIPLIER_MILLI = 3000;
+const DEFAULT_DESIGN_FEE_CENTS = 15000;
 
 interface TotalsPanelProps {
   bootstrap: EditorBootstrap;
@@ -51,7 +52,7 @@ interface TotalsPanelProps {
   poBusy: boolean;
   poMsg: string | null;
   onCreatePo: (vendorId: string | null) => void;
-  variant?: 'pricing' | 'context' | 'workflow' | 'fulfillment' | 'admin';
+  variant?: 'pricing' | 'context' | 'workflow' | 'fulfillment' | 'admin' | 'sidebar';
 }
 
 export function TotalsPanel(props: TotalsPanelProps) {
@@ -85,15 +86,162 @@ export function TotalsPanel(props: TotalsPanelProps) {
     bootstrap.estimate.status === EstimateStatus.APPROVED && !isFinalized;
   const multiplierLabel = (multiplierMilli / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
   const multiplierIsCustom = multiplierMilli !== DEFAULT_MULTIPLIER_MILLI;
+  const designFeeEnabled = designFlatCents > 0;
+  const designFeeMultiplierLabel = designFeeEnabled
+    ? (designFlatCents / DEFAULT_DESIGN_FEE_CENTS).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+    : '0';
   const profitCents = finalPriceCents - subtotalCostCents;
   const marginPct =
     finalPriceCents > 0 ? (profitCents / finalPriceCents) * 100 : null;
   const marginHealthy = marginPct != null && marginPct >= 50;
+  const markupPct = subtotalCostCents > 0 ? (profitCents / subtotalCostCents) * 100 : null;
+  const totalHours = Object.values(breakdown).reduce((total, value) => total + (value > 0 ? 1 : 0), 0);
   const showPricing = variant == null || variant === 'pricing';
   const showContext = variant == null || variant === 'context';
   const showWorkflow = variant == null || variant === 'workflow';
   const showFulfillment = variant == null || variant === 'fulfillment';
   const showAdmin = variant == null || variant === 'admin';
+
+  if (variant === 'sidebar') {
+    return (
+      <aside className="sticky top-4 flex flex-col gap-3">
+        <SectionCard className="overflow-hidden rounded-[14px] border-[#eadfd3] bg-gradient-to-b from-[#fffdfa] via-white to-[#fff4e8] p-4 ring-1 ring-[#F28744]/10">
+          <div className="-mx-4 -mt-4 mb-4 flex items-center justify-between gap-2 border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-[#fffdfa] to-[#eef5f9] px-4 py-3 shadow-[inset_0_-1px_0_rgba(242,135,68,0.16)]">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#F28744] shadow-[0_0_0_4px_rgba(242,135,68,0.14)]" />
+              <h2 className="text-[14px] font-black text-[#1C4972]">Estimate Summary</h2>
+            </div>
+            {isFinalized ? <FinalizedReadOnlyChip /> : null}
+          </div>
+          <dl className="space-y-2 text-[12px]">
+            <SideRow label="Subtotal (before tax)" value={formatMoney(finalPriceCents)} />
+            <div className="rounded-[9px] border border-[#F28744]/25 bg-[#fff0e5] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-black text-[#1C4972]">Design fee</span>
+                {isFinalized ? (
+                  <span className="tabular-nums font-bold text-slate-900">
+                    {designFeeEnabled ? `x${designFeeMultiplierLabel}` : 'Off'}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      dispatch({
+                        type: 'set-design-flat',
+                        value: designFeeEnabled ? 0 : DEFAULT_DESIGN_FEE_CENTS,
+                      })
+                    }
+                    className={`inline-flex h-6 items-center rounded-full px-1 text-[10px] font-black transition shadow-sm ${
+                      designFeeEnabled
+                        ? 'w-[44px] justify-end bg-[#F28744] text-white'
+                        : 'w-[42px] justify-start bg-slate-200 text-slate-500'
+                    }`}
+                    aria-pressed={designFeeEnabled}
+                    aria-label="Toggle design fee"
+                  >
+                    <span className="grid h-4 w-4 place-items-center rounded-full bg-white text-[8px] text-slate-500 shadow-sm">
+                      {designFeeEnabled ? 'On' : 'Off'}
+                    </span>
+                  </button>
+                )}
+              </div>
+              {designFeeEnabled ? (
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-semibold text-[#1C4972]/65">Multiplier</span>
+                  {isFinalized ? (
+                    <span className="tabular-nums font-bold text-slate-900">
+                      x{designFeeMultiplierLabel}
+                    </span>
+                  ) : (
+                    <span className="w-[96px] rounded-md border border-[#F28744]/30 bg-white shadow-sm focus-within:border-[#F28744] focus-within:ring-4 focus-within:ring-[#F28744]/10">
+                      <NumericCell
+                        value={designFlatCents}
+                        onCommit={(v) =>
+                          dispatch({
+                            type: 'set-design-flat',
+                            value: Math.max(0, v),
+                          })
+                        }
+                        format={(v) =>
+                          (v / DEFAULT_DESIGN_FEE_CENTS)
+                            .toFixed(2)
+                            .replace(/0+$/, '')
+                            .replace(/\.$/, '')
+                        }
+                        parse={(input) => {
+                          const trimmed = input.trim();
+                          if (trimmed === '') return DEFAULT_DESIGN_FEE_CENTS;
+                          if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+                          return Math.round(Number(trimmed) * DEFAULT_DESIGN_FEE_CENTS);
+                        }}
+                        ariaLabel="Design fee multiplier"
+                        cellRow={-1}
+                        cellCol="summary-design-fee"
+                        align="right"
+                      />
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1.5 text-[11px] leading-snug text-[#1C4972]/60">
+                  Off. Turn on to add the base {formatMoney(DEFAULT_DESIGN_FEE_CENTS)} design fee.
+                </p>
+              )}
+            </div>
+            <SideRow label="Discount" value="$0.00 ✎" muted />
+            <SideRow label="Tax" value="$0.00" muted />
+            <div className="my-3 border-t border-[#eadfd3]" />
+            <SideRow label="Total" value={formatMoney(finalPriceCents)} strong />
+          </dl>
+
+          <div className="mt-5 rounded-[9px] border border-[#1C4972]/15 bg-[#eef5f9] px-3 py-3">
+            <dl className="space-y-2 text-[12px]">
+              <SideRow label="Total Cost" value={formatMoney(subtotalCostCents)} />
+              <SideRow label="Total Sell" value={formatMoney(finalPriceCents)} />
+              {designFeeEnabled ? (
+                <SideRow
+                  label={`Design fee (${formatMoney(DEFAULT_DESIGN_FEE_CENTS)} x ${designFeeMultiplierLabel})`}
+                  value={formatMoney(designFlatCents)}
+                />
+              ) : null}
+              <SideRow label="Profit" value={formatMoney(profitCents)} valueClass={profitCents >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
+              <SideRow label="Margin" value={marginPct == null ? '-' : `${marginPct.toFixed(1)}%`} valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'} />
+              <SideRow label="Markup" value={markupPct == null ? '-' : `${markupPct.toFixed(1)}%`} valueClass="text-emerald-700" />
+              <SideRow label="Hours" value={totalHours > 0 ? `${totalHours} available` : '-'} muted={totalHours === 0} />
+            </dl>
+          </div>
+
+          <section className="mt-5">
+            <h3 className="text-[13px] font-black text-[#1C4972]">Workflow</h3>
+            <ol className="mt-3 space-y-2 text-[12px]">
+              <WorkflowDot label="Draft" active done />
+              <WorkflowDot label="Sent" done={bootstrap.estimate.quoteSent} />
+              <WorkflowDot label="Approved" done={bootstrap.estimate.status === EstimateStatus.APPROVED || bootstrap.estimate.status === EstimateStatus.FINALIZED} />
+              <WorkflowDot label="PO Created" done={linkedPos.length > 0} />
+              <WorkflowDot label="Invoiced" done={bootstrap.estimate.hasInvoice} />
+              <WorkflowDot label="Paid" done={bootstrap.estimate.invoicePaid} last />
+            </ol>
+          </section>
+
+          <section className="mt-5">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-[13px] font-black text-[#1C4972]">Notes</h3>
+              <span className="text-[11px] font-bold text-[#F28744]">Edit</span>
+            </div>
+            <textarea
+              value={bootstrap.estimate.notes}
+              onChange={(e) => dispatch({ type: 'set-meta', field: 'notes', value: e.currentTarget.value })}
+              disabled={readOnly}
+              placeholder="Add internal notes here..."
+              rows={5}
+              className="w-full resize-none rounded-[7px] border border-[#eadfd3] bg-white px-3 py-2 text-[12px] leading-relaxed text-[#1C4972] outline-none placeholder:text-slate-400 focus:border-[#F28744] focus:ring-2 focus:ring-[#F28744]/15 disabled:bg-slate-50"
+            />
+            {saveState.error ? <p className="mt-2 text-[11px] text-rose-700">{saveState.error}</p> : null}
+          </section>
+        </SectionCard>
+      </aside>
+    );
+  }
 
   return (
     <aside className="flex flex-col gap-4">
@@ -401,6 +549,56 @@ function SummaryMetric({
         {value}
       </p>
     </div>
+  );
+}
+
+function SideRow({
+  label,
+  value,
+  valueClass = 'text-[#1C4972]',
+  strong = false,
+  muted = false,
+}: {
+  label: string;
+  value: string;
+  valueClass?: string;
+  strong?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className={`flex items-baseline justify-between gap-4 ${strong ? 'text-[14px]' : ''}`}>
+      <dt className={`${strong ? 'font-black text-[#1C4972]' : 'font-medium text-[#6d7480]'}`}>
+        {label}
+      </dt>
+      <dd className={`tabular-nums ${strong ? 'font-black text-[#F28744]' : 'font-bold'} ${muted ? 'text-slate-400' : valueClass}`}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function WorkflowDot({
+  label,
+  done = false,
+  active = false,
+  last = false,
+}: {
+  label: string;
+  done?: boolean;
+  active?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <li className="relative flex items-center gap-2">
+      {!last ? <span className="absolute left-[5px] top-4 h-5 w-px bg-slate-200" /> : null}
+      <span
+        className={`relative z-10 h-3 w-3 rounded-full border ${
+          done || active ? 'border-[#F28744] bg-[#F28744] ring-2 ring-[#F28744]/15' : 'border-[#eadfd3] bg-white'
+        }`}
+      />
+      <span className={active ? 'font-bold text-[#1C4972]' : 'text-[#6d7480]'}>{label}</span>
+      {active ? <span className="text-[10px] text-slate-400">· Current step</span> : null}
+    </li>
   );
 }
 

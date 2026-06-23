@@ -6,6 +6,11 @@ import { writeAuditLog } from '@/lib/auth/audit';
 import { buildAppAbsoluteUrl } from '@/lib/auth/app-origin';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { renderEstimateQuoteEmail } from '@/lib/emails/estimate-quote';
+import {
+  estimatePdfFilename,
+  loadEstimatePdfData,
+  renderEstimatePdfBuffer,
+} from '@/lib/estimate/estimate-pdf';
 import { issueEstimateQuoteLink } from '@/lib/estimate/quote-link-issue';
 import { statusAfterSuccessfulCustomerSend } from '@/lib/estimate/send-estimate-email-status';
 import { verifyTransport, sendMail } from '@/lib/mailer';
@@ -36,6 +41,14 @@ export async function sendEstimateEmailAction(
     };
   }
   const { estimateId } = parsed.data;
+  const reviewConfirmed = String(formData.get('reviewConfirmed') ?? '') === 'true';
+  if (!reviewConfirmed) {
+    return {
+      ok: false,
+      error: 'Open final review and confirm before sending.',
+      messageId: null,
+    };
+  }
 
   const estimate = await prisma.estimate.findFirst({
     where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
@@ -102,12 +115,24 @@ export async function sendEstimateEmailAction(
     quoteUrl,
     contactName: estimate.client.contactName,
   });
+  const pdfData = await loadEstimatePdfData(me.tenantId, estimate.id);
+  if (!pdfData) {
+    return { ok: false, error: 'Could not generate estimate PDF.', messageId: null };
+  }
+  const pdf = await renderEstimatePdfBuffer(pdfData);
 
   const send = await sendMail({
     to,
     subject: mail.subject,
     html: mail.html,
     text: mail.text,
+    attachments: [
+      {
+        filename: estimatePdfFilename(estimate.number),
+        content: pdf,
+        contentType: 'application/pdf',
+      },
+    ],
   });
 
   if (!send.ok) {
@@ -142,6 +167,7 @@ export async function sendEstimateEmailAction(
       statusBefore: estimate.status,
       statusAfter: nextStatus ?? estimate.status,
       customerQuoteUrlIssued: true,
+      pdfAttached: true,
     },
   });
 

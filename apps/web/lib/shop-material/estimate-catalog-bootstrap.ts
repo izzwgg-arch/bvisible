@@ -7,7 +7,10 @@ import {
   suggestedUnitCostCents,
   type PriceObservationRow,
 } from '@/lib/shop-material/pricing-aggregate';
-import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
+import type {
+  EstimateCatalogBundleComponent,
+  EstimateCatalogPickerRow,
+} from '@/lib/shop-material/apply-catalog-to-estimate-line';
 
 const MAX_ITEMS = 420;
 const MAX_HISTORIES = 14_000;
@@ -24,6 +27,7 @@ export async function loadEstimateCatalogPickerRows(
       id: true,
       name: true,
       nameNormalized: true,
+      itemType: true,
       kind: true,
       catalogUnit: true,
       customUnitLabel: true,
@@ -31,9 +35,39 @@ export async function loadEstimateCatalogPickerRows(
       markupPercentMilli: true,
       defaultSellPriceCents: true,
       defaultQtyMilli: true,
+      pricingMethod: true,
+      pricingEngine: true,
+      pricingInputsJson: true,
+      pricingOutputJson: true,
+      formulaVersion: true,
+      customerDescription: true,
       machineId: true,
       preferredVendorId: true,
+      selectedVendorId: true,
+      selectedVendorMode: true,
       preferredVendor: { select: { name: true } },
+      _count: { select: { bundleComponents: true } },
+      bundleComponents: {
+        orderBy: [{ sortOrder: 'asc' }],
+        select: {
+          componentCatalogItemId: true,
+          componentName: true,
+          componentType: true,
+          categories: true,
+          quantityMilli: true,
+          unit: true,
+          customUnitLabel: true,
+          internalUnitCostCents: true,
+          markupPercentMilli: true,
+          defaultSellCents: true,
+          totalCostCents: true,
+          totalSellCents: true,
+          selectedVendor: { select: { name: true } },
+          preferredVendor: { select: { name: true } },
+          cheapestVendor: { select: { name: true } },
+          vendorSnapshotJson: true,
+        },
+      },
       vendorCatalogLinks: { select: { id: true } },
     },
   });
@@ -44,6 +78,7 @@ export async function loadEstimateCatalogPickerRows(
       id: it.id,
       name: it.name,
       nameNormalized: it.nameNormalized,
+      itemType: it.itemType,
       kind: it.kind,
       catalogUnit: it.catalogUnit,
       customUnitLabel: it.customUnitLabel,
@@ -51,13 +86,25 @@ export async function loadEstimateCatalogPickerRows(
       markupPercentMilli: it.markupPercentMilli,
       defaultSellPriceCents: it.defaultSellPriceCents,
       defaultQtyMilli: it.defaultQtyMilli,
+      customerDescription: it.customerDescription,
+      componentCount: it._count.bundleComponents,
       machineId: it.machineId,
       preferredVendorId: it.preferredVendorId,
+      selectedVendorId: it.selectedVendorId,
+      selectedVendorMode: it.selectedVendorMode,
+      selectedVendorCostCents: null,
+      pricingMethod: it.pricingMethod,
+      pricingEngine: it.pricingEngine,
+      pricingInputsJson: it.pricingInputsJson,
+      pricingOutputJson: it.pricingOutputJson,
+      formulaVersion: it.formulaVersion,
       suggestedVendorCostCents: null,
       catalogPreferredVendorCostCents: null,
       catalogPreferredVendorName: it.preferredVendor?.name ?? null,
       catalogCheapestVendorCostCents: null,
+      catalogCheapestVendorId: null,
       catalogCheapestVendorName: null,
+      bundleComponents: mapBundleComponents(it.bundleComponents),
     }));
   }
 
@@ -96,7 +143,9 @@ export async function loadEstimateCatalogPickerRows(
     let suggestedVendorCostCents: number | null = null;
     let catalogPreferredVendorCostCents: number | null = null;
     let catalogCheapestVendorCostCents: number | null = null;
+    let catalogCheapestVendorId: string | null = null;
     let catalogCheapestVendorName: string | null = null;
+    let selectedVendorCostCents: number | null = null;
 
     if (it.kind === EstimateLineKind.MATERIAL && it.vendorCatalogLinks.length > 0) {
       const flat: PriceObservationRow[] = [];
@@ -111,10 +160,14 @@ export async function loadEstimateCatalogPickerRows(
       });
       const prefObs = preferredVendorLatest(it.preferredVendorId, latestByVendor);
       catalogPreferredVendorCostCents = prefObs?.priceCents ?? null;
+      selectedVendorCostCents = it.selectedVendorId
+        ? latestByVendor.get(it.selectedVendorId)?.priceCents ?? null
+        : null;
       const cheap = cheapestAmongLatest(latestByVendor, {
         preferredVendorId: it.preferredVendorId,
       });
       catalogCheapestVendorCostCents = cheap?.priceCents ?? null;
+      catalogCheapestVendorId = cheap?.vendorId ?? null;
       catalogCheapestVendorName = cheap?.vendorName ?? null;
     }
 
@@ -122,6 +175,7 @@ export async function loadEstimateCatalogPickerRows(
       id: it.id,
       name: it.name,
       nameNormalized: it.nameNormalized,
+      itemType: it.itemType,
       kind: it.kind,
       catalogUnit: it.catalogUnit,
       customUnitLabel: it.customUnitLabel,
@@ -129,13 +183,73 @@ export async function loadEstimateCatalogPickerRows(
       markupPercentMilli: it.markupPercentMilli,
       defaultSellPriceCents: it.defaultSellPriceCents,
       defaultQtyMilli: it.defaultQtyMilli,
+      pricingMethod: it.pricingMethod,
+      pricingEngine: it.pricingEngine,
+      pricingInputsJson: it.pricingInputsJson,
+      pricingOutputJson: it.pricingOutputJson,
+      formulaVersion: it.formulaVersion,
+      customerDescription: it.customerDescription,
+      componentCount: it._count.bundleComponents,
       machineId: it.machineId,
       preferredVendorId: it.preferredVendorId,
+      selectedVendorId: it.selectedVendorId,
+      selectedVendorMode: it.selectedVendorMode,
+      selectedVendorCostCents,
       suggestedVendorCostCents,
       catalogPreferredVendorCostCents,
       catalogPreferredVendorName: it.preferredVendor?.name ?? null,
       catalogCheapestVendorCostCents,
+      catalogCheapestVendorId,
       catalogCheapestVendorName,
+      bundleComponents: mapBundleComponents(it.bundleComponents),
     };
   });
+}
+
+function mapBundleComponents(
+  components: ReadonlyArray<{
+    componentCatalogItemId: string | null;
+    componentName: string;
+    componentType: EstimateLineKind;
+    categories: string[];
+    quantityMilli: number;
+    unit: EstimateCatalogBundleComponent['unit'];
+    customUnitLabel: string | null;
+    internalUnitCostCents: number;
+    markupPercentMilli: number;
+    defaultSellCents: number | null;
+    totalCostCents: number;
+    totalSellCents: number;
+    selectedVendor: { name: string } | null;
+    preferredVendor: { name: string } | null;
+    cheapestVendor: { name: string } | null;
+    vendorSnapshotJson: unknown;
+  }>,
+): EstimateCatalogPickerRow['bundleComponents'] {
+  return components.map((component) => ({
+    componentCatalogItemId: component.componentCatalogItemId,
+    componentName: component.componentName,
+    componentType: component.componentType,
+    categories: component.categories,
+    quantityMilli: component.quantityMilli,
+    unit: component.unit,
+    customUnitLabel: component.customUnitLabel,
+    internalUnitCostCents: component.internalUnitCostCents,
+    markupPercentMilli: component.markupPercentMilli,
+    defaultSellCents: component.defaultSellCents,
+    totalCostCents: component.totalCostCents,
+    totalSellCents: component.totalSellCents,
+    selectedVendorName: component.selectedVendor?.name ?? null,
+    preferredVendorName: component.preferredVendor?.name ?? null,
+    cheapestVendorName: component.cheapestVendor?.name ?? null,
+    vendorSnapshot: isVendorSnapshot(component.vendorSnapshotJson)
+      ? component.vendorSnapshotJson
+      : [],
+  }));
+}
+
+function isVendorSnapshot(
+  value: unknown,
+): value is EstimateCatalogBundleComponent['vendorSnapshot'] {
+  return Array.isArray(value);
 }

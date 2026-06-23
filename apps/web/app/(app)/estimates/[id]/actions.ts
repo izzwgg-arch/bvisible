@@ -2,9 +2,10 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { prisma, EstimateLineKind, EstimateStatus, Role } from '@bvisible/db';
+import { Prisma, prisma, EstimateLineKind, EstimateStatus, Role } from '@bvisible/db';
 import { computeEstimate } from '@bvisible/pricing';
 import {
+  createClientSchema,
   finalizeEstimateSchema,
   saveEstimateSchema,
   updateEstimateStatusSchema,
@@ -19,7 +20,7 @@ import {
   requireTenantId,
 } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
-import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
+import { createPoFromInternalMaterials } from '@/lib/purchase-orders/create-po-from-internal-materials';
 
 export interface SaveEstimateState {
   error: string | null;
@@ -83,6 +84,36 @@ export async function saveEstimateAction(
     }
   }
 
+  const catalogItemIds = Array.from(
+    new Set(data.lines.map((l) => l.catalogItemId).filter((x): x is string => !!x))
+  );
+  if (catalogItemIds.length > 0) {
+    const valid = await prisma.shopMaterialItem.findMany({
+      where: { id: { in: catalogItemIds }, tenantId: me.tenantId },
+      select: { id: true },
+    });
+    const validSet = new Set(valid.map((item) => item.id));
+    const bad = catalogItemIds.find((id) => !validSet.has(id));
+    if (bad) {
+      return { error: 'One or more catalog item references are invalid.' };
+    }
+  }
+
+  const selectedVendorIds = Array.from(
+    new Set(data.lines.map((l) => l.selectedVendorId).filter((x): x is string => !!x))
+  );
+  if (selectedVendorIds.length > 0) {
+    const valid = await prisma.vendor.findMany({
+      where: { id: { in: selectedVendorIds }, tenantId: me.tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    const validSet = new Set(valid.map((vendor) => vendor.id));
+    const bad = selectedVendorIds.find((id) => !validSet.has(id));
+    if (bad) {
+      return { error: 'One or more vendor references are invalid.' };
+    }
+  }
+
   // Run the central pricing engine on the incoming lines so the
   // cached totals on the Estimate row match what the editor showed
   // the user, byte-for-byte. The same function runs in the browser
@@ -123,6 +154,24 @@ export async function saveEstimateAction(
             computed.lineCosts[l.id ?? `tmp-${i}`] ?? 0,
           machineId: l.machineId ?? null,
           notes: l.notes ?? null,
+          materialCostCents: l.materialCostCents ?? null,
+          partialUsageMilli: l.partialUsageMilli ?? null,
+          laborHoursMilli: l.laborHoursMilli ?? null,
+          machineTimeMilli: l.machineTimeMilli ?? null,
+          designTimeMilli: l.designTimeMilli ?? null,
+          installTimeMilli: l.installTimeMilli ?? null,
+          vendorCostCents: l.vendorCostCents ?? null,
+          catalogItemId: l.catalogItemId ?? null,
+          pricingMethod: l.pricingMethod ?? null,
+          pricingEngine: l.pricingEngine ?? null,
+          pricingInputsSnapshotJson: l.pricingInputsSnapshotJson == null ? Prisma.DbNull : (l.pricingInputsSnapshotJson as Prisma.InputJsonValue),
+          pricingOutputSnapshotJson: l.pricingOutputSnapshotJson == null ? Prisma.DbNull : (l.pricingOutputSnapshotJson as Prisma.InputJsonValue),
+          formulaVersion: l.formulaVersion ?? null,
+          selectedVendorId: l.selectedVendorId ?? null,
+          selectedVendorMode: l.selectedVendorMode ?? null,
+          internalNotes: l.internalNotes ?? null,
+          hiddenFromCustomer: l.hiddenFromCustomer ?? false,
+          customerDescription: l.customerDescription ?? null,
         })),
       });
     }
@@ -131,6 +180,7 @@ export async function saveEstimateAction(
       data: {
         title: data.title,
         notes: data.notes,
+        estimateType: data.estimateType,
         multiplierMilli: data.multiplierMilli,
         designFlatCents: data.designFlatCents,
         subtotalCostCents: computed.subtotalCostCents,
@@ -169,6 +219,7 @@ export async function saveEstimateAction(
     metadata: {
       number: existing.number,
       lineCount: data.lines.length,
+      estimateType: data.estimateType,
       subtotalCostCents: computed.subtotalCostCents,
       finalPriceCents: computed.finalPriceCents,
     },
@@ -291,14 +342,15 @@ export interface FinalizeEstimateResult {
   ok: boolean;
   error: FinalizeEstimateError | null;
   message: string | null;
+  purchaseOrderId?: string;
 }
 
 const FINALIZE_MESSAGES: Record<FinalizeEstimateError['kind'], string> = {
   not_found: 'Estimate not found.',
   already_finalized: 'Estimate is already finalized.',
   not_approved: 'Estimate must be Approved before finalizing.',
-  no_linked_po: 'Create a PO from this estimate before finalizing.',
-  no_qbo_number: 'Every linked PO needs a QuickBooks PO number first.',
+  no_linked_po: 'No internal material lines were available to create a PO.',
+  no_qbo_number: 'QuickBooks PO number is not required before auto-creating a PO.',
   reconciliation_unresolved: 'Clear reconciliation on all linked POs before finalizing.',
   invalid: 'Invalid input.',
 };
@@ -338,65 +390,37 @@ export async function finalizeEstimateAction(
     };
   }
 
-  const linkedPos = await prisma.purchaseOrder.findMany({
-    where: {
-      tenantId: me.tenantId,
-      estimateId: estimate.id,
-      deletedAt: null,
-    },
-    select: {
-      id: true,
-      number: true,
-      qboPoNumber: true,
-      reconciliations: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: { status: true },
-      },
-    },
-  });
-
-  const gates = evaluateEstimateFinalizeGates({
-    estimateStatus: estimate.status,
-    linkedPos: linkedPos.map((p) => ({
-      id: p.id,
-      number: p.number,
-      qboPoNumber: p.qboPoNumber,
-      latestReconciliationStatus: p.reconciliations[0]?.status ?? null,
-    })),
-  });
-
-  if (!gates.canFinalize) {
-    const kind: FinalizeEstimateError['kind'] =
-      gates.kind === 'missing_qbo'
-        ? 'no_qbo_number'
-        : gates.kind === 'already_finalized'
-          ? 'already_finalized'
-          : gates.kind === 'not_approved'
-            ? 'not_approved'
-            : gates.kind === 'no_linked_po'
-              ? 'no_linked_po'
-              : gates.kind === 'reconciliation_unresolved'
-                ? 'reconciliation_unresolved'
-                : 'invalid';
-    const error: FinalizeEstimateError =
-      kind === 'invalid'
-        ? { kind: 'invalid', message: gates.blockedReason ?? FINALIZE_MESSAGES.invalid }
-        : { kind };
+  if (estimate.status !== EstimateStatus.APPROVED) {
     return {
       ok: false,
-      error,
-      message: gates.blockedReason ?? FINALIZE_MESSAGES[kind],
+      error: { kind: 'not_approved' },
+      message: FINALIZE_MESSAGES.not_approved,
     };
   }
 
-  const linkedPoCount = linkedPos.length;
-  const withQboCount = linkedPos.filter((p) => p.qboPoNumber?.trim()).length;
+  const finalized = await prisma.$transaction(async (tx) => {
+    const poResult = await createPoFromInternalMaterials(tx, {
+      tenantId: me.tenantId,
+      estimateId: estimate.id,
+      actorId: me.id,
+    });
+    if (!poResult.ok) return poResult;
 
-  await prisma.estimate.update({
-    where: { id: estimate.id, tenantId: me.tenantId },
-    data: { status: EstimateStatus.FINALIZED },
+    await tx.estimate.update({
+      where: { id: estimate.id, tenantId: me.tenantId },
+      data: { status: EstimateStatus.FINALIZED },
+    });
+
+    return poResult;
   });
+
+  if (!finalized.ok) {
+    return {
+      ok: false,
+      error: { kind: 'no_linked_po' },
+      message: finalized.error,
+    };
+  }
 
   await writeAuditLog({
     action: 'estimate_finalized',
@@ -409,14 +433,21 @@ export async function finalizeEstimateAction(
     metadata: {
       number: estimate.number,
       from: estimate.status,
-      linkedPoCount,
-      withQboCount,
+      purchaseOrderId: finalized.purchaseOrderId,
+      purchaseOrderNumber: finalized.purchaseOrderNumber,
+      purchaseOrderCreated: finalized.created,
+      linkedPoCount: 1,
+      lineCount: finalized.lineCount,
+      vendorCount: finalized.vendorCount,
+      subtotalCents: finalized.subtotalCents,
     },
   });
 
   revalidatePath(`/estimates/${estimate.id}`);
   revalidatePath('/estimates');
-  return { ok: true, error: null, message: null };
+  revalidatePath(`/purchase-orders/${finalized.purchaseOrderId}`);
+  revalidatePath('/purchase-orders');
+  return { ok: true, error: null, message: null, purchaseOrderId: finalized.purchaseOrderId };
 }
 
 // Unfinalize is ADMIN+ only — once we've committed against the
@@ -463,4 +494,117 @@ export async function unfinalizeEstimateAction(
   revalidatePath(`/estimates/${estimate.id}`);
   revalidatePath('/estimates');
   return { error: null };
+}
+
+export async function updateEstimateClientAction(payload: {
+  estimateId: string;
+  clientId: string;
+}): Promise<{ error: string | null }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+  const estimateId = payload.estimateId?.trim();
+  const clientId = payload.clientId?.trim();
+  if (!estimateId || !clientId) return { error: 'Estimate and customer are required.' };
+
+  const [estimate, client] = await Promise.all([
+    prisma.estimate.findFirst({
+      where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
+      select: { id: true, number: true, status: true },
+    }),
+    prisma.client.findFirst({
+      where: { id: clientId, tenantId: me.tenantId, deletedAt: null },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!estimate) return { error: 'Estimate not found.' };
+  if (!client) return { error: 'Customer not found.' };
+  if (estimate.status === EstimateStatus.FINALIZED) {
+    return { error: 'Finalize lock active. Unfinalize before changing customer.' };
+  }
+
+  await prisma.estimate.update({
+    where: { id: estimate.id, tenantId: me.tenantId },
+    data: { clientId: client.id },
+  });
+
+  await writeAuditLog({
+    action: 'estimate_client_changed',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: estimate.number, clientId: client.id },
+  });
+
+  revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath('/estimates');
+  return { error: null };
+}
+
+export async function createClientAndAttachEstimateAction(payload: {
+  estimateId: string;
+  companyName: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+}): Promise<{ error: string | null; clientId: string | null }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+  const estimateId = payload.estimateId?.trim();
+  if (!estimateId) return { error: 'Estimate is required.', clientId: null };
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
+    select: { id: true, status: true, number: true },
+  });
+  if (!estimate) return { error: 'Estimate not found.', clientId: null };
+  if (estimate.status === EstimateStatus.FINALIZED) {
+    return { error: 'Finalize lock active. Unfinalize before creating customer.', clientId: null };
+  }
+
+  const parsed = createClientSchema.safeParse({
+    companyName: payload.companyName,
+    contactName: payload.contactName ?? '',
+    email: payload.email ?? '',
+    phone: payload.phone ?? '',
+    notes: '',
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid customer input.', clientId: null };
+  }
+
+  const created = await prisma.client.create({
+    data: {
+      tenantId: me.tenantId,
+      companyName: parsed.data.companyName,
+      contactName: parsed.data.contactName,
+      email: parsed.data.email,
+      phone: parsed.data.phone,
+    },
+    select: { id: true, companyName: true },
+  });
+
+  await prisma.estimate.update({
+    where: { id: estimate.id, tenantId: me.tenantId },
+    data: { clientId: created.id },
+  });
+
+  await writeAuditLog({
+    action: 'estimate_client_created_and_attached',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: estimate.number, clientId: created.id, companyName: created.companyName },
+  });
+
+  revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath('/estimates');
+  revalidatePath('/clients');
+  return { error: null, clientId: created.id };
 }

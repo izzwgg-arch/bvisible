@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { prisma, POStatus } from '@bvisible/db';
+import { prisma, POStatus, Prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney } from '@/lib/estimate/format';
 import { labelPoStatus } from '@/lib/ui/status-labels';
@@ -29,7 +30,34 @@ const OPEN_PO_STATUSES = new Set<POStatus>([
 interface SearchParams {
   created?: string;
   deleted?: string;
+  q?: string | string[];
+  status?: string | string[];
+  source?: string | string[];
+  sort?: string | string[];
 }
+
+const STATUS_FILTERS: ReadonlyArray<{ value: 'all' | POStatus; label: string }> = [
+  { value: 'all', label: 'All statuses' },
+  { value: POStatus.DRAFT, label: 'Draft' },
+  { value: POStatus.SENT, label: 'Sent' },
+  { value: POStatus.ORDERED, label: 'Ordered' },
+  { value: POStatus.PARTIALLY_RECEIVED, label: 'Partially received' },
+  { value: POStatus.RECEIVED, label: 'Received' },
+  { value: POStatus.CANCELED, label: 'Canceled' },
+];
+
+const SOURCE_FILTERS = [
+  { value: 'all', label: 'All sources' },
+  { value: 'estimate-linked', label: 'Estimate linked' },
+  { value: 'manual', label: 'Manual POs' },
+] as const;
+
+const SORT_OPTIONS = [
+  { value: 'updated-desc', label: 'Recently updated' },
+  { value: 'spend-desc', label: 'Highest spend' },
+  { value: 'spend-asc', label: 'Lowest spend' },
+  { value: 'number-asc', label: 'PO number A-Z' },
+] as const;
 
 export default async function PurchaseOrdersPage({
   searchParams,
@@ -38,27 +66,64 @@ export default async function PurchaseOrdersPage({
 }) {
   const me = await requireTenantId();
   const sp = await searchParams;
+  const query = firstParam(sp.q).trim();
+  const status = normalizeStatus(firstParam(sp.status));
+  const source = normalizeSource(firstParam(sp.source));
+  const sort = normalizeSort(firstParam(sp.sort));
 
-  const pos = await prisma.purchaseOrder.findMany({
-    where: { tenantId: me.tenantId, deletedAt: null },
-    orderBy: [{ updatedAt: 'desc' }],
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      qboPoNumber: true,
-      subtotalCents: true,
-      updatedAt: true,
-      vendor: { select: { id: true, name: true } },
-      estimate: { select: { id: true, number: true } },
-    },
-    take: 200,
-  });
+  const where: Prisma.PurchaseOrderWhereInput = {
+    tenantId: me.tenantId,
+    deletedAt: null,
+    ...(status ? { status } : {}),
+    ...(source === 'estimate-linked' ? { estimateId: { not: null } } : {}),
+    ...(source === 'manual' ? { estimateId: null } : {}),
+    ...(query
+      ? {
+          OR: [
+            { number: { contains: query, mode: 'insensitive' } },
+            { qboPoNumber: { contains: query, mode: 'insensitive' } },
+            { vendor: { name: { contains: query, mode: 'insensitive' } } },
+            { estimate: { number: { contains: query, mode: 'insensitive' } } },
+            { estimate: { title: { contains: query, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [pos, totalPoCount] = await Promise.all([
+    prisma.purchaseOrder.findMany({
+      where,
+      orderBy: orderByForSort(sort),
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        qboPoNumber: true,
+        subtotalCents: true,
+        updatedAt: true,
+        vendor: { select: { id: true, name: true } },
+        estimate: {
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            client: { select: { companyName: true } },
+          },
+        },
+        _count: { select: { lines: true, attachments: true } },
+      },
+      take: 200,
+    }),
+    prisma.purchaseOrder.count({
+      where: { tenantId: me.tenantId, deletedAt: null },
+    }),
+  ]);
 
   const totalAuthorizedCents = pos.reduce((sum, po) => sum + po.subtotalCents, 0);
   const openCount = pos.filter((po) => OPEN_PO_STATUSES.has(po.status)).length;
   const receivedCount = pos.filter((po) => po.status === POStatus.RECEIVED).length;
   const linkedEstimateCount = pos.filter((po) => po.estimate).length;
+  const hasActiveFilters = Boolean(query || status || source !== 'all' || sort !== 'updated-desc');
 
   return (
     <>
@@ -86,7 +151,7 @@ export default async function PurchaseOrdersPage({
         </div>
       ) : null}
 
-      {pos.length === 0 ? (
+      {totalPoCount === 0 ? (
         <EmptyState
           title="No purchase orders yet"
           description={
@@ -111,7 +176,52 @@ export default async function PurchaseOrdersPage({
             <MetricCard label="Estimate linked" value={linkedEstimateCount.toString()} detail="Traceable to approved work" tone="violet" />
           </section>
 
-          <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+          <section className="rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+            <form method="get" className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_190px_180px_180px_auto] lg:items-end">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
+                  Search
+                </span>
+                <span className="relative block">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5" />
+                    </svg>
+                  </span>
+                  <AutoSubmitInput
+                    name="q"
+                    defaultValue={query}
+                    placeholder="Search PO, vendor, QBO, or estimate..."
+                    className="h-11 w-full rounded-[14px] border border-slate-200 bg-white pl-10 pr-3 text-[13px] font-medium text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  />
+                </span>
+              </label>
+
+              <FilterSelect name="status" label="Status" value={status ?? 'all'} options={STATUS_FILTERS} />
+              <FilterSelect name="source" label="Source" value={source} options={SOURCE_FILTERS} />
+              <FilterSelect name="sort" label="Sort" value={sort} options={SORT_OPTIONS} />
+
+              <div className="flex items-center gap-2 lg:self-end">
+                <button
+                  type="submit"
+                  className="inline-flex h-11 items-center justify-center rounded-[14px] bg-slate-950 px-4 text-[13px] font-bold text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  Apply
+                </button>
+                {hasActiveFilters ? (
+                  <Link
+                    href="/purchase-orders"
+                    className="inline-flex h-11 items-center justify-center rounded-[14px] border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-600 shadow-sm hover:bg-slate-50"
+                  >
+                    Reset
+                  </Link>
+                ) : null}
+              </div>
+            </form>
+          </section>
+
+          <section className="flex max-h-[calc(100vh-360px)] min-h-[320px] flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-[14px] bg-blue-50 text-blue-600 ring-1 ring-blue-100">
@@ -119,74 +229,110 @@ export default async function PurchaseOrdersPage({
                 </div>
                 <div>
                   <h2 className="text-[15px] font-semibold text-slate-950">Procurement queue</h2>
-                  <p className="text-[12.5px] text-slate-500">Every PO, vendor, status, and source estimate in one clean review surface.</p>
+                  <p className="text-[12.5px] text-slate-500">
+                    {hasActiveFilters
+                      ? `${pos.length} purchase order${pos.length === 1 ? '' : 's'} match the current view.`
+                      : 'Every PO, vendor, status, and source estimate in one clean review surface.'}
+                  </p>
                 </div>
               </div>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Live spend
+                {pos.length} showing
               </span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-[13px]">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                    <th className="px-5 py-3 font-semibold">PO</th>
-                    <th className="px-5 py-3 font-semibold">Vendor</th>
-                    <th className="px-5 py-3 font-semibold">Source</th>
-                    <th className="px-5 py-3 font-semibold">QBO</th>
-                    <th className="px-5 py-3 font-semibold">Status</th>
-                    <th className="px-5 py-3 text-right font-semibold">Subtotal</th>
-                    <th className="px-5 py-3 font-semibold">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pos.map((p) => (
-                    <tr
-                      key={p.id}
-                      className="group border-b border-slate-100 last:border-b-0 hover:bg-blue-50/35"
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div className="grid gap-3 p-4">
+                <div className="hidden px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_110px_150px_110px_110px]">
+                  <span>PO</span>
+                  <span>Vendor</span>
+                  <span>Source</span>
+                  <span>QBO</span>
+                  <span>Status</span>
+                  <span>Subtotal</span>
+                  <span className="text-right">Quick</span>
+                </div>
+
+                {pos.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-10 text-center">
+                    <h3 className="text-[14px] font-semibold text-slate-950">No purchase orders match</h3>
+                    <p className="mt-1 text-[12.5px] text-slate-500">Adjust the search or filters to bring POs back into view.</p>
+                    <Link
+                      href="/purchase-orders"
+                      className="mt-4 inline-flex rounded-[12px] border border-slate-200 bg-white px-4 py-2 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50"
                     >
-                      <td className="px-5 py-4 align-middle">
-                        <Link
-                          href={`/purchase-orders/${p.id}` as never}
-                          className="font-mono text-[12px] font-semibold text-slate-950 transition-colors group-hover:text-blue-700"
-                        >
-                          {p.number}
-                        </Link>
-                        <div className="mt-1 text-[11.5px] text-slate-400">Open workspace</div>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <div className="font-medium text-slate-900">
-                          {p.vendor?.name ?? <span className="text-slate-400">Vendor unassigned</span>}
+                      Clear filters
+                    </Link>
+                  </div>
+                ) : (
+                  pos.map((p) => (
+                    <div
+                      key={p.id}
+                      className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_110px_150px_110px_110px]"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100 transition group-hover:bg-blue-100">
+                            {initials(p.number)}
+                          </div>
+                          <Link href={`/purchase-orders/${p.id}` as never} className="min-w-0 hover:text-blue-600">
+                            <span className="font-mono text-[12px] font-bold text-slate-950 group-hover:text-blue-600">{p.number}</span>
+                            <span className="mt-1 block text-[11.5px] font-medium text-slate-400">
+                              Updated {formatDate(p.updatedAt)} · {p._count.lines} line{p._count.lines === 1 ? '' : 's'}
+                            </span>
+                          </Link>
                         </div>
-                      </td>
-                      <td className="px-5 py-4 align-middle text-slate-500">
+                      </div>
+
+                      <PoRowValue label="Vendor" value={p.vendor?.name ?? 'Vendor unassigned'} strong={Boolean(p.vendor)} muted={!p.vendor} />
+
+                      <div className="min-w-0">
+                        <MobileLabel>Source</MobileLabel>
                         {p.estimate ? (
                           <Link
                             href={`/estimates/${p.estimate.id}` as never}
-                            className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 font-mono text-[11.5px] font-semibold text-blue-700"
+                            className="inline-flex max-w-full rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 font-mono text-[11.5px] font-semibold text-blue-700 transition hover:bg-blue-100"
+                            title={p.estimate.title}
                           >
-                            {p.estimate.number}
+                            <span className="truncate">{p.estimate.number}</span>
                           </Link>
                         ) : (
-                          <span className="text-slate-400">Manual PO</span>
+                          <span className="text-[12.5px] font-medium text-slate-400">Manual PO</span>
                         )}
-                      </td>
-                      <td className="px-5 py-4 align-middle font-mono text-[12px] text-slate-500">
-                        {p.qboPoNumber ?? <span className="text-slate-400">Pending</span>}
-                      </td>
-                      <td className="px-5 py-4 align-middle">
+                        {p.estimate?.client ? (
+                          <p className="mt-1 truncate text-[11.5px] text-slate-400">{p.estimate.client.companyName}</p>
+                        ) : null}
+                      </div>
+
+                      <PoRowValue label="QBO" value={p.qboPoNumber ?? 'Pending'} muted={!p.qboPoNumber} mono />
+
+                      <div>
+                        <MobileLabel>Status</MobileLabel>
                         <StatusPill status={p.status} />
-                      </td>
-                      <td className="px-5 py-4 text-right align-middle text-[14px] font-semibold text-slate-950 tabular-nums">
-                        {formatMoney(p.subtotalCents)}
-                      </td>
-                      <td className="px-5 py-4 align-middle text-[12px] text-slate-500 tabular-nums">
-                        {p.updatedAt.toISOString().slice(0, 10)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+
+                      <PoRowValue label="Subtotal" value={formatMoney(p.subtotalCents)} strong />
+
+                      <div>
+                        <MobileLabel>Quick</MobileLabel>
+                        <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
+                          <Link
+                            href={`/purchase-orders/${p.id}` as never}
+                            className="text-[11.5px] font-bold text-slate-400 hover:text-blue-600 hover:underline"
+                          >
+                            Open
+                          </Link>
+                          <Link
+                            href={`/purchase-orders/${p.id}/reconciliation` as never}
+                            className="text-[11.5px] font-bold text-slate-400 hover:text-blue-600 hover:underline"
+                          >
+                            Reconcile
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
             <div className="grid gap-3 border-t border-slate-100 bg-gradient-to-r from-blue-50/70 to-cyan-50/60 px-5 py-4 text-[12.5px] text-slate-600 md:grid-cols-3">
               <Insight label="Review cadence" value="Check ordered and partially received POs daily." />
@@ -212,19 +358,17 @@ function MetricCard({
   tone: 'blue' | 'amber' | 'emerald' | 'violet';
 }) {
   const toneClass = {
-    blue: 'from-blue-500/12 to-cyan-400/10 text-blue-700 ring-blue-100',
-    amber: 'from-amber-400/16 to-orange-300/10 text-amber-700 ring-amber-100',
-    emerald: 'from-emerald-400/16 to-teal-300/10 text-emerald-700 ring-emerald-100',
-    violet: 'from-violet-400/16 to-blue-300/10 text-violet-700 ring-violet-100',
+    blue: 'from-blue-600/10 to-indigo-500/10 text-blue-700 ring-blue-500/15',
+    amber: 'from-amber-500/10 to-orange-400/10 text-amber-700 ring-amber-500/15',
+    emerald: 'from-emerald-600/10 to-teal-500/10 text-emerald-700 ring-emerald-500/15',
+    violet: 'from-violet-600/10 to-fuchsia-500/10 text-violet-700 ring-violet-500/15',
   }[tone];
 
   return (
-    <div className="rounded-[20px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className={`mb-4 inline-flex rounded-full bg-gradient-to-br px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ring-1 ${toneClass}`}>
-        {label}
-      </div>
-      <div className="text-[26px] font-semibold tracking-[-0.04em] text-slate-950">{value}</div>
-      <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{detail}</p>
+    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+      <div className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</div>
+      <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</div>
+      <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>
     </div>
   );
 }
@@ -241,12 +385,126 @@ function Insight({ label, value }: { label: string; value: ReactNode }) {
 function StatusPill({ status }: { status: POStatus }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold ${STATUS_TONE[status]}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11.5px] font-medium ${STATUS_TONE[status]}`}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {labelPoStatus(status)}
     </span>
   );
+}
+
+function PoRowValue({
+  label,
+  value,
+  strong,
+  muted,
+  mono,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  muted?: boolean;
+  mono?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-0 truncate text-[12.5px] tabular-nums ${
+        muted ? 'text-slate-400' : strong ? 'font-semibold text-slate-950' : 'text-slate-600'
+      } ${mono ? 'font-mono' : ''}`}
+    >
+      <MobileLabel>{label}</MobileLabel>
+      {value}
+    </div>
+  );
+}
+
+function MobileLabel({ children }: { children: ReactNode }) {
+  return <span className="mb-0.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 xl:hidden">{children}</span>;
+}
+
+function FilterSelect({
+  name,
+  label,
+  value,
+  options,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
+        {label}
+      </span>
+      <AutoSubmitSelect
+        name={name}
+        defaultValue={value}
+        className="h-11 rounded-[14px] border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </AutoSubmitSelect>
+    </label>
+  );
+}
+
+function firstParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? '';
+  return value ?? '';
+}
+
+function normalizeStatus(value: string): POStatus | null {
+  if (!value || value === 'all') return null;
+  return Object.values(POStatus).includes(value as POStatus)
+    ? (value as POStatus)
+    : null;
+}
+
+function normalizeSource(value: string): (typeof SOURCE_FILTERS)[number]['value'] {
+  return SOURCE_FILTERS.some((filter) => filter.value === value)
+    ? (value as (typeof SOURCE_FILTERS)[number]['value'])
+    : 'all';
+}
+
+function normalizeSort(value: string): (typeof SORT_OPTIONS)[number]['value'] {
+  return SORT_OPTIONS.some((option) => option.value === value)
+    ? (value as (typeof SORT_OPTIONS)[number]['value'])
+    : 'updated-desc';
+}
+
+function orderByForSort(sort: (typeof SORT_OPTIONS)[number]['value']): Prisma.PurchaseOrderOrderByWithRelationInput[] {
+  switch (sort) {
+    case 'spend-desc':
+      return [{ subtotalCents: 'desc' }, { updatedAt: 'desc' }];
+    case 'spend-asc':
+      return [{ subtotalCents: 'asc' }, { updatedAt: 'desc' }];
+    case 'number-asc':
+      return [{ number: 'asc' }, { updatedAt: 'desc' }];
+    case 'updated-desc':
+    default:
+      return [{ updatedAt: 'desc' }];
+  }
+}
+
+function initials(value: string) {
+  return value
+    .split(/[-\s]+/)
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function formatDate(value: Date): string {
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(value);
 }
 
 function ClipboardIcon() {

@@ -12,6 +12,11 @@ import {
   type AddCategoryState,
   type AddMachineState,
 } from '../actions';
+import {
+  CatalogItemPricingTools,
+  type CatalogPricingToolChange,
+  type CatalogPricingToolValues,
+} from '../catalog-item-pricing-tools';
 
 const ALL_KINDS: EstimateLineKind[] = [
   EstimateLineKind.MATERIAL,
@@ -56,6 +61,11 @@ export function ItemDetailPricingForm({
     markupPercentMilli: number;
     defaultSellPriceCents: number | null;
     defaultQtyMilli: number;
+    pricingMethod: string | null;
+    pricingInputsJson: unknown;
+    calculatedCostCents: number | null;
+    calculatedSellCents: number | null;
+    pricingNotes: string | null;
     machineId: string | null;
     notes: string | null;
   };
@@ -69,6 +79,25 @@ export function ItemDetailPricingForm({
       : (item.markupPercentMilli / 1000).toFixed(3).replace(/\.?0+$/, '');
   const sellUsd =
     item.defaultSellPriceCents != null ? (item.defaultSellPriceCents / 100).toFixed(2) : '';
+  const [pricingValues, setPricingValues] = useState<CatalogPricingToolValues>({
+    internalCostUsd: internalUsd,
+    markupPercent: markupPct,
+    defaultSellUsd: sellUsd,
+    defaultQty: formatQty(item.defaultQtyMilli),
+    catalogUnit: item.catalogUnit,
+    pricing: {
+      pricingMethod: item.pricingMethod ?? '',
+      pricingEngine: 'MANUAL',
+      pricingInputsJson: item.pricingInputsJson ? JSON.stringify(item.pricingInputsJson) : '',
+      pricingOutputJson: '',
+      formulaVersion: 'catalog-pricing-v1',
+      selectedVendorId: '',
+      selectedVendorMode: 'INTERNAL',
+      calculatedCostCents: item.calculatedCostCents != null ? String(item.calculatedCostCents) : '',
+      calculatedSellCents: item.calculatedSellCents != null ? String(item.calculatedSellCents) : '',
+      pricingNotes: item.pricingNotes ?? '',
+    },
+  });
 
   // Seed categories: use item.categories if populated, else fall back to kind
   const seedCategories =
@@ -101,6 +130,14 @@ export function ItemDetailPricingForm({
       return next;
     });
   };
+
+  function patchPricingValues(patch: CatalogPricingToolChange) {
+    setPricingValues((current) => ({
+      ...current,
+      ...patch,
+      pricing: patch.pricing ? { ...current.pricing, ...patch.pricing } : current.pricing,
+    }));
+  }
 
   // Standalone machine save
   const [machineState, machineFormAction, machinePending] = useActionState(
@@ -245,7 +282,10 @@ export function ItemDetailPricingForm({
           </span>
           <SelectControl
             name="catalogUnit"
-            defaultValue={item.catalogUnit}
+            value={pricingValues.catalogUnit}
+            onChange={(e) =>
+              patchPricingValues({ catalogUnit: e.target.value as ShopCatalogUnit })
+            }
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
           >
             {UNITS.map((u) => (
@@ -366,7 +406,8 @@ export function ItemDetailPricingForm({
           <input
             name="internalCostUsd"
             required
-            defaultValue={internalUsd}
+            value={pricingValues.internalCostUsd}
+            onChange={(e) => patchPricingValues({ internalCostUsd: e.target.value })}
             inputMode="decimal"
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
           />
@@ -379,7 +420,8 @@ export function ItemDetailPricingForm({
           </span>
           <input
             name="markupPercent"
-            defaultValue={markupPct}
+            value={pricingValues.markupPercent}
+            onChange={(e) => patchPricingValues({ markupPercent: e.target.value })}
             placeholder="200"
             inputMode="decimal"
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
@@ -396,7 +438,8 @@ export function ItemDetailPricingForm({
           </span>
           <input
             name="defaultSellUsd"
-            defaultValue={sellUsd}
+            value={pricingValues.defaultSellUsd}
+            onChange={(e) => patchPricingValues({ defaultSellUsd: e.target.value })}
             placeholder="Blank = cost + markup"
             inputMode="decimal"
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
@@ -411,11 +454,14 @@ export function ItemDetailPricingForm({
           <input
             name="defaultQty"
             required
-            defaultValue={formatQty(item.defaultQtyMilli)}
+            value={pricingValues.defaultQty}
+            onChange={(e) => patchPricingValues({ defaultQty: e.target.value })}
             inputMode="decimal"
             className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[13px]"
           />
         </label>
+
+        <CatalogItemPricingTools values={pricingValues} onChange={patchPricingValues} />
 
         {/* Notes */}
         <label className="flex flex-col gap-1">

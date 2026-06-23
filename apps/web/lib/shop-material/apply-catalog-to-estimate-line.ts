@@ -1,5 +1,6 @@
 import { EstimateLineKind } from '@bvisible/db';
 import type { ShopCatalogUnit } from '@bvisible/db';
+import { normalizeVendorCostSourceMode, type PricingEngine, type VendorCostSourceMode } from '@/lib/shop-material/pricing-engine';
 import { sellPriceFromCostAndMarkup } from '@/lib/shop-material/markup';
 
 /** Serialized estimate picker row (server → client JSON). */
@@ -7,6 +8,7 @@ export type EstimateCatalogPickerRow = {
   id: string;
   name: string;
   nameNormalized: string;
+  itemType: 'SINGLE' | 'BUNDLE';
   kind: EstimateLineKind;
   catalogUnit: ShopCatalogUnit;
   customUnitLabel: string | null;
@@ -14,8 +16,18 @@ export type EstimateCatalogPickerRow = {
   markupPercentMilli: number;
   defaultSellPriceCents: number | null;
   defaultQtyMilli: number;
+  pricingMethod: string | null;
+  pricingEngine: PricingEngine | null;
+  pricingInputsJson: unknown;
+  pricingOutputJson: unknown;
+  formulaVersion: string | null;
+  customerDescription: string | null;
+  componentCount: number;
   machineId: string | null;
   preferredVendorId: string | null;
+  selectedVendorId: string | null;
+  selectedVendorMode: VendorCostSourceMode | null;
+  selectedVendorCostCents: number | null;
   /** Unit cost suggested for Apply (preferred latest when linked, else cheapest latest among vendors). */
   suggestedVendorCostCents: number | null;
   /** MATERIAL + vendor history: preferred vendor’s latest linked observation (display-only). */
@@ -23,7 +35,33 @@ export type EstimateCatalogPickerRow = {
   catalogPreferredVendorName: string | null;
   /** MATERIAL + vendor history: lowest latest unit cost among vendors (display-only). */
   catalogCheapestVendorCostCents: number | null;
+  catalogCheapestVendorId: string | null;
   catalogCheapestVendorName: string | null;
+  bundleComponents?: EstimateCatalogBundleComponent[];
+};
+
+export type EstimateCatalogBundleComponent = {
+  componentCatalogItemId: string | null;
+  componentName: string;
+  componentType: EstimateLineKind;
+  categories: string[];
+  quantityMilli: number;
+  unit: ShopCatalogUnit;
+  customUnitLabel: string | null;
+  internalUnitCostCents: number;
+  markupPercentMilli: number;
+  defaultSellCents: number | null;
+  totalCostCents: number;
+  totalSellCents: number;
+  selectedVendorName: string | null;
+  preferredVendorName: string | null;
+  cheapestVendorName: string | null;
+  vendorSnapshot: Array<{
+    vendorName?: string;
+    latestPriceCents?: number | null;
+    isPreferred?: boolean;
+    isCheapest?: boolean;
+  }>;
 };
 
 export type MachineRateLookup = ReadonlyMap<string, { ratePerHourCents: number }>;
@@ -41,8 +79,20 @@ export function resolveCatalogUnitCostCents(args: {
   }
 
   if (row.kind === EstimateLineKind.MATERIAL) {
-    const v = row.suggestedVendorCostCents;
-    if (v !== null && v !== undefined) return Math.max(0, v);
+    const mode = row.selectedVendorMode == null ? null : normalizeVendorCostSourceMode(row.selectedVendorMode);
+    const selectedByMode =
+      mode === 'CHEAPEST'
+        ? row.catalogCheapestVendorCostCents
+        : mode === 'PREFERRED'
+          ? row.catalogPreferredVendorCostCents
+          : mode === 'MANUAL'
+            ? row.selectedVendorCostCents
+            : null;
+    if (selectedByMode !== null && selectedByMode !== undefined) return Math.max(0, selectedByMode);
+    if (mode !== 'INTERNAL') {
+      const v = row.suggestedVendorCostCents;
+      if (v !== null && v !== undefined) return Math.max(0, v);
+    }
     return Math.max(0, row.internalCostCents);
   }
 
@@ -80,6 +130,15 @@ export function buildLinePatchFromCatalogSelection(args: {
   qtyMilli: number;
   unitCostCents: number;
   machineId: string | null;
+  catalogItemId: string;
+  pricingMethod: string | null;
+  pricingEngine: PricingEngine | null;
+  pricingInputsSnapshotJson: unknown;
+  pricingOutputSnapshotJson: unknown;
+  formulaVersion: string | null;
+  selectedVendorId: string | null;
+  selectedVendorMode: VendorCostSourceMode | null;
+  customerDescription: string | null;
 } {
   const { row, machinesById } = args;
   const unitCostCents = resolveCatalogUnitCostCents({ row, machinesById });
@@ -92,6 +151,20 @@ export function buildLinePatchFromCatalogSelection(args: {
     qtyMilli: Math.max(0, row.defaultQtyMilli),
     unitCostCents,
     machineId,
+    catalogItemId: row.id,
+    pricingMethod: row.pricingMethod,
+    pricingEngine: row.pricingEngine,
+    pricingInputsSnapshotJson: row.pricingInputsJson,
+    pricingOutputSnapshotJson: row.pricingOutputJson,
+    formulaVersion: row.formulaVersion,
+    selectedVendorId:
+      normalizeVendorCostSourceMode(row.selectedVendorMode) === 'CHEAPEST'
+        ? row.catalogCheapestVendorId
+        : normalizeVendorCostSourceMode(row.selectedVendorMode) === 'PREFERRED'
+          ? row.preferredVendorId
+          : row.selectedVendorId,
+    selectedVendorMode: row.selectedVendorMode,
+    customerDescription: row.itemType === 'BUNDLE' ? row.customerDescription ?? row.name : null,
   };
 }
 

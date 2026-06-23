@@ -7,15 +7,18 @@
 //      only, and a plaintext fallback for the small fraction of clients
 //      that block HTML entirely.
 //   2. Survive a few years of brand evolution without us reaching for
-//      MJML. The brand is one accent color and one wordmark — that's it.
+//      MJML. The brand is one inline logo, one accent color, and text
+//      fallback for clients that block images.
 
-const ACCENT = '#0F172A'; // slate-900 — matches the in-app brand mark
+export const BRAND_LOGO_CID = 'bvisible-brand-logo';
+
+const ACCENT = '#F28744';
 const ACCENT_TEXT = '#FFFFFF';
-const BG = '#F8FAFC';
-const SURFACE = '#FFFFFF';
-const TEXT = '#0F172A';
-const MUTED = '#64748B';
-const BORDER = '#E2E8F0';
+const BG = '#F8F4EF';
+const SURFACE = '#FFFDFA';
+const TEXT = '#1C4972';
+const MUTED = '#6D7480';
+const BORDER = '#EADFD3';
 
 export interface BrandedEmail {
   /** First line of body (a short sentence under the heading). */
@@ -75,17 +78,19 @@ function renderHtml(input: BrandedEmail, footer: string): string {
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${BG};padding:32px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:${SURFACE};border:1px solid ${BORDER};border-radius:12px;overflow:hidden;">
+          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:${SURFACE};border:1px solid ${BORDER};border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:24px 28px 8px 28px;">
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                   <tr>
-                    <td style="background:${ACCENT};color:${ACCENT_TEXT};font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;line-height:1;padding:6px 9px;border-radius:6px;letter-spacing:0.02em;">
-                      BV
-                    </td>
-                    <td style="padding-left:10px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:${TEXT};">
-                      B Visible
-                      <span style="color:${MUTED};font-weight:400;">· Operations</span>
+                    <td style="padding:0;">
+                      <img src="cid:${BRAND_LOGO_CID}"
+                           width="190"
+                           alt="B Visible Signs and Printing"
+                           style="display:block;width:190px;max-width:190px;height:auto;border:0;outline:none;text-decoration:none;">
+                      <div style="display:none;overflow:hidden;mso-hide:all;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:${TEXT};">
+                        B Visible <span style="color:${MUTED};font-weight:400;">· Signs · Printing</span>
+                      </div>
                     </td>
                   </tr>
                 </table>
@@ -93,7 +98,7 @@ function renderHtml(input: BrandedEmail, footer: string): string {
             </tr>
             <tr>
               <td style="padding:8px 28px 24px 28px;">
-                <h1 style="margin:16px 0 8px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:20px;line-height:1.3;color:${TEXT};font-weight:600;">
+                <h1 style="margin:16px 0 8px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:20px;line-height:1.3;color:${TEXT};font-weight:650;">
                   ${escapeText(input.heading)}
                 </h1>
                 <p style="margin:0 0 16px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:${TEXT};">

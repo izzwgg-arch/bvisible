@@ -14,11 +14,22 @@
 // Errors are typed so callers can map cleanly to UI strings without
 // passing internal nodemailer error fields to the browser.
 
+import path from 'node:path';
+import { existsSync } from 'node:fs';
 import nodemailer, { type Transporter } from 'nodemailer';
+import type Mail from 'nodemailer/lib/mailer';
 import type SMTPPool from 'nodemailer/lib/smtp-pool';
 import { z } from 'zod';
 import { prisma } from '@bvisible/db';
 import { openSecret } from '@/lib/email-ingest/crypto';
+import { BRAND_LOGO_CID } from '@/lib/emails/render';
+
+const BRAND_LOGO_PATH =
+  [
+    path.join(process.cwd(), 'public/brand/b-visible-logo.png'),
+    path.join(process.cwd(), 'apps/web/public/brand/b-visible-logo.png'),
+  ].find((candidate) => existsSync(candidate)) ??
+  path.join(process.cwd(), 'public/brand/b-visible-logo.png');
 
 // -- Config ------------------------------------------------------------
 
@@ -249,6 +260,11 @@ export interface SendMailInput {
   subject: string;
   html: string;
   text: string;
+  attachments?: ReadonlyArray<{
+    filename: string;
+    content: Buffer;
+    contentType: string;
+  }>;
 }
 
 export interface VerifyResult {
@@ -350,12 +366,27 @@ export async function sendMail(input: SendMailInput): Promise<
   const diagnostics = diagnosticsFor(config);
   try {
     const transport = getTransport(config);
+    const attachments: Mail.Attachment[] = [
+      ...(input.attachments ?? []),
+      ...(input.html.includes(`cid:${BRAND_LOGO_CID}`)
+        ? [
+            {
+              filename: 'b-visible-logo.png',
+              path: BRAND_LOGO_PATH,
+              cid: BRAND_LOGO_CID,
+              contentDisposition: 'inline' as const,
+            },
+          ]
+        : []),
+    ];
+
     const info = await transport.sendMail({
       from: config.from,
       to: input.to,
       subject: input.subject,
       text: input.text,
       html: input.html,
+      ...(attachments.length > 0 ? { attachments } : {}),
       ...(config.replyTo ? { replyTo: config.replyTo } : {}),
     });
     const result: SendResult = {

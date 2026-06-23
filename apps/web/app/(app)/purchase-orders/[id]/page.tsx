@@ -1,14 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { POEventKind, Role, prisma } from '@bvisible/db';
+import { prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
-import { PageHeader } from '@/components/app-shell';
-import { PoExecutionWorkspace } from '@/components/po/po-execution-workspace';
 import { getPoLifecycleSnapshot } from '@/lib/po/get-po-lifecycle-snapshot';
 import { getPoReceiptWorkflowSummary } from '@/lib/po/get-po-receipt-workflow-summary';
 import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
-import { PoEditor, type PoEditorBootstrap } from './editor';
+import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
+import { PoRedesignEditor, type PoRedesignBootstrap } from './po-redesign-editor';
 
 export const metadata = { title: 'Purchase order' };
 export const dynamic = 'force-dynamic';
@@ -21,7 +20,7 @@ export default async function PurchaseOrderDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [po, vendors, events] = await Promise.all([
+  const [po, vendors, events, catalog] = await Promise.all([
     prisma.purchaseOrder.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -34,7 +33,7 @@ export default async function PurchaseOrderDetailPage({
         updatedAt: true,
         createdAt: true,
         operatorMarkedReconciledAt: true,
-        vendor: { select: { id: true, name: true } },
+        vendor: { select: { id: true, name: true, email: true, emails: true } },
         estimate: {
           select: {
             id: true,
@@ -51,9 +50,34 @@ export default async function PurchaseOrderDetailPage({
             id: true,
             kind: true,
             description: true,
+            estimateLineId: true,
+            catalogItemId: true,
+            bundleComponentId: true,
+            vendorId: true,
+            selectedVendorMode: true,
+            vendorSku: true,
+            unit: true,
             qtyMilli: true,
             unitCostCents: true,
+            computedCostCents: true,
+            receivedQtyMilli: true,
             notes: true,
+            vendor: { select: { id: true, name: true, email: true, emails: true } },
+            catalogItem: { select: { name: true, itemCode: true } },
+            estimateLine: { select: { sortOrder: true, description: true } },
+            bundleComponent: { select: { componentName: true } },
+          },
+        },
+        vendorSections: {
+          orderBy: [{ vendor: { name: 'asc' } }],
+          select: {
+            id: true,
+            vendorId: true,
+            status: true,
+            sentAt: true,
+            messageId: true,
+            lastError: true,
+            vendor: { select: { id: true, name: true, email: true, emails: true } },
           },
         },
         attachments: {
@@ -74,7 +98,7 @@ export default async function PurchaseOrderDetailPage({
     prisma.vendor.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
       orderBy: [{ name: 'asc' }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, email: true, emails: true },
       take: 500,
     }),
     prisma.pOEvent.findMany({
@@ -89,6 +113,7 @@ export default async function PurchaseOrderDetailPage({
         actor: { select: { name: true, email: true } },
       },
     }),
+    loadEstimateCatalogPickerRows(prisma, me.tenantId),
   ]);
 
   if (!po) {
@@ -96,9 +121,7 @@ export default async function PurchaseOrderDetailPage({
   }
 
   const [receiptWorkflowSummary, lifecycleSnapshot] = await Promise.all([
-    me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN
-      ? getPoReceiptWorkflowSummary(me.tenantId, id)
-      : Promise.resolve(null),
+    getPoReceiptWorkflowSummary(me.tenantId, id),
     getPoLifecycleSnapshot(me.tenantId, id),
   ]);
 
@@ -113,9 +136,7 @@ export default async function PurchaseOrderDetailPage({
         )
       : null;
 
-  const vendorReplyCount = events.filter((e) => e.kind === POEventKind.VENDOR_REPLY).length;
-
-  const bootstrap: PoEditorBootstrap = {
+  const bootstrap: PoRedesignBootstrap = {
     po: {
       id: po.id,
       number: po.number,
@@ -134,11 +155,51 @@ export default async function PurchaseOrderDetailPage({
       id: l.id,
       kind: l.kind,
       description: l.description,
+      estimateLineId: l.estimateLineId,
+      catalogItemId: l.catalogItemId,
+      bundleComponentId: l.bundleComponentId,
+      vendorId: l.vendorId,
+      selectedVendorMode: l.selectedVendorMode,
+      vendorSku: l.vendorSku,
+      unit: l.unit,
       qtyMilli: l.qtyMilli,
       unitCostCents: l.unitCostCents,
+      computedCostCents: l.computedCostCents,
+      receivedQtyMilli: l.receivedQtyMilli,
       notes: l.notes,
+      vendor: l.vendor,
+      catalogItemName: l.catalogItem?.name ?? null,
+      catalogItemCode: l.catalogItem?.itemCode ?? null,
+      sourceEstimateLineLabel: l.estimateLine ? `Est. line ${l.estimateLine.sortOrder + 1}` : null,
+      sourceBundleComponentLabel: l.bundleComponent?.componentName ?? null,
     })),
     vendors,
+    vendorSections: po.vendorSections.map((section) => ({
+      id: section.id,
+      vendorId: section.vendorId,
+      status: section.status,
+      sentAt: section.sentAt?.toISOString() ?? null,
+      messageId: section.messageId,
+      lastError: section.lastError,
+      vendor: section.vendor,
+    })),
+    catalog,
+    receiptSummary: receiptWorkflowSummary
+      ? {
+          latestOcrStatus: receiptWorkflowSummary.latestOcrStatus,
+          ocrDocumentsTotal: receiptWorkflowSummary.ocrDocumentsTotal,
+          latestReconciliationStatus: receiptWorkflowSummary.latestReconciliationStatus,
+          openSpendAlertCount: receiptWorkflowSummary.openSpendAlertCount,
+          operatorMarkedReconciledAt: receiptWorkflowSummary.operatorMarkedReconciledAt?.toISOString() ?? null,
+        }
+      : null,
+    lifecycle: lifecycleSnapshot
+      ? {
+          label: lifecycleSnapshot.label,
+          receiptProgressLabel: lifecycleSnapshot.receiptProgressLabel,
+          vendorResponseLabel: lifecycleSnapshot.vendorResponseLabel,
+        }
+      : null,
     events: events.map((e) => ({
       id: e.id,
       kind: e.kind,
@@ -156,37 +217,12 @@ export default async function PurchaseOrderDetailPage({
       sourceEmailId: a.sourceEmailId,
       uploadedByLabel: a.uploadedBy.name ?? a.uploadedBy.email,
     })),
-    canDelete: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
   };
 
   return (
     <>
-      <PageHeader
-        title={`${po.number}${po.estimate ? ` · from ${po.estimate.number}` : ''}`}
-        subtitle={`Created by ${po.createdBy.name ?? po.createdBy.email}${
-          po.vendor ? ` · vendor ${po.vendor.name}` : ' · no vendor yet'
-        }`}
-        actions={
-          <Link
-            href="/purchase-orders"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-          >
-            Back to POs
-          </Link>
-        }
-      />
-      {lifecycleSnapshot ? (
-        <PoExecutionWorkspace
-          poId={po.id}
-          poNumber={po.number}
-          lifecycle={lifecycleSnapshot}
-          receiptSummary={receiptWorkflowSummary}
-          role={me.role}
-          vendorReplyCount={vendorReplyCount}
-        />
-      ) : null}
-      <div className="mx-auto max-w-[1200px] px-4 lg:px-6">
-        <PoEditor bootstrap={bootstrap} />
+      <div className="mx-auto max-w-[1440px] px-4 py-4 lg:px-6">
+        <PoRedesignEditor bootstrap={bootstrap} />
         {estimateOriginQuoteUi != null && po.estimate != null ? (
           <PoEstimateOriginSection
             estimateId={po.estimate.id}

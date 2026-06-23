@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma, Prisma, Role, VehicleDimensionConfidenceLevel } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
 import { formatInches, formatSqFt, VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 
@@ -97,16 +98,16 @@ export default async function VehicleLibraryPage({ searchParams }: { searchParam
       />
 
       <section className="mb-5 grid gap-3 md:grid-cols-4">
-        <Metric label="Vehicles" value={totalCount} detail="Tenant library" />
-        <Metric label="Photos" value={withPhotoCount} detail="Primary photo attached" />
-        <Metric label="Dimensions" value={withDimsCount} detail="Has specs/profile" />
-        <Metric label="Wrap profiles" value={withWrapCount} detail="Has sq ft estimate" />
+        <Metric label="Vehicles" value={totalCount} detail="Tenant library" tone="blue" />
+        <Metric label="Photos" value={withPhotoCount} detail="Primary photo attached" tone="emerald" />
+        <Metric label="Dimensions" value={withDimsCount} detail="Has specs/profile" tone="slate" />
+        <Metric label="Wrap profiles" value={withWrapCount} detail="Has sq ft estimate" tone="violet" />
       </section>
 
       <section className="mb-5 rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
         <form method="get" className="grid gap-3 lg:grid-cols-[1.5fr_repeat(5,1fr)_auto]">
-          <input name="q" defaultValue={q} placeholder="Search year, make, model, trim..." className={inputClass} />
-          <input name="year" defaultValue={sp.year ?? ''} placeholder="Year" className={inputClass} />
+          <AutoSubmitInput name="q" defaultValue={q} placeholder="Search year, make, model, trim..." className={inputClass} />
+          <AutoSubmitInput name="year" defaultValue={sp.year ?? ''} placeholder="Year" className={inputClass} />
           <Select name="make" value={sp.make ?? ''} label="All makes" options={makes.map((m) => m.name)} />
           <Select name="bodyStyle" value={sp.bodyStyle ?? ''} label="All body styles" options={bodyStyles.map((b) => b.bodyStyle).filter(Boolean) as string[]} />
           <Select name="vehicleType" value={sp.vehicleType ?? ''} label="All vehicle types" options={vehicleTypes.map((v) => v.vehicleType).filter(Boolean) as string[]} />
@@ -131,11 +132,15 @@ export default async function VehicleLibraryPage({ searchParams }: { searchParam
           secondaryAction={canManage ? { label: 'Import vehicles', href: '/vehicles/import' } : undefined}
         />
       ) : view === 'table' ? (
-        <VehicleTable vehicles={vehicles} />
+        <section className="max-h-[calc(100vh-395px)] min-h-[320px] overflow-y-auto">
+          <VehicleTable vehicles={vehicles} />
+        </section>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {vehicles.map((vehicle) => <VehicleCard key={vehicle.id} vehicle={vehicle} />)}
-        </div>
+        <section className="max-h-[calc(100vh-395px)] min-h-[320px] overflow-y-auto pr-1">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {vehicles.map((vehicle) => <VehicleCard key={vehicle.id} vehicle={vehicle} />)}
+          </div>
+        </section>
       )}
     </>
   );
@@ -151,19 +156,25 @@ function toggleClass(active: boolean): string {
 
 function Select({ name, value, label, options }: { name: string; value: string; label: string; options: string[] }) {
   return (
-    <select name={name} defaultValue={value} className={inputClass}>
+    <AutoSubmitSelect name={name} defaultValue={value} className={inputClass}>
       <option value="">{label}</option>
       {options.map((option) => <option key={option} value={option}>{option}</option>)}
-    </select>
+    </AutoSubmitSelect>
   );
 }
 
-function Metric({ label, value, detail }: { label: string; value: number; detail: string }) {
+function Metric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: 'blue' | 'emerald' | 'slate' | 'violet' }) {
+  const toneClass = {
+    blue: 'from-blue-600/10 to-indigo-500/10 text-blue-700 ring-blue-500/15',
+    emerald: 'from-emerald-600/10 to-teal-500/10 text-emerald-700 ring-emerald-500/15',
+    slate: 'from-slate-600/10 to-slate-400/10 text-slate-700 ring-slate-500/15',
+    violet: 'from-violet-600/10 to-fuchsia-500/10 text-violet-700 ring-violet-500/15',
+  }[tone];
   return (
-    <div className="rounded-[20px] border border-white/80 bg-white/90 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-[28px] font-black tracking-[-0.04em] text-slate-950">{value}</p>
-      <p className="mt-1 text-[12px] text-slate-500">{detail}</p>
+    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+      <p className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</p>
+      <p className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</p>
+      <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>
     </div>
   );
 }

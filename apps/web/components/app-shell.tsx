@@ -78,17 +78,17 @@ export function AppShell({
   const workspaceTitle = workspaceHeaderLabel(user.role, user.tenant?.name ?? null);
 
   return (
-    <div className="grid h-screen grid-cols-[292px_1fr] overflow-hidden bg-[radial-gradient(circle_at_top_left,#dbeafe_0,transparent_32%),radial-gradient(circle_at_top_right,#ccfbf1_0,transparent_26%),linear-gradient(135deg,#f8fafc_0%,#eef4ff_46%,#f9fafb_100%)] print:block print:h-auto print:overflow-visible">
-      <aside className="relative flex h-screen flex-col overflow-hidden border-r border-white/80 bg-white/[0.76] px-4 py-5 shadow-[12px_0_44px_rgba(15,23,42,0.08)] backdrop-blur-2xl [--color-bv-bg:#f8fafc] [--color-bv-border:#e2e8f0] [--color-bv-muted:#64748b] [--color-bv-surface:#ffffff] [--color-bv-text:#0f172a] print:hidden">
+    <div className="grid h-screen grid-cols-[292px_1fr] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(242,135,68,0.18)_0,transparent_31%),radial-gradient(circle_at_top_right,rgba(18,64,100,0.14)_0,transparent_28%),linear-gradient(135deg,#fffaf4_0%,#f8f4ef_44%,#f6efe8_100%)] print:block print:h-auto print:overflow-visible">
+      <aside className="relative flex h-screen flex-col overflow-hidden border-r border-[#eadfd3]/90 bg-[#fff8f0]/92 px-4 py-5 shadow-[18px_0_54px_rgba(28,73,114,0.10)] backdrop-blur-2xl [--color-bv-bg:#f8f4ef] [--color-bv-border:#eadfd3] [--color-bv-muted:#6d7480] [--color-bv-surface:#fffdfa] [--color-bv-text:#1C4972] print:hidden">
         <div
           aria-hidden
-          className="pointer-events-none absolute -left-28 top-0 h-64 w-64 rounded-full bg-blue-200/60 blur-3xl"
+          className="pointer-events-none absolute -left-28 top-0 h-64 w-64 rounded-full bg-[#d8e8f3]/75 blur-3xl"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute bottom-20 right-[-7rem] h-72 w-72 rounded-full bg-cyan-100/80 blur-3xl"
+          className="pointer-events-none absolute bottom-20 right-[-7rem] h-72 w-72 rounded-full bg-[#F28744]/16 blur-3xl"
         />
-        <Brand className="relative shrink-0 px-2 pb-7" />
+        <Brand className="relative shrink-0 justify-center px-1 pb-7" />
         <NavLinks sections={navSections} />
         <div className="relative">
           <UserMenu
@@ -119,7 +119,7 @@ export function PageHeader({
   return (
     <div className="mb-7 flex items-start justify-between gap-4">
       <div className="flex flex-col">
-        <h1 className="text-[34px] font-semibold tracking-[-0.04em] text-slate-950">
+        <h1 className="text-[34px] font-semibold tracking-[-0.04em] text-[var(--color-bv-text)]">
           {title}
         </h1>
         {subtitle ? (

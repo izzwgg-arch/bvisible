@@ -11,7 +11,7 @@ import { writeAuditLog } from '@/lib/auth/audit';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { nextPoNumber } from '@/lib/po/number';
-import { mapEstimateKindToPoKind } from '@/lib/purchase-orders/map-estimate-kind-to-po-kind';
+import { createPoFromInternalMaterials } from '@/lib/purchase-orders/create-po-from-internal-materials';
 
 export interface CreatePoState {
   error: string | null;
@@ -101,7 +101,7 @@ export async function createPoFromEstimateAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
   }
-  const { estimateId, vendorId } = parsed.data;
+  const { estimateId } = parsed.data;
 
   const estimate = await prisma.estimate.findFirst({
     where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
@@ -109,17 +109,6 @@ export async function createPoFromEstimateAction(
       id: true,
       number: true,
       status: true,
-      lines: {
-        orderBy: [{ sortOrder: 'asc' }],
-        select: {
-          kind: true,
-          description: true,
-          qtyMilli: true,
-          unitCostCents: true,
-          computedCostCents: true,
-          notes: true,
-        },
-      },
     },
   });
   if (!estimate) {
@@ -133,83 +122,34 @@ export async function createPoFromEstimateAction(
     };
   }
 
-  if (vendorId) {
-    const ok = await prisma.vendor.findFirst({
-      where: { id: vendorId, tenantId: me.tenantId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!ok) return { error: 'That vendor does not exist.' };
-  }
-
-  const subtotalCents = estimate.lines.reduce(
-    (acc, l) => acc + l.computedCostCents,
-    0
+  const poResult = await prisma.$transaction(async (tx) =>
+    createPoFromInternalMaterials(tx, {
+      tenantId: me.tenantId,
+      estimateId: estimate.id,
+      actorId: me.id,
+    })
   );
-
-  const po = await prisma.$transaction(async (tx) => {
-    const number = await nextPoNumber(tx, me.tenantId);
-    const created = await tx.purchaseOrder.create({
-      data: {
-        tenantId: me.tenantId,
-        estimateId: estimate.id,
-        vendorId: vendorId ?? null,
-        number,
-        subtotalCents,
-        createdById: me.id,
-      },
-      select: { id: true, number: true },
-    });
-    if (estimate.lines.length > 0) {
-      await tx.pOLineItem.createMany({
-        data: estimate.lines.map((l, i) => ({
-          tenantId: me.tenantId,
-          purchaseOrderId: created.id,
-          sortOrder: i,
-          kind: mapEstimateKindToPoKind(l.kind),
-          description: l.description,
-          qtyMilli: l.qtyMilli,
-          unitCostCents: l.unitCostCents,
-          computedCostCents: l.computedCostCents,
-          notes: l.notes,
-        })),
-      });
-    }
-    await tx.pOEvent.create({
-      data: {
-        tenantId: me.tenantId,
-        purchaseOrderId: created.id,
-        kind: POEventKind.CREATED_FROM_ESTIMATE,
-        message: `Converted from estimate ${estimate.number} (${estimate.lines.length} line${
-          estimate.lines.length === 1 ? '' : 's'
-        })`,
-        metadata: {
-          estimateId: estimate.id,
-          estimateNumber: estimate.number,
-          lineCount: estimate.lines.length,
-          subtotalCents,
-        },
-        actorId: me.id,
-      },
-    });
-    return created;
-  });
+  if (!poResult.ok) {
+    return { error: poResult.error };
+  }
 
   await writeAuditLog({
     action: 'po_created_from_estimate',
     userId: me.id,
     tenantId: me.tenantId,
     targetType: 'purchase_order',
-    targetId: po.id,
+    targetId: poResult.purchaseOrderId,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
     metadata: {
-      number: po.number,
+      number: poResult.purchaseOrderNumber,
       estimateId: estimate.id,
       estimateNumber: estimate.number,
-      lineCount: estimate.lines.length,
-      subtotalCents,
+      lineCount: poResult.lineCount,
+      vendorCount: poResult.vendorCount,
+      subtotalCents: poResult.subtotalCents,
     },
   });
 
-  return { error: null, purchaseOrderId: po.id };
+  return { error: null, purchaseOrderId: poResult.purchaseOrderId };
 }

@@ -1,7 +1,9 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { prisma, EstimateStatus, Prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
 import { formatMoney } from '@/lib/estimate/format';
 import { getEstimateListNextAction } from '@/lib/estimate/estimate-list-next-action';
@@ -143,17 +145,15 @@ export default async function EstimatesPage({
         }
       />
 
-      <section className="mb-5 overflow-hidden rounded-[22px] border border-white/70 bg-white/85 shadow-[0_18px_60px_-38px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/[0.04]">
-        <div className="border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/70 to-emerald-50/70 px-5 py-5">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <MetricCard label="Visible value" value={formatMoney(totalSellCents)} tone="blue" />
-            <MetricCard label="Approved" value={approvedCount.toLocaleString()} tone="emerald" />
-            <MetricCard label="Drafts" value={draftCount.toLocaleString()} tone="slate" />
-            <MetricCard label="Ready invoice" value={readyForInvoiceCount.toLocaleString()} tone="violet" />
-          </div>
-        </div>
+      <section className="mb-5 grid gap-3 sm:grid-cols-4">
+        <MetricCard label="Visible value" value={formatMoney(totalSellCents)} tone="blue" />
+        <MetricCard label="Approved" value={approvedCount.toLocaleString()} tone="emerald" />
+        <MetricCard label="Drafts" value={draftCount.toLocaleString()} tone="slate" />
+        <MetricCard label="Ready invoice" value={readyForInvoiceCount.toLocaleString()} tone="violet" />
+      </section>
 
-        <form className="grid gap-3 px-5 py-4 lg:grid-cols-[minmax(260px,1fr)_180px_190px_180px_auto] lg:items-end">
+      <section className="mb-5 rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+        <form method="get" className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_190px_180px_auto] lg:items-end">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
               Search
@@ -165,7 +165,7 @@ export default async function EstimatesPage({
                   <path d="m20 20-3.5-3.5" />
                 </svg>
               </span>
-              <input
+              <AutoSubmitInput
                 name="q"
                 defaultValue={query}
                 placeholder="Search by estimate, job, or client..."
@@ -240,92 +240,98 @@ export default async function EstimatesPage({
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            <table className="w-full text-[13px]">
-              <thead className="sticky top-0 z-10">
-                <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[10.5px] uppercase tracking-[0.14em] text-slate-400">
-                  <th className="px-5 py-3 font-black">Job</th>
-                  <th className="px-4 py-3 font-black">Client</th>
-                  <th className="px-4 py-3 font-black">Workflow</th>
-                  <th className="px-4 py-3 font-black">Status</th>
-                  <th className="px-4 py-3 text-right font-black">Sell</th>
-                  <th className="px-4 py-3 font-black">Next</th>
-                  <th className="px-5 py-3 text-right font-black">Quick</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEstimates.map((e) => {
-                  const hasPo = e._count.purchaseOrders > 0;
-                  const hasInvoice = e._count.invoices > 0;
-                  const next = getEstimateListNextAction({
-                    id: e.id,
-                    status: e.status,
-                    lineCount: e._count.lines,
-                    hasLinkedPo: hasPo,
-                    hasLinkedInvoice: hasInvoice,
-                  });
-                  const chips = getEstimateListWorkflowChips({
-                    status: e.status,
-                    hasLinkedPo: hasPo,
-                    hasLinkedInvoice: hasInvoice,
-                  });
-                  return (
-                    <tr
-                      key={e.id}
-                      className="group border-b border-slate-100 transition-colors last:border-b-0 hover:bg-blue-50/35"
-                    >
-                      <td className="px-5 py-4">
-                        <Link
-                          href={`/estimates/${e.id}` as never}
-                          className="group/job block hover:text-blue-600"
-                        >
+            <div className="grid gap-3 p-4">
+              <div className="hidden px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 xl:grid xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.8fr)_minmax(0,1fr)_110px_100px_minmax(0,0.9fr)_110px]">
+                <span>Job</span>
+                <span>Client</span>
+                <span>Workflow</span>
+                <span>Status</span>
+                <span>Sell</span>
+                <span>Next</span>
+                <span className="text-right">Quick</span>
+              </div>
+              {filteredEstimates.map((e) => {
+                const hasPo = e._count.purchaseOrders > 0;
+                const hasInvoice = e._count.invoices > 0;
+                const next = getEstimateListNextAction({
+                  id: e.id,
+                  status: e.status,
+                  lineCount: e._count.lines,
+                  hasLinkedPo: hasPo,
+                  hasLinkedInvoice: hasInvoice,
+                });
+                const chips = getEstimateListWorkflowChips({
+                  status: e.status,
+                  hasLinkedPo: hasPo,
+                  hasLinkedInvoice: hasInvoice,
+                });
+                return (
+                  <div
+                    key={e.id}
+                    className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.8fr)_minmax(0,1fr)_110px_100px_minmax(0,0.9fr)_110px]"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100 transition group-hover:bg-blue-100">
+                          {initials(e.title || e.number)}
+                        </div>
+                        <Link href={`/estimates/${e.id}` as never} className="min-w-0 hover:text-blue-600">
                           <span className="font-mono text-[11px] font-bold text-slate-400">{e.number}</span>
-                          <span className="mt-1 block text-[14px] font-black leading-tight text-slate-950 group-hover/job:text-blue-600">{e.title}</span>
+                          <span className="mt-1 block truncate text-[14px] font-black leading-tight text-slate-950 group-hover:text-blue-600">{e.title}</span>
                           <span className="mt-1 block text-[11.5px] font-medium text-slate-400">
                             Updated {formatDate(e.updatedAt)}
                           </span>
                         </Link>
-                      </td>
-                      <td className="px-4 py-4 font-semibold text-slate-600">{e.client.companyName}</td>
-                      <td className="px-4 py-4">
-                        <WorkflowChips chips={chips} />
-                      </td>
-                      <td className="px-4 py-4">
-                        <StatusPill status={e.status} />
-                      </td>
-                      <td className="px-4 py-4 text-right text-[13.5px] font-black tabular-nums text-slate-950">
-                        {formatMoney(e.finalPriceCents)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <Link
-                          href={next.href as never}
-                          title={next.label}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-bold transition ${
-                            next.tone === 'primary'
-                              ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                              : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-                          }`}
-                        >
-                          {next.label}
-                          {next.tone === 'primary' ? (
-                            <span aria-hidden className="text-[11px]">
-                              →
-                            </span>
-                          ) : null}
-                        </Link>
-                      </td>
-                      <td className="px-5 py-4">
-                        <QuickActions
-                          id={e.id}
-                          status={e.status}
-                          hasPo={hasPo}
-                          hasInvoice={hasInvoice}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+
+                    <EstimateRowValue label="Client" value={e.client.companyName} strong />
+
+                    <div>
+                      <MobileLabel>Workflow</MobileLabel>
+                      <WorkflowChips chips={chips} />
+                    </div>
+
+                    <div>
+                      <MobileLabel>Status</MobileLabel>
+                      <StatusPill status={e.status} />
+                    </div>
+
+                    <EstimateRowValue label="Sell" value={formatMoney(e.finalPriceCents)} strong />
+
+                    <div>
+                      <MobileLabel>Next</MobileLabel>
+                      <Link
+                        href={next.href as never}
+                        title={next.label}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-bold transition ${
+                          next.tone === 'primary'
+                            ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                        }`}
+                      >
+                        {next.label}
+                        {next.tone === 'primary' ? (
+                          <span aria-hidden className="text-[11px]">
+                            →
+                          </span>
+                        ) : null}
+                      </Link>
+                    </div>
+
+                    <div>
+                      <MobileLabel>Quick</MobileLabel>
+                      <QuickActions
+                        id={e.id}
+                        status={e.status}
+                        hasPo={hasPo}
+                        hasInvoice={hasInvoice}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </section>
       )}
@@ -373,6 +379,28 @@ function QuickActions({
       ))}
     </div>
   );
+}
+
+function EstimateRowValue({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className={`min-w-0 truncate text-[12.5px] tabular-nums ${strong ? 'font-semibold text-slate-950' : 'text-slate-600'}`}>
+      <MobileLabel>{label}</MobileLabel>
+      {value}
+    </div>
+  );
+}
+
+function MobileLabel({ children }: { children: ReactNode }) {
+  return <span className="mb-0.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 xl:hidden">{children}</span>;
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
 const CHIP_TONE: Record<
@@ -433,7 +461,7 @@ function MetricCard({
   }[tone];
 
   return (
-    <div className={`rounded-[18px] bg-gradient-to-br px-4 py-3 ring-1 ${toneClass}`}>
+    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
       <p className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</p>
       <p className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</p>
     </div>
@@ -456,7 +484,7 @@ function FilterSelect({
       <span className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
         {label}
       </span>
-      <select
+      <AutoSubmitSelect
         name={name}
         defaultValue={value}
         className="h-11 rounded-[14px] border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
@@ -466,7 +494,7 @@ function FilterSelect({
             {option.label}
           </option>
         ))}
-      </select>
+      </AutoSubmitSelect>
     </label>
   );
 }

@@ -595,6 +595,32 @@ async function main(): Promise<void> {
     ],
   });
 
+  await prisma.emailIngestRun.deleteMany({
+    where: { tenantId: tenant.id, errorMessage: { startsWith: 'dashboard-demo' } },
+  });
+  await prisma.emailIngestRun.createMany({
+    data: Array.from({ length: 14 }, (_, index) => {
+      const scannedCount = 8 + ((index * 3) % 9);
+      const ingestedCount = Math.max(1, scannedCount - (index % 4));
+      const matchedCount = Math.max(0, ingestedCount - (index % 3));
+      const errorCount = index % 6 === 0 ? 1 : 0;
+      const durationMs = 90_000 + (index % 5) * 22_000;
+      const startedAt = daysAgo(index);
+
+      return {
+        tenantId: tenant.id,
+        startedAt,
+        finishedAt: new Date(startedAt.getTime() + durationMs),
+        durationMs,
+        scannedCount,
+        ingestedCount,
+        matchedCount,
+        errorCount,
+        errorMessage: 'dashboard-demo ingest run',
+      };
+    }),
+  });
+
   await prisma.pOEvent.deleteMany({
     where: { tenantId: tenant.id, message: { startsWith: 'Dashboard demo:' } },
   });

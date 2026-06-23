@@ -13,6 +13,7 @@ function row(partial: Partial<EstimateCatalogPickerRow>): EstimateCatalogPickerR
     id: 'i1',
     name: 'Test',
     nameNormalized: 'test',
+    itemType: 'SINGLE',
     kind: EstimateLineKind.MATERIAL,
     catalogUnit: 'EACH',
     customUnitLabel: null,
@@ -20,12 +21,23 @@ function row(partial: Partial<EstimateCatalogPickerRow>): EstimateCatalogPickerR
     markupPercentMilli: 0,
     defaultSellPriceCents: null,
     defaultQtyMilli: 2000,
+    pricingMethod: null,
+    pricingEngine: 'MANUAL',
+    pricingInputsJson: null,
+    pricingOutputJson: null,
+    formulaVersion: null,
+    customerDescription: null,
+    componentCount: 0,
     machineId: null,
     preferredVendorId: null,
+    selectedVendorId: null,
+    selectedVendorMode: null,
+    selectedVendorCostCents: null,
     suggestedVendorCostCents: null,
     catalogPreferredVendorCostCents: null,
     catalogPreferredVendorName: null,
     catalogCheapestVendorCostCents: null,
+    catalogCheapestVendorId: null,
     catalogCheapestVendorName: null,
     ...partial,
   };
@@ -111,6 +123,36 @@ describe('buildLinePatchFromCatalogSelection', () => {
       qtyMilli: 3000,
       unitCostCents: 250,
       machineId: null,
+      catalogItemId: 'i1',
+      pricingMethod: null,
+      pricingEngine: 'MANUAL',
+      pricingInputsSnapshotJson: null,
+      pricingOutputSnapshotJson: null,
+      formulaVersion: null,
+      selectedVendorId: null,
+      selectedVendorMode: null,
+      customerDescription: null,
+    });
+  });
+
+  it('applies a bundle as one line with customer-facing description and bundle reference', () => {
+    const patch = buildLinePatchFromCatalogSelection({
+      row: row({
+        itemType: 'BUNDLE',
+        id: 'bundle-1',
+        name: 'Wall graphic package',
+        customerDescription: 'Installed wall graphic package',
+        componentCount: 3,
+        internalCostCents: 50000,
+        defaultQtyMilli: 1000,
+      }),
+      machinesById: new Map(),
+    });
+    expect(patch).toMatchObject({
+      description: 'Wall graphic package',
+      unitCostCents: 50000,
+      catalogItemId: 'bundle-1',
+      customerDescription: 'Installed wall graphic package',
     });
   });
 
@@ -168,6 +210,45 @@ describe('catalogPickerSellHintCents', () => {
         machinesById: machines,
       }),
     ).toBe(1200);
+  });
+
+  it('uses explicit internal cost source even when vendor suggestions exist', () => {
+    expect(
+      resolveCatalogUnitCostCents({
+        row: row({
+          internalCostCents: 500,
+          suggestedVendorCostCents: 800,
+          selectedVendorMode: 'INTERNAL',
+        }),
+        machinesById: machines,
+      }),
+    ).toBe(500);
+  });
+
+  it('snapshots selected vendor metadata on apply', () => {
+    const patch = buildLinePatchFromCatalogSelection({
+      row: row({
+        pricingMethod: 'SHEET_GOODS',
+        pricingEngine: 'SHEET_GOODS',
+        pricingInputsJson: { sheetSqft: 32 },
+        pricingOutputJson: { formulaVersion: 'catalog-pricing-v1' },
+        formulaVersion: 'catalog-pricing-v1',
+        selectedVendorMode: 'CHEAPEST',
+        catalogCheapestVendorId: 'v-cheap',
+        catalogCheapestVendorCostCents: 700,
+      }),
+      machinesById: machines,
+    });
+    expect(patch.unitCostCents).toBe(700);
+    expect(patch).toMatchObject({
+      pricingMethod: 'SHEET_GOODS',
+      pricingEngine: 'SHEET_GOODS',
+      pricingInputsSnapshotJson: { sheetSqft: 32 },
+      pricingOutputSnapshotJson: { formulaVersion: 'catalog-pricing-v1' },
+      formulaVersion: 'catalog-pricing-v1',
+      selectedVendorId: 'v-cheap',
+      selectedVendorMode: 'CHEAPEST',
+    });
   });
 
   it('explicit catalog sell override wins over markup', () => {

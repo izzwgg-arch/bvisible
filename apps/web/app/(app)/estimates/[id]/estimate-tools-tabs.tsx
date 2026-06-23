@@ -7,15 +7,13 @@ import {
   SectionCard,
   IconBadge,
   IconCatalog,
-  IconCalculator,
 } from '@/components/estimate/estimate-surface';
 import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import { CatalogItemPicker } from './catalog-item-picker';
-import { PricingHelperPanel } from './pricing-helper-panel';
 import { VendorCatalogIntelPanel } from './vendor-catalog-intel-panel';
 import type { Action, DraftLine } from './editor';
 
-type ToolTab = 'catalog' | 'price' | 'vehicle' | 'offer' | 'vendor' | 'intel' | 'change';
+type ToolTab = 'catalog' | 'vehicle' | 'offer' | 'vendor' | 'intel' | 'change';
 
 const TABS: ReadonlyArray<{
   id: ToolTab;
@@ -23,7 +21,6 @@ const TABS: ReadonlyArray<{
   hint: string;
 }> = [
   { id: 'catalog', label: 'Catalog', hint: 'Apply saved items' },
-  { id: 'price', label: 'Price', hint: 'Sq ft · sheets · rolls' },
   { id: 'vehicle', label: 'Vehicle', hint: 'Vehicle wrap calculator' },
   { id: 'offer', label: 'Offer', hint: 'Quote package and customer offer' },
   { id: 'vendor', label: 'Vendor', hint: 'Supplier planning' },
@@ -55,15 +52,6 @@ function ToolTabIcon({ tab }: { tab: ToolTab }) {
       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M5 4h10a2 2 0 0 1 2 2v14l-6-3-6 3V6a2 2 0 0 1 2-2Z" />
         <path d="M19 5v13" />
-      </svg>
-    );
-  }
-  if (tab === 'price') {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M4 19h16" />
-        <path d="M6 16 16 6" />
-        <path d="M8 6h8v8" />
       </svg>
     );
   }
@@ -148,10 +136,8 @@ export function EstimateToolsTabs({
   const [tab, setTab] = useState<ToolTab | null>('catalog');
   const vendorHintAvailable = vendorIntelLine != null;
 
-  const tone =
-    tab === 'price' ? 'violet' : tab === 'vendor' || tab === 'intel' ? 'emerald' : 'emerald';
-  const icon =
-    tab === 'price' ? <IconCalculator /> : tab === 'vendor' || tab === 'intel' ? <IconChart /> : <IconCatalog />;
+  const tone = tab === 'vendor' || tab === 'intel' ? 'emerald' : 'emerald';
+  const icon = tab === 'vendor' || tab === 'intel' ? <IconChart /> : <IconCatalog />;
   const activeMeta = tab ? TABS.find((t) => t.id === tab)! : null;
 
   return (
@@ -172,7 +158,7 @@ export function EstimateToolsTabs({
         <div
           role="tablist"
           aria-label="Estimating tools"
-          className="mt-3 grid grid-cols-7 gap-1.5"
+          className="mt-3 grid grid-cols-6 gap-1.5"
         >
           {TABS.map((t) => {
             const active = tab === t.id;
@@ -214,15 +200,6 @@ export function EstimateToolsTabs({
               readOnly={readOnly}
               embedded
               onApplied={onCatalogApply}
-              dispatch={dispatch}
-            />
-          ) : null}
-          {tab === 'price' ? (
-            <PricingHelperPanel
-              activeLineId={catalogLineId}
-              lines={lines}
-              readOnly={readOnly}
-              embedded
               dispatch={dispatch}
             />
           ) : null}

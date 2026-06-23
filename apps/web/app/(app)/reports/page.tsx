@@ -148,19 +148,17 @@ function ReportMetric({
   tone: 'blue' | 'amber' | 'emerald' | 'violet';
 }) {
   const toneClass = {
-    blue: 'text-blue-700 ring-blue-100 from-blue-500/12 to-cyan-400/10',
-    amber: 'text-amber-700 ring-amber-100 from-amber-400/16 to-orange-300/10',
-    emerald: 'text-emerald-700 ring-emerald-100 from-emerald-400/16 to-teal-300/10',
-    violet: 'text-violet-700 ring-violet-100 from-violet-400/16 to-blue-300/10',
+    blue: 'from-blue-600/10 to-indigo-500/10 text-blue-700 ring-blue-500/15',
+    amber: 'from-amber-500/10 to-orange-400/10 text-amber-700 ring-amber-500/15',
+    emerald: 'from-emerald-600/10 to-teal-500/10 text-emerald-700 ring-emerald-500/15',
+    violet: 'from-violet-600/10 to-fuchsia-500/10 text-violet-700 ring-violet-500/15',
   }[tone];
 
   return (
-    <div className="rounded-[20px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className={`inline-flex rounded-full bg-gradient-to-br px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ring-1 ${toneClass}`}>
-        {label}
-      </div>
-      <div className="mt-4 text-[26px] font-semibold tracking-[-0.04em] text-slate-950">{value}</div>
-      <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{detail}</p>
+    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+      <div className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</div>
+      <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</div>
+      <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>
     </div>
   );
 }

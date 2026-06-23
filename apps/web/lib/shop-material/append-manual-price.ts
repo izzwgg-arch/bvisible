@@ -19,6 +19,7 @@ export async function appendManualVendorPriceForShopItem(
     note: string | null;
     effectiveAt: Date | null;
     vendorSku?: string | null;
+    leadTimeDays?: number | null;
   },
 ): Promise<
   | { ok: true; vendorCatalogItemId: string; vendorPriceHistoryId: string }
@@ -122,10 +123,20 @@ export async function appendManualVendorPriceForShopItem(
       select: { id: true },
     });
     const sku = args.vendorSku?.trim();
+    const catalogUpdate: Prisma.VendorCatalogItemUpdateInput = {};
     if (sku) {
+      catalogUpdate.vendorSku = sku.slice(0, 120);
+    }
+    if (args.leadTimeDays !== undefined) {
+      catalogUpdate.leadTimeDays = args.leadTimeDays;
+    }
+    if (args.note?.trim()) {
+      catalogUpdate.notes = args.note.trim().slice(0, 1000);
+    }
+    if (Object.keys(catalogUpdate).length > 0) {
       await prisma.vendorCatalogItem.update({
         where: { id: catalogId },
-        data: { vendorSku: sku.slice(0, 120) },
+        data: catalogUpdate,
       });
     }
 

@@ -5,7 +5,10 @@ import {
   POAttachmentKind,
   POLineKind,
   POStatus,
+  PricingEngine,
   Role,
+  ShopCatalogUnit,
+  VendorCostSourceMode,
 } from '@bvisible/db';
 import { MAX_UPLOAD_BYTES } from '@/lib/po/uploads';
 
@@ -123,16 +126,17 @@ const longText = (max: number) =>
     .transform((v) => (v && v.length > 0 ? v : null));
 
 const optionalEmail = z
-  .union([z.literal(''), emailSchema, z.null()])
+  .union([z.literal(''), emailSchema, z.null(), z.literal('null'), z.literal('undefined')])
   .nullish()
   .transform((v) => (v && v.length > 0 ? v : null));
 
 const optionalShort = (max: number) =>
   z
-    .string()
-    .trim()
-    .max(max)
-    .nullish()
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (typeof v === 'string' ? v : ''))
+    .transform((v) => v.trim())
+    .transform((v) => (v === 'null' || v === 'undefined' ? '' : v))
+    .refine((v) => v.length <= max, { message: `Too long (max ${max} chars).` })
     .transform((v) => (v && v.length > 0 ? v : null));
 
 export const updateTenantInvoiceProfileSchema = z.object({
@@ -176,6 +180,7 @@ export type UpdateClientInput = z.infer<typeof updateClientSchema>;
 export const createEstimateSchema = z.object({
   clientId: z.string().min(1, 'Pick a client.').max(60),
   title: shortText(160),
+  estimateType: z.enum(['CUSTOM', 'STOCK_ITEM', 'SQUARE_FOOTAGE']).default('CUSTOM'),
 });
 
 const optionalNumberFromForm = z
@@ -190,6 +195,16 @@ const optionalNumberFromForm = z
 const optionalIntFromForm = optionalNumberFromForm.transform((value) =>
   value === null ? null : Math.trunc(value)
 );
+
+// Helper for nullable id refs. Accepts null/undefined/empty-string and
+// emits null. Callers pass `null` to clear; undefined means absent.
+const nullableIdRef = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (typeof v === 'string' ? v : ''))
+  .transform((v) => (v === 'null' || v === 'undefined' ? '' : v))
+  .transform((v) => v.trim())
+  .refine((v) => v.length <= 60, { message: 'Reference id is too long.' })
+  .transform((v) => (v && v.length > 0 ? v : null));
 
 const vehicleDimensionConfidenceLevelSchema = z
   .enum(['MANUAL', 'IMPORTED', 'ESTIMATED', 'VERIFIED'])
@@ -268,12 +283,18 @@ export const estimateVehicleManualSchema = z.object({
 // `qtyMilli` and `unitCostCents` are integers; the client is
 // responsible for parsing user input into these forms (see
 // apps/web/lib/estimate/format.ts and packages/pricing/src/qty.ts).
+const nullableJsonSnapshot = z.unknown().nullish().transform((v): unknown | null => v ?? null);
+
 export const estimateLineSchema = z.object({
   // Optional id so the server can keep the same row across saves;
   // missing means "newly inserted in this batch — assign one".
   id: z.string().min(1).max(60).optional(),
   kind: z.nativeEnum(EstimateLineKind),
-  description: z.string().trim().max(240),
+  description: z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (typeof v === 'string' ? v : ''))
+    .transform((v) => v.trim())
+    .refine((v) => v.length <= 240, { message: 'Description too long.' }),
   qtyMilli: z
     .number()
     .int()
@@ -285,11 +306,36 @@ export const estimateLineSchema = z.object({
     .min(-100_000_000_00, 'Unit cost out of range.')
     .max(100_000_000_00, 'Unit cost out of range.'),
   machineId: z
-    .string()
-    .max(60)
-    .optional()
-    .transform((v) => (v && v.length > 0 ? v : null)),
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (typeof v === 'string' ? v : ''))
+    .transform((v) => v.trim())
+    .refine((v) => v.length <= 60, { message: 'Machine id is too long.' })
+    .transform((v) => (v.length > 0 ? v : null)),
   notes: optionalShort(500),
+  materialCostCents: z.number().int().min(0).max(100_000_000_00).nullish().transform((v) => v ?? null),
+  partialUsageMilli: z.number().int().min(0).max(1_000_000_000).nullish().transform((v) => v ?? null),
+  laborHoursMilli: z.number().int().min(0).max(1_000_000_000).nullish().transform((v) => v ?? null),
+  machineTimeMilli: z.number().int().min(0).max(1_000_000_000).nullish().transform((v) => v ?? null),
+  designTimeMilli: z.number().int().min(0).max(1_000_000_000).nullish().transform((v) => v ?? null),
+  installTimeMilli: z.number().int().min(0).max(1_000_000_000).nullish().transform((v) => v ?? null),
+  vendorCostCents: z.number().int().min(0).max(100_000_000_00).nullish().transform((v) => v ?? null),
+  catalogItemId: nullableIdRef,
+  pricingMethod: z.string().max(40).nullish().transform((v) => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    return s.length > 0 ? s : null;
+  }),
+  pricingEngine: z.nativeEnum(PricingEngine).nullish().transform((v) => v ?? null),
+  pricingInputsSnapshotJson: nullableJsonSnapshot,
+  pricingOutputSnapshotJson: nullableJsonSnapshot,
+  formulaVersion: z.string().max(40).nullish().transform((v) => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    return s.length > 0 ? s : null;
+  }),
+  selectedVendorId: nullableIdRef,
+  selectedVendorMode: z.nativeEnum(VendorCostSourceMode).nullish().transform((v) => v ?? null),
+  internalNotes: optionalShort(10000),
+  hiddenFromCustomer: z.boolean().optional().default(false),
+  customerDescription: optionalShort(240),
 });
 
 // Bulk save — replaces all lines + meta in one transaction.
@@ -300,6 +346,7 @@ export const saveEstimateSchema = z.object({
   estimateId: z.string().min(1).max(60),
   title: shortText(160),
   notes: longText(4000),
+  estimateType: z.enum(['CUSTOM', 'STOCK_ITEM', 'SQUARE_FOOTAGE']).default('CUSTOM'),
   multiplierMilli: z
     .number()
     .int()
@@ -379,14 +426,19 @@ export const updateVendorSchema = z.object({
 });
 export type UpdateVendorInput = z.infer<typeof updateVendorSchema>;
 
-// Helper for nullable id refs. Accepts null/undefined/empty-string and
-// emits null. Callers pass `null` to clear, undefined to leave alone is
-// not modeled here (we always overwrite).
-const nullableIdRef = z
-  .string()
-  .max(60)
-  .nullish()
-  .transform((v) => (v && v.length > 0 ? v : null));
+export const createRepricingRequestSchema = z.object({
+  shopMaterialItemId: z.string().min(1).max(60),
+  vendorId: nullableIdRef,
+  oldCostCents: z.number().int().min(0).max(100_000_000_00).nullish().transform((v) => v ?? null),
+  reason: shortText(500),
+  notes: longText(2000),
+});
+
+export const updateRepricingRequestStatusSchema = z.object({
+  requestId: z.string().min(1).max(60),
+  status: z.enum(['REQUESTED', 'IN_REVIEW', 'UPDATED', 'IGNORED']),
+  notes: longText(2000).optional(),
+});
 
 // "Create blank PO" — the lines/qbo/etc are filled in later in the
 // editor. Vendor and estimate are both optional at creation time.
@@ -416,6 +468,13 @@ export const poLineSchema = z.object({
   id: z.string().min(1).max(60).optional(),
   kind: z.nativeEnum(POLineKind),
   description: z.string().trim().max(240),
+  estimateLineId: nullableIdRef,
+  catalogItemId: nullableIdRef,
+  bundleComponentId: nullableIdRef,
+  vendorId: nullableIdRef,
+  selectedVendorMode: z.nativeEnum(VendorCostSourceMode).nullish().transform((v) => v ?? null),
+  vendorSku: optionalShort(120),
+  unit: z.nativeEnum(ShopCatalogUnit).default(ShopCatalogUnit.EACH),
   qtyMilli: z
     .number()
     .int()
@@ -426,6 +485,12 @@ export const poLineSchema = z.object({
     .int()
     .min(-100_000_000_00, 'Unit cost out of range.')
     .max(100_000_000_00, 'Unit cost out of range.'),
+  receivedQtyMilli: z
+    .number()
+    .int()
+    .min(0, 'Received quantity cannot be negative.')
+    .max(1_000_000_000, 'Received quantity out of range.')
+    .default(0),
   notes: optionalShort(500),
 });
 
@@ -707,6 +772,8 @@ export type SavePurchaseOrderInput = z.infer<typeof savePurchaseOrderSchema>;
 export type UpdatePoStatusInput = z.infer<typeof updatePoStatusSchema>;
 export type SetPoQboNumberInput = z.infer<typeof setPoQboNumberSchema>;
 export type SetPoVendorInput = z.infer<typeof setPoVendorSchema>;
+export type CreateRepricingRequestInput = z.infer<typeof createRepricingRequestSchema>;
+export type UpdateRepricingRequestStatusInput = z.infer<typeof updateRepricingRequestStatusSchema>;
 export type AddPoNoteInput = z.infer<typeof addPoNoteSchema>;
 export type UploadAttachmentMetaInput = z.infer<typeof uploadAttachmentMetaSchema>;
 export type DeleteAttachmentInput = z.infer<typeof deleteAttachmentSchema>;

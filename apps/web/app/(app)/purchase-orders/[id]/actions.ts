@@ -37,6 +37,8 @@ import {
 } from '@/lib/po/uploads';
 import { insertPoAttachmentAndTimelineEvent } from '@/lib/po/attachment-insert';
 import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
+import { renderPurchaseOrderEmail } from '@/lib/emails/purchase-order';
+import { sendMail } from '@/lib/mailer';
 import { unlink } from 'node:fs/promises';
 
 export interface SavePoState {
@@ -83,12 +85,48 @@ export async function savePurchaseOrderAction(
           sortOrder: i,
           kind: l.kind,
           description: l.description,
+          estimateLineId: l.estimateLineId,
+          catalogItemId: l.catalogItemId,
+          bundleComponentId: l.bundleComponentId,
+          vendorId: l.vendorId,
+          selectedVendorMode: l.selectedVendorMode,
+          vendorSku: l.vendorSku,
+          unit: l.unit,
           qtyMilli: l.qtyMilli,
           unitCostCents: l.unitCostCents,
           computedCostCents: lineCosts[i] ?? 0,
+          receivedQtyMilli: l.receivedQtyMilli,
           notes: l.notes ?? null,
         })),
       });
+    }
+    const vendorIds = [
+      ...new Set(data.lines.map((line) => line.vendorId).filter((id): id is string => Boolean(id))),
+    ];
+    await tx.purchaseOrderVendor.deleteMany({
+      where: {
+        tenantId: me.tenantId,
+        purchaseOrderId: data.purchaseOrderId,
+        vendorId: { notIn: vendorIds.length > 0 ? vendorIds : ['__none__'] },
+      },
+    });
+    if (vendorIds.length > 0) {
+      for (const vendorId of vendorIds) {
+        await tx.purchaseOrderVendor.upsert({
+          where: {
+            purchaseOrderId_vendorId: {
+              purchaseOrderId: data.purchaseOrderId,
+              vendorId,
+            },
+          },
+          create: {
+            tenantId: me.tenantId,
+            purchaseOrderId: data.purchaseOrderId,
+            vendorId,
+          },
+          update: {},
+        });
+      }
     }
     await tx.purchaseOrder.update({
       where: { id: data.purchaseOrderId, tenantId: me.tenantId },
@@ -536,6 +574,223 @@ export async function deletePoAttachmentAction(
 
   revalidatePath(`/purchase-orders/${purchaseOrderId}`);
   return { error: null };
+}
+
+export async function sendPurchaseOrderAction(
+  purchaseOrderId: string
+): Promise<{ error: string | null; sentCount?: number; failedCount?: number }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+
+  const po = await prisma.purchaseOrder.findFirst({
+    where: { id: purchaseOrderId, tenantId: me.tenantId, deletedAt: null },
+    select: {
+      id: true,
+      number: true,
+      qboPoNumber: true,
+      estimate: { select: { number: true } },
+      lines: {
+        orderBy: [{ sortOrder: 'asc' }],
+        select: {
+          id: true,
+          description: true,
+          qtyMilli: true,
+          unit: true,
+          unitCostCents: true,
+          computedCostCents: true,
+          vendorSku: true,
+          notes: true,
+          vendorId: true,
+          vendor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              emails: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!po) return { error: 'PO not found.' };
+
+  const groups = new Map<
+    string,
+    {
+      vendor: NonNullable<(typeof po.lines)[number]['vendor']>;
+      lines: typeof po.lines;
+    }
+  >();
+  for (const line of po.lines) {
+    if (!line.vendorId || !line.vendor) continue;
+    const existing = groups.get(line.vendorId);
+    if (existing) existing.lines.push(line);
+    else groups.set(line.vendorId, { vendor: line.vendor, lines: [line] });
+  }
+
+  if (groups.size === 0) {
+    return { error: 'Assign vendors to PO lines before sending.' };
+  }
+
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (const [vendorId, group] of groups) {
+    const recipient = group.vendor.emails[0] ?? group.vendor.email;
+    const subtotalCents = group.lines.reduce((sum, line) => sum + line.computedCostCents, 0);
+    if (!recipient) {
+      failedCount += 1;
+      await recordVendorSendFailure({
+        purchaseOrderId,
+        tenantId: me.tenantId,
+        vendorId,
+        actorId: me.id,
+        message: `No email address is configured for ${group.vendor.name}.`,
+      });
+      continue;
+    }
+
+    const email = renderPurchaseOrderEmail({
+      companyName: me.tenant.name,
+      vendorName: group.vendor.name,
+      poNumber: po.number,
+      qboPoNumber: po.qboPoNumber,
+      estimateNumber: po.estimate?.number ?? null,
+      subtotalCents,
+      lines: group.lines.map((line) => ({
+        description: line.description,
+        qtyMilli: line.qtyMilli,
+        unit: unitLabel(line.unit),
+        vendorSku: line.vendorSku,
+        unitCostCents: line.unitCostCents,
+        totalCents: line.computedCostCents,
+        notes: line.notes,
+      })),
+    });
+
+    const sent = await sendMail({
+      to: recipient,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+
+    if (sent.ok) {
+      sentCount += 1;
+      await prisma.$transaction(async (tx) => {
+        await tx.purchaseOrderVendor.upsert({
+          where: { purchaseOrderId_vendorId: { purchaseOrderId, vendorId } },
+          create: {
+            tenantId: me.tenantId,
+            purchaseOrderId,
+            vendorId,
+            status: 'SENT',
+            sentAt: new Date(),
+            messageId: sent.result.messageId,
+            lastError: null,
+          },
+          update: {
+            status: 'SENT',
+            sentAt: new Date(),
+            messageId: sent.result.messageId,
+            lastError: null,
+          },
+        });
+        await tx.pOEvent.create({
+          data: {
+            tenantId: me.tenantId,
+            purchaseOrderId,
+            kind: POEventKind.VENDOR_PO_SENT,
+            message: `Sent ${po.number} to ${group.vendor.name} with ${group.lines.length} line${group.lines.length === 1 ? '' : 's'}`,
+            metadata: {
+              vendorId,
+              vendorName: group.vendor.name,
+              lineIds: group.lines.map((line) => line.id),
+              messageId: sent.result.messageId,
+              subtotalCents,
+            },
+            actorId: me.id,
+          },
+        });
+      });
+    } else {
+      failedCount += 1;
+      await recordVendorSendFailure({
+        purchaseOrderId,
+        tenantId: me.tenantId,
+        vendorId,
+        actorId: me.id,
+        message: sent.error.message,
+      });
+    }
+  }
+
+  if (sentCount > 0) {
+    await prisma.purchaseOrder.update({
+      where: { id: purchaseOrderId, tenantId: me.tenantId },
+      data: { status: POStatus.SENT },
+    });
+  }
+
+  await writeAuditLog({
+    action: 'po_sent',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'purchase_order',
+    targetId: purchaseOrderId,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: po.number, sentCount, failedCount },
+  });
+
+  revalidatePath(`/purchase-orders/${purchaseOrderId}`);
+  revalidatePath('/purchase-orders');
+
+  return {
+    error: failedCount > 0 ? `${sentCount} vendor email${sentCount === 1 ? '' : 's'} sent, ${failedCount} failed.` : null,
+    sentCount,
+    failedCount,
+  };
+}
+
+async function recordVendorSendFailure(args: {
+  tenantId: string;
+  purchaseOrderId: string;
+  vendorId: string;
+  actorId: string;
+  message: string;
+}) {
+  await prisma.$transaction(async (tx) => {
+    await tx.purchaseOrderVendor.upsert({
+      where: { purchaseOrderId_vendorId: { purchaseOrderId: args.purchaseOrderId, vendorId: args.vendorId } },
+      create: {
+        tenantId: args.tenantId,
+        purchaseOrderId: args.purchaseOrderId,
+        vendorId: args.vendorId,
+        status: 'FAILED',
+        lastError: args.message,
+      },
+      update: {
+        status: 'FAILED',
+        lastError: args.message,
+      },
+    });
+    await tx.pOEvent.create({
+      data: {
+        tenantId: args.tenantId,
+        purchaseOrderId: args.purchaseOrderId,
+        kind: POEventKind.VENDOR_PO_SEND_FAILED,
+        message: `Vendor PO send failed: ${args.message}`,
+        metadata: { vendorId: args.vendorId },
+        actorId: args.actorId,
+      },
+    });
+  });
+}
+
+function unitLabel(unit: string): string {
+  return unit.toLowerCase().replace(/_/g, ' ');
 }
 
 // Soft delete. Restricted to ADMIN+; USER can edit but not destroy.

@@ -50,8 +50,8 @@ export default async function InvoicesPage() {
           secondaryAction={{ label: 'Dashboard', href: '/dashboard' }}
         />
       ) : (
-        <section className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
-          <div className="overflow-x-auto">
+        <section className="flex max-h-[calc(100vh-220px)] min-h-[320px] flex-col overflow-hidden rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+          <div className="min-h-0 overflow-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-[var(--color-bv-border)] text-left text-[11.5px] uppercase tracking-wider text-[var(--color-bv-muted)]">

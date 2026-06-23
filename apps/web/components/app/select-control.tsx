@@ -159,7 +159,7 @@ export function SelectControl({
         onClick={() => setOpen((current) => !current)}
         onKeyDown={onButtonKeyDown}
         className={cn(
-          'flex min-h-10 w-full items-center justify-between gap-3 rounded-[12px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 text-left text-[13.5px] font-medium text-[var(--color-bv-text)] shadow-[0_1px_2px_rgba(15,23,41,0.04),0_10px_24px_rgba(15,23,41,0.06)] outline-none transition-all hover:border-slate-300 hover:bg-white focus:border-[var(--color-bv-accent)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.12),0_12px_28px_rgba(15,23,41,0.08)] disabled:cursor-not-allowed disabled:opacity-60',
+          'flex min-h-10 w-full items-center justify-between gap-3 rounded-[12px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 text-left text-[13.5px] font-medium text-[var(--color-bv-text)] shadow-[0_1px_2px_rgba(15,23,41,0.04),0_10px_24px_rgba(15,23,41,0.06)] outline-none transition-all hover:border-slate-300 hover:bg-white focus:border-[var(--color-bv-accent)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(242,135,68,0.16),0_12px_28px_rgba(28,73,114,0.08)] disabled:cursor-not-allowed disabled:opacity-60',
           className,
         )}
         style={style as CSSProperties}
@@ -169,7 +169,7 @@ export function SelectControl({
           aria-hidden
           className={cn(
             'grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition-transform',
-            open && 'rotate-180 bg-blue-50 text-[var(--color-bv-accent)]',
+            open && 'rotate-180 bg-[#fff4eb] text-[var(--color-bv-accent)]',
           )}
         >
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
@@ -202,8 +202,8 @@ export function SelectControl({
                   disabled={option.disabled}
                   onClick={() => commit(option.value)}
                   className={cn(
-                    'flex w-full items-center justify-between gap-3 rounded-[12px] px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-900 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent',
-                    selected && 'bg-blue-600 text-white shadow-[0_10px_26px_rgba(47,90,243,0.24)] hover:bg-blue-600 hover:text-white',
+                    'flex w-full items-center justify-between gap-3 rounded-[12px] px-3 py-2.5 text-left text-[13px] font-semibold text-slate-700 transition-colors hover:bg-[#fff4eb] hover:text-[#1C4972] disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent',
+                    selected && 'bg-[#1C4972] text-white shadow-[0_10px_26px_rgba(28,73,114,0.24)] hover:bg-[#1C4972] hover:text-white',
                   )}
                 >
                   <span className="min-w-0 truncate">{option.label}</span>

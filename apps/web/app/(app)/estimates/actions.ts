@@ -22,11 +22,12 @@ export async function createEstimateAction(
   const parsed = createEstimateSchema.safeParse({
     clientId: formData.get('clientId'),
     title: formData.get('title'),
+    estimateType: formData.get('estimateType'),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
   }
-  const { clientId, title } = parsed.data;
+  const { clientId, title, estimateType } = parsed.data;
 
   // Verify the client belongs to this tenant. Without this, any
   // tenant-A user could create an estimate referencing a tenant-B
@@ -49,6 +50,7 @@ export async function createEstimateAction(
         clientId: client.id,
         number,
         title,
+        estimateType,
         createdById: me.id,
       },
       select: { id: true, number: true },
@@ -63,7 +65,7 @@ export async function createEstimateAction(
     targetId: estimate.id,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
-    metadata: { number: estimate.number, clientId: client.id, title },
+    metadata: { number: estimate.number, clientId: client.id, title, estimateType },
   });
 
   redirect(`/estimates/${estimate.id}`);

@@ -52,13 +52,14 @@ export default async function EstimateDetailPage({
         id: true,
         number: true,
         title: true,
+        estimateType: true,
         status: true,
         notes: true,
         multiplierMilli: true,
         designFlatCents: true,
         subtotalCostCents: true,
         finalPriceCents: true,
-        client: { select: { id: true, companyName: true, contactName: true, email: true } },
+        client: { select: { id: true, companyName: true, contactName: true, email: true, phone: true } },
         vehicle: {
           select: {
             id: true,
@@ -92,6 +93,24 @@ export default async function EstimateDetailPage({
             unitCostCents: true,
             machineId: true,
             notes: true,
+            materialCostCents: true,
+            partialUsageMilli: true,
+            laborHoursMilli: true,
+            machineTimeMilli: true,
+            designTimeMilli: true,
+            installTimeMilli: true,
+            vendorCostCents: true,
+            catalogItemId: true,
+            pricingMethod: true,
+            pricingEngine: true,
+            pricingInputsSnapshotJson: true,
+            pricingOutputSnapshotJson: true,
+            formulaVersion: true,
+            selectedVendorId: true,
+            selectedVendorMode: true,
+            internalNotes: true,
+            hiddenFromCustomer: true,
+            customerDescription: true,
           },
         },
       },
@@ -104,7 +123,7 @@ export default async function EstimateDetailPage({
     prisma.client.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
       orderBy: [{ companyName: 'asc' }],
-      select: { id: true, companyName: true },
+      select: { id: true, companyName: true, contactName: true, email: true, phone: true },
       take: 500,
     }),
     prisma.purchaseOrder.findMany({
@@ -251,6 +270,7 @@ export default async function EstimateDetailPage({
       number: estimate.number,
       title: estimate.title,
       status: estimate.status,
+      estimateType: estimate.estimateType,
       notes: estimate.notes ?? '',
       multiplierMilli: estimate.multiplierMilli,
       designFlatCents: estimate.designFlatCents,
@@ -312,6 +332,24 @@ export default async function EstimateDetailPage({
       unitCostCents: l.unitCostCents,
       machineId: l.machineId,
       notes: l.notes,
+      materialCostCents: l.materialCostCents,
+      partialUsageMilli: l.partialUsageMilli,
+      laborHoursMilli: l.laborHoursMilli,
+      machineTimeMilli: l.machineTimeMilli,
+      designTimeMilli: l.designTimeMilli,
+      installTimeMilli: l.installTimeMilli,
+      vendorCostCents: l.vendorCostCents,
+      catalogItemId: l.catalogItemId,
+      pricingMethod: l.pricingMethod,
+      pricingEngine: l.pricingEngine,
+      pricingInputsSnapshotJson: l.pricingInputsSnapshotJson,
+      pricingOutputSnapshotJson: l.pricingOutputSnapshotJson,
+      formulaVersion: l.formulaVersion,
+      selectedVendorId: l.selectedVendorId,
+      selectedVendorMode: l.selectedVendorMode,
+      internalNotes: l.internalNotes,
+      hiddenFromCustomer: l.hiddenFromCustomer,
+      customerDescription: l.customerDescription,
     })),
     machines,
     clients,
@@ -329,7 +367,11 @@ export default async function EstimateDetailPage({
           display: none;
         }
         body:has(#estimate-workspace-root) {
-          background: #f6f7fb;
+          background: #ffffff;
+        }
+        #estimate-workspace-root {
+          min-height: 100vh;
+          background: #ffffff;
         }
         body:has(#estimate-workspace-root) main {
           padding: 0;

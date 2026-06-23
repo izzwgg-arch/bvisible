@@ -3,6 +3,7 @@ import { prisma } from '@bvisible/db';
 
 import { QuoteDocument } from '@/app/(app)/estimates/[id]/preview/quote-document';
 import { writeAuditLog } from '@/lib/auth/audit';
+import { estimatePdfCss, loadEstimatePdfData } from '@/lib/estimate/estimate-pdf';
 import { recordPublicQuoteView, resolvePublicQuoteByRawToken } from '@/lib/estimate/load-public-quote';
 import { readRequestContext } from '@/lib/request-context';
 
@@ -56,6 +57,10 @@ export default async function PublicQuotePage({
   if (!quote) {
     return <InvalidQuoteMessage />;
   }
+  const pdfData = await loadEstimatePdfData(quote.tenantId, quote.estimateId);
+  if (!pdfData) {
+    return <InvalidQuoteMessage />;
+  }
 
   await recordPublicQuoteView({
     prisma,
@@ -78,7 +83,8 @@ export default async function PublicQuotePage({
 
   return (
     <div className="min-h-screen px-4 py-10 print:px-0 print:py-0">
-      <div className="mx-auto mb-8 flex max-w-[880px] justify-end print:hidden">
+      <style dangerouslySetInnerHTML={{ __html: estimatePdfCss() }} />
+      <div className="mx-auto mb-8 flex max-w-[1020px] justify-end print:hidden">
         <PublicQuoteToolbar />
       </div>
       <PublicQuoteResponsePanel
@@ -87,16 +93,7 @@ export default async function PublicQuotePage({
         responsesClosedFinalized={quote.responsesClosedFinalized}
         customerResponse={quote.customerResponse}
       />
-      <QuoteDocument
-        company={quote.company}
-        estimateNumber={quote.estimateNumber}
-        title={quote.title}
-        quoteDateLabel={quote.quoteDateLabel}
-        billTo={quote.billTo}
-        lines={quote.lines}
-        totalSellCents={quote.totalSellCents}
-        notes={quote.notes}
-      />
+      <QuoteDocument data={pdfData} />
     </div>
   );
 }
