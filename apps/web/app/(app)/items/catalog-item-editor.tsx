@@ -213,7 +213,7 @@ export function CatalogItemEditor({
   const formAction = mode === 'create' ? createAction : updateShopMaterialItemAttributesAction;
 
   return (
-    <form action={formAction} className="mx-auto max-w-[1380px] text-[#111827]">
+    <form action={formAction} className="w-full min-w-0 text-[#111827]">
       {item ? <input type="hidden" name="id" value={item.id} /> : null}
       <input type="hidden" name="categories" value={selectedCategory} />
       <input type="hidden" name="customUnitLabel" value={item?.customUnitLabel ?? ''} />
@@ -221,8 +221,8 @@ export function CatalogItemEditor({
       <input type="hidden" name="preferredVendorId" value={preferredVendorId ?? ''} />
       <input type="hidden" name="vendorDraftRowsJson" value={JSON.stringify(vendorDraftRows)} />
 
-      <div className="mb-4 flex items-center justify-between border-b border-[#e6e9ef] bg-[#f7f8fb] pb-3">
-        <div>
+      <div className="mb-4 flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[#e6e9ef] bg-[#f7f8fb] pb-3">
+        <div className="min-w-0 flex-1">
           <div className="mb-3 flex items-center gap-2 text-[11px] font-medium text-slate-500">
             <Link href="/items" className="hover:text-blue-700">Catalog</Link>
             <span className="text-slate-300">›</span>
@@ -233,7 +233,7 @@ export function CatalogItemEditor({
           </h1>
           <p className="mt-1 text-[11px] text-slate-500">Build a catalog item with costs, markup, units, and vendor pricing.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
           <span className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             Auto-saved<br className="hidden sm:block" /> 2m ago
@@ -249,11 +249,11 @@ export function CatalogItemEditor({
 
       <FormError message={createState.error} />
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="space-y-4">
+      <div className="grid min-w-0 items-start gap-4 min-[1500px]:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 space-y-4">
           <section className={panelClass}>
             <h2 className={sectionTitleClass}>Item Details</h2>
-            <div className="grid gap-3 md:grid-cols-[1fr_0.75fr_0.75fr]">
+            <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,0.75fr)]">
               <Field label="Item name" required>
                 <input name="name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={400} className={inputClass} />
               </Field>
@@ -269,7 +269,7 @@ export function CatalogItemEditor({
               </Field>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_0.7fr]">
+            <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)]">
               <Field label="Customer-facing description">
                 <textarea name="customerDescription" value={customerDescription} onChange={(e) => setCustomerDescription(e.target.value)} rows={4} maxLength={2000} className={textareaClass} />
               </Field>
@@ -288,7 +288,7 @@ export function CatalogItemEditor({
               </div>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-4">
+            <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 min-[1500px]:grid-cols-4">
               <Field label="Default machine">
                 <SelectControl name="machineId" value={selectedMachineId} onChange={(e) => setSelectedMachineId(e.target.value)} className={inputClass}>
                   <option value="">None</option>
@@ -346,7 +346,7 @@ export function CatalogItemEditor({
                 </SelectControl>
               </div>
             </div>
-            <div className="overflow-hidden rounded-[5px] border border-[#e6e9ef]">
+            <div className="overflow-x-auto rounded-[5px] border border-[#e6e9ef]">
               <table className="w-full min-w-[760px] text-left text-[10.5px]">
                 <thead className="bg-[#fafbfc] text-[9px] font-bold uppercase tracking-[0.04em] text-slate-500">
                   <tr>
@@ -389,7 +389,7 @@ export function CatalogItemEditor({
           </section>
         </div>
 
-        <aside className="space-y-4 xl:sticky xl:top-4">
+        <aside className="min-w-0 space-y-4 min-[1500px]:sticky min-[1500px]:top-4">
           <SummaryCard title="Item Summary">
             <div className="mb-3 flex gap-3">
               <div className="h-11 w-11 rounded-[4px] bg-[#eef0f4]" />

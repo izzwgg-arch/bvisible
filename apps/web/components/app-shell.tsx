@@ -78,8 +78,8 @@ export function AppShell({
   const workspaceTitle = workspaceHeaderLabel(user.role, user.tenant?.name ?? null);
 
   return (
-    <div className="grid h-screen grid-cols-[292px_1fr] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(242,135,68,0.18)_0,transparent_31%),radial-gradient(circle_at_top_right,rgba(18,64,100,0.14)_0,transparent_28%),linear-gradient(135deg,#fffaf4_0%,#f8f4ef_44%,#f6efe8_100%)] print:block print:h-auto print:overflow-visible">
-      <aside className="relative flex h-screen flex-col overflow-hidden border-r border-[#eadfd3]/90 bg-[#fff8f0]/92 px-4 py-5 shadow-[18px_0_54px_rgba(28,73,114,0.10)] backdrop-blur-2xl [--color-bv-bg:#f8f4ef] [--color-bv-border:#eadfd3] [--color-bv-muted:#6d7480] [--color-bv-surface:#fffdfa] [--color-bv-text:#1C4972] print:hidden">
+    <div className="grid h-screen grid-cols-[minmax(220px,252px)_minmax(0,1fr)] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(242,135,68,0.18)_0,transparent_31%),radial-gradient(circle_at_top_right,rgba(18,64,100,0.14)_0,transparent_28%),linear-gradient(135deg,#fffaf4_0%,#f8f4ef_44%,#f6efe8_100%)] min-[1500px]:grid-cols-[292px_minmax(0,1fr)] max-lg:block print:block print:h-auto print:overflow-visible">
+      <aside className="relative flex h-screen min-w-0 flex-col overflow-hidden border-r border-[#eadfd3]/90 bg-[#fff8f0]/92 px-3 py-4 shadow-[18px_0_54px_rgba(28,73,114,0.10)] backdrop-blur-2xl [--color-bv-bg:#f8f4ef] [--color-bv-border:#eadfd3] [--color-bv-muted:#6d7480] [--color-bv-surface:#fffdfa] [--color-bv-text:#1C4972] min-[1500px]:px-4 min-[1500px]:py-5 max-lg:hidden print:hidden">
         <div
           aria-hidden
           className="pointer-events-none absolute -left-28 top-0 h-64 w-64 rounded-full bg-[#d8e8f3]/75 blur-3xl"
@@ -100,8 +100,8 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto">
-        <main className="flex-1 px-8 py-8 print:px-0 print:py-0">{children}</main>
+      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden">
+        <main className="min-w-0 flex-1 px-4 py-5 sm:px-5 lg:px-6 xl:px-7 min-[1500px]:px-8 min-[1500px]:py-8 print:px-0 print:py-0">{children}</main>
       </div>
     </div>
   );
@@ -117,18 +117,18 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-7 flex items-start justify-between gap-4">
-      <div className="flex flex-col">
-        <h1 className="text-[34px] font-semibold tracking-[-0.04em] text-[var(--color-bv-text)]">
+    <div className="mb-6 flex min-w-0 flex-wrap items-start justify-between gap-4 min-[1500px]:mb-7">
+      <div className="min-w-0 flex-1">
+        <h1 className="break-words text-[clamp(1.75rem,3vw,2.125rem)] font-semibold tracking-[-0.04em] text-[var(--color-bv-text)]">
           {title}
         </h1>
         {subtitle ? (
-          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-slate-500">
+          <p className="mt-2 max-w-2xl text-[13.5px] leading-relaxed text-slate-500 min-[1500px]:text-[14px]">
             {subtitle}
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }

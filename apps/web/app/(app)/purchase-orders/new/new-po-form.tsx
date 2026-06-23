@@ -47,6 +47,8 @@ export function NewPoForm({
           <SelectControl
             name="vendorId"
             defaultValue=""
+            searchable
+            searchPlaceholder="Search vendors..."
             className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
           >
             <option value="">— no vendor —</option>
@@ -67,6 +69,8 @@ export function NewPoForm({
         <SelectControl
           name="estimateId"
           defaultValue={defaultEstimateId ?? ''}
+          searchable
+          searchPlaceholder="Search estimates by number or title..."
           className="h-12 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[14px] font-medium text-slate-900 outline-none transition-all focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
         >
           <option value="">— no estimate —</option>
@@ -93,7 +97,7 @@ export function NewPoForm({
       </label>
 
       <FormError message={state.error} />
-      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
         <p className="text-[12.5px] text-slate-500">Drafts can be edited immediately after creation.</p>
         <button
           type="submit"

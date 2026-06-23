@@ -159,7 +159,7 @@ export default async function ItemsPage({
         }
       />
 
-      <section className="mb-5 grid gap-3 md:grid-cols-4">
+      <section className="mb-5 grid gap-3 sm:grid-cols-2 min-[1500px]:grid-cols-4">
         <CatalogMetric label="Visible items" value={activeCount.toString()} detail="Active in estimate picker" tone="blue" />
         <CatalogMetric label="Materials" value={materialCount.toString()} detail="Vendor-price aware lines" tone="emerald" />
         <CatalogMetric label="Vendor linked" value={vendorLinkedCount.toString()} detail="Have supplier intelligence" tone="slate" />
@@ -168,13 +168,13 @@ export default async function ItemsPage({
 
       <section className="mb-5 rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <form method="get" className="flex min-w-[280px] flex-1 flex-wrap items-center gap-2">
+          <form method="get" className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <input type="hidden" name="filter" value={filter} />
             <AutoSubmitInput
               name="q"
               defaultValue={rawQ}
               placeholder="Search catalog items..."
-              className="h-11 min-w-[240px] flex-1 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
+              className="h-11 min-w-[180px] flex-1 rounded-[14px] border border-slate-200 bg-slate-50/80 px-4 text-[13.5px] outline-none transition-all placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(47,90,243,0.10)]"
             />
             <button
               type="submit"
@@ -214,7 +214,7 @@ export default async function ItemsPage({
           }
         />
       ) : (
-        <section className="flex max-h-[calc(100vh-375px)] min-h-[320px] flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
+        <section className="flex min-h-[320px] flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_22px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl min-[1500px]:max-h-[calc(100vh-375px)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div>
               <h2 className="text-[15px] font-semibold text-slate-950">Pricing intelligence</h2>
@@ -226,7 +226,7 @@ export default async function ItemsPage({
           </div>
           <div className="min-h-0 overflow-y-auto p-4">
             <div className="grid gap-3">
-            <div className="hidden px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 xl:grid xl:grid-cols-[minmax(0,1.35fr)_120px_100px_100px_80px_minmax(0,1fr)_minmax(0,0.9fr)_110px_90px_80px_90px]">
+            <div className="hidden px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 min-[1500px]:grid min-[1500px]:grid-cols-[minmax(0,1.35fr)_120px_100px_100px_80px_minmax(0,1fr)_minmax(0,0.9fr)_110px_90px_80px_90px]">
               <span>Item</span>
               <span>Category</span>
               <span>Internal</span>
@@ -262,7 +262,7 @@ export default async function ItemsPage({
                 <Link
                   key={it.id}
                   href={`/items/${it.id}`}
-                  className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] xl:grid-cols-[minmax(0,1.35fr)_120px_100px_100px_80px_minmax(0,1fr)_minmax(0,0.9fr)_110px_90px_80px_90px]"
+                  className="group grid min-w-0 gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] sm:grid-cols-2 lg:grid-cols-3 min-[1500px]:grid-cols-[minmax(0,1.35fr)_120px_100px_100px_80px_minmax(0,1fr)_minmax(0,0.9fr)_110px_90px_80px_90px]"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
@@ -379,7 +379,7 @@ function CatalogRowValue({ label, value, strong }: { label: string; value: strin
 }
 
 function MobileLabel({ children }: { children: ReactNode }) {
-  return <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 xl:hidden">{children}</span>;
+  return <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 min-[1500px]:hidden">{children}</span>;
 }
 
 function initials(name: string) {

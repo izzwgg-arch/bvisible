@@ -22,6 +22,11 @@ type SelectOption = {
   disabled: boolean;
 };
 
+type SelectControlProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  searchable?: boolean;
+  searchPlaceholder?: string;
+};
+
 type OptionElementProps = {
   value?: string | number;
   disabled?: boolean;
@@ -54,6 +59,8 @@ export function SelectControl({
   className,
   style,
   children,
+  searchable = false,
+  searchPlaceholder = 'Search options...',
   value,
   defaultValue,
   onChange,
@@ -62,7 +69,7 @@ export function SelectControl({
   disabled,
   required,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement>) {
+}: SelectControlProps) {
   const reactId = useId();
   const buttonId = id ?? `select-${reactId}`;
   const listboxId = `${buttonId}-listbox`;
@@ -77,6 +84,7 @@ export function SelectControl({
       : String(value);
   const [internalValue, setInternalValue] = useState(initialValue);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const selectedValue = value == null ? internalValue : String(value);
   const selectedOption =
     options.find((option) => option.value === selectedValue) ??
@@ -103,6 +111,7 @@ export function SelectControl({
 
     setInternalValue(nextValue);
     setOpen(false);
+    setQuery('');
 
     if (selectRef.current) {
       selectRef.current.value = nextValue;
@@ -130,6 +139,12 @@ export function SelectControl({
     }
     if (event.key === 'Escape') setOpen(false);
   }
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleOptions =
+    searchable && normalizedQuery
+      ? options.filter((option) => option.label.toLowerCase().includes(normalizedQuery))
+      : options;
 
   return (
     <div ref={wrapperRef} className="relative w-full">
@@ -190,8 +205,26 @@ export function SelectControl({
           role="listbox"
           aria-labelledby={buttonId}
         >
+          {searchable ? (
+            <div className="p-1.5">
+              <input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setOpen(false);
+                    setQuery('');
+                  }
+                }}
+                placeholder={searchPlaceholder}
+                className="h-10 w-full rounded-[12px] border border-slate-200 bg-slate-50 px-3 text-[13px] font-medium text-slate-900 outline-none transition focus:border-[var(--color-bv-accent)] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+              />
+            </div>
+          ) : null}
           <div className="max-h-72 overflow-y-auto">
-            {options.map((option) => {
+            {visibleOptions.map((option) => {
               const selected = option.value === selectedValue;
               return (
                 <button
@@ -215,6 +248,11 @@ export function SelectControl({
                 </button>
               );
             })}
+            {visibleOptions.length === 0 ? (
+              <div className="px-3 py-5 text-center text-[12.5px] font-medium text-slate-400">
+                No matches
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

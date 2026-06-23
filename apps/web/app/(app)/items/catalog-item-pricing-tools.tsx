@@ -529,7 +529,7 @@ export function CatalogItemPricingTools({
       <div>
         {method === 'SQ_FT' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <Field label="Width (in)"><input value={sqW} onChange={(e) => setSqW(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Height (in)"><input value={sqH} onChange={(e) => setSqH(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Pieces"><input value={sqPieces} onChange={(e) => setSqPieces(e.target.value)} inputMode="numeric" className={fieldClassName} /></Field>
@@ -538,7 +538,7 @@ export function CatalogItemPricingTools({
               Each piece is <strong className="text-slate-800">{sqftEach.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft.
               Total default quantity will be <strong className="text-slate-800">{sqftTotal.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft.
             </p>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2">
               <Field label="Internal $/sq ft"><input value={sqftCostUsd} onChange={(e) => setSqftCostUsd(e.target.value)} placeholder="2.50" inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Sell $/sq ft override"><input value={sqftSellUsd} onChange={(e) => setSqftSellUsd(e.target.value)} placeholder="Blank = markup" inputMode="decimal" className={fieldClassName} /></Field>
             </div>
@@ -562,7 +562,7 @@ export function CatalogItemPricingTools({
 
         {method === 'SHEET_GOODS' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <Field label="Sheet Width">
                 <div className="flex">
                   <input value={sheetWidthInches} readOnly className={`${fieldClassName} rounded-r-none bg-[#fafbfc]`} />
@@ -613,13 +613,13 @@ export function CatalogItemPricingTools({
                 </div>
               </Field>
             </div>
-            <div className="grid items-end gap-3 border-t border-[#eef0f4] pt-3 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
+            <div className="grid items-end gap-3 border-t border-[#eef0f4] pt-3 lg:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]">
               <MetricPill label="Cost per Sheet" value={formatMoney(centsFromMoney(sheetCostUsd))} tone="green" />
               <MetricPill label="Billable Sheets" value={String(sheetsNeeded)} />
               <MetricPill label="Total Material Cost" value={formatMoney(sheetsNeeded * centsFromMoney(sheetCostUsd))} tone="green" />
               <MetricPill label="Markup" value={`${values.markupPercent || '0'}%`} />
               <MetricPill label="Sell Price (each)" value={formatMoney(sellCentsForUnit(centsFromMoney(sheetCostUsd), sheetSellUsd, values.markupPercent))} />
-              <div className="md:min-w-[180px]">
+              <div className="lg:min-w-[180px]">
                 <ApplyButton
                   disabled={sheetsNeeded <= 0}
                   onClick={() => {
@@ -662,7 +662,7 @@ export function CatalogItemPricingTools({
 
         {method === 'ROLL_MATERIAL' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 lg:grid-cols-4">
               <Field label="Roll width (in)"><input value={rollW} onChange={(e) => setRollW(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Roll length (ft)"><input value={rollLenFt} onChange={(e) => setRollLenFt(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Usage sq ft"><input value={rollUsed} onChange={(e) => setRollUsed(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
@@ -673,7 +673,7 @@ export function CatalogItemPricingTools({
               Billable usage is <strong className="text-slate-800">{rollBillable.toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> sq ft
               ({(rollFrac * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}% of one roll).
             </p>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2">
               <Field label="Internal $/sq ft"><input value={rollCostSqftUsd} onChange={(e) => setRollCostSqftUsd(e.target.value)} placeholder="1.20" inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Sell $/sq ft override"><input value={rollSellSqftUsd} onChange={(e) => setRollSellSqftUsd(e.target.value)} placeholder="Blank = markup" inputMode="decimal" className={fieldClassName} /></Field>
             </div>
@@ -713,7 +713,7 @@ export function CatalogItemPricingTools({
 
         {method === 'BANNER' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <Field label="Banner sq ft"><input value={banSqft} onChange={(e) => setBanSqft(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Grommets"><input value={banGrommets} onChange={(e) => setBanGrommets(e.target.value)} inputMode="numeric" className={fieldClassName} /></Field>
               <Field label="Sell override / each"><input value={bannerSellUsd} onChange={(e) => setBannerSellUsd(e.target.value)} placeholder="Blank = markup" inputMode="decimal" className={fieldClassName} /></Field>
@@ -755,7 +755,7 @@ export function CatalogItemPricingTools({
 
         {method === 'LABOR' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 lg:grid-cols-4">
               <Field label="Hours"><input value={laborHours} onChange={(e) => setLaborHours(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Rate / hour"><input value={laborRateUsd} onChange={(e) => setLaborRateUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="People"><input value={laborPeople} onChange={(e) => setLaborPeople(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
@@ -789,7 +789,7 @@ export function CatalogItemPricingTools({
 
         {method === 'INSTALL' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 lg:grid-cols-4">
               <Field label="Hours"><input value={installHours} onChange={(e) => setInstallHours(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Installers"><input value={installers} onChange={(e) => setInstallers(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Rate / installer hour"><input value={installRateUsd} onChange={(e) => setInstallRateUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
@@ -824,7 +824,7 @@ export function CatalogItemPricingTools({
 
         {method === 'MACHINE' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 lg:grid-cols-4">
               <Field label="Machine">
                 <SelectControl
                   value={machineId}
@@ -881,7 +881,7 @@ export function CatalogItemPricingTools({
 
         {method === 'COST_PLUS' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <Field label="Material cost"><input value={costPlusMaterialUsd} onChange={(e) => setCostPlusMaterialUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Machine cost"><input value={costPlusMachineUsd} onChange={(e) => setCostPlusMachineUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Labor cost"><input value={costPlusLaborUsd} onChange={(e) => setCostPlusLaborUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
@@ -920,7 +920,7 @@ export function CatalogItemPricingTools({
 
         {method === 'CHANNEL_LETTERS' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <Field label="Total sq ft"><input value={clSqft} onChange={(e) => setClSqft(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Base $/sq ft"><input value={clBaseUsd} onChange={(e) => setClBaseUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Depth (in)"><input value={clDepth} onChange={(e) => setClDepth(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
@@ -985,7 +985,7 @@ export function CatalogItemPricingTools({
 
         {method === 'CUSTOM' ? (
           <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <Field label="Rule name"><input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="e.g. Channel letter set" className={fieldClassName} /></Field>
               <Field label="Formula">
                 <SelectControl value={customFormula} onChange={(e) => setCustomFormula(e.target.value as CustomFormula)} className={fieldClassName}>
@@ -998,13 +998,13 @@ export function CatalogItemPricingTools({
               </Field>
               <Field label="Unit label"><input value={customUnitLabel} onChange={(e) => setCustomUnitLabel(e.target.value)} placeholder="unit" className={fieldClassName} /></Field>
             </div>
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 lg:grid-cols-4">
               <Field label="Quantity / area"><input value={customQty} onChange={(e) => setCustomQty(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Rate"><input value={customRateUsd} onChange={(e) => setCustomRateUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Add-on count"><input value={customCount} onChange={(e) => setCustomCount(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Add-on rate"><input value={customCountRateUsd} onChange={(e) => setCustomCountRateUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
             </div>
-            <div className="grid gap-3 md:grid-cols-5">
+            <div className="grid gap-3 lg:grid-cols-5">
               <Field label="Flat cost"><input value={customFlatUsd} onChange={(e) => setCustomFlatUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Minimum"><input value={customMinimumUsd} onChange={(e) => setCustomMinimumUsd(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
               <Field label="Waste %"><input value={customWastePct} onChange={(e) => setCustomWastePct(e.target.value)} inputMode="decimal" className={fieldClassName} /></Field>
@@ -1141,7 +1141,7 @@ function VendorPricingTool({
             This stores the selected cost source with the catalog item. Estimate lines still receive an editable snapshot.
           </p>
         </div>
-        <div className="grid gap-2 md:grid-cols-4">
+        <div className="grid gap-2 lg:grid-cols-4">
           {(['INTERNAL', 'CHEAPEST', 'PREFERRED', 'MANUAL'] as VendorCostSourceMode[]).map((mode) => (
             <label key={mode} className="flex items-center gap-2 rounded-[10px] border border-white bg-white px-3 py-2 text-[12.5px] font-semibold text-slate-700">
               <input
@@ -1168,7 +1168,7 @@ function VendorPricingTool({
             </SelectControl>
           </Field>
         ) : null}
-        <div className="grid gap-2 md:grid-cols-3">
+        <div className="grid gap-2 lg:grid-cols-3">
           <SummaryPill label="Cheapest vendor" value={cheapest ? `${cheapest.vendorName} ${formatMoney(cheapest.priceCents)}` : 'None'} />
           <SummaryPill label="Preferred vendor" value={preferred ? `${preferred.vendorName} ${formatMoney(preferred.priceCents)}` : 'None'} />
           <SummaryPill label="Selected source" value={selectedVendorMode === 'INTERNAL' ? 'Internal cost' : selectedVendorMode === 'CHEAPEST' ? (cheapest ? `${cheapest.vendorName} ${formatMoney(cheapest.priceCents)}` : 'No cheapest vendor') : selectedVendorMode === 'PREFERRED' ? (preferred ? `${preferred.vendorName} ${formatMoney(preferred.priceCents)}` : 'No preferred vendor') : selected ? `${selected.vendorName} ${formatMoney(selected.priceCents)}` : 'No selected vendor'} />
@@ -1177,7 +1177,7 @@ function VendorPricingTool({
 
       {allRows.length > 0 ? (
         <div className="grid gap-2 rounded-[14px] border border-slate-100 bg-slate-50/70 p-3 text-[12.5px]">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             <SummaryPill label="Vendor rows" value={String(allRows.length)} />
             <SummaryPill label="Cheapest" value={cheapest ? `${cheapest.vendorName} ${formatMoney(cheapest.priceCents)}` : '—'} />
             <SummaryPill
@@ -1239,7 +1239,7 @@ function VendorPricingTool({
               Remove
             </button>
           </div>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 lg:grid-cols-4">
             <Field label="Vendor">
               <SelectControl value={row.vendorId} onChange={(e) => patchDraft(row.id, { vendorId: e.target.value })} className={fieldClassName}>
                 <option value="">Select vendor</option>
