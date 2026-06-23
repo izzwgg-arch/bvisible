@@ -1,10 +1,13 @@
 import Link from 'next/link';
-import { prisma } from '@bvisible/db';
+import { Prisma, prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { AutoSubmitInput } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
+import { BulkDeleteForm } from '@/components/app/bulk-delete-form';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { VendorCsvButtons } from './csv-buttons';
+import { bulkDeleteVendorsAction } from './actions';
 
 export const metadata = { title: 'Vendors' };
 export const dynamic = 'force-dynamic';
@@ -13,6 +16,7 @@ interface SearchParams {
   created?: string;
   q?: string;
   filter?: string;
+  page?: string | string[];
 }
 
 type VendorFilter = 'all' | 'contact-ready' | 'missing-contact' | 'has-pos' | 'no-pos';
@@ -44,32 +48,37 @@ export default async function VendorsPage({
   const sp = await searchParams;
   const rawQ = sp.q?.trim() ?? '';
   const filter = parseVendorFilter(sp.filter);
+  const page = parsePageParam(sp.page);
+  const where = vendorWhere(me.tenantId, rawQ, filter);
 
-  const vendors = await prisma.vendor.findMany({
-    where: { tenantId: me.tenantId, deletedAt: null },
-    orderBy: [{ name: 'asc' }],
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      emails: true,
-      phones: true,
-      notes: true,
-      _count: { select: { purchaseOrders: true } },
-      updatedAt: true,
-    },
-    take: 500,
-  });
-
-  const activeVendors = vendors.filter((v) => v._count.purchaseOrders > 0).length;
-  const contactReady = vendors.filter(
-    (v) => v.emails.length > 0 || v.email || v.phones.length > 0 || v.phone
-  ).length;
-  const totalPOs = vendors.reduce((sum, v) => sum + v._count.purchaseOrders, 0);
-  const filteredVendors = vendors.filter(
-    (vendor) => vendorMatchesSearch(vendor, rawQ) && vendorMatchesFilter(vendor, filter)
-  );
+  const [vendors, totalVendors, filteredTotal, activeVendors, contactReady, totalPOs] = await Promise.all([
+    prisma.vendor.findMany({
+      where,
+      orderBy: [{ name: 'asc' }],
+      skip: pageSkip(page),
+      take: DEFAULT_PAGE_SIZE,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        emails: true,
+        phones: true,
+        notes: true,
+        _count: { select: { purchaseOrders: true } },
+        updatedAt: true,
+      },
+    }),
+    prisma.vendor.count({ where: { tenantId: me.tenantId, deletedAt: null } }),
+    prisma.vendor.count({ where }),
+    prisma.vendor.count({
+      where: { tenantId: me.tenantId, deletedAt: null, purchaseOrders: { some: {} } },
+    }),
+    prisma.vendor.count({
+      where: { tenantId: me.tenantId, deletedAt: null, OR: vendorContactWhere() },
+    }),
+    prisma.purchaseOrder.count({ where: { tenantId: me.tenantId, deletedAt: null } }),
+  ]);
 
   return (
     <>
@@ -95,7 +104,7 @@ export default async function VendorsPage({
         </div>
       ) : null}
 
-      {vendors.length === 0 ? (
+      {totalVendors === 0 ? (
         <EmptyState
           title="No vendors yet"
           description="Vendors are suppliers you issue POs to. Add one before creating purchase orders."
@@ -104,9 +113,9 @@ export default async function VendorsPage({
       ) : (
         <div className="grid gap-5">
           <section className="grid gap-3 md:grid-cols-3">
-            <VendorStat label="Total vendors" value={vendors.length.toString()} detail={`${activeVendors} with PO activity`} tone="blue" />
+            <VendorStat label="Total vendors" value={totalVendors.toString()} detail={`${activeVendors} with PO activity`} tone="blue" />
             <VendorStat label="Total POs issued" value={totalPOs.toString()} detail="Purchase orders across all vendors" tone="emerald" />
-            <VendorStat label="Contact ready" value={contactReady.toString()} detail={`${filteredVendors.length} showing now`} tone="violet" />
+            <VendorStat label="Contact ready" value={contactReady.toString()} detail={`${filteredTotal} matching filters`} tone="violet" />
           </section>
 
           <section className="rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
@@ -163,12 +172,11 @@ export default async function VendorsPage({
                 </p>
               </div>
               <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
-                {filteredVendors.length} suppliers
+                {filteredTotal} suppliers
               </span>
             </div>
             <div className="min-h-0 overflow-y-auto p-4">
-              <div className="grid gap-3">
-              {filteredVendors.length === 0 ? (
+              {vendors.length === 0 ? (
                 <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-10 text-center">
                   <h3 className="text-[14px] font-semibold text-slate-950">No vendors match your search</h3>
                   <p className="mt-1 text-[12.5px] text-slate-500">Try a different keyword or filter.</p>
@@ -179,55 +187,77 @@ export default async function VendorsPage({
                     Clear filters
                   </Link>
                 </div>
-              ) : filteredVendors.map((v) => (
-                <Link
-                  key={v.id}
-                  href={`/vendors/${v.id}`}
-                  className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100 transition group-hover:bg-violet-100">
-                        {initials(v.name)}
+              ) : (
+                <BulkDeleteForm action={bulkDeleteVendorsAction} itemLabel="vendors">
+                  <div className="grid gap-3">
+                    {vendors.map((v) => (
+                      <div
+                        key={v.id}
+                        className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]"
+                      >
+                        <input
+                          type="checkbox"
+                          name="ids"
+                          value={v.id}
+                          aria-label={`Select ${v.name}`}
+                          className="mt-3 h-4 w-4 rounded border-slate-300 text-[var(--color-bv-accent)] focus:ring-[var(--color-bv-accent)]"
+                        />
+                        <Link
+                          href={`/vendors/${v.id}`}
+                          className="group grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-3">
+                              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100 transition group-hover:bg-violet-100">
+                                {initials(v.name)}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
+                                  {v.name}
+                                </span>
+                                <p className="truncate text-[12.5px] text-slate-500">{v.notes ?? 'No notes'}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid gap-1 text-[12.5px] text-slate-500">
+                            <span className="truncate">
+                              {v.emails[0] ?? v.email ?? 'Email not set'}
+                              {v.emails.length > 1 ? (
+                                <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                                  +{v.emails.length - 1}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="truncate">
+                              {v.phones[0] ?? v.phone ?? 'Phone not set'}
+                              {v.phones.length > 1 ? (
+                                <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                                  +{v.phones.length - 1}
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700">
+                              {v._count.purchaseOrders} POs
+                            </span>
+                          </div>
+                          <div className="text-[12px] text-slate-500 tabular-nums group-hover:text-[var(--color-bv-accent)]">
+                            Edit contacts →
+                          </div>
+                        </Link>
                       </div>
-                      <div className="min-w-0">
-                        <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
-                          {v.name}
-                        </span>
-                        <p className="truncate text-[12.5px] text-slate-500">{v.notes ?? 'No notes'}</p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                  <div className="grid gap-1 text-[12.5px] text-slate-500">
-                    <span className="truncate">
-                      {v.emails[0] ?? v.email ?? 'Email not set'}
-                      {v.emails.length > 1 ? (
-                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
-                          +{v.emails.length - 1}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="truncate">
-                      {v.phones[0] ?? v.phone ?? 'Phone not set'}
-                      {v.phones.length > 1 ? (
-                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
-                          +{v.phones.length - 1}
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700">
-                      {v._count.purchaseOrders} POs
-                    </span>
-                  </div>
-                  <div className="text-[12px] text-slate-500 tabular-nums group-hover:text-[var(--color-bv-accent)]">
-                    Edit contacts →
-                  </div>
-                </Link>
-              ))}
-              </div>
+                </BulkDeleteForm>
+              )}
             </div>
+            <PaginationControls
+              basePath="/vendors"
+              page={page}
+              total={filteredTotal}
+              params={{ q: rawQ, filter: filter === 'all' ? undefined : filter }}
+            />
           </section>
         </div>
       )}
@@ -309,4 +339,52 @@ function vendorMatchesSearch(vendor: VendorListRow, rawQ: string): boolean {
     .join(' ')
     .toLowerCase();
   return haystack.includes(q);
+}
+
+function vendorWhere(tenantId: string, rawQ: string, filter: VendorFilter): Prisma.VendorWhereInput {
+  return {
+    tenantId,
+    deletedAt: null,
+    ...vendorSearchWhere(rawQ),
+    ...vendorFilterWhere(filter),
+  };
+}
+
+function vendorSearchWhere(rawQ: string): Prisma.VendorWhereInput {
+  const q = rawQ.trim();
+  if (!q) return {};
+  return {
+    OR: [
+      { name: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
+      { phone: { contains: q, mode: 'insensitive' } },
+      { notes: { contains: q, mode: 'insensitive' } },
+      { emails: { has: q } },
+      { phones: { has: q } },
+    ],
+  };
+}
+
+function vendorContactWhere(): Prisma.VendorWhereInput[] {
+  return [
+    { email: { not: null } },
+    { phone: { not: null } },
+    { emails: { isEmpty: false } },
+    { phones: { isEmpty: false } },
+  ];
+}
+
+function vendorFilterWhere(filter: VendorFilter): Prisma.VendorWhereInput {
+  switch (filter) {
+    case 'contact-ready':
+      return { OR: vendorContactWhere() };
+    case 'missing-contact':
+      return { NOT: { OR: vendorContactWhere() } };
+    case 'has-pos':
+      return { purchaseOrders: { some: {} } };
+    case 'no-pos':
+      return { purchaseOrders: { none: {} } };
+    case 'all':
+      return {};
+  }
 }

@@ -4,7 +4,10 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
+import { BulkDeleteForm } from '@/components/app/bulk-delete-form';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { formatInches, formatSqFt, VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
+import { bulkArchiveVehiclesAction } from './actions';
 
 export const metadata = { title: 'Vehicle Library' };
 export const dynamic = 'force-dynamic';
@@ -17,6 +20,7 @@ interface SearchParams {
   vehicleType?: string;
   status?: string;
   view?: string;
+  page?: string | string[];
 }
 
 export default async function VehicleLibraryPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -26,6 +30,7 @@ export default async function VehicleLibraryPage({ searchParams }: { searchParam
   const q = sp.q?.trim() ?? '';
   const view = sp.view === 'table' ? 'table' : 'grid';
   const year = sp.year ? Number(sp.year) : null;
+  const page = parsePageParam(sp.page);
 
   const where: Prisma.VehicleTrimWhereInput = {
     tenantId: me.tenantId,
@@ -53,11 +58,12 @@ export default async function VehicleLibraryPage({ searchParams }: { searchParam
     ...(sp.status === 'missing-wrap' ? { OR: [{ dimensionProfiles: { none: {} } }, { dimensionProfiles: { every: { totalApproxWrapSqFt: null } } }] } : {}),
   };
 
-  const [vehicles, makes, bodyStyles, vehicleTypes, totalCount, withPhotoCount, withDimsCount, withWrapCount] = await Promise.all([
+  const [vehicles, makes, bodyStyles, vehicleTypes, totalCount, filteredTotal, withPhotoCount, withDimsCount, withWrapCount] = await Promise.all([
     prisma.vehicleTrim.findMany({
       where,
       orderBy: [{ year: 'desc' }, { model: { make: { name: 'asc' } } }, { model: { name: 'asc' } }],
-      take: 160,
+      skip: pageSkip(page),
+      take: DEFAULT_PAGE_SIZE,
       select: {
         id: true,
         year: true,
@@ -73,6 +79,7 @@ export default async function VehicleLibraryPage({ searchParams }: { searchParam
     prisma.vehicleTrim.findMany({ where: { tenantId: me.tenantId, deletedAt: null, bodyStyle: { not: null } }, distinct: ['bodyStyle'], orderBy: { bodyStyle: 'asc' }, select: { bodyStyle: true } }),
     prisma.vehicleModel.findMany({ where: { tenantId: me.tenantId, vehicleType: { not: null } }, distinct: ['vehicleType'], orderBy: { vehicleType: 'asc' }, select: { vehicleType: true } }),
     prisma.vehicleTrim.count({ where: { tenantId: me.tenantId, deletedAt: null } }),
+    prisma.vehicleTrim.count({ where }),
     prisma.vehicleTrim.count({ where: { tenantId: me.tenantId, deletedAt: null, photos: { some: { isPrimary: true } } } }),
     prisma.vehicleTrim.count({ where: { tenantId: me.tenantId, deletedAt: null, dimensionProfiles: { some: {} } } }),
     prisma.vehicleTrim.count({ where: { tenantId: me.tenantId, deletedAt: null, dimensionProfiles: { some: { totalApproxWrapSqFt: { not: null } } } } }),
@@ -133,12 +140,20 @@ export default async function VehicleLibraryPage({ searchParams }: { searchParam
         />
       ) : view === 'table' ? (
         <section className="max-h-[calc(100vh-395px)] min-h-[320px] overflow-y-auto">
-          <VehicleTable vehicles={vehicles} />
+          <BulkDeleteForm action={bulkArchiveVehiclesAction} itemLabel="vehicles">
+            <VehicleTable vehicles={vehicles} />
+          </BulkDeleteForm>
+          <PaginationControls basePath="/vehicles" page={page} total={filteredTotal} params={vehiclePaginationParams(sp, q, view)} />
         </section>
       ) : (
         <section className="max-h-[calc(100vh-395px)] min-h-[320px] overflow-y-auto pr-1">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {vehicles.map((vehicle) => <VehicleCard key={vehicle.id} vehicle={vehicle} />)}
+          <BulkDeleteForm action={bulkArchiveVehiclesAction} itemLabel="vehicles">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {vehicles.map((vehicle) => <VehicleCard key={vehicle.id} vehicle={vehicle} />)}
+            </div>
+          </BulkDeleteForm>
+          <div className="mt-4">
+            <PaginationControls basePath="/vehicles" page={page} total={filteredTotal} params={vehiclePaginationParams(sp, q, view)} />
           </div>
         </section>
       )}
@@ -161,6 +176,18 @@ function Select({ name, value, label, options }: { name: string; value: string; 
       {options.map((option) => <option key={option} value={option}>{option}</option>)}
     </AutoSubmitSelect>
   );
+}
+
+function vehiclePaginationParams(sp: SearchParams, q: string, view: string) {
+  return {
+    q,
+    year: sp.year,
+    make: sp.make,
+    bodyStyle: sp.bodyStyle,
+    vehicleType: sp.vehicleType,
+    status: sp.status,
+    view: view === 'grid' ? undefined : view,
+  };
 }
 
 function Metric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: 'blue' | 'emerald' | 'slate' | 'violet' }) {
@@ -200,29 +227,41 @@ function VehicleCard({ vehicle }: { vehicle: VehicleRow }) {
   const profile = vehicle.dimensionProfiles[0];
   const photo = vehicle.photos[0];
   return (
-    <Link href={`/vehicles/${vehicle.id}`} className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_20px_60px_rgba(15,23,42,0.09)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_70px_rgba(15,23,42,0.13)]">
-      <img src={photo?.url ?? VEHICLE_PLACEHOLDER_SVG} alt={photo?.altText ?? 'Vehicle placeholder'} className="h-44 w-full object-cover" />
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-[16px] font-black tracking-[-0.02em] text-slate-950">{vehicle.year} {vehicle.model.make.name} {vehicle.model.name}</h2>
-            <p className="mt-1 text-[13px] font-semibold text-slate-500">{vehicle.trimName ?? 'Base trim'} · {vehicle.bodyStyle ?? vehicle.model.vehicleType ?? 'Body style missing'}</p>
-          </div>
-          <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">{formatSqFt(profile?.totalApproxWrapSqFt)}</span>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
-          <Mini label="L" value={formatInches(profile?.lengthIn)} />
-          <Mini label="W" value={formatInches(profile?.widthIn)} />
-          <Mini label="H" value={formatInches(profile?.heightIn)} />
-        </div>
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          <Badge ok={Boolean(photo)} label={photo ? 'Photo' : 'No photo'} />
-          <Badge ok={Boolean(profile)} label={profile ? 'Dimensions' : 'No dimensions'} />
-          <Badge ok={profile?.confidenceLevel === VehicleDimensionConfidenceLevel.VERIFIED} label={profile?.confidenceLevel === VehicleDimensionConfidenceLevel.VERIFIED ? 'Verified' : 'Unverified'} />
-          <Badge ok={vehicle.templates.length > 0} label={vehicle.templates.length > 0 ? 'Template' : 'No template'} />
-        </div>
+    <div className="overflow-hidden rounded-[22px] border border-white/80 bg-white/90 shadow-[0_20px_60px_rgba(15,23,42,0.09)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_70px_rgba(15,23,42,0.13)]">
+      <div className="flex items-center gap-2 border-b border-slate-100 bg-white/80 px-4 py-3">
+        <input
+          type="checkbox"
+          name="ids"
+          value={vehicle.id}
+          aria-label={`Select ${vehicle.year} ${vehicle.model.make.name} ${vehicle.model.name}`}
+          className="h-4 w-4 rounded border-slate-300 text-[var(--color-bv-accent)] focus:ring-[var(--color-bv-accent)]"
+        />
+        <span className="text-[12px] font-semibold text-slate-500">Select</span>
       </div>
-    </Link>
+      <Link href={`/vehicles/${vehicle.id}`} className="block">
+        <img src={photo?.url ?? VEHICLE_PLACEHOLDER_SVG} alt={photo?.altText ?? 'Vehicle placeholder'} className="h-44 w-full object-cover" />
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[16px] font-black tracking-[-0.02em] text-slate-950">{vehicle.year} {vehicle.model.make.name} {vehicle.model.name}</h2>
+              <p className="mt-1 text-[13px] font-semibold text-slate-500">{vehicle.trimName ?? 'Base trim'} · {vehicle.bodyStyle ?? vehicle.model.vehicleType ?? 'Body style missing'}</p>
+            </div>
+            <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">{formatSqFt(profile?.totalApproxWrapSqFt)}</span>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
+            <Mini label="L" value={formatInches(profile?.lengthIn)} />
+            <Mini label="W" value={formatInches(profile?.widthIn)} />
+            <Mini label="H" value={formatInches(profile?.heightIn)} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            <Badge ok={Boolean(photo)} label={photo ? 'Photo' : 'No photo'} />
+            <Badge ok={Boolean(profile)} label={profile ? 'Dimensions' : 'No dimensions'} />
+            <Badge ok={profile?.confidenceLevel === VehicleDimensionConfidenceLevel.VERIFIED} label={profile?.confidenceLevel === VehicleDimensionConfidenceLevel.VERIFIED ? 'Verified' : 'Unverified'} />
+            <Badge ok={vehicle.templates.length > 0} label={vehicle.templates.length > 0 ? 'Template' : 'No template'} />
+          </div>
+        </div>
+      </Link>
+    </div>
   );
 }
 
@@ -232,7 +271,7 @@ function VehicleTable({ vehicles }: { vehicles: VehicleRow[] }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1100px] text-[13px]">
           <thead><tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] uppercase tracking-[0.18em] text-slate-400">
-            <th className="px-4 py-3">Photo</th><th>Year</th><th>Make</th><th>Model</th><th>Trim</th><th>Body style</th><th>Length</th><th>Width</th><th>Height</th><th>Wrap sq ft</th><th>Status</th><th>Actions</th>
+            <th className="px-4 py-3">Select</th><th>Photo</th><th>Year</th><th>Make</th><th>Model</th><th>Trim</th><th>Body style</th><th>Length</th><th>Width</th><th>Height</th><th>Wrap sq ft</th><th>Status</th><th>Actions</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100">
             {vehicles.map((vehicle) => {
@@ -240,6 +279,15 @@ function VehicleTable({ vehicles }: { vehicles: VehicleRow[] }) {
               const photo = vehicle.photos[0];
               return (
                 <tr key={vehicle.id} className="hover:bg-slate-50/70">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      name="ids"
+                      value={vehicle.id}
+                      aria-label={`Select ${vehicle.year} ${vehicle.model.make.name} ${vehicle.model.name}`}
+                      className="h-4 w-4 rounded border-slate-300 text-[var(--color-bv-accent)] focus:ring-[var(--color-bv-accent)]"
+                    />
+                  </td>
                   <td className="px-4 py-3"><img src={photo?.url ?? VEHICLE_PLACEHOLDER_SVG} alt="" className="h-12 w-16 rounded-[10px] object-cover ring-1 ring-slate-200" /></td>
                   <td className="font-bold">{vehicle.year}</td>
                   <td>{vehicle.model.make.name}</td>

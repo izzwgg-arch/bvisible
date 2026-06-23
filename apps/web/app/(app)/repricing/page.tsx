@@ -2,31 +2,43 @@ import Link from 'next/link';
 import { prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
+import { SelectControl } from '@/components/app/select-control';
 import { updateRepricingRequestStatusAction } from '../items/actions';
 
 export const metadata = { title: 'Repricing requests' };
 export const dynamic = 'force-dynamic';
 
-export default async function RepricingPage() {
+export default async function RepricingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
   const me = await requireTenantId();
-  const requests = await prisma.repricingRequest.findMany({
-    where: { tenantId: me.tenantId },
-    orderBy: [{ createdAt: 'desc' }],
-    take: 250,
-    select: {
-      id: true,
-      status: true,
-      oldCostCents: true,
-      reason: true,
-      notes: true,
-      createdAt: true,
-      completedAt: true,
-      shopMaterialItem: { select: { id: true, name: true } },
-      vendor: { select: { id: true, name: true } },
-      requestedBy: { select: { name: true, email: true } },
-      completedBy: { select: { name: true, email: true } },
-    },
-  });
+  const sp = await searchParams;
+  const page = parsePageParam(sp.page);
+  const [requests, total] = await Promise.all([
+    prisma.repricingRequest.findMany({
+      where: { tenantId: me.tenantId },
+      orderBy: [{ createdAt: 'desc' }],
+      skip: pageSkip(page),
+      take: DEFAULT_PAGE_SIZE,
+      select: {
+        id: true,
+        status: true,
+        oldCostCents: true,
+        reason: true,
+        notes: true,
+        createdAt: true,
+        completedAt: true,
+        shopMaterialItem: { select: { id: true, name: true } },
+        vendor: { select: { id: true, name: true } },
+        requestedBy: { select: { name: true, email: true } },
+        completedBy: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.repricingRequest.count({ where: { tenantId: me.tenantId } }),
+  ]);
 
   return (
     <>
@@ -78,7 +90,7 @@ export default async function RepricingPage() {
                 <td className="px-3 py-3">
                   <form action={updateRepricingRequestStatusAction} className="flex flex-col gap-2">
                     <input type="hidden" name="requestId" value={request.id} />
-                    <select
+                    <SelectControl
                       name="status"
                       defaultValue={request.status}
                       className="rounded-[8px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[12px] font-semibold text-[var(--color-bv-text)]"
@@ -87,7 +99,7 @@ export default async function RepricingPage() {
                       <option value="IN_REVIEW">In review</option>
                       <option value="UPDATED">Updated</option>
                       <option value="IGNORED">Ignored</option>
-                    </select>
+                    </SelectControl>
                     <button
                       type="submit"
                       className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2 py-1.5 text-[12px] font-semibold text-[var(--color-bv-text)]"
@@ -100,6 +112,7 @@ export default async function RepricingPage() {
             ))}
           </tbody>
         </table>
+        <PaginationControls basePath="/repricing" page={page} total={total} />
       </section>
     </>
   );

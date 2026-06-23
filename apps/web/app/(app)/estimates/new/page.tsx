@@ -19,7 +19,6 @@ export default async function NewEstimatePage({
     where: { tenantId: me.tenantId, deletedAt: null },
     orderBy: [{ companyName: 'asc' }],
     select: { id: true, companyName: true },
-    take: 500,
   });
 
   return (

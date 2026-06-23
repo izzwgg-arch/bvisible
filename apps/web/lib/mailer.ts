@@ -24,6 +24,7 @@ import { prisma } from '@bvisible/db';
 import { openSecret } from '@/lib/email-ingest/crypto';
 import { BRAND_LOGO_CID } from '@/lib/emails/render';
 
+const BRAND_FROM_NAME = 'B Visible';
 const BRAND_LOGO_PATH =
   [
     path.join(process.cwd(), 'public/brand/b-visible-logo.png'),
@@ -381,7 +382,7 @@ export async function sendMail(input: SendMailInput): Promise<
     ];
 
     const info = await transport.sendMail({
-      from: config.from,
+      from: brandFromAddress(config.from),
       to: input.to,
       subject: input.subject,
       text: input.text,
@@ -413,6 +414,19 @@ export async function sendMail(input: SendMailInput): Promise<
     });
     return { ok: false, error: mapped, diagnostics };
   }
+}
+
+export function brandFromAddress(from: string): Mail.Address {
+  return {
+    name: BRAND_FROM_NAME,
+    address: extractMailboxAddress(from),
+  };
+}
+
+function extractMailboxAddress(from: string): string {
+  const trimmed = from.trim();
+  const bracketed = trimmed.match(/<([^<>]+)>/);
+  return (bracketed?.[1] ?? trimmed).trim();
 }
 
 function emptyDiagnostics(): SafeSmtpDiagnostics {

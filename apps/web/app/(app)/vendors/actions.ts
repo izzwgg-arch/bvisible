@@ -1,10 +1,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { Prisma, prisma } from '@bvisible/db';
+import { revalidatePath } from 'next/cache';
+import { Prisma, prisma, Role } from '@bvisible/db';
 import { createVendorSchema } from '@/lib/validators';
 import { writeAuditLog } from '@/lib/auth/audit';
-import { requireTenantId } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany, requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 
 export interface CreateVendorState {
@@ -68,4 +69,33 @@ export async function createVendorAction(
   });
 
   redirect(`/vendors/${created.id}`);
+}
+
+export async function bulkDeleteVendorsAction(formData: FormData): Promise<void> {
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
+  const ctx = await readRequestContext();
+  const ids = formData.getAll('ids').map((value) => String(value)).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const result = await prisma.vendor.updateMany({
+    where: {
+      id: { in: ids },
+      tenantId: me.tenantId,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+
+  await writeAuditLog({
+    action: 'vendors_bulk_deleted',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'vendor',
+    targetId: 'bulk',
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { requestedCount: ids.length, deletedCount: result.count },
+  });
+
+  revalidatePath('/vendors');
 }

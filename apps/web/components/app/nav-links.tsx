@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/cn';
 
 export interface NavItem {
@@ -16,6 +17,40 @@ export interface NavSection {
 
 export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const prefetchHrefs = useMemo(
+    () => Array.from(new Set(sections.flatMap((sec) => sec.items.map((item) => item.href)))),
+    [sections],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const timeoutIds: Array<ReturnType<typeof setTimeout>> = [];
+
+    const warmRoutes = () => {
+      prefetchHrefs.forEach((href, index) => {
+        const timeoutId = setTimeout(() => {
+          if (!cancelled && href !== pathname) {
+            router.prefetch(href);
+          }
+        }, index * 75);
+        timeoutIds.push(timeoutId);
+      });
+    };
+
+    const idleId = window.requestIdleCallback
+      ? window.requestIdleCallback(warmRoutes, { timeout: 1200 })
+      : null;
+    const fallbackId = idleId === null ? setTimeout(warmRoutes, 250) : null;
+
+    return () => {
+      cancelled = true;
+      if (idleId !== null) window.cancelIdleCallback(idleId);
+      if (fallbackId !== null) clearTimeout(fallbackId);
+      timeoutIds.forEach(clearTimeout);
+    };
+  }, [pathname, prefetchHrefs, router]);
+
   return (
     <nav aria-label="Primary" className="relative flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-1">
       {sections.map((sec, si) => (
@@ -32,6 +67,9 @@ export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) 
                 <Link
                   key={item.href}
                   href={item.href as never}
+                  prefetch
+                  onFocus={() => router.prefetch(item.href)}
+                  onMouseEnter={() => router.prefetch(item.href)}
                   className={cn(
                     'group relative flex items-center gap-3 rounded-[14px] border px-3 py-2.5 text-[13px] font-medium transition-all',
                     active

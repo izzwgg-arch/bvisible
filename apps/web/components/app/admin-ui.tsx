@@ -12,25 +12,23 @@ export function AdminMetric({
   tone?: 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' | 'slate';
 }) {
   const toneClass = {
-    blue: 'from-[#F28744]/16 to-[#1C4972]/8 text-[#1C4972] ring-[#F28744]/20',
-    emerald: 'from-emerald-400/16 to-teal-300/10 text-emerald-700 ring-emerald-100',
-    amber: 'from-amber-400/16 to-orange-300/10 text-amber-700 ring-amber-100',
-    rose: 'from-rose-400/16 to-orange-300/10 text-rose-700 ring-rose-100',
-    violet: 'from-violet-400/16 to-[#1C4972]/8 text-violet-700 ring-violet-100',
-    slate: 'from-slate-400/16 to-[#1C4972]/8 text-slate-600 ring-slate-200',
+    blue: 'from-blue-600/10 to-indigo-500/10 text-blue-700 ring-blue-500/15',
+    emerald: 'from-emerald-600/10 to-teal-500/10 text-emerald-700 ring-emerald-500/15',
+    amber: 'from-amber-500/10 to-orange-400/10 text-amber-700 ring-amber-500/15',
+    rose: 'from-rose-500/10 to-orange-400/10 text-rose-700 ring-rose-500/15',
+    violet: 'from-violet-600/10 to-fuchsia-500/10 text-violet-700 ring-violet-500/15',
+    slate: 'from-slate-600/10 to-slate-400/10 text-slate-700 ring-slate-500/15',
   }[tone];
 
   return (
-    <div className="rounded-[20px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div
-        className={`inline-flex rounded-full bg-gradient-to-br px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ring-1 ${toneClass}`}
-      >
-        {label}
-      </div>
-      <div className="mt-4 text-[27px] font-semibold tracking-[-0.04em] text-slate-950">
+    <div
+      className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}
+    >
+      <p className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</p>
+      <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em] tabular-nums">
         {value}
       </div>
-      <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{detail}</p>
+      <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>
     </div>
   );
 }

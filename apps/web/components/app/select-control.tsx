@@ -59,7 +59,7 @@ export function SelectControl({
   className,
   style,
   children,
-  searchable = false,
+  searchable = true,
   searchPlaceholder = 'Search options...',
   value,
   defaultValue,

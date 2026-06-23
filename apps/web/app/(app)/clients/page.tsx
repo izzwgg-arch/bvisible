@@ -1,10 +1,13 @@
 import Link from 'next/link';
-import { prisma } from '@bvisible/db';
+import { Prisma, prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { AutoSubmitInput } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
+import { BulkDeleteForm } from '@/components/app/bulk-delete-form';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { ClientCsvButtons } from './csv-buttons';
+import { bulkDeleteClientsAction } from './actions';
 
 export const metadata = { title: 'Customers' };
 export const dynamic = 'force-dynamic';
@@ -13,6 +16,7 @@ interface SearchParams {
   created?: string;
   q?: string;
   filter?: string;
+  page?: string | string[];
 }
 
 type CustomerFilter = 'all' | 'contact-ready' | 'missing-contact' | 'has-estimates' | 'no-estimates';
@@ -45,32 +49,43 @@ export default async function ClientsPage({
   const sp = await searchParams;
   const rawQ = sp.q?.trim() ?? '';
   const filter = parseCustomerFilter(sp.filter);
+  const page = parsePageParam(sp.page);
+  const where = customerWhere(me.tenantId, rawQ, filter);
 
-  const clients = await prisma.client.findMany({
-    where: { tenantId: me.tenantId, deletedAt: null },
-    orderBy: [{ companyName: 'asc' }],
-    select: {
-      id: true,
-      companyName: true,
-      contactName: true,
-      email: true,
-      secondaryEmail: true,
-      phone: true,
-      alternatePhone: true,
-      address: true,
-      _count: { select: { estimates: true } },
-    },
-    take: 500,
-  });
-
-  const estimateTotal = clients.reduce((sum, client) => sum + client._count.estimates, 0);
-  const contactsReady = clients.filter(
-    (client) => client.email || client.secondaryEmail || client.phone || client.alternatePhone,
-  ).length;
-  const activeClients = clients.filter((client) => client._count.estimates > 0).length;
-  const filteredClients = clients.filter(
-    (client) => customerMatchesSearch(client, rawQ) && customerMatchesFilter(client, filter),
-  );
+  const [clients, totalClients, filteredTotal, contactsReady, activeClients, estimateTotal] = await Promise.all([
+    prisma.client.findMany({
+      where,
+      orderBy: [{ companyName: 'asc' }],
+      skip: pageSkip(page),
+      take: DEFAULT_PAGE_SIZE,
+      select: {
+        id: true,
+        companyName: true,
+        contactName: true,
+        email: true,
+        secondaryEmail: true,
+        phone: true,
+        alternatePhone: true,
+        address: true,
+        _count: { select: { estimates: true } },
+      },
+    }),
+    prisma.client.count({ where: { tenantId: me.tenantId, deletedAt: null } }),
+    prisma.client.count({ where }),
+    prisma.client.count({
+      where: {
+        tenantId: me.tenantId,
+        deletedAt: null,
+        OR: contactReadyWhere(),
+      },
+    }),
+    prisma.client.count({
+      where: { tenantId: me.tenantId, deletedAt: null, estimates: { some: {} } },
+    }),
+    prisma.estimate.count({
+      where: { tenantId: me.tenantId, deletedAt: null, client: { deletedAt: null } },
+    }),
+  ]);
 
   return (
     <>
@@ -96,7 +111,7 @@ export default async function ClientsPage({
         </div>
       ) : null}
 
-      {clients.length === 0 ? (
+      {totalClients === 0 ? (
         <EmptyState
           title="No customers yet"
           description="Clients are the customers you quote. Add one to create estimates and keep jobs organized."
@@ -105,9 +120,9 @@ export default async function ClientsPage({
       ) : (
         <div className="grid gap-5">
           <section className="grid gap-3 md:grid-cols-3">
-            <CustomerStat label="Total customers" value={clients.length.toString()} detail={`${activeClients} with estimate activity`} tone="blue" />
+            <CustomerStat label="Total customers" value={totalClients.toString()} detail={`${activeClients} with estimate activity`} tone="blue" />
             <CustomerStat label="Quote history" value={estimateTotal.toString()} detail="Total estimates connected to customers" tone="emerald" />
-            <CustomerStat label="Contact ready" value={contactsReady.toString()} detail={`${filteredClients.length} showing now`} tone="violet" />
+            <CustomerStat label="Contact ready" value={contactsReady.toString()} detail={`${filteredTotal} matching filters`} tone="violet" />
           </section>
 
           <section className="rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
@@ -159,17 +174,16 @@ export default async function ClientsPage({
                 <h2 className="text-[15px] font-semibold text-slate-950">Customer portfolio</h2>
                 <p className="mt-1 text-[12.5px] text-slate-500">
                   {rawQ || filter !== 'all'
-                    ? `Filtered by ${customerFilterLabel(filter)}${rawQ ? ` matching "${rawQ}"` : ''}.`
+                      ? `Filtered by ${customerFilterLabel(filter)}${rawQ ? ` matching "${rawQ}"` : ''}.`
                     : 'Account details formatted for quick quoting and follow-up.'}
                 </p>
               </div>
               <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
-                {filteredClients.length} customers
+                {filteredTotal} customers
               </span>
             </div>
             <div className="min-h-0 overflow-y-auto p-4">
-              <div className="grid gap-3">
-              {filteredClients.length === 0 ? (
+              {clients.length === 0 ? (
                 <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-10 text-center">
                   <h3 className="text-[14px] font-semibold text-slate-950">No customers match your search</h3>
                   <p className="mt-1 text-[12.5px] text-slate-500">Try a different keyword or filter.</p>
@@ -180,57 +194,79 @@ export default async function ClientsPage({
                     Clear filters
                   </Link>
                 </div>
-              ) : filteredClients.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/clients/${c.id}`}
-                  className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100 transition group-hover:bg-violet-100">
-                        {initials(c.companyName)}
+              ) : (
+                <BulkDeleteForm action={bulkDeleteClientsAction} itemLabel="customers">
+                  <div className="grid gap-3">
+                    {clients.map((c) => (
+                      <div
+                        key={c.id}
+                        className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-violet-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]"
+                      >
+                        <input
+                          type="checkbox"
+                          name="ids"
+                          value={c.id}
+                          aria-label={`Select ${c.companyName}`}
+                          className="mt-3 h-4 w-4 rounded border-slate-300 text-[var(--color-bv-accent)] focus:ring-[var(--color-bv-accent)]"
+                        />
+                        <Link
+                          href={`/clients/${c.id}`}
+                          className="group grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_160px_120px]"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-3">
+                              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-violet-50 text-[13px] font-semibold text-violet-700 ring-1 ring-violet-100 transition group-hover:bg-violet-100">
+                                {initials(c.companyName)}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
+                                  {c.companyName}
+                                </span>
+                                <p className="truncate text-[12.5px] text-slate-500">
+                                  {c.contactName ?? 'No primary contact yet'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid gap-1 text-[12.5px] text-slate-500">
+                            <span className="truncate">
+                              {c.email ?? 'Email not set'}
+                              {c.secondaryEmail ? (
+                                <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                                  +1
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="truncate">
+                              {c.phone ?? 'Phone not set'}
+                              {c.alternatePhone ? (
+                                <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
+                                  +1
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700">
+                              {c._count.estimates} estimates
+                            </span>
+                          </div>
+                          <div className="text-[12px] text-slate-500 tabular-nums group-hover:text-[var(--color-bv-accent)]">
+                            Edit contacts →
+                          </div>
+                        </Link>
                       </div>
-                      <div className="min-w-0">
-                        <span className="truncate text-[14px] font-semibold text-slate-950 group-hover:text-[var(--color-bv-accent)]">
-                          {c.companyName}
-                        </span>
-                        <p className="truncate text-[12.5px] text-slate-500">
-                          {c.contactName ?? 'No primary contact yet'}
-                        </p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                  <div className="grid gap-1 text-[12.5px] text-slate-500">
-                    <span className="truncate">
-                      {c.email ?? 'Email not set'}
-                      {c.secondaryEmail ? (
-                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
-                          +1
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="truncate">
-                      {c.phone ?? 'Phone not set'}
-                      {c.alternatePhone ? (
-                        <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-violet-600 ring-1 ring-violet-100">
-                          +1
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="inline-flex rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[11.5px] font-semibold text-violet-700">
-                      {c._count.estimates} estimates
-                    </span>
-                  </div>
-                  <div className="text-[12px] text-slate-500 tabular-nums group-hover:text-[var(--color-bv-accent)]">
-                    Edit contacts →
-                  </div>
-                </Link>
-              ))}
-              </div>
+                </BulkDeleteForm>
+              )}
             </div>
+            <PaginationControls
+              basePath="/clients"
+              page={page}
+              total={filteredTotal}
+              params={{ q: rawQ, filter: filter === 'all' ? undefined : filter }}
+            />
           </section>
         </div>
       )}
@@ -313,4 +349,53 @@ function customerMatchesSearch(customer: CustomerListRow, rawQ: string): boolean
     .join(' ')
     .toLowerCase();
   return haystack.includes(q);
+}
+
+function customerWhere(tenantId: string, rawQ: string, filter: CustomerFilter): Prisma.ClientWhereInput {
+  return {
+    tenantId,
+    deletedAt: null,
+    ...customerSearchWhere(rawQ),
+    ...customerFilterWhere(filter),
+  };
+}
+
+function customerSearchWhere(rawQ: string): Prisma.ClientWhereInput {
+  const q = rawQ.trim();
+  if (!q) return {};
+  return {
+    OR: [
+      { companyName: { contains: q, mode: 'insensitive' } },
+      { contactName: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
+      { secondaryEmail: { contains: q, mode: 'insensitive' } },
+      { phone: { contains: q, mode: 'insensitive' } },
+      { alternatePhone: { contains: q, mode: 'insensitive' } },
+      { address: { contains: q, mode: 'insensitive' } },
+    ],
+  };
+}
+
+function contactReadyWhere(): Prisma.ClientWhereInput[] {
+  return [
+    { email: { not: null } },
+    { secondaryEmail: { not: null } },
+    { phone: { not: null } },
+    { alternatePhone: { not: null } },
+  ];
+}
+
+function customerFilterWhere(filter: CustomerFilter): Prisma.ClientWhereInput {
+  switch (filter) {
+    case 'contact-ready':
+      return { OR: contactReadyWhere() };
+    case 'missing-contact':
+      return { NOT: { OR: contactReadyWhere() } };
+    case 'has-estimates':
+      return { estimates: { some: {} } };
+    case 'no-estimates':
+      return { estimates: { none: {} } };
+    case 'all':
+      return {};
+  }
 }

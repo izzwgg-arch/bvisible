@@ -329,13 +329,13 @@ export function BundleForm({
 
         <div className="grid gap-3 rounded-[16px] border border-slate-100 bg-slate-50/70 p-4 md:grid-cols-[1fr_1fr_auto]">
           <input value={sourceQuery} onChange={(e) => setSourceQuery(e.currentTarget.value)} placeholder="Search existing catalog items..." className="h-11 rounded-[12px] border border-slate-200 bg-white px-3 text-[13px]" />
-          <select value={sourceId} onChange={(e) => setSourceId(e.currentTarget.value)} className="h-11 rounded-[12px] border border-slate-200 bg-white px-3 text-[13px]">
+          <SelectControl value={sourceId} onChange={(e) => setSourceId(e.currentTarget.value)} searchable searchPlaceholder="Search catalog items..." className="h-11 rounded-[12px] border border-slate-200 bg-white px-3 text-[13px]">
             {filteredSources.map((source) => (
               <option key={source.id} value={source.id}>
                 {source.name} · {kindLabel(source.kind)}
               </option>
             ))}
-          </select>
+          </SelectControl>
           <button type="button" onClick={addSource} className="rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2 text-[13px] font-semibold text-white">
             Add selected item
           </button>
@@ -411,15 +411,15 @@ function ComponentEditor({
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Type</span>
-          <select value={component.componentType} onChange={(e) => onPatch({ componentType: e.currentTarget.value as EstimateLineKind, categories: [e.currentTarget.value] })} className="h-10 rounded-[10px] border border-slate-200 px-3 text-[13px]">
+          <SelectControl value={component.componentType} onChange={(e) => onPatch({ componentType: e.currentTarget.value as EstimateLineKind, categories: [e.currentTarget.value] })} className="h-10 rounded-[10px] border border-slate-200 px-3 text-[13px]">
             {KINDS.map((kind) => <option key={kind} value={kind}>{kindLabel(kind)}</option>)}
-          </select>
+          </SelectControl>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Unit</span>
-          <select value={component.unit} onChange={(e) => onPatch({ unit: e.currentTarget.value as ShopCatalogUnit })} className="h-10 rounded-[10px] border border-slate-200 px-3 text-[13px]">
+          <SelectControl value={component.unit} onChange={(e) => onPatch({ unit: e.currentTarget.value as ShopCatalogUnit })} className="h-10 rounded-[10px] border border-slate-200 px-3 text-[13px]">
             {UNITS.map((unit) => <option key={unit} value={unit}>{unit.replace(/_/g, ' ')}</option>)}
-          </select>
+          </SelectControl>
         </label>
       </div>
 
@@ -443,14 +443,14 @@ function ComponentEditor({
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Selected vendor</span>
-          <select value={component.selectedVendorId ?? ''} onChange={(e) => onPatch({ selectedVendorId: e.currentTarget.value || null })} className="h-10 rounded-[10px] border border-slate-200 px-3 text-[13px]">
+          <SelectControl value={component.selectedVendorId ?? ''} onChange={(e) => onPatch({ selectedVendorId: e.currentTarget.value || null })} searchable searchPlaceholder="Search vendors..." className="h-10 rounded-[10px] border border-slate-200 px-3 text-[13px]">
             <option value="">None</option>
             {selectedVendorOptions.map((vendor) => (
               <option key={vendor.vendorId} value={vendor.vendorId}>
                 {vendor.vendorName}{vendor.latestPriceCents !== null ? ` · ${formatMoney(vendor.latestPriceCents)}` : ''}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Notes</span>

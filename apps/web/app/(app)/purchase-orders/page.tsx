@@ -5,6 +5,7 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { formatMoney } from '@/lib/estimate/format';
 import { labelPoStatus } from '@/lib/ui/status-labels';
 
@@ -34,6 +35,7 @@ interface SearchParams {
   status?: string | string[];
   source?: string | string[];
   sort?: string | string[];
+  page?: string | string[];
 }
 
 const STATUS_FILTERS: ReadonlyArray<{ value: 'all' | POStatus; label: string }> = [
@@ -70,6 +72,7 @@ export default async function PurchaseOrdersPage({
   const status = normalizeStatus(firstParam(sp.status));
   const source = normalizeSource(firstParam(sp.source));
   const sort = normalizeSort(firstParam(sp.sort));
+  const page = parsePageParam(sp.page);
 
   const where: Prisma.PurchaseOrderWhereInput = {
     tenantId: me.tenantId,
@@ -90,7 +93,7 @@ export default async function PurchaseOrdersPage({
       : {}),
   };
 
-  const [pos, totalPoCount] = await Promise.all([
+  const [pos, filteredTotal, totalPoCount] = await Promise.all([
     prisma.purchaseOrder.findMany({
       where,
       orderBy: orderByForSort(sort),
@@ -112,8 +115,10 @@ export default async function PurchaseOrdersPage({
         },
         _count: { select: { lines: true, attachments: true } },
       },
-      take: 200,
+      skip: pageSkip(page),
+      take: DEFAULT_PAGE_SIZE,
     }),
+    prisma.purchaseOrder.count({ where }),
     prisma.purchaseOrder.count({
       where: { tenantId: me.tenantId, deletedAt: null },
     }),
@@ -231,7 +236,7 @@ export default async function PurchaseOrdersPage({
                   <h2 className="text-[15px] font-semibold text-slate-950">Procurement queue</h2>
                   <p className="text-[12.5px] text-slate-500">
                     {hasActiveFilters
-                      ? `${pos.length} purchase order${pos.length === 1 ? '' : 's'} match the current view.`
+                      ? `${filteredTotal} purchase order${filteredTotal === 1 ? '' : 's'} match the current view.`
                       : 'Every PO, vendor, status, and source estimate in one clean review surface.'}
                   </p>
                 </div>
@@ -339,6 +344,12 @@ export default async function PurchaseOrdersPage({
               <Insight label="Best practice" value="Link POs back to estimates for quote-to-spend visibility." />
               <Insight label="Ready state" value="Received POs are clean handoffs for reconciliation." />
             </div>
+            <PaginationControls
+              basePath="/purchase-orders"
+              page={page}
+              total={filteredTotal}
+              params={{ q: query, status: status ?? undefined, source: source === 'all' ? undefined : source, sort: sort === 'updated-desc' ? undefined : sort }}
+            />
           </section>
         </div>
       )}

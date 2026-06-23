@@ -66,7 +66,7 @@ export function DashboardAnalyticsBoard({
   );
 
   return (
-    <div className="dashboard-analytics -m-8 min-h-[100dvh] bg-[#f7fafc] px-8 py-6 text-[#1C4972]">
+    <div className="dashboard-analytics -mx-4 -my-5 min-h-[calc(100vh-2.5rem)] px-4 py-5 text-[#1C4972] sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6 xl:-mx-7 xl:px-7 min-[1500px]:-mx-8 min-[1500px]:-my-8 min-[1500px]:px-8 min-[1500px]:py-8 print:m-0 print:min-h-0 print:bg-white print:p-0">
       <div className="mx-auto w-full max-w-[1600px]">
       <header className="mb-5 flex shrink-0 flex-wrap items-start justify-between gap-4">
         <div>

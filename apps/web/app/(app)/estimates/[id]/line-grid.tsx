@@ -12,6 +12,7 @@ import {
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import { NumericCell } from '@/components/grid/cell-input';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
+import { SelectControl } from '@/components/app/select-control';
 import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/estimate/format';
 import { SectionCard } from '@/components/estimate/estimate-surface';
 import type { DraftLine, EditorBootstrap } from './editor';
@@ -434,7 +435,7 @@ export function LineGrid({
                         <span>{unit}</span>
                       ) : (
                         <div className="flex min-w-[104px] flex-col gap-1">
-                          <select
+                          <SelectControl
                             value={unit}
                             onFocus={reportFocus}
                             onChange={(event) => updateLineMeta({ unitLabelOverride: event.currentTarget.value })}
@@ -444,7 +445,7 @@ export function LineGrid({
                             {UNIT_OPTIONS.map((option) => (
                               <option key={option} value={option}>{option}</option>
                             ))}
-                          </select>
+                          </SelectControl>
                           {isSquareFootLine ? (
                             <input
                               value={lineMeta?.measurement ?? ''}
@@ -963,7 +964,7 @@ function MaterialsCheapestVendorsSection({
                         {readOnly ? (
                           <span className="font-semibold text-slate-700">{row.selectedVendorName ?? row.cheapestVendorName ?? 'No vendor prices'}</span>
                         ) : (
-                          <select
+                          <SelectControl
                             value={row.selectedVendorName ?? ''}
                             onChange={(event) => {
                               const selectedVendorName = event.currentTarget.value;
@@ -986,12 +987,14 @@ function MaterialsCheapestVendorsSection({
                             className="h-7 w-full min-w-[120px] rounded-[5px] border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                             aria-label={`Selected vendor for ${row.name}`}
                             data-material-vendor-select={row.key}
+                            searchable
+                            searchPlaceholder="Search vendors..."
                           >
                             <option value="">Auto cheapest</option>
                             {row.vendorOptions.map((vendor) => (
                               <option key={vendor} value={vendor}>{vendor}</option>
                             ))}
-                          </select>
+                          </SelectControl>
                         )}
                       </td>
                       <td className="px-3 py-2 text-slate-500">

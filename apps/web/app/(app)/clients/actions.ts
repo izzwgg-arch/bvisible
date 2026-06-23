@@ -1,10 +1,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { prisma } from '@bvisible/db';
+import { revalidatePath } from 'next/cache';
+import { prisma, Role } from '@bvisible/db';
 import { createClientSchema } from '@/lib/validators';
 import { writeAuditLog } from '@/lib/auth/audit';
-import { requireTenantId } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany, requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 
 export interface CreateClientState {
@@ -54,4 +55,33 @@ export async function createClientAction(
   });
 
   redirect(`/clients?created=${encodeURIComponent(companyName)}`);
+}
+
+export async function bulkDeleteClientsAction(formData: FormData): Promise<void> {
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
+  const ctx = await readRequestContext();
+  const ids = formData.getAll('ids').map((value) => String(value)).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const result = await prisma.client.updateMany({
+    where: {
+      id: { in: ids },
+      tenantId: me.tenantId,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+
+  await writeAuditLog({
+    action: 'clients_bulk_deleted',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'client',
+    targetId: 'bulk',
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { requestedCount: ids.length, deletedCount: result.count },
+  });
+
+  revalidatePath('/clients');
 }

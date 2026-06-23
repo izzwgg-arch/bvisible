@@ -4,6 +4,7 @@ import { prisma, InvoiceStatus } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { EmptyState } from '@/components/app/empty-state';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { formatMoney } from '@/lib/estimate/format';
 import { labelInvoiceStatus } from '@/lib/ui/status-labels';
 
@@ -16,33 +17,43 @@ const STATUS_TONE: Record<InvoiceStatus, string> = {
   VOIDED: 'border-slate-200 bg-slate-50 text-slate-800',
 };
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
   const me = await requireTenantId();
+  const sp = await searchParams;
+  const page = parsePageParam(sp.page);
 
-  const invoices = await prisma.invoice.findMany({
-    where: { tenantId: me.tenantId, deletedAt: null },
-    orderBy: [{ updatedAt: 'desc' }],
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      subtotalCents: true,
-      updatedAt: true,
-      estimateId: true,
-      estimate: { select: { id: true, number: true } },
-      client: { select: { companyName: true } },
-    },
-    take: 200,
-  });
+  const [invoices, invoiceTotal] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { tenantId: me.tenantId, deletedAt: null },
+      orderBy: [{ updatedAt: 'desc' }],
+      skip: pageSkip(page),
+      take: DEFAULT_PAGE_SIZE,
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        subtotalCents: true,
+        updatedAt: true,
+        estimateId: true,
+        estimate: { select: { id: true, number: true } },
+        client: { select: { companyName: true } },
+      },
+    }),
+    prisma.invoice.count({ where: { tenantId: me.tenantId, deletedAt: null } }),
+  ]);
 
   return (
     <>
       <PageHeader
         title="Invoices"
-        subtitle={`Sales invoices for ${me.tenant.name}. ${invoices.length} on file.`}
+        subtitle={`Sales invoices for ${me.tenant.name}. ${invoiceTotal} on file.`}
       />
 
-      {invoices.length === 0 ? (
+      {invoiceTotal === 0 ? (
         <EmptyState
           title="No invoices yet"
           description="Convert an approved estimate to create an unpaid invoice with copied lines and totals."
@@ -115,6 +126,7 @@ export default async function InvoicesPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls basePath="/invoices" page={page} total={invoiceTotal} />
         </section>
       )}
     </>

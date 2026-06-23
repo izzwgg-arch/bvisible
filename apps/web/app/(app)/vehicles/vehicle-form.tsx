@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import type { ReactNode } from 'react';
 import { VehicleDimensionConfidenceLevel } from '@bvisible/db';
+import { SelectControl } from '@/components/app/select-control';
 import type { VehicleFormState } from './actions';
 
 type VehicleFormAction = (prev: VehicleFormState, formData: FormData) => Promise<VehicleFormState>;
@@ -125,11 +126,11 @@ export function VehicleForm({
           <Field name="sourceUrl" label="Dimension source URL" type="url" defaultValue={initial.sourceUrl} />
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Confidence</span>
-            <select name="confidenceLevel" defaultValue={initial.confidenceLevel ?? VehicleDimensionConfidenceLevel.MANUAL} className={inputClass}>
+            <SelectControl name="confidenceLevel" defaultValue={initial.confidenceLevel ?? VehicleDimensionConfidenceLevel.MANUAL} className={inputClass}>
               {Object.values(VehicleDimensionConfidenceLevel).map((level) => (
                 <option key={level} value={level}>{level.toLowerCase()}</option>
               ))}
-            </select>
+            </SelectControl>
           </label>
         </div>
         <label className="mt-4 flex flex-col gap-1.5">

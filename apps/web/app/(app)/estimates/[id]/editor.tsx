@@ -26,6 +26,7 @@ import type { PricingEngine, VendorCostSourceMode } from '@/lib/shop-material/pr
 import type { SaveEstimateInput } from '@/lib/validators';
 import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
 import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/estimate-surface';
+import { SelectControl } from '@/components/app/select-control';
 
 type EstimateTypeValue = 'CUSTOM' | 'STOCK_ITEM' | 'SQUARE_FOOTAGE';
 
@@ -848,9 +849,11 @@ function ProjectContextRail({
         </p>
         {!readOnly ? (
           <div className="mt-3 grid gap-2">
-            <select
+            <SelectControl
               value={vehiclePickId}
               onChange={(e) => onVehiclePick(e.currentTarget.value)}
+              searchable
+              searchPlaceholder="Search vehicles..."
               className="w-full rounded-[6px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-bold text-slate-700"
             >
               {vehicleLibrary.length === 0 ? <option value="">No vehicles in library</option> : null}
@@ -859,7 +862,7 @@ function ProjectContextRail({
                   {row.year} {row.make} {row.model}{row.trim ? ` ${row.trim}` : ''}
                 </option>
               ))}
-            </select>
+            </SelectControl>
             <button type="button" onClick={onAttachVehicle} disabled={vehicleBusy || !vehiclePickId} className="w-full rounded-[6px] border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-blue-700 disabled:opacity-60">
               {vehicle ? 'Change vehicle' : 'Add vehicle'}
             </button>

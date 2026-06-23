@@ -8,6 +8,7 @@ import {
   IconBadge,
   IconCatalog,
 } from '@/components/estimate/estimate-surface';
+import { SelectControl } from '@/components/app/select-control';
 import type { EstimateCatalogPickerRow } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import { CatalogItemPicker } from './catalog-item-picker';
 import { VendorCatalogIntelPanel } from './vendor-catalog-intel-panel';
@@ -327,7 +328,7 @@ function VehicleEstimatorPanel({
       ) : null}
       <label className="mt-4 block">
         <span className="text-[10.5px] font-black uppercase tracking-[0.12em] text-slate-400">Coverage</span>
-        <select value={coverage} onChange={(e) => setCoverage(e.currentTarget.value)} className="mt-1 w-full rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-slate-800">
+        <SelectControl value={coverage} onChange={(e) => setCoverage(e.currentTarget.value)} className="mt-1 w-full rounded-[8px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-slate-800">
           <option value="full">Full wrap</option>
           <option value="partial">Partial wrap</option>
           <option value="sides">Sides only</option>
@@ -336,7 +337,7 @@ function VehicleEstimatorPanel({
           <option value="rear">Rear only</option>
           <option value="front">Front only</option>
           <option value="custom">Custom sq ft</option>
-        </select>
+        </SelectControl>
       </label>
       {coverage === 'custom' ? (
         <input

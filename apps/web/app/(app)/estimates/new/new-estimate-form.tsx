@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { createEstimateAction, type CreateEstimateState } from '../actions';
 import { SelectControl } from '@/components/app/select-control';
 import { FormError } from '@/components/auth/form-error';
@@ -25,19 +25,6 @@ export function NewEstimateForm({
       ? defaultClientId
       : '';
   const [selectedClientId, setSelectedClientId] = useState(initialClientId);
-  const [clientQuery, setClientQuery] = useState('');
-  const filteredClients = useMemo(() => {
-    const query = clientQuery.trim().toLowerCase();
-    if (!query) return clients;
-    return clients.filter((client) => client.companyName.toLowerCase().includes(query));
-  }, [clientQuery, clients]);
-  const clientOptions = useMemo(() => {
-    if (!selectedClientId) return filteredClients;
-    const alreadyVisible = filteredClients.some((client) => client.id === selectedClientId);
-    if (alreadyVisible) return filteredClients;
-    const selectedClient = clients.find((client) => client.id === selectedClientId);
-    return selectedClient ? [selectedClient, ...filteredClients] : filteredClients;
-  }, [selectedClientId, filteredClients, clients]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -45,35 +32,23 @@ export function NewEstimateForm({
         <span className="text-[12.5px] font-medium text-[var(--color-bv-muted)]">
           Client <span className="text-rose-600">*</span>
         </span>
-        <input
-          type="text"
-          value={clientQuery}
-          onChange={(event) => setClientQuery(event.currentTarget.value)}
-          autoComplete="off"
-          placeholder="Search clients..."
-          aria-label="Search clients"
-          className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
-        />
         <SelectControl
           name="clientId"
           required
           value={selectedClientId}
           onChange={(event) => setSelectedClientId(event.currentTarget.value)}
+          searchable
+          searchPlaceholder="Search all clients..."
           className="rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-3 py-2 text-[14px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)] focus:bg-[var(--color-bv-surface)]"
         >
           <option value="" disabled>
             Select client…
           </option>
-          {clientOptions.map((c) => (
+          {clients.map((c) => (
             <option key={c.id} value={c.id}>
               {c.companyName}
             </option>
           ))}
-          {clientOptions.length === 0 ? (
-            <option value="" disabled>
-              No matching clients
-            </option>
-          ) : null}
         </SelectControl>
       </label>
       <label className="flex flex-col gap-1.5">

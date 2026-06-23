@@ -5,6 +5,7 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-controls';
 import { EmptyState } from '@/components/app/empty-state';
+import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { formatMoney } from '@/lib/estimate/format';
 import { getEstimateListNextAction } from '@/lib/estimate/estimate-list-next-action';
 import { getEstimateListWorkflowChips } from '@/lib/estimate/estimate-list-workflow-chip';
@@ -26,6 +27,7 @@ type EstimateSearchParams = {
   status?: string | string[];
   workflow?: string | string[];
   sort?: string | string[];
+  page?: string | string[];
 };
 
 const STATUS_FILTERS: ReadonlyArray<{ value: 'all' | EstimateStatus; label: string }> = [
@@ -63,6 +65,7 @@ export default async function EstimatesPage({
   const status = normalizeStatus(firstParam(params?.status));
   const workflow = normalizeWorkflow(firstParam(params?.workflow));
   const sort = normalizeSort(firstParam(params?.sort));
+  const page = parsePageParam(params?.page);
 
   const where: Prisma.EstimateWhereInput = {
     tenantId: me.tenantId,
@@ -99,7 +102,6 @@ export default async function EstimatesPage({
           },
         },
       },
-      take: 200,
     }),
     prisma.client.count({
       where: { tenantId: me.tenantId, deletedAt: null },
@@ -109,6 +111,7 @@ export default async function EstimatesPage({
   const filteredEstimates = workflow === 'all'
     ? estimates
     : estimates.filter((estimate) => matchesWorkflowFilter(estimate, workflow));
+  const pagedEstimates = filteredEstimates.slice(pageSkip(page), pageSkip(page) + DEFAULT_PAGE_SIZE);
 
   const totalSellCents = filteredEstimates.reduce((sum, estimate) => sum + estimate.finalPriceCents, 0);
   const approvedCount = filteredEstimates.filter((estimate) => estimate.status === EstimateStatus.APPROVED).length;
@@ -250,7 +253,7 @@ export default async function EstimatesPage({
                 <span>Next</span>
                 <span className="text-right">Quick</span>
               </div>
-              {filteredEstimates.map((e) => {
+              {pagedEstimates.map((e) => {
                 const hasPo = e._count.purchaseOrders > 0;
                 const hasInvoice = e._count.invoices > 0;
                 const next = getEstimateListNextAction({
@@ -333,6 +336,12 @@ export default async function EstimatesPage({
               })}
             </div>
           </div>
+          <PaginationControls
+            basePath="/estimates"
+            page={page}
+            total={filteredEstimates.length}
+            params={{ q: query, status: status ?? undefined, workflow: workflow === 'all' ? undefined : workflow, sort: sort === 'updated-desc' ? undefined : sort }}
+          />
         </section>
       )}
     </>

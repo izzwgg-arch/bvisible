@@ -2,6 +2,7 @@
 
 import type { ChangeEvent, InputHTMLAttributes, SelectHTMLAttributes } from 'react';
 import { useRef } from 'react';
+import { SelectControl } from './select-control';
 
 function submitClosestForm(target: HTMLInputElement | HTMLSelectElement, delayMs: number) {
   const form = target.form;
@@ -43,5 +44,5 @@ export function AutoSubmitSelect({
     submitClosestForm(event.currentTarget, delayMs);
   }
 
-  return <select {...props} onChange={handleChange} />;
+  return <SelectControl {...props} onChange={handleChange} />;
 }

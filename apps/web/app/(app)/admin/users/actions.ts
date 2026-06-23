@@ -126,6 +126,91 @@ export async function inviteUserAction(
   );
 }
 
+export async function resendInviteAction(formData: FormData): Promise<void> {
+  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
+  const inviteId = String(formData.get('inviteId') ?? '');
+  if (!inviteId) redirect('/admin/users?inviteErr=missing');
+
+  const eff = me.role === Role.SUPER_ADMIN ? null : await resolveEffectiveCompany(me);
+  const invite = await prisma.userInvite.findFirst({
+    where: {
+      id: inviteId,
+      acceptedAt: null,
+      ...(me.role === Role.SUPER_ADMIN ? {} : { tenantId: eff!.tenantId }),
+    },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      tenantId: true,
+      tenant: { select: { name: true } },
+    },
+  });
+
+  if (!invite) redirect('/admin/users?inviteErr=not_found');
+
+  const existingAcceptedUser = await prisma.user.findFirst({
+    where: { email: invite.email, tenantId: invite.tenantId, inviteAcceptedAt: { not: null } },
+    select: { id: true },
+  });
+  if (existingAcceptedUser) redirect('/admin/users?inviteErr=accepted');
+
+  const token = generateToken();
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+  await prisma.userInvite.update({
+    where: { id: invite.id },
+    data: {
+      tokenHash: hashToken(token),
+      invitedById: me.id,
+      expiresAt,
+    },
+  });
+
+  const inviteLink = await buildInviteLink(token);
+  const tenantName = invite.tenant?.name ?? eff?.tenant.name ?? 'B Visible';
+  const mail = renderInviteEmail({
+    inviteLink,
+    role: invite.role,
+    tenantName,
+    invitedByEmail: me.email,
+  });
+  const send = await sendMail({
+    to: invite.email,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+  });
+
+  const mailDelivery = send.ok
+    ? ('sent' as const)
+    : send.error instanceof MailerConfigError
+      ? ('failed_no_config' as const)
+      : (`failed_${send.error.kind}` as const);
+
+  const ctx = await readRequestContext();
+  await writeAuditLog({
+    action: 'invite_resent',
+    userId: me.id,
+    tenantId: invite.tenantId,
+    targetType: 'invite',
+    targetId: invite.email,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { email: invite.email, role: invite.role, inviteId: invite.id, mailDelivery },
+  });
+
+  if (send.ok) {
+    redirect(`/admin/users?resent=${encodeURIComponent(invite.email)}`);
+  }
+
+  const failureKind = send.error instanceof MailerConfigError ? 'no_config' : send.error.kind;
+  redirect(
+    `/admin/users?invite=${encodeURIComponent(token)}` +
+      `&invitedEmail=${encodeURIComponent(invite.email)}` +
+      `&mailErr=${encodeURIComponent(failureKind)}`
+  );
+}
+
 async function buildInviteLink(token: string): Promise<string> {
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost';

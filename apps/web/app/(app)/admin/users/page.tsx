@@ -5,6 +5,7 @@ import { resolveEffectiveCompany } from '@/lib/auth/effective-company';
 import { PageHeader } from '@/components/app-shell';
 import { AdminMetric, AdminPanel, AdminPill } from '@/components/app/admin-ui';
 import { InviteUserForm } from './invite-user-form';
+import { resendInviteAction } from './actions';
 
 export const metadata = { title: 'Users' };
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,9 @@ interface SearchParams {
   invite?: string;
   invitedEmail?: string;
   sent?: string;
+  resent?: string;
   mailErr?: string;
+  inviteErr?: string;
 }
 
 const MAIL_ERR_LABELS: Record<string, string> = {
@@ -24,6 +27,12 @@ const MAIL_ERR_LABELS: Record<string, string> = {
   recipient: 'The SMTP server rejected the recipient address.',
   sender: 'The SMTP server rejected the sender address (likely SPF or DKIM).',
   unknown: 'SMTP delivery failed. See the email-test page in Settings for details.',
+};
+
+const INVITE_ERR_LABELS: Record<string, string> = {
+  missing: 'Could not resend the invite because the invite id was missing.',
+  not_found: 'That pending invite could not be found. It may have already been accepted or removed.',
+  accepted: 'That invite has already been accepted.',
 };
 
 export default async function AdminUsersPage({
@@ -74,6 +83,7 @@ export default async function AdminUsersPage({
 
   const inviteLink = sp.invite ? await buildInviteLink(sp.invite) : null;
   const mailErrMessage = sp.mailErr ? MAIL_ERR_LABELS[sp.mailErr] ?? MAIL_ERR_LABELS.unknown : null;
+  const inviteErrMessage = sp.inviteErr ? INVITE_ERR_LABELS[sp.inviteErr] ?? INVITE_ERR_LABELS.not_found : null;
   const activeUsers = users.filter((u) => !u.disabledAt).length;
   const adminUsers = users.filter((u) => u.role === Role.ADMIN || u.role === Role.SUPER_ADMIN).length;
   const recentLoginUsers = users.filter((u) => {
@@ -155,7 +165,18 @@ export default async function AdminUsersPage({
                         {inv.email} · {roleLabel(inv.role)}
                         {me.role === Role.SUPER_ADMIN && inv.tenant ? ` · ${inv.tenant.name}` : ''}
                       </span>
-                      <span className="shrink-0 text-slate-500">expires {formatDate(inv.expiresAt)}</span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-slate-500">expires {formatDate(inv.expiresAt)}</span>
+                        <form action={resendInviteAction}>
+                          <input type="hidden" name="inviteId" value={inv.id} />
+                          <button
+                            type="submit"
+                            className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-orange-700 transition hover:border-orange-300 hover:bg-orange-100"
+                          >
+                            Re-invite
+                          </button>
+                        </form>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -175,6 +196,18 @@ export default async function AdminUsersPage({
                   <p className="text-[12.5px] font-semibold text-emerald-900">
                     Invite email sent to {sp.sent}. Link expires in 7 days.
                   </p>
+                </div>
+              ) : null}
+              {sp.resent && !sp.mailErr ? (
+                <div className="mt-5 rounded-[16px] border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-[12.5px] font-semibold text-emerald-900">
+                    Invite email re-sent to {sp.resent}. The link now expires in 7 days.
+                  </p>
+                </div>
+              ) : null}
+              {inviteErrMessage ? (
+                <div className="mt-5 rounded-[16px] border border-rose-200 bg-rose-50 p-4">
+                  <p className="text-[12.5px] font-semibold text-rose-900">{inviteErrMessage}</p>
                 </div>
               ) : null}
               {sp.invite && inviteLink && mailErrMessage ? (

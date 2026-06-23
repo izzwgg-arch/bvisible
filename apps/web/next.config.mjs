@@ -17,6 +17,12 @@ const nextConfig = {
   typedRoutes: true,
   serverExternalPackages: ['sharp', 'pdf-parse'],
   experimental: {
+    // Keep explicitly-prefetched dynamic app routes warm in the client router
+    // cache long enough for normal sidebar hopping to feel instant.
+    staleTimes: {
+      dynamic: 180,
+      static: 300,
+    },
     // PO attachments accept up to 25 MB (see apps/web/lib/po/uploads.ts:
     // MAX_UPLOAD_BYTES). The Server Actions default body limit is 1 MB,
     // which would reject every realistic PDF/JPEG before it reached our

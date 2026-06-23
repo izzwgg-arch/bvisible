@@ -270,6 +270,35 @@ export async function archiveVehicleAction(trimId: string): Promise<void> {
   redirect('/vehicles');
 }
 
+export async function bulkArchiveVehiclesAction(formData: FormData): Promise<void> {
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
+  const ctx = await readRequestContext();
+  const ids = formData.getAll('ids').map((value) => String(value)).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const result = await prisma.vehicleTrim.updateMany({
+    where: {
+      id: { in: ids },
+      tenantId: me.tenantId,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+
+  await writeAuditLog({
+    action: 'vehicles_bulk_archived',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'vehicle_trim',
+    targetId: 'bulk',
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { requestedCount: ids.length, archivedCount: result.count },
+  });
+
+  revalidatePath('/vehicles');
+}
+
 export async function importVehiclesAction(input: {
   text: string;
   format: VehicleImportFormat;

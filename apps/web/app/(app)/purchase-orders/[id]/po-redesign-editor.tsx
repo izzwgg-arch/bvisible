@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { startTransition, useMemo, useReducer, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   POAttachmentKind,
@@ -11,8 +11,11 @@ import {
   ShopCatalogUnit,
   type VendorCostSourceMode,
 } from '@bvisible/db';
-import { formatMoney, formatQty, parseMoney, parseQty } from '@/lib/estimate/format';
+import { formatMoney, formatQty, kindLabel, parseMoney, parseQty } from '@/lib/estimate/format';
+import { SelectControl } from '@/components/app/select-control';
 import {
+  catalogPickerCostBasisCents,
+  catalogPickerSellHintCents,
   resolveCatalogUnitCostCents,
   type EstimateCatalogPickerRow,
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
@@ -179,9 +182,11 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   const [sending, setSending] = useState(false);
   const [sendMessage, setSendMessage] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [activeVendorId, setActiveVendorId] = useState<string | null>(bootstrap.vendorSections[0]?.vendorId ?? bootstrap.vendors[0]?.id ?? null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerHighlight, setPickerHighlight] = useState(0);
   const router = useRouter();
   const stateRef = useRef(state);
+  const pickerInputRef = useRef<HTMLInputElement | null>(null);
   stateRef.current = state;
 
   const dirty = useMemo(() => snapshot(state) !== state.baselineHash, [state]);
@@ -194,6 +199,33 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   const vendorCount = vendorGroups.length;
   const receivedTotal = lines.reduce((sum, line) => sum + Math.min(line.receivedQtyMilli, line.qtyMilli), 0);
   const qtyTotal = lines.reduce((sum, line) => sum + Math.max(0, line.qtyMilli), 0);
+  const pickerRows = useMemo(() => {
+    const q = pickerQuery.trim().toLowerCase();
+    return bootstrap.catalog
+      .filter((row) => {
+        if (row.kind !== 'MATERIAL') return false;
+        if (!q) return true;
+        return [row.name, row.nameNormalized, kindLabel(row.kind), row.itemType === 'BUNDLE' ? 'bundle' : 'item']
+          .join(' ')
+          .toLowerCase()
+          .includes(q);
+      })
+      .slice(0, q ? 30 : 24);
+  }, [bootstrap.catalog, pickerQuery]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    window.requestAnimationFrame(() => pickerInputRef.current?.focus());
+
+    function closePickerOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-po-item-picker]')) return;
+      setPickerOpen(false);
+    }
+
+    document.addEventListener('pointerdown', closePickerOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closePickerOnOutsidePointer);
+  }, [pickerOpen]);
 
   async function save() {
     if (saving) return;
@@ -254,36 +286,10 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
     else startTransition(() => router.refresh());
   }
 
-  function addBlankLine(vendorId: string | null) {
-    dispatch({
-      type: 'add-line',
-      line: {
-        id: localId(),
-        kind: POLineKind.MATERIAL,
-        description: 'Material',
-        estimateLineId: null,
-        catalogItemId: null,
-        bundleComponentId: null,
-        vendorId,
-        selectedVendorMode: 'MANUAL',
-        vendorSku: null,
-        unit: ShopCatalogUnit.EACH,
-        qtyMilli: 1000,
-        unitCostCents: 0,
-        computedCostCents: 0,
-        receivedQtyMilli: 0,
-        notes: null,
-        vendor: bootstrap.vendors.find((vendor) => vendor.id === vendorId) ?? null,
-        catalogItemName: null,
-        catalogItemCode: null,
-        sourceEstimateLineLabel: null,
-        sourceBundleComponentLabel: null,
-      },
-    });
-  }
-
-  function applyCatalogItem(row: EstimateCatalogPickerRow, vendorId: string | null) {
+  function applyCatalogItem(row: EstimateCatalogPickerRow) {
     const unitCostCents = resolveCatalogUnitCostCents({ row, machinesById: new Map() });
+    const vendorId = row.selectedVendorId ?? row.preferredVendorId ?? row.catalogCheapestVendorId ?? null;
+    const qtyMilli = Math.max(1000, row.defaultQtyMilli);
     dispatch({
       type: 'add-line',
       line: {
@@ -294,12 +300,12 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
         catalogItemId: row.id,
         bundleComponentId: null,
         vendorId,
-        selectedVendorMode: 'MANUAL',
+        selectedVendorMode: row.selectedVendorMode,
         vendorSku: null,
         unit: row.catalogUnit,
-        qtyMilli: Math.max(1000, row.defaultQtyMilli),
+        qtyMilli,
         unitCostCents,
-        computedCostCents: unitCostCents,
+        computedCostCents: Math.round((qtyMilli * unitCostCents) / 1000),
         receivedQtyMilli: 0,
         notes: null,
         vendor: bootstrap.vendors.find((vendor) => vendor.id === vendorId) ?? null,
@@ -309,12 +315,37 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
         sourceBundleComponentLabel: null,
       },
     });
+    setPickerQuery('');
+    setPickerHighlight(0);
     setPickerOpen(false);
+  }
+
+  function handlePickerKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setPickerOpen(false);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setPickerHighlight((current) => (pickerRows.length === 0 ? 0 : Math.min(current + 1, pickerRows.length - 1)));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setPickerHighlight((current) => Math.max(current - 1, 0));
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const row = pickerRows[pickerHighlight];
+      if (row) applyCatalogItem(row);
+    }
   }
 
   return (
     <div className="min-h-screen text-slate-900">
-      <header className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/70 bg-white/80 pb-4">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
         <div>
           <div className="mb-2 flex items-center gap-2 text-[12px] text-slate-500">
             <Link href="/purchase-orders" className="hover:text-[var(--color-bv-accent)]">Purchase Orders</Link>
@@ -354,12 +385,6 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <main className="min-w-0 space-y-4">
-          <div className="flex flex-wrap gap-2 border-b border-slate-200">
-            {['Vendors & Items', 'Attachments', 'Notes & Internal Info', 'Activity Timeline'].map((tab, index) => (
-              <a key={tab} href={index === 0 ? '#po-vendors' : index === 1 ? '#po-attachments' : index === 2 ? '#po-notes' : '#po-timeline'} className={`border-b-2 px-3 py-2 text-[12px] font-bold ${index === 0 ? 'border-[var(--color-bv-accent)] text-[var(--color-bv-accent)]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{tab}</a>
-            ))}
-          </div>
-
           <section id="po-vendors" className="space-y-4">
             {vendorGroups.map((group) => (
               <VendorSection
@@ -367,29 +392,47 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
                 group={group}
                 vendors={bootstrap.vendors}
                 dispatch={dispatch}
-                onAddBlank={() => addBlankLine(group.vendor?.id ?? null)}
-                onOpenPicker={() => {
-                  setActiveVendorId(group.vendor?.id ?? null);
-                  setPickerOpen(true);
-                }}
               />
             ))}
-            <button type="button" onClick={() => setPickerOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-slate-300 bg-white px-4 py-5 text-[13px] font-bold text-[var(--color-bv-accent)] hover:bg-blue-50">
-              + Add item to PO
-              <span className="font-normal text-slate-400">Search catalog to add more materials to this purchase order</span>
-            </button>
-          </section>
 
-          {pickerOpen ? (
-            <CatalogPicker
-              catalog={bootstrap.catalog}
-              vendors={bootstrap.vendors}
-              vendorId={activeVendorId}
-              onVendorChange={setActiveVendorId}
-              onPick={applyCatalogItem}
-              onClose={() => setPickerOpen(false)}
-            />
-          ) : null}
+            <div className="relative" data-po-item-picker>
+              {pickerOpen ? (
+                <div className="w-[360px] max-w-full">
+                  <input
+                    ref={pickerInputRef}
+                    value={pickerQuery}
+                    onChange={(event) => {
+                      setPickerQuery(event.currentTarget.value);
+                      setPickerHighlight(0);
+                    }}
+                    onKeyDown={handlePickerKeyDown}
+                    placeholder="Type to search items..."
+                    aria-label="Search catalog items"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-full rounded-[6px] border border-transparent bg-white px-2 py-1.5 text-[13px] font-semibold text-[#1C4972] outline-none ring-1 ring-[#eadfd3] transition placeholder:text-slate-400 focus:ring-2 focus:ring-[#F28744]"
+                  />
+                  <PoItemPickerDropdown
+                    rows={pickerRows}
+                    highlight={pickerHighlight}
+                    onPick={applyCatalogItem}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickerOpen(true);
+                    setPickerQuery('');
+                    setPickerHighlight(0);
+                  }}
+                  className="inline-flex items-center justify-center rounded-[10px] bg-[#F28744] px-4 py-2.5 text-[12px] font-black text-white shadow-sm transition hover:bg-[#df7430]"
+                >
+                  + Add Item
+                </button>
+              )}
+            </div>
+          </section>
 
           <PoAttachmentsPanel purchaseOrderId={bootstrap.po.id} attachments={bootstrap.attachments} />
 
@@ -446,14 +489,10 @@ function VendorSection({
   group,
   vendors,
   dispatch,
-  onAddBlank,
-  onOpenPicker,
 }: {
   group: VendorGroup;
   vendors: ReadonlyArray<VendorRef>;
   dispatch: React.Dispatch<Action>;
-  onAddBlank: () => void;
-  onOpenPicker: () => void;
 }) {
   return (
     <section className="overflow-hidden rounded-[14px] border border-slate-200 bg-white shadow-sm">
@@ -466,7 +505,6 @@ function VendorSection({
         <div className="flex items-center gap-4 text-[11.5px] text-slate-500">
           <span>{group.vendor?.emails[0] ?? group.vendor?.email ?? 'No vendor email'}</span>
           <span className="font-bold text-slate-900">{formatMoney(group.subtotalCents)}</span>
-          <button type="button" onClick={onOpenPicker} className="font-bold text-[var(--color-bv-accent)]">Add item</button>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -497,18 +535,18 @@ function VendorSection({
                 <td className="px-4 py-2 text-slate-500">{line.sourceBundleComponentLabel ? `Bundle: ${line.sourceBundleComponentLabel}` : line.sourceEstimateLineLabel ?? 'Manual'}</td>
                 <td className="px-4 py-2"><NumberInput value={formatQty(line.qtyMilli)} onCommit={(value) => dispatch({ type: 'set-line', id: line.id, patch: { qtyMilli: parseQty(value) ?? line.qtyMilli } })} /></td>
                 <td className="px-4 py-2">
-                  <select value={line.unit} onChange={(event) => dispatch({ type: 'set-line', id: line.id, patch: { unit: event.currentTarget.value as ShopCatalogUnit } })} className="rounded border border-slate-200 bg-white px-2 py-1">
+                  <SelectControl value={line.unit} onChange={(event) => dispatch({ type: 'set-line', id: line.id, patch: { unit: event.currentTarget.value as ShopCatalogUnit } })} className="rounded border border-slate-200 bg-white px-2 py-1">
                     {Object.values(ShopCatalogUnit).map((unit) => <option key={unit} value={unit}>{unitLabel(unit)}</option>)}
-                  </select>
+                  </SelectControl>
                 </td>
                 <td className="px-4 py-2"><NumberInput value={formatMoney(line.unitCostCents)} onCommit={(value) => dispatch({ type: 'set-line', id: line.id, patch: { unitCostCents: parseMoney(value) ?? line.unitCostCents } })} /></td>
                 <td className="px-4 py-2 text-right font-bold tabular-nums">{formatMoney(line.computedCostCents)}</td>
                 <td className="px-4 py-2"><NumberInput value={formatQty(line.receivedQtyMilli)} onCommit={(value) => dispatch({ type: 'set-line', id: line.id, patch: { receivedQtyMilli: Math.max(0, parseQty(value) ?? line.receivedQtyMilli) } })} /></td>
                 <td className="px-4 py-2 text-right">
-                  <select value={line.vendorId ?? ''} onChange={(event) => dispatch({ type: 'set-line', id: line.id, patch: { vendorId: event.currentTarget.value || null, vendor: vendors.find((vendor) => vendor.id === event.currentTarget.value) ?? null } })} className="mr-2 max-w-[130px] rounded border border-slate-200 bg-white px-2 py-1">
+                  <SelectControl value={line.vendorId ?? ''} onChange={(event) => dispatch({ type: 'set-line', id: line.id, patch: { vendorId: event.currentTarget.value || null, vendor: vendors.find((vendor) => vendor.id === event.currentTarget.value) ?? null } })} searchable searchPlaceholder="Search vendors..." className="mr-2 max-w-[150px] rounded border border-slate-200 bg-white px-2 py-1">
                     <option value="">No vendor</option>
                     {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-                  </select>
+                  </SelectControl>
                   <button type="button" onClick={() => dispatch({ type: 'remove-line', id: line.id })} className="text-rose-500 hover:text-rose-700">Remove</button>
                 </td>
               </tr>
@@ -517,38 +555,68 @@ function VendorSection({
         </table>
       </div>
       <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2">
-        <button type="button" onClick={onAddBlank} className="text-[12px] font-bold text-[var(--color-bv-accent)]">+ Add manual item</button>
         <span className="text-[12px] font-bold text-slate-700">Vendor subtotal {formatMoney(group.subtotalCents)}</span>
       </div>
     </section>
   );
 }
 
-function CatalogPicker({ catalog, vendors, vendorId, onVendorChange, onPick, onClose }: { catalog: ReadonlyArray<EstimateCatalogPickerRow>; vendors: ReadonlyArray<VendorRef>; vendorId: string | null; onVendorChange: (id: string | null) => void; onPick: (row: EstimateCatalogPickerRow, vendorId: string | null) => void; onClose: () => void }) {
-  const [q, setQ] = useState('');
-  const rows = catalog.filter((row) => row.kind === 'MATERIAL' && row.name.toLowerCase().includes(q.toLowerCase())).slice(0, 12);
+function PoItemPickerDropdown({
+  rows,
+  highlight,
+  onPick,
+}: {
+  rows: ReadonlyArray<EstimateCatalogPickerRow>;
+  highlight: number;
+  onPick: (row: EstimateCatalogPickerRow) => void;
+}) {
   return (
-    <section className="rounded-[14px] border border-blue-100 bg-blue-50/50 p-4 shadow-sm">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[14px] font-bold text-[#1C4972]">Add item picker</h2>
-        <button type="button" onClick={onClose} className="text-[12px] font-bold text-slate-500">Close</button>
+    <div className="mt-1 w-[360px] max-w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-2xl">
+      <div className="max-h-[360px] overflow-y-auto py-1">
+        {rows.length === 0 ? (
+          <EmptyPickerState title="No catalog matches" detail="Try a different item name, category, or bundle." />
+        ) : (
+          rows.map((row, index) => {
+            const cost = catalogPickerCostBasisCents({ row, machinesById: new Map() });
+            const sell = catalogPickerSellHintCents({ row, machinesById: new Map() });
+            return (
+              <button
+                key={row.id}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onPick(row)}
+                className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-[12px] font-black text-slate-900">{row.name}</span>
+                  <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                    <span>{kindLabel(row.kind)}</span>
+                    {row.itemType === 'BUNDLE' ? (
+                      <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-violet-700">
+                        Bundle{row.componentCount > 0 ? ` · ${row.componentCount}` : ''}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+                <span className="text-right text-[11px] font-bold tabular-nums text-slate-700">
+                  <span className="block">{formatMoney(sell)}</span>
+                  <span className="block text-slate-400">cost {formatMoney(cost)}</span>
+                </span>
+              </button>
+            );
+          })
+        )}
       </div>
-      <div className="grid gap-2 md:grid-cols-[1fr_220px]">
-        <input autoFocus type="search" value={q} onChange={(event) => setQ(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter' && rows[0]) { event.preventDefault(); onPick(rows[0], vendorId); } }} placeholder="Search catalog materials. Press Enter to select." className="h-11 rounded-[12px] border border-slate-200 bg-white px-4 text-[13px] outline-none focus:border-[var(--color-bv-accent)] focus:ring-4 focus:ring-blue-500/10" />
-        <select value={vendorId ?? ''} onChange={(event) => onVendorChange(event.currentTarget.value || null)} className="h-11 rounded-[12px] border border-slate-200 bg-white px-3 text-[13px]">
-          <option value="">No vendor</option>
-          {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-        </select>
-      </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {rows.map((row) => (
-          <button key={row.id} type="button" onClick={() => onPick(row, vendorId)} className="rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-left shadow-sm hover:border-blue-200 hover:bg-blue-50">
-            <span className="block text-[13px] font-bold text-slate-900">{row.name}</span>
-            <span className="mt-1 block text-[11.5px] text-slate-500">{unitLabel(row.catalogUnit)} · cost {formatMoney(resolveCatalogUnitCostCents({ row, machinesById: new Map() }))}</span>
-          </button>
-        ))}
-      </div>
-    </section>
+    </div>
+  );
+}
+
+function EmptyPickerState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="px-3 py-5 text-center">
+      <p className="text-[12px] font-black text-slate-700">{title}</p>
+      <p className="mt-1 text-[11px] font-semibold text-slate-400">{detail}</p>
+    </div>
   );
 }
 

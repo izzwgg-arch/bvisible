@@ -10,6 +10,7 @@ export type AuditAction =
   | 'password_reset_requested'
   | 'password_reset_completed'
   | 'invite_created'
+  | 'invite_resent'
   | 'invite_accepted'
   | 'user_disabled'
   | 'user_enabled'
@@ -91,7 +92,11 @@ export type AuditAction =
   | 'vehicle_created'
   | 'vehicle_updated'
   | 'vehicle_archived'
-  | 'vehicles_imported';
+  | 'vehicles_imported'
+  | 'clients_bulk_deleted'
+  | 'vendors_bulk_deleted'
+  | 'shop_material_items_bulk_deactivated'
+  | 'vehicles_bulk_archived';
 
 export interface AuditEntry {
   action: AuditAction;

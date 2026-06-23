@@ -774,6 +774,34 @@ export async function setShopMaterialActiveAction(formData: FormData): Promise<v
   revalidatePath('/items');
 }
 
+export async function bulkDeleteShopMaterialItemsAction(formData: FormData): Promise<void> {
+  const me = await requireAdminScoped();
+  const ctx = await readRequestContext();
+  const ids = formData.getAll('ids').map((value) => String(value)).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const result = await prisma.shopMaterialItem.updateMany({
+    where: {
+      id: { in: ids },
+      tenantId: me.tenantId,
+    },
+    data: { isActive: false },
+  });
+
+  await writeAuditLog({
+    action: 'shop_material_items_bulk_deactivated',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'shop_material_item',
+    targetId: 'bulk',
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { requestedCount: ids.length, deactivatedCount: result.count },
+  });
+
+  revalidatePath('/items');
+}
+
 export async function addShopMaterialAliasAction(
   _prev: ShopMaterialActionState,
   formData: FormData,
