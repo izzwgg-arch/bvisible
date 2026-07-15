@@ -16,6 +16,7 @@ import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/estimate/format';
 import { SectionCard } from '@/components/estimate/estimate-surface';
+import { VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 import type { DraftLine, EditorBootstrap } from './editor';
 import type { Action } from './editor';
 import { isBlankLine } from './editor';
@@ -38,6 +39,7 @@ interface LineGridProps {
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   catalog: ReadonlyArray<EstimateCatalogPickerRow>;
   vehicleLibrary: EditorBootstrap['vehicleLibrary'];
+  vehicleWrapCatalog: EditorBootstrap['vehicleWrapCatalog'];
   lineCosts: Record<string, number>;
   multiplierMilli: number;
   readOnly?: boolean;
@@ -70,6 +72,7 @@ type EditableBundleComponent = {
 type LineInternalMeta = {
   __estimateLineMetaV1: true;
   bundleComponents?: EditableBundleComponent[];
+  customBundle?: boolean;
   measurement?: string;
   taxEnabled?: boolean;
   unitLabelOverride?: string;
@@ -90,6 +93,7 @@ export function LineGrid({
   machines,
   catalog,
   vehicleLibrary,
+  vehicleWrapCatalog,
   lineCosts,
   multiplierMilli,
   readOnly = false,
@@ -106,6 +110,7 @@ export function LineGrid({
   const vehicleRows = useMemo(() => buildVehicleRows(vehicleLibrary), [vehicleLibrary]);
   const [openLineId, setOpenLineId] = useState<string | null>(null);
   const [tab, setTab] = useState<PickerTab>('catalog');
+  const [wrapVehicleId, setWrapVehicleId] = useState<string | null>(null);
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [highlight, setHighlight] = useState(0);
   const [materialsOpen, setMaterialsOpen] = useState(false);
@@ -255,6 +260,80 @@ export function LineGrid({
     window.requestAnimationFrame(() => focusNextRow(lineId));
   }
 
+  function applyWrapVariant(
+    lineId: string,
+    vehicle: EditorBootstrap['vehicleWrapCatalog'][number],
+    variant: EditorBootstrap['vehicleWrapCatalog'][number]['variants'][number],
+  ) {
+    setOpenLineId(null);
+    setWrapVehicleId(null);
+    const title = [vehicle.make, vehicle.model].filter(Boolean).join(' ');
+    const label = variant.variant ? `${title} — ${variant.variant}` : title;
+    setQueries((prev) => ({ ...prev, [lineId]: label }));
+    const chargeCents = variant.chargeCents ?? 0;
+    const unitCostCents =
+      chargeCents > 0 && multiplierMilli > 0
+        ? Math.round((chargeCents * 1000) / multiplierMilli)
+        : chargeCents;
+    const parts: string[] = [];
+    if (variant.squareFootage) parts.push(`${variant.squareFootage} sq ft`);
+    if (variant.ratePerSf) parts.push(`$${variant.ratePerSf}/SF`);
+    let breakdown = parts.join(' × ');
+    if (chargeCents > 0) breakdown = breakdown ? `${breakdown} = ${formatMoney(chargeCents)}` : formatMoney(chargeCents);
+    else breakdown = breakdown ? `${breakdown} (enter price)` : 'Unpriced — enter price';
+    if (variant.pricingRule) breakdown += ` · ${variant.pricingRule}`;
+    dispatch({
+      type: 'set-line',
+      id: lineId,
+      patch: {
+        description: label,
+        kind: EstimateLineKind.MATERIAL,
+        qtyMilli: 1000,
+        unitCostCents,
+        machineId: null,
+        catalogItemId: null,
+        pricingMethod: null,
+        pricingEngine: null,
+        pricingInputsSnapshotJson: null,
+        pricingOutputSnapshotJson: null,
+        formulaVersion: null,
+        selectedVendorId: null,
+        selectedVendorMode: null,
+        customerDescription: `${title} vehicle wrap`,
+        notes: breakdown,
+      },
+    });
+    window.requestAnimationFrame(() => focusNextRow(lineId));
+  }
+
+  function applyBuildBundle(lineId: string) {
+    const line = lines.find((l) => l.id === lineId);
+    const name = (queries[lineId] ?? '').trim() || 'Custom bundle';
+    setOpenLineId(null);
+    setQueries((prev) => ({ ...prev, [lineId]: name }));
+    dispatch({
+      type: 'set-line',
+      id: lineId,
+      patch: {
+        description: name,
+        kind: EstimateLineKind.MATERIAL,
+        qtyMilli: 1000,
+        unitCostCents: 0,
+        machineId: null,
+        catalogItemId: null,
+        pricingMethod: null,
+        pricingEngine: null,
+        pricingInputsSnapshotJson: null,
+        pricingOutputSnapshotJson: null,
+        formulaVersion: null,
+        selectedVendorId: null,
+        selectedVendorMode: null,
+        customerDescription: name,
+        internalNotes: serializeLineInternalMeta(line?.internalNotes ?? null, { customBundle: true, bundleComponents: [] }),
+      },
+    });
+  }
+
   function handlePickerKeyDown(lineId: string, event: React.KeyboardEvent<HTMLInputElement>) {
     const rowCount = tab === 'catalog' ? visibleCatalogRows(lineId).length : visibleVehicleRows(lineId).length;
     if (event.key === 'Escape') {
@@ -332,8 +411,8 @@ export function LineGrid({
               const sell = Math.round((cost * multiplierMilli) / 1000);
               const margin = sell > 0 ? Math.round(((sell - cost) / sell) * 1000) / 10 : null;
               const catalogRow = line.catalogItemId ? catalogById.get(line.catalogItemId) ?? null : null;
-              const isBundle = catalogRow?.itemType === 'BUNDLE';
               const lineMeta = parseLineInternalMeta(line.internalNotes);
+              const isBundle = catalogRow?.itemType === 'BUNDLE' || Boolean(lineMeta?.customBundle);
               const unit = lineMeta?.unitLabelOverride ?? unitLabel(catalogRow, line.kind);
               const isSquareFootLine = unit.toLowerCase().replace(/\s+/g, '_') === 'sq_ft';
               const taxEnabled = lineMeta?.taxEnabled ?? true;
@@ -415,13 +494,18 @@ export function LineGrid({
                               setTab={(next) => {
                                 setTab(next);
                                 setHighlight(0);
+                                setWrapVehicleId(null);
                               }}
                               catalogRows={visibleCatalogRows(line.id)}
-                              vehicleRows={visibleVehicleRows(line.id)}
+                              wrapCatalog={vehicleWrapCatalog}
+                              wrapVehicleId={wrapVehicleId}
+                              query={queries[line.id] ?? ''}
+                              onSelectWrapVehicle={setWrapVehicleId}
                               highlight={highlight}
                               machinesById={machinesById}
                               onCatalogPick={(row) => applyCatalog(line.id, row)}
-                              onVehiclePick={(row) => applyVehicle(line.id, row)}
+                              onPickWrapVariant={(vehicle, variant) => applyWrapVariant(line.id, vehicle, variant)}
+                              onBuildBundle={() => applyBuildBundle(line.id)}
                             />
                           ) : null}
                         </>
@@ -561,13 +645,15 @@ export function LineGrid({
                       </td>
                     ) : null}
                   </tr>
-                  {isBundle && catalogRow ? (
+                  {isBundle ? (
                     <tr key={`${line.id}-bundle`} className="border-b border-[#eadfd3] bg-[#fff0e5]/40">
                       <td />
                       <td colSpan={readOnly ? 9 : 10} className="px-2 pb-4 pt-1">
                         <BundleBreakdown
                           row={catalogRow}
                           line={line}
+                          catalog={catalog}
+                          machinesById={machinesById}
                           readOnly={readOnly}
                           dispatch={dispatch}
                         />
@@ -719,21 +805,32 @@ function ItemPickerDropdown({
   tab,
   setTab,
   catalogRows,
-  vehicleRows,
+  wrapCatalog,
+  wrapVehicleId,
+  query,
+  onSelectWrapVehicle,
   highlight,
   machinesById,
   onCatalogPick,
-  onVehiclePick,
+  onPickWrapVariant,
+  onBuildBundle,
 }: {
   lineId: string;
   tab: PickerTab;
   setTab: (tab: PickerTab) => void;
   catalogRows: ReadonlyArray<EstimateCatalogPickerRow>;
-  vehicleRows: ReadonlyArray<VehiclePickerRow>;
+  wrapCatalog: EditorBootstrap['vehicleWrapCatalog'];
+  wrapVehicleId: string | null;
+  query: string;
+  onSelectWrapVehicle: (id: string | null) => void;
   highlight: number;
   machinesById: ReadonlyMap<string, { ratePerHourCents: number; name: string }>;
   onCatalogPick: (row: EstimateCatalogPickerRow) => void;
-  onVehiclePick: (row: VehiclePickerRow) => void;
+  onPickWrapVariant: (
+    vehicle: EditorBootstrap['vehicleWrapCatalog'][number],
+    variant: EditorBootstrap['vehicleWrapCatalog'][number]['variants'][number],
+  ) => void;
+  onBuildBundle: () => void;
 }) {
   return (
     <div className="mt-1 w-[360px] overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-2xl" data-picker-line={lineId}>
@@ -790,40 +887,147 @@ function ItemPickerDropdown({
               );
             })
           )
-        ) : vehicleRows.length === 0 ? (
-          <EmptyPickerState title="No vehicle helpers" detail="Vehicle data is optional. Estimates work without vehicle rows." />
         ) : (
-          vehicleRows.map((row, index) => (
-            <button
-              key={row.id}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onVehiclePick(row)}
-              className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
-            >
-              <span className="block truncate text-[12px] font-black text-slate-900">{row.name}</span>
-              <span className="mt-1 block truncate text-[10px] font-bold text-slate-400">{row.detail}</span>
-            </button>
-          ))
+          <WrapVehiclePicker
+            catalog={wrapCatalog}
+            selectedId={wrapVehicleId}
+            query={query}
+            highlight={highlight}
+            onSelectVehicle={onSelectWrapVehicle}
+            onPickVariant={onPickWrapVariant}
+          />
         )}
       </div>
+      <div className="border-t border-slate-100 bg-slate-50 p-1">
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onBuildBundle}
+          className="flex w-full items-center justify-center gap-1.5 rounded-[7px] px-3 py-1.5 text-[11px] font-black text-violet-700 hover:bg-violet-50"
+        >
+          + Build a bundle from materials
+        </button>
+      </div>
     </div>
+  );
+}
+
+function WrapVehiclePicker({
+  catalog,
+  selectedId,
+  query,
+  highlight,
+  onSelectVehicle,
+  onPickVariant,
+}: {
+  catalog: EditorBootstrap['vehicleWrapCatalog'];
+  selectedId: string | null;
+  query: string;
+  highlight: number;
+  onSelectVehicle: (id: string | null) => void;
+  onPickVariant: (
+    vehicle: EditorBootstrap['vehicleWrapCatalog'][number],
+    variant: EditorBootstrap['vehicleWrapCatalog'][number]['variants'][number],
+  ) => void;
+}) {
+  const q = query.trim().toLowerCase();
+  if (catalog.length === 0) {
+    return <EmptyPickerState title="No vehicles" detail="Import vehicle wrap pricing to enable this picker." />;
+  }
+  if (!selectedId) {
+    const vehicles = q
+      ? catalog.filter((v) => `${v.make} ${v.model} ${v.vehicleType ?? ''}`.toLowerCase().includes(q))
+      : catalog;
+    if (vehicles.length === 0) {
+      return <EmptyPickerState title="No vehicle matches" detail="Try a different make or model." />;
+    }
+    return (
+      <>
+        {vehicles.map((v, index) => {
+          const priced = v.variants.filter((x) => x.chargeCents != null).length;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelectVehicle(v.id)}
+              className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+            >
+              <img src={v.photoUrl ?? VEHICLE_PLACEHOLDER_SVG} alt="" className="h-8 w-12 rounded-[6px] object-cover ring-1 ring-slate-200" />
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-black text-slate-900">{v.make} {v.model}</span>
+                <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-400">{v.vehicleType ?? 'Vehicle'} · {v.variants.length} option{v.variants.length === 1 ? '' : 's'} · {priced} priced</span>
+              </span>
+              <span className="text-[15px] font-bold text-slate-300">›</span>
+            </button>
+          );
+        })}
+      </>
+    );
+  }
+  const vehicle = catalog.find((v) => v.id === selectedId);
+  if (!vehicle) {
+    return <EmptyPickerState title="Vehicle not found" detail="Go back and pick another vehicle." />;
+  }
+  const variants = q
+    ? vehicle.variants.filter((x) => `${x.variant ?? ''} ${x.roofWrapOption ?? ''} ${x.wheelbase ?? ''} ${x.cab ?? ''}`.toLowerCase().includes(q))
+    : vehicle.variants;
+  return (
+    <>
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onSelectVehicle(null)}
+        className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-[11px] font-black text-blue-700 hover:bg-slate-50"
+      >
+        <span>‹ {vehicle.make} {vehicle.model}</span>
+        <span className="ml-auto text-[10px] font-bold text-slate-400">Back to vehicles</span>
+      </button>
+      {variants.length === 0 ? (
+        <EmptyPickerState title="No matching options" detail="Clear the search to see all configurations." />
+      ) : (
+        variants.map((x, index) => {
+          const meta = [x.roofWrapOption ? `Roof: ${x.roofWrapOption}` : null, x.wheelbase, x.height, x.cab].filter(Boolean).join(' · ');
+          const calc = [x.squareFootage ? `${x.squareFootage} sq ft` : null, x.ratePerSf ? `$${x.ratePerSf}/SF` : null].filter(Boolean).join(' × ');
+          return (
+            <button
+              key={x.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onPickVariant(vehicle, x)}
+              className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-black text-slate-900">{x.variant ?? 'Base'}</span>
+                <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-400">{meta || 'Standard'}{calc ? ` · ${calc}` : ''}</span>
+              </span>
+              <span className="text-right text-[11px] font-black tabular-nums text-emerald-700">{x.chargeCents != null ? formatMoney(x.chargeCents) : '—'}</span>
+            </button>
+          );
+        })
+      )}
+    </>
   );
 }
 
 function BundleBreakdown({
   row,
   line,
+  catalog,
+  machinesById,
   readOnly,
   dispatch,
 }: {
-  row: EstimateCatalogPickerRow;
+  row: EstimateCatalogPickerRow | null;
   line: DraftLine;
+  catalog: ReadonlyArray<EstimateCatalogPickerRow>;
+  machinesById: ReadonlyMap<string, { ratePerHourCents: number; name: string }>;
   readOnly: boolean;
   dispatch: React.Dispatch<Action>;
 }) {
-  const [open, setOpen] = useState(false);
   const lineMeta = parseLineInternalMeta(line.internalNotes);
+  const [open, setOpen] = useState(Boolean(lineMeta?.customBundle));
+  const [addQuery, setAddQuery] = useState('');
   const components = editableBundleComponents(row, lineMeta);
 
   function commitComponents(nextComponents: EditableBundleComponent[]) {
@@ -846,6 +1050,38 @@ function BundleBreakdown({
     commitComponents(next);
   }
 
+  function removeComponent(index: number) {
+    commitComponents(components.filter((_, componentIndex) => componentIndex !== index));
+  }
+
+  function addComponentFromCatalog(mat: EstimateCatalogPickerRow) {
+    const qtyMilli = mat.defaultQtyMilli > 0 ? mat.defaultQtyMilli : 1000;
+    const unitCost = catalogPickerCostBasisCents({ row: mat, machinesById });
+    const unitSell = catalogPickerSellHintCents({ row: mat, machinesById });
+    const cheapestName = mat.catalogCheapestVendorName ?? mat.catalogPreferredVendorName ?? '';
+    const cheapestCost = mat.catalogCheapestVendorCostCents ?? unitCost;
+    const component: EditableBundleComponent = {
+      componentName: mat.name,
+      category: kindLabel(mat.kind),
+      qtyMilli,
+      unitLabel: unitLabel(mat, mat.kind),
+      totalCostCents: Math.round((unitCost * qtyMilli) / 1000),
+      totalSellCents: Math.round((unitSell * qtyMilli) / 1000),
+      selectedVendorName: cheapestName || 'In-house',
+      preferredVendorName: mat.catalogPreferredVendorName ?? '',
+      cheapestVendorName: cheapestName,
+      vendorPricingText: cheapestName ? `${cheapestName}: ${formatMoney(cheapestCost)}` : 'In-house cost',
+    };
+    commitComponents([...components, component]);
+    setAddQuery('');
+  }
+
+  const addMatches = addQuery.trim()
+    ? catalog
+        .filter((c) => c.itemType !== 'BUNDLE' && `${c.name} ${kindLabel(c.kind)}`.toLowerCase().includes(addQuery.trim().toLowerCase()))
+        .slice(0, 6)
+    : [];
+
   return (
     <div className="rounded-[10px] border border-violet-100 bg-white shadow-sm">
       <button
@@ -860,7 +1096,42 @@ function BundleBreakdown({
         <span className="text-[11px] font-bold text-violet-700">{open ? 'Collapse' : 'Expand'}</span>
       </button>
       {open ? (
-        <div className="overflow-x-auto border-t border-violet-100">
+        <div className="border-t border-violet-100">
+          {!readOnly ? (
+            <div className="relative px-3 py-2">
+              <input
+                type="text"
+                value={addQuery}
+                onChange={(event) => setAddQuery(event.target.value)}
+                placeholder="Add material from catalog…"
+                aria-label="Add material to bundle"
+                className="h-8 w-full rounded-[8px] border border-violet-200 bg-white px-2.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-200"
+              />
+              {addMatches.length > 0 ? (
+                <div className="absolute left-3 right-3 top-[38px] z-[90] overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-xl">
+                  {addMatches.map((mat) => {
+                    const unitCost = catalogPickerCostBasisCents({ row: mat, machinesById });
+                    return (
+                      <button
+                        key={mat.id}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => addComponentFromCatalog(mat)}
+                        className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-2 text-left hover:bg-violet-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-[11px] font-black text-slate-900">{mat.name}</span>
+                          <span className="block truncate text-[10px] font-bold text-slate-400">{mat.catalogCheapestVendorName ? `Cheapest: ${mat.catalogCheapestVendorName}` : 'In-house'}</span>
+                        </span>
+                        <span className="text-right text-[11px] font-bold tabular-nums text-slate-600">{formatMoney(unitCost)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-[11px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 text-left text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">
@@ -890,12 +1161,24 @@ function BundleBreakdown({
                   return (
                     <tr key={`${component.componentName}-${component.qtyMilli}`} className="border-b border-slate-100 last:border-b-0">
                       <td className="px-3 py-2">
-                        <BundleTextInput
-                          value={component.componentName}
-                          readOnly={readOnly}
-                          onCommit={(value) => updateComponent(index, { componentName: value })}
-                          ariaLabel={`Bundle component ${index + 1} name`}
-                        />
+                        <div className="flex items-center gap-1.5">
+                          {!readOnly ? (
+                            <button
+                              type="button"
+                              onClick={() => removeComponent(index)}
+                              aria-label={`Remove component ${index + 1}`}
+                              className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-rose-100 text-[11px] font-black leading-none text-rose-600 hover:bg-rose-200"
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                          <BundleTextInput
+                            value={component.componentName}
+                            readOnly={readOnly}
+                            onCommit={(value) => updateComponent(index, { componentName: value })}
+                            ariaLabel={`Bundle component ${index + 1} name`}
+                          />
+                        </div>
                       </td>
                       <td className="px-3 py-2">
                         <BundleTextInput
@@ -972,6 +1255,7 @@ function BundleBreakdown({
               )}
             </tbody>
           </table>
+          </div>
         </div>
       ) : null}
     </div>
@@ -1409,9 +1693,9 @@ function BundleNumberInput({
   );
 }
 
-function editableBundleComponents(row: EstimateCatalogPickerRow, lineMeta: LineInternalMeta | null): EditableBundleComponent[] {
+function editableBundleComponents(row: EstimateCatalogPickerRow | null, lineMeta: LineInternalMeta | null): EditableBundleComponent[] {
   if (lineMeta?.bundleComponents) return lineMeta.bundleComponents;
-  return (row.bundleComponents ?? []).map(componentToEditable);
+  return (row?.bundleComponents ?? []).map(componentToEditable);
 }
 
 function parseLineInternalMeta(value: string | null): LineInternalMeta | null {
@@ -1424,6 +1708,7 @@ function parseLineInternalMeta(value: string | null): LineInternalMeta | null {
         bundleComponents: Array.isArray(parsed.bundleComponents)
           ? parsed.bundleComponents.map(normalizeEditableBundleComponent)
           : undefined,
+        customBundle: typeof parsed.customBundle === 'boolean' ? parsed.customBundle : undefined,
         measurement: typeof parsed.measurement === 'string' ? parsed.measurement : undefined,
         taxEnabled: typeof parsed.taxEnabled === 'boolean' ? parsed.taxEnabled : undefined,
         unitLabelOverride: typeof parsed.unitLabelOverride === 'string' ? parsed.unitLabelOverride : undefined,
