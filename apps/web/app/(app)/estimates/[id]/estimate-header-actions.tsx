@@ -75,6 +75,13 @@ export function EstimateHeaderActions({
       >
         Preview
       </Link>
+      <Link
+        href={`/estimates/${estimateId}/qbme` as never}
+        title="QuickBooks manual-estimate export block"
+        className="inline-flex h-9 items-center justify-center rounded-[7px] border border-slate-200 bg-white px-5 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+      >
+        QBME
+      </Link>
       <form action={sendAction} className="relative">
         <input type="hidden" name="estimateId" value={estimateId} />
         <button

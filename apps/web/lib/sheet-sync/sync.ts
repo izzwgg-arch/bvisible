@@ -64,85 +64,139 @@ export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
     },
   });
 
-  // --- Catalog items (estimate-side materials). Upsert by sheetKey; the
-  // (tenantId, nameNormalized) unique means a pre-existing hand-entered
-  // item with the same normalized name is adopted (sheetKey stamped).
-  for (const material of data.materials) {
-    const nameNormalized = normalizeVendorItemName(material.name);
-    if (nameNormalized.length < 2) continue;
-    const existing = await prisma.shopMaterialItem.findFirst({
-      where: {
-        tenantId,
-        OR: [{ sheetKey: material.key }, { nameNormalized }],
-      },
-      select: { id: true },
-    });
+  // --- Catalog items (estimate-side materials). Batched: one read for
+  // all existing rows, createMany for new rows, and updates only for
+  // rows whose Sheet-owned fields actually changed.
+  const wanted = data.materials
+    .map((material) => ({
+      material,
+      nameNormalized: normalizeVendorItemName(material.name),
+    }))
+    .filter((w) => w.nameNormalized.length >= 2);
+
+  const existingRows = await prisma.shopMaterialItem.findMany({
+    where: {
+      tenantId,
+      OR: [
+        { sheetKey: { in: wanted.map((w) => w.material.key) } },
+        { nameNormalized: { in: wanted.map((w) => w.nameNormalized) } },
+      ],
+    },
+    select: {
+      id: true,
+      sheetKey: true,
+      nameNormalized: true,
+      name: true,
+      internalCostCents: true,
+      isActive: true,
+      categories: true,
+    },
+  });
+  const byKey = new Map(existingRows.filter((r) => r.sheetKey).map((r) => [r.sheetKey!, r]));
+  const byNorm = new Map(existingRows.map((r) => [r.nameNormalized, r]));
+
+  const toCreate: Prisma.ShopMaterialItemCreateManyInput[] = [];
+  const updates: Array<{ id: string; data: Prisma.ShopMaterialItemUpdateInput }> = [];
+  const seenNorms = new Set<string>();
+  for (const { material, nameNormalized } of wanted) {
+    if (seenNorms.has(nameNormalized)) continue;
+    seenNorms.add(nameNormalized);
+    const existing = byKey.get(material.key) ?? byNorm.get(nameNormalized);
     if (existing) {
-      await prisma.shopMaterialItem.update({
-        where: { id: existing.id },
-        data: {
-          name: material.name.slice(0, 400),
-          nameNormalized,
-          sheetKey: material.key,
-          categories: [material.category],
-          internalCostCents: material.priceCents,
-          isActive: true,
-          notes: material.vendor ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000) : undefined,
-        },
-      });
+      const changed =
+        existing.sheetKey !== material.key ||
+        existing.name !== material.name.slice(0, 400) ||
+        existing.internalCostCents !== material.priceCents ||
+        !existing.isActive ||
+        existing.categories[0] !== material.category;
+      if (changed) {
+        updates.push({
+          id: existing.id,
+          data: {
+            name: material.name.slice(0, 400),
+            nameNormalized,
+            sheetKey: material.key,
+            categories: [material.category],
+            internalCostCents: material.priceCents,
+            isActive: true,
+            notes: material.vendor
+              ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000)
+              : undefined,
+          },
+        });
+      }
     } else {
-      await prisma.shopMaterialItem.create({
-        data: {
-          tenantId,
-          name: material.name.slice(0, 400),
-          nameNormalized,
-          sheetKey: material.key,
-          categories: [material.category],
-          catalogUnit: 'EACH',
-          internalCostCents: material.priceCents,
-          isActive: true,
-          notes: material.vendor ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000) : null,
-        },
+      toCreate.push({
+        tenantId,
+        name: material.name.slice(0, 400),
+        nameNormalized,
+        sheetKey: material.key,
+        categories: [material.category],
+        catalogUnit: 'EACH',
+        internalCostCents: material.priceCents,
+        isActive: true,
+        notes: material.vendor
+          ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000)
+          : null,
       });
     }
   }
-
-  // --- Machine hourly rates by exact name.
-  for (const machine of data.machines) {
-    await prisma.machine.upsert({
-      where: { tenantId_name: { tenantId, name: machine.name } },
-      update: { ratePerHourCents: machine.ratePerHourCents, isActive: true },
-      create: {
-        tenantId,
-        name: machine.name,
-        ratePerHourCents: machine.ratePerHourCents,
-      },
-    });
+  if (toCreate.length > 0) {
+    await prisma.shopMaterialItem.createMany({ data: toCreate, skipDuplicates: true });
+  }
+  // Small parallel chunks — typically only a handful of price changes.
+  const CHUNK = 20;
+  for (let i = 0; i < updates.length; i += CHUNK) {
+    await Promise.all(
+      updates
+        .slice(i, i + CHUNK)
+        .map((u) => prisma.shopMaterialItem.update({ where: { id: u.id }, data: u.data }))
+    );
   }
 
+  // --- Machine hourly rates by exact name (4 rows — upserts are fine).
+  await Promise.all(
+    data.machines.map((machine) =>
+      prisma.machine.upsert({
+        where: { tenantId_name: { tenantId, name: machine.name } },
+        update: { ratePerHourCents: machine.ratePerHourCents, isActive: true },
+        create: {
+          tenantId,
+          name: machine.name,
+          ratePerHourCents: machine.ratePerHourCents,
+        },
+      })
+    )
+  );
+
   // --- Vendors from the directory (order emails for the shop-order flow).
-  for (const entry of data.vendorDirectory) {
-    const emails = entry.email
-      .split(/[,;]/)
-      .map((e) => e.trim())
-      .filter(Boolean);
-    await prisma.vendor.upsert({
-      where: { tenantId_name: { tenantId, name: entry.vendor } },
-      update: {
-        email: emails[0] ?? undefined,
-        emails,
-        phone: entry.phone || undefined,
-        deletedAt: null,
-      },
-      create: {
-        tenantId,
-        name: entry.vendor,
-        email: emails[0] ?? null,
-        emails,
-        phone: entry.phone || null,
-        notes: entry.notes || null,
-      },
-    });
+  const CHUNK_V = 15;
+  for (let i = 0; i < data.vendorDirectory.length; i += CHUNK_V) {
+    await Promise.all(
+      data.vendorDirectory.slice(i, i + CHUNK_V).map((entry) => {
+        const emails = entry.email
+          .split(/[,;]/)
+          .map((e) => e.trim())
+          .filter(Boolean);
+        return prisma.vendor.upsert({
+          where: { tenantId_name: { tenantId, name: entry.vendor } },
+          update: {
+            email: emails[0] ?? undefined,
+            emails,
+            phone: entry.phone || undefined,
+            deletedAt: null,
+          },
+          create: {
+            tenantId,
+            name: entry.vendor,
+            email: emails[0] ?? null,
+            emails,
+            phone: entry.phone || null,
+            notes: entry.notes || null,
+          },
+        });
+      })
+    );
   }
 
   return {
@@ -188,24 +242,46 @@ function parseSnapshot(row: {
   };
 }
 
-/// Read the cached snapshot; refresh inline when stale (5-minute TTL) or
-/// missing. Refresh failures fall back to the last good snapshot.
+// One background refresh at a time per tenant (per server process) —
+// avoids a stampede of identical Sheet fetches on busy pages.
+const inflightSyncs = new Map<string, Promise<SheetSyncResult>>();
+
+function refreshInBackground(tenantId: string): void {
+  if (inflightSyncs.has(tenantId)) return;
+  const p = runSheetSync(tenantId)
+    .catch(() => ({ ok: false as const, error: 'background sync failed' }))
+    .finally(() => inflightSyncs.delete(tenantId));
+  inflightSyncs.set(tenantId, p);
+}
+
+/// Read the cached snapshot — stale-while-revalidate. A good cached copy
+/// is returned immediately; if it's older than the 5-minute TTL a refresh
+/// runs in the background for the next request. Only a missing/broken
+/// snapshot (first run) blocks on a live fetch.
 export async function getSheetSnapshot(
   tenantId: string,
   opts: { forceRefresh?: boolean } = {}
 ): Promise<SheetSyncSnapshot> {
   const row = await prisma.sheetSyncState.findUnique({ where: { tenantId } });
-  const stale =
-    !row ||
-    !row.syncedAt ||
-    row.status !== 'OK' ||
-    Date.now() - row.syncedAt.getTime() > SYNC_TTL_MS;
+  const usable = row && row.syncedAt && row.status === 'OK';
+  const stale = !usable || Date.now() - row.syncedAt!.getTime() > SYNC_TTL_MS;
 
-  if (opts.forceRefresh || stale) {
-    await runSheetSync(tenantId);
+  if (opts.forceRefresh || !usable) {
+    // First sync (or explicit refresh): block so the page has data.
+    const existing = inflightSyncs.get(tenantId);
+    if (existing) await existing;
+    else {
+      const p = runSheetSync(tenantId).finally(() => inflightSyncs.delete(tenantId));
+      inflightSyncs.set(tenantId, p);
+      await p;
+    }
     const fresh = await prisma.sheetSyncState.findUnique({ where: { tenantId } });
     if (fresh) return parseSnapshot(fresh);
+  } else if (stale) {
+    // Serve the cached copy instantly; refresh for the next request.
+    refreshInBackground(tenantId);
   }
+
   if (row) return parseSnapshot(row);
   return parseSnapshot({
     sheetId: pricingSheetId(),

@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { formatMoney } from '@bvisible/pricing';
+import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import type { BuilderMachine, BuilderMaterial, BuilderRates } from './guided-builder';
 
 export interface CustomBuildRow {
@@ -87,15 +88,10 @@ export function CustomBuildPanel({
   const [installers, setInstallers] = useState('1');
 
   const matHits = useMemo(() => {
-    const q = matSearch.trim().toLowerCase();
+    const q = matSearch.trim();
     if (!q) return [];
-    const tokens = q.split(/\s+/).filter(Boolean);
-    return materials
-      .filter((m) => {
-        const hay = `${m.name} ${m.category} ${m.vendor}`.toLowerCase();
-        return tokens.every((t) => hay.includes(t));
-      })
-      .slice(0, 8);
+    // Fuzzy: misspellings, partial words, reordered tokens all match.
+    return fuzzySearch(q, materials, (m) => `${m.name} ${m.category} ${m.vendor}`, { limit: 8 });
   }, [matSearch, materials]);
 
   const num = (v: string) => Math.max(0, Number(v) || 0);

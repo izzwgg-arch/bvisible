@@ -145,102 +145,134 @@ export async function createShopOrderAction(
       },
     });
 
-    let emailStatus: 'SENT' | 'NOT_SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED' = 'NOT_SENT';
-    if (data.sendEmails) {
-      const to = vendor.email ?? vendor.emails[0] ?? null;
-      if (!to) {
-        emailStatus = 'NO_VENDOR_EMAIL';
-      } else {
-        const rowsHtml = lines
-          .map(
-            (l) =>
-              `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${escapeHtml(
-                l.detail ? `${l.name} — ${l.detail}` : l.name
-              )}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${l.qty}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${formatMoney(
-                l.unitPriceCents
-              )}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${formatMoney(
-                Math.round(l.qty * l.unitPriceCents)
-              )}</td></tr>`
-          )
-          .join('');
-        const html = `
-          <div style="font-family:Arial,sans-serif;max-width:640px">
-            <h2 style="margin:0 0 4px">Purchase order ${po.number}</h2>
-            <p style="margin:0 0 16px;color:#555">B Visible Signs &amp; Printing</p>
-            <table style="border-collapse:collapse;width:100%;font-size:14px">
-              <tr>
-                <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #333">Item</th>
-                <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #333">Qty</th>
-                <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #333">Rate</th>
-                <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #333">Amount</th>
-              </tr>
-              ${rowsHtml}
-              <tr><td colspan="3" style="padding:8px 10px;text-align:right;font-weight:bold">Total</td><td style="padding:8px 10px;text-align:right;font-weight:bold">${formatMoney(totalCents)}</td></tr>
-            </table>
-            ${data.notes ? `<p style="margin-top:14px;font-size:13px;color:#555"><b>Notes:</b> ${escapeHtml(data.notes)}</p>` : ''}
-            <p style="margin-top:18px;font-size:13px;color:#555">Please confirm receipt of this order. Reference PO ${po.number} on all paperwork.</p>
-          </div>`;
-        const text = [
-          `Purchase order ${po.number} — B Visible Signs & Printing`,
-          '',
-          ...lines.map(
-            (l) =>
-              `${l.detail ? `${l.name} — ${l.detail}` : l.name}  x${l.qty}  @ ${formatMoney(l.unitPriceCents)}  = ${formatMoney(Math.round(l.qty * l.unitPriceCents))}`
-          ),
-          '',
-          `Total: ${formatMoney(totalCents)}`,
-          data.notes ? `Notes: ${data.notes}` : '',
-          `Please confirm receipt. Reference PO ${po.number} on all paperwork.`,
-        ]
-          .filter(Boolean)
-          .join('\n');
-
-        const sent = await sendMail({
-          to,
-          subject: `Purchase order ${po.number} — B Visible Signs & Printing`,
-          html,
-          text,
-        });
-        emailStatus = sent.ok ? 'SENT' : 'SEND_FAILED';
-        await prisma.pOEvent.create({
-          data: {
-            tenantId: me.tenantId,
-            purchaseOrderId: po.id,
-            kind: POEventKind.NOTE_ADDED,
-            message: sent.ok
-              ? `PO emailed to ${to}`
-              : `PO email to ${to} failed — send manually or retry`,
-            actorId: me.id,
-          },
-        });
-        if (sent.ok) {
-          await prisma.purchaseOrder.update({
-            where: { id: po.id },
-            data: { status: 'SENT' },
-          });
-          await prisma.pOEvent.create({
-            data: {
-              tenantId: me.tenantId,
-              purchaseOrderId: po.id,
-              kind: POEventKind.STATUS_CHANGED,
-              message: 'Status changed to SENT (shop-order email)',
-              actorId: me.id,
-            },
-          });
-        }
-      }
-    }
-
+    // Nothing is emailed at creation time. Every PO is saved as a DRAFT
+    // for review; the operator sends each one explicitly with Send PO.
     created.push({
       id: po.id,
       number: po.number,
       vendor: vendor.name,
       totalCents,
-      emailStatus,
+      emailStatus: vendor.email || vendor.emails[0] ? 'NOT_SENT' : 'NO_VENDOR_EMAIL',
     });
   }
 
   return { error: null, created };
+}
+
+/// Explicit per-PO send (the ONLY path that emails a vendor). Renders the
+/// PO from the saved rows, emails the vendor's order address, records
+/// POEvents + audit, and moves the PO to SENT.
+export async function sendShopOrderPoAction(
+  poId: string
+): Promise<{ ok: boolean; message: string }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+
+  const po = await prisma.purchaseOrder.findFirst({
+    where: { id: poId, tenantId: me.tenantId, deletedAt: null },
+    select: {
+      id: true,
+      number: true,
+      notes: true,
+      subtotalCents: true,
+      status: true,
+      vendor: { select: { id: true, name: true, email: true, emails: true } },
+      lines: {
+        orderBy: { sortOrder: 'asc' },
+        select: { description: true, qtyMilli: true, unitCostCents: true, computedCostCents: true },
+      },
+    },
+  });
+  if (!po) return { ok: false, message: 'Purchase order not found.' };
+  const to = po.vendor?.email ?? po.vendor?.emails[0] ?? null;
+  if (!to) {
+    return { ok: false, message: 'No vendor email on file — add one in the Sheet Vendor Directory or on the vendor record.' };
+  }
+
+  const rowsHtml = po.lines
+    .map((l) => {
+      const qty = l.qtyMilli / 1000;
+      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${escapeHtml(l.description)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${qty}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${formatMoney(l.unitCostCents)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${formatMoney(l.computedCostCents)}</td></tr>`;
+    })
+    .join('');
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:640px">
+      <h2 style="margin:0 0 4px">Purchase order ${po.number}</h2>
+      <p style="margin:0 0 16px;color:#555">B Visible Signs &amp; Printing</p>
+      <table style="border-collapse:collapse;width:100%;font-size:14px">
+        <tr>
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #333">Item</th>
+          <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #333">Qty</th>
+          <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #333">Rate</th>
+          <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #333">Amount</th>
+        </tr>
+        ${rowsHtml}
+        <tr><td colspan="3" style="padding:8px 10px;text-align:right;font-weight:bold">Total</td><td style="padding:8px 10px;text-align:right;font-weight:bold">${formatMoney(po.subtotalCents)}</td></tr>
+      </table>
+      ${po.notes ? `<p style="margin-top:14px;font-size:13px;color:#555"><b>Notes:</b> ${escapeHtml(po.notes)}</p>` : ''}
+      <p style="margin-top:18px;font-size:13px;color:#555">Please confirm receipt of this order. Reference PO ${po.number} on all paperwork.</p>
+    </div>`;
+  const text = [
+    `Purchase order ${po.number} — B Visible Signs & Printing`,
+    '',
+    ...po.lines.map(
+      (l) =>
+        `${l.description}  x${l.qtyMilli / 1000}  @ ${formatMoney(l.unitCostCents)}  = ${formatMoney(l.computedCostCents)}`
+    ),
+    '',
+    `Total: ${formatMoney(po.subtotalCents)}`,
+    po.notes ? `Notes: ${po.notes}` : '',
+    `Please confirm receipt. Reference PO ${po.number} on all paperwork.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const sent = await sendMail({
+    to,
+    subject: `Purchase order ${po.number} — B Visible Signs & Printing`,
+    html,
+    text,
+  });
+
+  await prisma.pOEvent.create({
+    data: {
+      tenantId: me.tenantId,
+      purchaseOrderId: po.id,
+      kind: POEventKind.NOTE_ADDED,
+      message: sent.ok
+        ? `PO emailed to ${to} (Send PO)`
+        : `PO email to ${to} failed — retry or send manually`,
+      actorId: me.id,
+    },
+  });
+  if (!sent.ok) {
+    return { ok: false, message: `Email to ${to} failed — check SMTP settings and retry.` };
+  }
+
+  if (po.status === 'DRAFT') {
+    await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: 'SENT' } });
+    await prisma.pOEvent.create({
+      data: {
+        tenantId: me.tenantId,
+        purchaseOrderId: po.id,
+        kind: POEventKind.STATUS_CHANGED,
+        message: 'Status changed to SENT (explicit Send PO)',
+        actorId: me.id,
+      },
+    });
+  }
+  await writeAuditLog({
+    action: 'po_sent',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'purchase_order',
+    targetId: po.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: po.number, to, via: 'shop_order_send' },
+  });
+
+  return { ok: true, message: `Sent to ${to}` };
 }
 
 function escapeHtml(input: string): string {

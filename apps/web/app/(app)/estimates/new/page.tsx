@@ -129,6 +129,8 @@ export default async function NewEstimatePage({
           priceCents: w.priceCents,
         }))}
         bundles={bundles}
+        aliases={data.aliases}
+        recommendations={data.recommendations}
       />
     </>
   );

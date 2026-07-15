@@ -9,8 +9,11 @@
 
 import { useActionState, useMemo, useState } from 'react';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
+import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
 import { CustomBuildPanel } from './custom-build-panel';
+import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
+import { JsonImportPanel, type ImportResult } from './json-import-panel';
 
 /* ---------- data shapes provided by the server page ---------- */
 
@@ -72,6 +75,8 @@ export interface BuilderProps {
   sqftRates: BuilderSqftRate[];
   vehicleWraps: BuilderVehicleWrap[];
   bundles: BuilderBundle[];
+  aliases: Array<{ alias: string; canonical: string }>;
+  recommendations: BuilderRecommendation[];
 }
 
 /* ---------- internal line model ---------- */
@@ -124,11 +129,18 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
   const [readyTab, setReadyTab] = useState<'materials' | 'bundles' | 'wraps'>('materials');
   const [search, setSearch] = useState('');
 
-  // Sq-ft panel state
+  // Sq-ft panel state. Price is editable — prefilled from the Sheet rate;
+  // whatever ends up here is the FINAL selling $/sq ft (never marked up).
   const [sqftId, setSqftId] = useState(props.sqftRates[0]?.id ?? '');
   const [widthFt, setWidthFt] = useState('4');
   const [heightFt, setHeightFt] = useState('8');
   const [pieces, setPieces] = useState('1');
+  const [sqftPrice, setSqftPrice] = useState(() =>
+    props.sqftRates[0] ? (props.sqftRates[0].pricePerSqFtCents / 100).toFixed(2) : ''
+  );
+
+  // Extra tool panels (suggestions by sign type, JSON import).
+  const [toolPanel, setToolPanel] = useState<'recommend' | 'json' | null>(null);
 
   const [state, formAction, pending] = useActionState<GuidedEstimateState, FormData>(
     createGuidedEstimateAction,
@@ -154,29 +166,65 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
 
   const markupAmount = totals.finalPriceCents - totals.subtotalCostCents;
 
-  const filterText = search.trim().toLowerCase();
-  const tokens = filterText.split(/\s+/).filter(Boolean);
-  const matches = (haystack: string) => {
-    const lower = haystack.toLowerCase();
-    return tokens.every((t) => lower.includes(t));
-  };
-
+  // Fuzzy search: tolerates misspellings, partial words, and Sheet ALIASES.
+  const filterText = search.trim();
   const filteredMaterials = useMemo(
-    () => props.materials.filter((m) => !filterText || matches(`${m.name} ${m.category} ${m.vendor}`)).slice(0, 30),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.materials, filterText]
+    () =>
+      filterText
+        ? fuzzySearch(filterText, props.materials, (m) => `${m.name} ${m.category} ${m.vendor}`, {
+            limit: 30,
+            aliases: props.aliases,
+          })
+        : props.materials.slice(0, 30),
+    [props.materials, props.aliases, filterText]
   );
-  const filteredBundles = props.bundles.filter((b) => !filterText || matches(`${b.name} ${b.signType}`));
+  const filteredBundles = useMemo(
+    () =>
+      filterText
+        ? fuzzySearch(filterText, props.bundles, (b) => `${b.name} ${b.signType}`, { limit: 20 })
+        : props.bundles,
+    [props.bundles, filterText]
+  );
   const filteredWraps = useMemo(
-    () => props.vehicleWraps.filter((w) => !filterText || matches(`${w.name} ${w.coverage}`)).slice(0, 30),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () =>
+      filterText
+        ? fuzzySearch(filterText, props.vehicleWraps, (w) => `${w.name} ${w.coverage}`, {
+            limit: 30,
+          })
+        : props.vehicleWraps.slice(0, 30),
     [props.vehicleWraps, filterText]
   );
+
+  // Which Sheet materials are already on the estimate (for recommendations).
+  const addedMaterialKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const card of cards) {
+      for (const row of card.rows) if (row.sheetKey) keys.add(row.sheetKey);
+    }
+    return keys;
+  }, [cards]);
 
   function addCard(card: Omit<GuidedCard, 'uid'>) {
     setCards((prev) => [...prev, { ...card, uid: nextUid++ }]);
     setPanel(null);
     setSearch('');
+  }
+
+  // Same, but keeps the current panel open (recommendations add several).
+  function addCardKeepPanel(card: Omit<GuidedCard, 'uid'>) {
+    setCards((prev) => [...prev, { ...card, uid: nextUid++ }]);
+  }
+
+  function setCardQty(uid: number, qty: number) {
+    setCards((prev) =>
+      prev.map((c) => {
+        const row = c.rows[0];
+        if (c.uid !== uid || c.rows.length !== 1 || !row) return c;
+        const qtyMilli = Math.max(1, Math.round(qty * 1000));
+        const updated: GuidedRow = { ...row, qtyMilli };
+        return { ...c, rows: [updated] };
+      })
+    );
   }
 
   function addMaterial(m: BuilderMaterial) {
@@ -306,24 +354,67 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     const w = Number(widthFt) || 0;
     const h = Number(heightFt) || 0;
     const n = Math.max(1, Math.round(Number(pieces) || 1));
-    if (!rate || w <= 0 || h <= 0) return;
+    const priceCents = Math.round((Number(sqftPrice) || 0) * 100);
+    if (!rate || w <= 0 || h <= 0 || priceCents <= 0) return;
     const area = w * h * n;
     const billableArea = area * (1 + Math.max(0, rate.wastePercent) / 100);
+    const overridden = priceCents !== rate.pricePerSqFtCents;
     addCard({
       label: `${rate.name} — ${w}′ × ${h}′${n > 1 ? ` × ${n}` : ''}`,
-      sublabel: `${billableArea.toFixed(2)} sq ft × ${formatMoney(rate.pricePerSqFtCents)}/sq ft — Sheet price, already includes markup`,
+      sublabel: `${billableArea.toFixed(2)} sq ft × ${formatMoney(priceCents)}/sq ft${overridden ? ` (overridden — Sheet rate ${formatMoney(rate.pricePerSqFtCents)})` : ''} — final price, never marked up`,
       badge: 'Square footage',
       rows: [
         {
           kind: 'MATERIAL',
-          description: `${rate.name} — ${w}ft × ${h}ft × ${n} (${billableArea.toFixed(2)} sq ft)`,
+          description: `${rate.name} — ${w}ft × ${h}ft × ${n} (${billableArea.toFixed(2)} sq ft @ ${formatMoney(priceCents)}/sq ft)`,
           qtyMilli: Math.round(billableArea * 1000),
-          unitCostCents: rate.pricePerSqFtCents,
+          unitCostCents: priceCents,
           markupExempt: true,
           sourceKind: 'SQFT_ITEM',
         },
       ],
     });
+  }
+
+  function addRecommendedMaterial(m: BuilderMaterial, reason: string) {
+    addCardKeepPanel({
+      label: m.name,
+      sublabel: `Suggested for this sign type — ${reason}`,
+      badge: 'Material',
+      rows: [
+        {
+          kind: 'MATERIAL',
+          description: m.name,
+          qtyMilli: 1000,
+          unitCostCents: m.priceCents,
+          markupExempt: false,
+          sourceKind: 'READY_ITEM',
+          sheetKey: m.key,
+        },
+      ],
+    });
+  }
+
+  function removeMaterialByKey(key: string) {
+    setCards((prev) => prev.filter((c) => !c.rows.some((r) => r.sheetKey === key)));
+  }
+
+  function handleJsonImport(result: ImportResult) {
+    setCards((prev) => [...prev, ...result.cards.map((c) => ({ ...c, uid: nextUid++ }))]);
+    if (result.title && !title.trim()) setTitle(result.title);
+    if (result.markupPercent != null) setMarkupPercent(result.markupPercent);
+    if (result.customerName && clientId === '') {
+      const existing = props.clients.find(
+        (c) => c.companyName.toLowerCase() === result.customerName!.toLowerCase()
+      );
+      if (existing) {
+        setClientId(existing.id);
+      } else {
+        setClientId('__new__');
+        setNewClientName(result.customerName);
+      }
+    }
+    setToolPanel(null);
   }
 
   function buildPayload(intent: 'save') {
@@ -340,10 +431,9 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
   const sqftRate = props.sqftRates.find((r) => r.id === sqftId);
   const sqftPreviewArea =
     (Number(widthFt) || 0) * (Number(heightFt) || 0) * Math.max(1, Math.round(Number(pieces) || 1));
+  const sqftPriceCents = Math.round((Number(sqftPrice) || 0) * 100);
   const sqftPreviewCents = sqftRate
-    ? Math.round(
-        sqftPreviewArea * (1 + Math.max(0, sqftRate.wastePercent) / 100) * sqftRate.pricePerSqFtCents
-      )
+    ? Math.round(sqftPreviewArea * (1 + Math.max(0, sqftRate.wastePercent) / 100) * sqftPriceCents)
     : 0;
 
   return (
@@ -422,6 +512,24 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
               <span className="whitespace-nowrap rounded-full bg-[#fdeee1] px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#b05c1e]">
                 {card.badge}
               </span>
+              {card.rows.length === 1 &&
+              card.rows[0] &&
+              card.rows[0].kind === 'MATERIAL' &&
+              !card.rows[0].markupExempt ? (
+                <label className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-bold uppercase text-[var(--color-bv-muted)]">
+                    Qty
+                  </span>
+                  <input
+                    className="w-16 rounded-[8px] border border-[var(--color-bv-border)] bg-white px-2 py-1 text-right text-[12.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+                    type="number"
+                    min={0.001}
+                    step="any"
+                    value={card.rows[0].qtyMilli / 1000}
+                    onChange={(e) => setCardQty(card.uid, Number(e.target.value) || 0.001)}
+                  />
+                </label>
+              ) : null}
               <div className="w-24 text-right text-[14px] font-bold text-[var(--color-bv-text)]">
                 {formatMoney(cardSellCents(card, multiplierMilli))}
               </div>
@@ -608,12 +716,20 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
         {/* sq-ft panel */}
         {panel === 'sqft' ? (
           <div className={`${cardCls} mt-4 p-5`}>
-            <div className="grid gap-3 md:grid-cols-[2fr_repeat(3,0.8fr)_1fr_auto] md:items-end">
+            <div className="grid gap-3 md:grid-cols-[2fr_repeat(3,0.7fr)_0.9fr_1fr_auto] md:items-end">
               <label className="block">
                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-text)] opacity-75">
                   Item
                 </span>
-                <select className={inputCls} value={sqftId} onChange={(e) => setSqftId(e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={sqftId}
+                  onChange={(e) => {
+                    setSqftId(e.target.value);
+                    const rate = props.sqftRates.find((r) => r.id === e.target.value);
+                    if (rate) setSqftPrice((rate.pricePerSqFtCents / 100).toFixed(2));
+                  }}
+                >
                   {props.sqftRates.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name} — {formatMoney(r.pricePerSqFtCents)}/sq ft
@@ -639,6 +755,19 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                 </span>
                 <input className={inputCls} type="number" min={1} step="1" value={pieces} onChange={(e) => setPieces(e.target.value)} />
               </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-accent)]">
+                  $ / sq ft (final)
+                </span>
+                <input
+                  className={`${inputCls} ${sqftRate && sqftPriceCents !== sqftRate.pricePerSqFtCents ? 'border-[var(--color-bv-accent)] font-bold' : ''}`}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={sqftPrice}
+                  onChange={(e) => setSqftPrice(e.target.value)}
+                />
+              </label>
               <div className="pb-1 text-right">
                 <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
                   {sqftPreviewArea.toFixed(2)} sq ft
@@ -652,10 +781,59 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
               </button>
             </div>
             <p className="mt-3 text-[11px] text-[var(--color-bv-muted)]">
-              Sq-ft prices come from the Sheet and already include markup — they are never marked up
-              twice.
+              The $/sq ft is the FINAL selling price (prefilled from the Sheet, editable per job) —
+              total = square footage × price, never marked up again.
             </p>
           </div>
+        ) : null}
+
+        {/* extra tools: suggestions by sign type · JSON import */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setToolPanel(toolPanel === 'recommend' ? null : 'recommend')}
+            className={`rounded-full px-4 py-1.5 text-[11.5px] font-bold ${
+              toolPanel === 'recommend'
+                ? 'bg-[var(--color-bv-accent)] text-white'
+                : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
+            }`}
+          >
+            ✦ Suggested materials by sign type
+          </button>
+          <button
+            type="button"
+            onClick={() => setToolPanel(toolPanel === 'json' ? null : 'json')}
+            className={`rounded-full px-4 py-1.5 text-[11.5px] font-bold ${
+              toolPanel === 'json'
+                ? 'bg-[var(--color-bv-accent)] text-white'
+                : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
+            }`}
+          >
+            {'{ }'} Import estimate from JSON
+          </button>
+        </div>
+
+        {toolPanel === 'recommend' ? (
+          <RecommendationsPanel
+            recommendations={props.recommendations}
+            materials={props.materials}
+            addedKeys={addedMaterialKeys}
+            onAdd={addRecommendedMaterial}
+            onRemove={removeMaterialByKey}
+          />
+        ) : null}
+
+        {toolPanel === 'json' ? (
+          <JsonImportPanel
+            materials={props.materials}
+            machines={props.machines}
+            sqftRates={props.sqftRates}
+            vehicleWraps={props.vehicleWraps}
+            rates={props.rates}
+            aliases={props.aliases}
+            onImport={handleJsonImport}
+            onClose={() => setToolPanel(null)}
+          />
         ) : null}
       </section>
 

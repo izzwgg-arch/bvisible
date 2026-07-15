@@ -5,10 +5,15 @@
 // preselected, then review grouped by vendor before creating one PO per
 // vendor. Optional custom materials for anything not in the list.
 
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { formatMoney } from '@bvisible/pricing';
-import { createShopOrderAction, type ShopOrderResult } from './shop-order-actions';
+import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
+import {
+  createShopOrderAction,
+  sendShopOrderPoAction,
+  type ShopOrderResult,
+} from './shop-order-actions';
 
 export interface CatalogEntry {
   id: string;
@@ -65,26 +70,17 @@ export function ShopOrderFlow(props: FlowProps) {
     { error: null }
   );
 
-  const aliasMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const a of props.aliases) map.set(a.alias, a.canonical.toLowerCase());
-    return map;
-  }, [props.aliases]);
-
   const results = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return [];
-    const canonical = aliasMap.get(q);
-    const tokens = q.split(/\s+/).filter(Boolean);
-    return props.catalog
-      .filter((item) => {
-        const hay =
-          `${item.name} ${item.category} ${item.subcategory} ${item.spec} ${item.size}`.toLowerCase();
-        if (canonical && hay.includes(canonical)) return true;
-        return tokens.every((t) => hay.includes(t));
-      })
-      .slice(0, 25);
-  }, [search, props.catalog, aliasMap]);
+    // Fuzzy: misspellings, partial words, and Sheet ALIASES all match.
+    return fuzzySearch(
+      q,
+      props.catalog,
+      (item) => `${item.name} ${item.category} ${item.subcategory} ${item.spec} ${item.size}`,
+      { limit: 25, aliases: props.aliases }
+    );
+  }, [search, props.catalog, props.aliases]);
 
   function addItem(item: CatalogEntry) {
     setLines((prev) => [
@@ -162,74 +158,18 @@ export function ShopOrderFlow(props: FlowProps) {
     });
   }
 
-  /* ---------- success screen ---------- */
+  /* ---------- review & send screen (drafts created, nothing sent) ---------- */
   if (state.created && state.created.length > 0) {
     return (
-      <div className="mx-auto max-w-xl text-center">
-        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-500 text-2xl text-white shadow-[var(--shadow-bv-card)]">
-          ✓
-        </div>
-        <div className="mt-4 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bv-accent)]">
-          Purchase orders created
-        </div>
-        <h2 className="mt-1 text-[26px] font-bold text-[var(--color-bv-text)]">
-          Your order was split into {state.created.length} PO{state.created.length > 1 ? 's' : ''}
-        </h2>
-        <div className="mt-5 space-y-3 text-left">
-          {state.created.map((po) => (
-            <div key={po.id} className={`${cardCls} flex items-center gap-4 px-5 py-4`}>
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-bold text-[var(--color-bv-text)]">{po.number}</div>
-                <div className="text-[11.5px] text-[var(--color-bv-muted)]">
-                  {po.vendor} ·{' '}
-                  {po.emailStatus === 'SENT'
-                    ? 'Emailed to vendor'
-                    : po.emailStatus === 'NO_VENDOR_EMAIL'
-                      ? 'No vendor email on file — send manually'
-                      : po.emailStatus === 'SEND_FAILED'
-                        ? 'Email failed — open the PO to retry'
-                        : 'Saved as draft (email not sent)'}
-                </div>
-              </div>
-              <div className="text-[15px] font-bold text-[var(--color-bv-text)]">
-                {formatMoney(po.totalCents)}
-              </div>
-              <Link
-                href={`/po-print/${po.id}`}
-                target="_blank"
-                className="text-[12px] font-bold text-[var(--color-bv-accent)]"
-              >
-                Open PDF
-              </Link>
-              <Link
-                href={`/purchase-orders/${po.id}`}
-                className="text-[12px] font-bold text-[var(--color-bv-text)]"
-              >
-                Open →
-              </Link>
-            </div>
-          ))}
-        </div>
-        <div className="mt-6 flex justify-center gap-3">
-          <button
-            type="button"
-            className={btnDark}
-            onClick={() => {
-              setLines([]);
-              setNotes('');
-              window.location.reload();
-            }}
-          >
-            Start another shop order
-          </button>
-          <Link
-            href="/purchase-orders"
-            className="inline-flex items-center rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-2 text-[12.5px] font-semibold text-[var(--color-bv-text)]"
-          >
-            All purchase orders
-          </Link>
-        </div>
-      </div>
+      <ReviewAndSend
+        created={state.created}
+        smtpConfigured={props.smtpConfigured}
+        onRestart={() => {
+          setLines([]);
+          setNotes('');
+          window.location.reload();
+        }}
+      />
     );
   }
 
@@ -437,13 +377,6 @@ export function ShopOrderFlow(props: FlowProps) {
             />
           </label>
 
-          {!props.smtpConfigured ? (
-            <div className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
-              Email isn&apos;t configured yet — POs can be saved as drafts now and emailed once SMTP
-              is set up (Settings → Email test).
-            </div>
-          ) : null}
-
           {state.error ? (
             <div className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-900">
               {state.error}
@@ -457,35 +390,144 @@ export function ShopOrderFlow(props: FlowProps) {
               </div>
               <div className="text-[22px] font-bold">{formatMoney(combinedTotal)}</div>
               <div className="text-[10px] text-white/60">
-                {vendors.length} separate vendor PO{vendors.length > 1 ? 's' : ''}
+                {vendors.length} separate vendor PO{vendors.length > 1 ? 's' : ''} · nothing is
+                emailed until you click Send PO
               </div>
             </div>
             <div className="flex-1" />
             <button
               type="submit"
-              className="rounded-[11px] bg-white px-5 py-3 text-[13.5px] font-bold text-[var(--color-bv-text)] hover:opacity-95 disabled:opacity-60"
+              className="rounded-[11px] bg-[var(--color-bv-accent)] px-5 py-3 text-[13.5px] font-bold text-white hover:opacity-95 disabled:opacity-60"
               disabled={pending}
               onClick={() => {
                 const el = document.getElementById('shop-order-payload') as HTMLInputElement | null;
                 if (el) el.value = buildPayload(false);
               }}
             >
-              {pending ? 'Working…' : 'Save as drafts only'}
-            </button>
-            <button
-              type="submit"
-              className="rounded-[11px] bg-[var(--color-bv-accent)] px-5 py-3 text-[13.5px] font-bold text-white hover:opacity-95 disabled:opacity-60"
-              disabled={pending || !props.smtpConfigured}
-              onClick={() => {
-                const el = document.getElementById('shop-order-payload') as HTMLInputElement | null;
-                if (el) el.value = buildPayload(true);
-              }}
-            >
-              {pending ? 'Working…' : 'Create POs & email vendors'}
+              {pending ? 'Creating…' : `Create PO${vendors.length > 1 ? 's' : ''} — review before sending →`}
             </button>
           </div>
         </div>
       ) : null}
     </form>
+  );
+}
+
+/* ---------- review & send: drafts saved; PDF + explicit Send PO per vendor ---------- */
+
+function ReviewAndSend({
+  created,
+  smtpConfigured,
+  onRestart,
+}: {
+  created: NonNullable<ShopOrderResult['created']>;
+  smtpConfigured: boolean;
+  onRestart: () => void;
+}) {
+  const [sendState, setSendState] = useState<
+    Record<string, { status: 'idle' | 'sending' | 'sent' | 'error'; message: string }>
+  >({});
+  const [, startTransition] = useTransition();
+
+  function sendPo(poId: string) {
+    setSendState((prev) => ({ ...prev, [poId]: { status: 'sending', message: '' } }));
+    startTransition(async () => {
+      const result = await sendShopOrderPoAction(poId);
+      setSendState((prev) => ({
+        ...prev,
+        [poId]: { status: result.ok ? 'sent' : 'error', message: result.message },
+      }));
+    });
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-500 text-2xl text-white shadow-[var(--shadow-bv-card)]">
+          ✓
+        </div>
+        <div className="mt-4 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--color-bv-accent)]">
+          Drafts saved — review &amp; send
+        </div>
+        <h2 className="mt-1 text-[26px] font-bold text-[var(--color-bv-text)]">
+          {created.length} draft PO{created.length > 1 ? 's' : ''} created
+        </h2>
+        <p className="mt-1 text-[12.5px] text-[var(--color-bv-muted)]">
+          Nothing has been emailed. Check each PDF, edit the PO if needed, then click Send PO.
+        </p>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {created.map((po) => {
+          const s = sendState[po.id] ?? { status: 'idle' as const, message: '' };
+          const noEmail = po.emailStatus === 'NO_VENDOR_EMAIL';
+          return (
+            <div key={po.id} className={`${cardCls} px-5 py-4`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-bold text-[var(--color-bv-text)]">
+                    {po.number} · {po.vendor}
+                  </div>
+                  <div className="text-[11.5px] text-[var(--color-bv-muted)]">
+                    {s.status === 'sent'
+                      ? `✓ ${s.message}`
+                      : s.status === 'error'
+                        ? `⚠ ${s.message}`
+                        : noEmail
+                          ? 'Draft saved · no vendor email on file'
+                          : 'Draft saved · not sent yet'}
+                  </div>
+                </div>
+                <div className="text-[15px] font-bold text-[var(--color-bv-text)]">
+                  {formatMoney(po.totalCents)}
+                </div>
+                <Link
+                  href={`/purchase-orders/${po.id}`}
+                  className="rounded-[9px] border border-[var(--color-bv-border)] px-3 py-1.5 text-[11.5px] font-bold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+                >
+                  Edit / open
+                </Link>
+                <Link
+                  href={`/po-print/${po.id}`}
+                  target="_blank"
+                  className="rounded-[9px] border border-[var(--color-bv-border)] px-3 py-1.5 text-[11.5px] font-bold text-[var(--color-bv-accent)] hover:bg-[var(--color-bv-bg)]"
+                >
+                  Generate PDF
+                </Link>
+                <button
+                  type="button"
+                  className="rounded-[9px] bg-[var(--color-bv-accent)] px-4 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95 disabled:opacity-50"
+                  disabled={
+                    noEmail || !smtpConfigured || s.status === 'sending' || s.status === 'sent'
+                  }
+                  title={
+                    noEmail
+                      ? 'Add a vendor email in the Sheet Vendor Directory first.'
+                      : !smtpConfigured
+                        ? 'Configure SMTP first (Settings → Email test).'
+                        : undefined
+                  }
+                  onClick={() => sendPo(po.id)}
+                >
+                  {s.status === 'sending' ? 'Sending…' : s.status === 'sent' ? 'Sent ✓' : 'Send PO'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 flex justify-center gap-3">
+        <button type="button" className={btnDark} onClick={onRestart}>
+          Start another shop order
+        </button>
+        <Link
+          href="/purchase-orders"
+          className="inline-flex items-center rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-2 text-[12.5px] font-semibold text-[var(--color-bv-text)]"
+        >
+          All purchase orders
+        </Link>
+      </div>
+    </div>
   );
 }
