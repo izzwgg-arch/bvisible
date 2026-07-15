@@ -15,6 +15,7 @@ import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/estimate/format';
 import { SectionCard } from '@/components/estimate/estimate-surface';
+import { VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 import type { DraftLine, EditorBootstrap } from './editor';
 import type { Action } from './editor';
 
@@ -36,6 +37,7 @@ interface LineGridProps {
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   catalog: ReadonlyArray<EstimateCatalogPickerRow>;
   vehicleLibrary: EditorBootstrap['vehicleLibrary'];
+  vehicleWrapCatalog: EditorBootstrap['vehicleWrapCatalog'];
   lineCosts: Record<string, number>;
   multiplierMilli: number;
   readOnly?: boolean;
@@ -88,6 +90,7 @@ export function LineGrid({
   machines,
   catalog,
   vehicleLibrary,
+  vehicleWrapCatalog,
   lineCosts,
   multiplierMilli,
   readOnly = false,
@@ -104,6 +107,7 @@ export function LineGrid({
   const vehicleRows = useMemo(() => buildVehicleRows(vehicleLibrary), [vehicleLibrary]);
   const [openLineId, setOpenLineId] = useState<string | null>(null);
   const [tab, setTab] = useState<PickerTab>('catalog');
+  const [wrapVehicleId, setWrapVehicleId] = useState<string | null>(null);
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [highlight, setHighlight] = useState(0);
   const [materialsOpen, setMaterialsOpen] = useState(false);
@@ -233,6 +237,52 @@ export function LineGrid({
         selectedVendorId: null,
         selectedVendorMode: null,
         customerDescription: row.name,
+      },
+    });
+    window.requestAnimationFrame(() => focusNextRow(lineId));
+  }
+
+  function applyWrapVariant(
+    lineId: string,
+    vehicle: EditorBootstrap['vehicleWrapCatalog'][number],
+    variant: EditorBootstrap['vehicleWrapCatalog'][number]['variants'][number],
+  ) {
+    setOpenLineId(null);
+    setWrapVehicleId(null);
+    const title = [vehicle.make, vehicle.model].filter(Boolean).join(' ');
+    const label = variant.variant ? `${title} — ${variant.variant}` : title;
+    setQueries((prev) => ({ ...prev, [lineId]: label }));
+    const chargeCents = variant.chargeCents ?? 0;
+    const unitCostCents =
+      chargeCents > 0 && multiplierMilli > 0
+        ? Math.round((chargeCents * 1000) / multiplierMilli)
+        : chargeCents;
+    const parts: string[] = [];
+    if (variant.squareFootage) parts.push(`${variant.squareFootage} sq ft`);
+    if (variant.ratePerSf) parts.push(`$${variant.ratePerSf}/SF`);
+    let breakdown = parts.join(' × ');
+    if (chargeCents > 0) breakdown = breakdown ? `${breakdown} = ${formatMoney(chargeCents)}` : formatMoney(chargeCents);
+    else breakdown = breakdown ? `${breakdown} (enter price)` : 'Unpriced — enter price';
+    if (variant.pricingRule) breakdown += ` · ${variant.pricingRule}`;
+    dispatch({
+      type: 'set-line',
+      id: lineId,
+      patch: {
+        description: label,
+        kind: EstimateLineKind.MATERIAL,
+        qtyMilli: 1000,
+        unitCostCents,
+        machineId: null,
+        catalogItemId: null,
+        pricingMethod: null,
+        pricingEngine: null,
+        pricingInputsSnapshotJson: null,
+        pricingOutputSnapshotJson: null,
+        formulaVersion: null,
+        selectedVendorId: null,
+        selectedVendorMode: null,
+        customerDescription: `${title} vehicle wrap`,
+        notes: breakdown,
       },
     });
     window.requestAnimationFrame(() => focusNextRow(lineId));
@@ -398,13 +448,17 @@ export function LineGrid({
                               setTab={(next) => {
                                 setTab(next);
                                 setHighlight(0);
+                                setWrapVehicleId(null);
                               }}
                               catalogRows={visibleCatalogRows(line.id)}
-                              vehicleRows={visibleVehicleRows(line.id)}
+                              wrapCatalog={vehicleWrapCatalog}
+                              wrapVehicleId={wrapVehicleId}
+                              query={queries[line.id] ?? ''}
+                              onSelectWrapVehicle={setWrapVehicleId}
                               highlight={highlight}
                               machinesById={machinesById}
                               onCatalogPick={(row) => applyCatalog(line.id, row)}
-                              onVehiclePick={(row) => applyVehicle(line.id, row)}
+                              onPickWrapVariant={(vehicle, variant) => applyWrapVariant(line.id, vehicle, variant)}
                             />
                           ) : null}
                         </>
@@ -589,21 +643,30 @@ function ItemPickerDropdown({
   tab,
   setTab,
   catalogRows,
-  vehicleRows,
+  wrapCatalog,
+  wrapVehicleId,
+  query,
+  onSelectWrapVehicle,
   highlight,
   machinesById,
   onCatalogPick,
-  onVehiclePick,
+  onPickWrapVariant,
 }: {
   lineId: string;
   tab: PickerTab;
   setTab: (tab: PickerTab) => void;
   catalogRows: ReadonlyArray<EstimateCatalogPickerRow>;
-  vehicleRows: ReadonlyArray<VehiclePickerRow>;
+  wrapCatalog: EditorBootstrap['vehicleWrapCatalog'];
+  wrapVehicleId: string | null;
+  query: string;
+  onSelectWrapVehicle: (id: string | null) => void;
   highlight: number;
   machinesById: ReadonlyMap<string, { ratePerHourCents: number; name: string }>;
   onCatalogPick: (row: EstimateCatalogPickerRow) => void;
-  onVehiclePick: (row: VehiclePickerRow) => void;
+  onPickWrapVariant: (
+    vehicle: EditorBootstrap['vehicleWrapCatalog'][number],
+    variant: EditorBootstrap['vehicleWrapCatalog'][number]['variants'][number],
+  ) => void;
 }) {
   return (
     <div className="mt-1 w-[360px] overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-2xl" data-picker-line={lineId}>
@@ -660,24 +723,116 @@ function ItemPickerDropdown({
               );
             })
           )
-        ) : vehicleRows.length === 0 ? (
-          <EmptyPickerState title="No vehicle helpers" detail="Vehicle data is optional. Estimates work without vehicle rows." />
         ) : (
-          vehicleRows.map((row, index) => (
-            <button
-              key={row.id}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onVehiclePick(row)}
-              className={`w-full px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
-            >
-              <span className="block truncate text-[12px] font-black text-slate-900">{row.name}</span>
-              <span className="mt-1 block truncate text-[10px] font-bold text-slate-400">{row.detail}</span>
-            </button>
-          ))
+          <WrapVehiclePicker
+            catalog={wrapCatalog}
+            selectedId={wrapVehicleId}
+            query={query}
+            highlight={highlight}
+            onSelectVehicle={onSelectWrapVehicle}
+            onPickVariant={onPickWrapVariant}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+function WrapVehiclePicker({
+  catalog,
+  selectedId,
+  query,
+  highlight,
+  onSelectVehicle,
+  onPickVariant,
+}: {
+  catalog: EditorBootstrap['vehicleWrapCatalog'];
+  selectedId: string | null;
+  query: string;
+  highlight: number;
+  onSelectVehicle: (id: string | null) => void;
+  onPickVariant: (
+    vehicle: EditorBootstrap['vehicleWrapCatalog'][number],
+    variant: EditorBootstrap['vehicleWrapCatalog'][number]['variants'][number],
+  ) => void;
+}) {
+  const q = query.trim().toLowerCase();
+  if (catalog.length === 0) {
+    return <EmptyPickerState title="No vehicles" detail="Import vehicle wrap pricing to enable this picker." />;
+  }
+  if (!selectedId) {
+    const vehicles = q
+      ? catalog.filter((v) => `${v.make} ${v.model} ${v.vehicleType ?? ''}`.toLowerCase().includes(q))
+      : catalog;
+    if (vehicles.length === 0) {
+      return <EmptyPickerState title="No vehicle matches" detail="Try a different make or model." />;
+    }
+    return (
+      <>
+        {vehicles.map((v, index) => {
+          const priced = v.variants.filter((x) => x.chargeCents != null).length;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelectVehicle(v.id)}
+              className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+            >
+              <img src={v.photoUrl ?? VEHICLE_PLACEHOLDER_SVG} alt="" className="h-8 w-12 rounded-[6px] object-cover ring-1 ring-slate-200" />
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-black text-slate-900">{v.make} {v.model}</span>
+                <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-400">{v.vehicleType ?? 'Vehicle'} · {v.variants.length} option{v.variants.length === 1 ? '' : 's'} · {priced} priced</span>
+              </span>
+              <span className="text-[15px] font-bold text-slate-300">›</span>
+            </button>
+          );
+        })}
+      </>
+    );
+  }
+  const vehicle = catalog.find((v) => v.id === selectedId);
+  if (!vehicle) {
+    return <EmptyPickerState title="Vehicle not found" detail="Go back and pick another vehicle." />;
+  }
+  const variants = q
+    ? vehicle.variants.filter((x) => `${x.variant ?? ''} ${x.roofWrapOption ?? ''} ${x.wheelbase ?? ''} ${x.cab ?? ''}`.toLowerCase().includes(q))
+    : vehicle.variants;
+  return (
+    <>
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onSelectVehicle(null)}
+        className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-[11px] font-black text-blue-700 hover:bg-slate-50"
+      >
+        <span>‹ {vehicle.make} {vehicle.model}</span>
+        <span className="ml-auto text-[10px] font-bold text-slate-400">Back to vehicles</span>
+      </button>
+      {variants.length === 0 ? (
+        <EmptyPickerState title="No matching options" detail="Clear the search to see all configurations." />
+      ) : (
+        variants.map((x, index) => {
+          const meta = [x.roofWrapOption ? `Roof: ${x.roofWrapOption}` : null, x.wheelbase, x.height, x.cab].filter(Boolean).join(' · ');
+          const calc = [x.squareFootage ? `${x.squareFootage} sq ft` : null, x.ratePerSf ? `$${x.ratePerSf}/SF` : null].filter(Boolean).join(' × ');
+          return (
+            <button
+              key={x.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onPickVariant(vehicle, x)}
+              className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-[12px] font-black text-slate-900">{x.variant ?? 'Base'}</span>
+                <span className="mt-0.5 block truncate text-[10px] font-bold text-slate-400">{meta || 'Standard'}{calc ? ` · ${calc}` : ''}</span>
+              </span>
+              <span className="text-right text-[11px] font-black tabular-nums text-emerald-700">{x.chargeCents != null ? formatMoney(x.chargeCents) : '—'}</span>
+            </button>
+          );
+        })
+      )}
+    </>
   );
 }
 

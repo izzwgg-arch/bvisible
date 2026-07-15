@@ -45,6 +45,7 @@ export default async function EstimateDetailPage({
     linkedInvoiceRow,
     quoteSentAudit,
     vehicleLibrary,
+    wrapModels,
   ] = await Promise.all([
     prisma.estimate.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
@@ -200,6 +201,25 @@ export default async function EstimateDetailPage({
         dimensionProfiles: { orderBy: [{ updatedAt: 'desc' }], take: 1 },
       },
     }),
+    prisma.vehicleModel.findMany({
+      where: { tenantId: me.tenantId, wrapPricing: { some: {} } },
+      orderBy: [{ make: { name: 'asc' } }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        vehicleType: true,
+        make: { select: { name: true } },
+        photos: { where: { isPrimary: true }, take: 1, select: { url: true } },
+        wrapPricing: {
+          orderBy: [{ sortOrder: 'asc' }],
+          select: {
+            id: true, variant: true, roofWrapOption: true, wheelbase: true, height: true,
+            extraVersion1: true, extraOption1: true, charge: true, squareFootage: true,
+            ratePerSf: true, pricingRule: true, isActive: true,
+          },
+        },
+      },
+    }),
   ]);
 
   if (!estimate) {
@@ -323,6 +343,27 @@ export default async function EstimateDetailPage({
       hoodApproxSqFt: vehicle.dimensionProfiles[0]?.hoodApproxSqFt ?? null,
       rearApproxSqFt: vehicle.dimensionProfiles[0]?.rearApproxSqFt ?? null,
       frontApproxSqFt: vehicle.dimensionProfiles[0]?.frontApproxSqFt ?? null,
+    })),
+    vehicleWrapCatalog: wrapModels.map((m) => ({
+      id: m.id,
+      make: m.make.name,
+      model: m.name,
+      vehicleType: m.vehicleType,
+      photoUrl: m.photos[0]?.url ?? null,
+      variants: m.wrapPricing.map((v) => ({
+        id: v.id,
+        variant: v.variant,
+        roofWrapOption: v.roofWrapOption,
+        wheelbase: v.wheelbase,
+        height: v.height,
+        cab: v.extraVersion1,
+        option: v.extraOption1,
+        chargeCents: v.charge != null ? Math.round(Number(v.charge) * 100) : null,
+        squareFootage: v.squareFootage,
+        ratePerSf: v.ratePerSf != null ? Number(v.ratePerSf) : null,
+        pricingRule: v.pricingRule,
+        isActive: v.isActive,
+      })),
     })),
     lines: estimate.lines.map((l) => ({
       id: l.id,

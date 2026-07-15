@@ -96,6 +96,27 @@ export interface EditorBootstrap {
     rearApproxSqFt: number | null;
     frontApproxSqFt: number | null;
   }>;
+  vehicleWrapCatalog: ReadonlyArray<{
+    id: string;
+    make: string;
+    model: string;
+    vehicleType: string | null;
+    photoUrl: string | null;
+    variants: ReadonlyArray<{
+      id: string;
+      variant: string | null;
+      roofWrapOption: string | null;
+      wheelbase: string | null;
+      height: string | null;
+      cab: string | null;
+      option: string | null;
+      chargeCents: number | null;
+      squareFootage: number | null;
+      ratePerSf: number | null;
+      pricingRule: string | null;
+      isActive: boolean;
+    }>;
+  }>;
   lines: ReadonlyArray<{
     id: string;
     kind: EstimateLineKind;
@@ -680,6 +701,7 @@ export function EstimateEditor({
             machines={bootstrap.machines}
             catalog={bootstrap.shopCatalog}
             vehicleLibrary={bootstrap.vehicleLibrary}
+            vehicleWrapCatalog={bootstrap.vehicleWrapCatalog}
             lineCosts={computed.lineCosts}
             multiplierMilli={state.multiplierMilli}
             readOnly={readOnly}
