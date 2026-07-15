@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
 // Plain text cell. The grid passes the value down and gets onChange
 // back on every keystroke; no debouncing here. Spreadsheet rows are
@@ -57,7 +57,7 @@ export function CellInput({
       data-cell-grid={cellGrid}
       autoComplete="off"
       spellCheck={false}
-      className={clsx(
+      className={twMerge(
         'w-full bg-transparent px-2 py-1.5 text-[13.5px] text-[var(--color-bv-text)] outline-none',
         'tabular-nums focus:bg-white focus:ring-1 focus:ring-[var(--color-bv-accent)] focus:ring-inset',
         align === 'right' && 'text-right',
@@ -160,7 +160,7 @@ export function NumericCell({
       data-cell-grid={cellGrid}
       autoComplete="off"
       spellCheck={false}
-      className={clsx(
+      className={twMerge(
         'w-full bg-transparent px-2 py-1.5 text-[13.5px] text-[var(--color-bv-text)] outline-none',
         'tabular-nums focus:bg-white focus:ring-1 focus:ring-[var(--color-bv-accent)] focus:ring-inset',
         align === 'right' && 'text-right',

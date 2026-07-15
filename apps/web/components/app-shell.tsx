@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Brand } from './brand';
 import { NavLinks, type NavItem } from './app/nav-links';
 import { UserMenu } from './app/user-menu';
+import { SidebarFrame } from './app/sidebar-frame';
 import { Role } from '@bvisible/db';
 
 const BASE_NAV: ReadonlyArray<NavItem> = [
@@ -78,32 +79,20 @@ export function AppShell({
   const workspaceTitle = workspaceHeaderLabel(user.role, user.tenant?.name ?? null);
 
   return (
-    <div className="grid h-screen grid-cols-[minmax(220px,252px)_minmax(0,1fr)] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(242,135,68,0.18)_0,transparent_31%),radial-gradient(circle_at_top_right,rgba(18,64,100,0.14)_0,transparent_28%),linear-gradient(135deg,#fffaf4_0%,#f8f4ef_44%,#f6efe8_100%)] min-[1500px]:grid-cols-[292px_minmax(0,1fr)] max-lg:block print:block print:h-auto print:overflow-visible">
-      <aside className="relative flex h-screen min-w-0 flex-col overflow-hidden border-r border-[#eadfd3]/90 bg-[#fff8f0]/92 px-3 py-4 shadow-[18px_0_54px_rgba(28,73,114,0.10)] backdrop-blur-2xl [--color-bv-bg:#f8f4ef] [--color-bv-border:#eadfd3] [--color-bv-muted:#6d7480] [--color-bv-surface:#fffdfa] [--color-bv-text:#1C4972] min-[1500px]:px-4 min-[1500px]:py-5 max-lg:hidden print:hidden">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-28 top-0 h-64 w-64 rounded-full bg-[#d8e8f3]/75 blur-3xl"
+    <SidebarFrame
+      brand={<Brand className="relative shrink-0 justify-center px-1 pb-3" />}
+      nav={<NavLinks sections={navSections} />}
+      userMenu={
+        <UserMenu
+          email={user.email}
+          name={user.name}
+          workspaceLabel={workspaceTitle}
+          roleLabel={roleLabel(user.role)}
         />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute bottom-20 right-[-7rem] h-72 w-72 rounded-full bg-[#F28744]/16 blur-3xl"
-        />
-        <Brand className="relative shrink-0 justify-center px-1 pb-7" />
-        <NavLinks sections={navSections} />
-        <div className="relative">
-          <UserMenu
-            email={user.email}
-            name={user.name}
-            workspaceLabel={workspaceTitle}
-            roleLabel={roleLabel(user.role)}
-          />
-        </div>
-      </aside>
-
-      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden">
-        <main className="min-w-0 flex-1 px-4 py-5 sm:px-5 lg:px-6 xl:px-7 min-[1500px]:px-8 min-[1500px]:py-8 print:px-0 print:py-0">{children}</main>
-      </div>
-    </div>
+      }
+    >
+      {children}
+    </SidebarFrame>
   );
 }
 

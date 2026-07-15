@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { EstimateLineKind } from '@bvisible/db';
 import {
@@ -17,6 +18,7 @@ import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/e
 import { SectionCard } from '@/components/estimate/estimate-surface';
 import type { DraftLine, EditorBootstrap } from './editor';
 import type { Action } from './editor';
+import { isBlankLine } from './editor';
 
 const GRID_NAME = 'estimate-lines';
 
@@ -164,11 +166,26 @@ export function LineGrid({
   function focusNextRow(currentId: string) {
     const index = lines.findIndex((line) => line.id === currentId);
     const next = lines[index + 1];
-    if (next && isEmptyLine(next)) {
+    if (next && isBlankLine(next)) {
       setOpenLineId(next.id);
       setTab('catalog');
       setQueries((prev) => ({ ...prev, [next.id]: '' }));
       window.requestAnimationFrame(() => itemRefs.current.get(next.id)?.focus());
+      return;
+    }
+    focusLastAfterAdd.current = true;
+    dispatch({ type: 'add-line', kind: EstimateLineKind.MATERIAL });
+  }
+
+  // "+ Add line" fallback: the reducer keeps a trailing blank row, so
+  // usually this just focuses it; if somehow absent, add one.
+  function focusTrailingBlankOrAdd() {
+    const last = lines[lines.length - 1];
+    if (last && isBlankLine(last)) {
+      setOpenLineId(last.id);
+      setTab('catalog');
+      setQueries((prev) => ({ ...prev, [last.id]: '' }));
+      window.requestAnimationFrame(() => itemRefs.current.get(last.id)?.focus());
       return;
     }
     focusLastAfterAdd.current = true;
@@ -292,21 +309,21 @@ export function LineGrid({
         </div>
       </div>
 
-      <div className="overflow-x-auto overflow-y-visible">
-        <table className="w-full min-w-[1040px] text-[12px]">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px] text-[12px]">
           <thead>
             <tr className="border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-[#fffdfa] to-[#eef5f9] text-left text-[9px] font-black uppercase tracking-[0.11em] text-[#1C4972]/70 shadow-[inset_0_-1px_0_rgba(242,135,68,0.14)]">
-              <th className="w-[36px] px-3 py-2">#</th>
+              <th className="w-[30px] px-2 py-2">#</th>
               <th className="w-[31%] px-2 py-2">Item</th>
-              <th className="w-[90px] px-2 py-2">Category</th>
-              <th className="w-[64px] px-2 py-2 text-right">Qty</th>
-              <th className="w-[70px] px-2 py-2">Unit</th>
-              <th className="w-[96px] px-2 py-2 text-right">Cost</th>
-              <th className="w-[96px] px-2 py-2 text-right">Sell</th>
-              <th className="w-[78px] px-2 py-2 text-right">Margin</th>
-              <th className="w-[78px] px-2 py-2 text-center">Tax</th>
-              <th className="w-[96px] px-2 py-2 text-right">Total</th>
-              {!readOnly ? <th className="w-[36px] px-3 py-2 text-right" /> : null}
+              <th className="w-[74px] px-2 py-2">Category</th>
+              <th className="w-[54px] px-2 py-2 text-right">Qty</th>
+              <th className="w-[96px] px-2 py-2">Unit</th>
+              <th className="w-[92px] px-2 py-2 text-right">Cost</th>
+              <th className="w-[92px] px-2 py-2 text-right">Sell</th>
+              <th className="w-[58px] px-2 py-2 text-right">Margin</th>
+              <th className="w-[64px] px-2 py-2 text-center">Tax</th>
+              <th className="w-[92px] px-2 py-2 text-right">Total</th>
+              {!readOnly ? <th className="w-[32px] px-2 py-2 text-right" /> : null}
             </tr>
           </thead>
           <tbody>
@@ -332,7 +349,7 @@ export function LineGrid({
               return (
                 <Fragment key={line.id}>
                   <tr className="group border-b border-[#f0e4d8] bg-white/90 transition-colors hover:bg-[#fff0e5]/80">
-                    <td className="px-3 py-2 align-middle text-[11px] font-bold tabular-nums text-[#F28744]">
+                    <td className="px-2 py-2 align-middle text-[11px] font-bold tabular-nums text-[#F28744]">
                       {idx + 1}
                     </td>
                     <td className="relative overflow-visible px-2 py-2 align-middle">
@@ -427,6 +444,7 @@ export function LineGrid({
                           cellRow={idx}
                           cellCol="qty"
                           cellGrid={GRID_NAME}
+                          className="px-1 text-[12px]"
                         />
                       )}
                     </td>
@@ -434,7 +452,7 @@ export function LineGrid({
                       {readOnly ? (
                         <span>{unit}</span>
                       ) : (
-                        <div className="flex min-w-[104px] flex-col gap-1">
+                        <div className="flex min-w-0 flex-col gap-1">
                           <SelectControl
                             value={unit}
                             onFocus={reportFocus}
@@ -485,6 +503,7 @@ export function LineGrid({
                           cellCol="cost"
                           cellGrid={GRID_NAME}
                           onCellFocus={reportFocus}
+                          className="px-1 text-[12px]"
                         />
                       )}
                     </td>
@@ -505,6 +524,7 @@ export function LineGrid({
                           cellCol="sell"
                           cellGrid={GRID_NAME}
                           onCellFocus={reportFocus}
+                          className="px-1 text-[12px]"
                         />
                       )}
                     </td>
@@ -530,15 +550,14 @@ export function LineGrid({
                     </td>
                     <td className="px-2 py-2 text-right font-black tabular-nums text-[#1C4972]">{formatMoney(sell)}</td>
                     {!readOnly ? (
-                      <td className="relative overflow-visible px-3 py-2 text-right">
-                        <details className="relative z-[80] inline-block text-left">
-                          <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-lg text-[15px] font-bold leading-none text-[#F28744]/60 transition hover:bg-[#fff0e5] hover:text-[#F28744] marker:content-none [&::-webkit-details-marker]:hidden">...</summary>
-                          <div className="absolute right-0 top-full z-[100] mt-1 flex w-32 flex-col overflow-hidden rounded-xl border border-[#eadfd3] bg-white py-1 text-left shadow-lg">
-                            <button type="button" onClick={() => dispatch({ type: 'move-line', id: line.id, dir: -1 })} disabled={idx === 0} className="px-3 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:text-slate-300">Move up</button>
-                            <button type="button" onClick={() => dispatch({ type: 'move-line', id: line.id, dir: 1 })} disabled={idx === lines.length - 1} className="px-3 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:text-slate-300">Move down</button>
-                            <button type="button" onClick={() => dispatch({ type: 'remove-line', id: line.id })} className="px-3 py-2 text-[12px] font-medium text-rose-600 hover:bg-rose-50">Remove</button>
-                          </div>
-                        </details>
+                      <td className="px-2 py-2 text-right">
+                        <RowMenu
+                          canMoveUp={idx > 0}
+                          canMoveDown={idx < lines.length - 1}
+                          onMoveUp={() => dispatch({ type: 'move-line', id: line.id, dir: -1 })}
+                          onMoveDown={() => dispatch({ type: 'move-line', id: line.id, dir: 1 })}
+                          onRemove={() => dispatch({ type: 'remove-line', id: line.id })}
+                        />
                       </td>
                     ) : null}
                   </tr>
@@ -570,6 +589,17 @@ export function LineGrid({
           </tbody>
         </table>
       </div>
+      {!readOnly ? (
+        <div className="border-t border-[#f0e4d8] px-4 py-2">
+          <button
+            type="button"
+            onClick={focusTrailingBlankOrAdd}
+            className="rounded-[8px] px-2.5 py-1.5 text-[12px] font-bold text-[#F28744] transition hover:bg-[#fff0e5]"
+          >
+            + Add line
+          </button>
+        </div>
+      ) : null}
       <MaterialsCheapestVendorsSection
         open={materialsOpen}
         onOpenChange={setMaterialsSectionOpen}
@@ -582,6 +612,106 @@ export function LineGrid({
 
   if (embedded) return <div id="estimate-line-grid" className="px-5 py-5">{content}</div>;
   return <SectionCard id="estimate-line-grid" className="min-h-[350px] overflow-visible ring-1 ring-[#F28744]/10">{content}</SectionCard>;
+}
+
+// Row overflow menu rendered through a portal so it can never be
+// clipped by the table's overflow-x scroll container (which forced
+// overflow-y to auto and cut the old <details> dropdown off under the
+// Materials & Cheapest Vendors section).
+function RowMenu({
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}: {
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const open = pos !== null;
+
+  function toggle() {
+    if (open) {
+      setPos(null);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuWidth = 128; // w-32
+    const menuHeight = 110; // ~3 rows
+    const openUp = rect.bottom + menuHeight + 8 > window.innerHeight;
+    setPos({
+      top: openUp ? rect.top - menuHeight - 4 : rect.bottom + 4,
+      left: Math.max(8, rect.right - menuWidth),
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-row-menu]')) return;
+      setPos(null);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setPos(null);
+    }
+    function close() {
+      setPos(null);
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  function pick(action: () => void) {
+    setPos(null);
+    action();
+  }
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        data-row-menu
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Line actions"
+        onClick={toggle}
+        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[15px] font-bold leading-none text-[#F28744]/60 transition hover:bg-[#fff0e5] hover:text-[#F28744]"
+      >
+        ...
+      </button>
+      {open
+        ? createPortal(
+            <div
+              data-row-menu
+              role="menu"
+              style={{ position: 'fixed', top: pos.top, left: pos.left }}
+              className="z-[1000] flex w-32 flex-col overflow-hidden rounded-xl border border-[#eadfd3] bg-white py-1 text-left shadow-lg"
+            >
+              <button type="button" role="menuitem" onClick={() => pick(onMoveUp)} disabled={!canMoveUp} className="px-3 py-2 text-left text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:text-slate-300">Move up</button>
+              <button type="button" role="menuitem" onClick={() => pick(onMoveDown)} disabled={!canMoveDown} className="px-3 py-2 text-left text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:text-slate-300">Move down</button>
+              <button type="button" role="menuitem" onClick={() => pick(onRemove)} className="px-3 py-2 text-left text-[12px] font-medium text-rose-600 hover:bg-rose-50">Remove</button>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
 }
 
 function ItemPickerDropdown({
@@ -1453,10 +1583,6 @@ function buildVehicleRows(vehicleLibrary: EditorBootstrap['vehicleLibrary']): Ve
         qtyMilli: Math.round((area.value ?? 0) * 1000),
       }));
   });
-}
-
-function isEmptyLine(line: DraftLine): boolean {
-  return !line.catalogItemId && line.description.trim().length === 0 && line.unitCostCents === 0;
 }
 
 function unitLabel(row: EstimateCatalogPickerRow | null, kind: EstimateLineKind): string {

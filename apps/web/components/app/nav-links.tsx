@@ -56,7 +56,7 @@ export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) 
       {sections.map((sec, si) => (
         <div key={si}>
           {sec.label ? (
-            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-bv-muted)]">
+            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-bv-muted)] group-data-[collapsed]:hidden">
               {sec.label}
             </p>
           ) : null}
@@ -68,10 +68,11 @@ export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) 
                   key={item.href}
                   href={item.href as never}
                   prefetch
+                  title={item.label}
                   onFocus={() => router.prefetch(item.href)}
                   onMouseEnter={() => router.prefetch(item.href)}
                   className={cn(
-                    'group relative flex items-center gap-3 rounded-[14px] border px-3 py-2.5 text-[13px] font-medium transition-all',
+                    'group/link relative flex items-center gap-3 rounded-[14px] border px-3 py-2.5 text-[13px] font-medium transition-all group-data-[collapsed]:justify-center group-data-[collapsed]:px-1.5',
                     active
                       ? 'border-[#F28744]/28 bg-[#fff0e5] text-[#1C4972] shadow-[0_14px_34px_rgba(242,135,68,0.13)]'
                       : 'border-transparent text-[#53606d] hover:border-[#eadfd3] hover:bg-white/80 hover:text-[#1C4972]'
@@ -80,15 +81,15 @@ export function NavLinks({ sections }: { sections: ReadonlyArray<NavSection> }) 
                   <span
                     aria-hidden
                     className={cn(
-                      'grid h-8 w-8 place-items-center rounded-[11px] transition-colors',
+                      'grid h-8 w-8 shrink-0 place-items-center rounded-[11px] transition-colors',
                       active
                         ? 'bg-[#F28744] text-white shadow-[0_14px_28px_rgba(242,135,68,0.30)]'
-                        : 'bg-[#eef3f7] text-[#6f8799] group-hover:bg-[#fff0e5] group-hover:text-[#F28744]',
+                        : 'bg-[#eef3f7] text-[#6f8799] group-hover/link:bg-[#fff0e5] group-hover/link:text-[#F28744]',
                     )}
                   >
                     <NavIcon label={item.label} />
                   </span>
-                  <span>{item.label}</span>
+                  <span className="group-data-[collapsed]:hidden">{item.label}</span>
                 </Link>
               );
             })}

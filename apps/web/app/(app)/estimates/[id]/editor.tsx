@@ -254,6 +254,22 @@ function makeDraftLine(kind: EstimateLineKind): DraftLine {
   };
 }
 
+// A line the user hasn't touched yet: no catalog pick, no name, no cost.
+// Kept in sync with the grid's "focus the next empty row" behavior.
+export function isBlankLine(line: DraftLine): boolean {
+  return !line.catalogItemId && line.description.trim().length === 0 && line.unitCostCents === 0;
+}
+
+// Spreadsheet invariant: the grid always ends with one blank row so the
+// user can keep typing after ANY entry path (inline picker, side-panel
+// catalog "+ Add to estimate", bundles, vehicles). Blank rows are
+// filtered out of the save payload, so they never reach the DB.
+function withTrailingBlank(lines: DraftLine[]): DraftLine[] {
+  const last = lines[lines.length - 1];
+  if (last && isBlankLine(last)) return lines;
+  return [...lines, makeDraftLine(EstimateLineKind.MATERIAL)];
+}
+
 function snapshot(s: EditorState): string {
   return JSON.stringify({
     t: s.title,
@@ -303,10 +319,10 @@ function reducer(state: EditorState, action: Action): EditorState {
       return { ...state, designFlatCents: action.value };
     case 'add-line': {
       const newLine = { ...makeDraftLine(action.kind), ...action.patch };
-      return { ...state, lines: [...state.lines, newLine] };
+      return { ...state, lines: withTrailingBlank([...state.lines, newLine]) };
     }
     case 'remove-line':
-      return { ...state, lines: state.lines.filter((l) => l.id !== action.id) };
+      return { ...state, lines: withTrailingBlank(state.lines.filter((l) => l.id !== action.id)) };
     case 'move-line': {
       const idx = state.lines.findIndex((l) => l.id === action.id);
       if (idx < 0) return state;
@@ -321,14 +337,16 @@ function reducer(state: EditorState, action: Action): EditorState {
     case 'set-line':
       return {
         ...state,
-        lines: state.lines.map((l) =>
-          l.id === action.id ? { ...l, ...action.patch } : l
+        lines: withTrailingBlank(
+          state.lines.map((l) =>
+            l.id === action.id ? { ...l, ...action.patch } : l
+          )
         ),
       };
     case 'pick-machine':
       return {
         ...state,
-        lines: state.lines.map((l) =>
+        lines: withTrailingBlank(state.lines.map((l) =>
           l.id === action.id
             ? {
                 ...l,
@@ -343,7 +361,7 @@ function reducer(state: EditorState, action: Action): EditorState {
                     : l.unitCostCents,
               }
             : l
-        ),
+        )),
       };
     case 'reset-baseline':
       return { ...state, baselineHash: action.hash };
@@ -378,16 +396,15 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
     hiddenFromCustomer: l.hiddenFromCustomer,
     customerDescription: l.customerDescription,
   }));
-  if (lines.length === 0 && !isEstimateEditorReadOnly(b.estimate.status)) {
-    lines.push(makeDraftLine(EstimateLineKind.MATERIAL));
-  }
+  const editable = !isEstimateEditorReadOnly(b.estimate.status);
+  const withBlank = editable ? withTrailingBlank(lines) : lines;
   const base: EditorState = {
     title: b.estimate.title,
     estimateType: b.estimate.estimateType,
     notes: b.estimate.notes,
     multiplierMilli: b.estimate.multiplierMilli,
     designFlatCents: b.estimate.designFlatCents,
-    lines,
+    lines: withBlank,
     baselineHash: '',
   };
   base.baselineHash = snapshot(base);
@@ -475,7 +492,8 @@ export function EstimateEditor({
       estimateType: stateRef.current.estimateType,
       multiplierMilli: stateRef.current.multiplierMilli,
       designFlatCents: stateRef.current.designFlatCents,
-      lines: stateRef.current.lines.map((l) => ({
+      // Trailing blank rows are editor scaffolding — never persist them.
+      lines: stateRef.current.lines.filter((l) => !isBlankLine(l)).map((l) => ({
         id: l.id,
         kind: l.kind,
         description: l.description,
