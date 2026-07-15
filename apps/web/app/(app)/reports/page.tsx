@@ -165,10 +165,10 @@ function ReportMetric({
 
 function HealthCard({ title, score, text }: { title: string; score: string; text: string }) {
   return (
-    <div className="rounded-[20px] border border-slate-100 bg-white p-5 shadow-sm">
-      <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-400">{title}</div>
-      <div className="mt-4 text-[30px] font-semibold tracking-[-0.04em] text-slate-950">{score}</div>
-      <p className="mt-2 text-[13px] leading-relaxed text-slate-500">{text}</p>
+    <div className="rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
+      <div className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">{title}</div>
+      <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em] text-slate-950">{score}</div>
+      <p className="mt-2 text-[11.5px] leading-snug text-slate-500">{text}</p>
     </div>
   );
 }

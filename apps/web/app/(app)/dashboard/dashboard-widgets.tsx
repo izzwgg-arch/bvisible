@@ -225,18 +225,18 @@ function TopStatCard({
   return (
     <Link
       href={href as never}
-      className="group flex min-h-[112px] items-center justify-between rounded-[12px] border border-[#e7edf2] bg-white px-5 py-4 shadow-[0_1px_2px_rgba(28,73,114,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(28,73,114,0.10)]"
+      className="group flex items-center justify-between rounded-[12px] border border-[#e7edf2] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(28,73,114,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(28,73,114,0.10)]"
     >
       <div>
-        <p className="text-[13px] font-semibold text-[#1C4972]">{label}</p>
-        <p className="mt-3 text-[34px] font-semibold leading-none tracking-[-0.045em] text-[#101828]">
+        <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[#1C4972]/70">{label}</p>
+        <p className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em] text-[#101828]">
           {value.toLocaleString()}
         </p>
-        <p className="mt-2 text-[11px] font-medium text-[#4fa56f]">
+        <p className="mt-1.5 text-[10px] font-medium text-[#4fa56f]">
           ▲ {change}
         </p>
       </div>
-      <span className={cn('grid h-14 w-14 place-items-center rounded-[13px]', styles.soft, styles.text)}>
+      <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-[10px]', styles.soft, styles.text)}>
         <StatIcon icon={icon} />
       </span>
     </Link>
@@ -502,8 +502,8 @@ function MetricInline({
 }) {
   return (
     <div>
-      <p className="text-[10px] font-medium text-[#6d7480]">{label}</p>
-      <p className="mt-1 text-[23px] font-semibold leading-none tracking-[-0.035em] text-[#101828]">{value}</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.13em] text-[#6d7480]">{label}</p>
+      <p className="mt-1.5 text-[20px] font-black leading-none tracking-[-0.02em] text-[#101828]">{value}</p>
       <p className={cn('mt-1 text-[10px] font-medium text-[#6d7480]', success && 'text-[#35b779]', danger && 'text-[#d34d4d]')}>
         {detail}
       </p>

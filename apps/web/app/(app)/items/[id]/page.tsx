@@ -465,9 +465,9 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
 function BundleMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[20px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
-      <div className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-slate-950">{value}</div>
+    <div className="rounded-[18px] border border-white/80 bg-white/90 px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+      <div className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">{label}</div>
+      <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em] text-slate-950">{value}</div>
     </div>
   );
 }

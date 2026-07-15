@@ -123,7 +123,7 @@ export function PoMetaPanel(props: MetaPanelProps) {
         <h2 className="text-[14px] font-semibold tracking-tight text-[var(--color-bv-text)]">
           Subtotal
         </h2>
-        <div className="mt-1 text-[22px] font-semibold tabular-nums text-[var(--color-bv-text)]">
+        <div className="mt-1 text-[20px] font-black leading-none tracking-[-0.02em] tabular-nums text-[var(--color-bv-text)]">
           {formatMoney(subtotalCents)}
         </div>
         <p className="mt-1 text-[11.5px] text-[var(--color-bv-muted)]">
