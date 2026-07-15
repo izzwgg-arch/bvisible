@@ -143,6 +143,7 @@ export interface EditorBootstrap {
     internalNotes: string | null;
     hiddenFromCustomer: boolean;
     customerDescription: string | null;
+    markupExempt: boolean;
   }>;
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   clients: ReadonlyArray<{
@@ -198,6 +199,9 @@ export interface DraftLine {
   internalNotes: string | null;
   hiddenFromCustomer: boolean;
   customerDescription: string | null;
+  // R-EST-05: price already includes markup (Sheet sq-ft / vehicle wrap
+  // lines from the guided flow) — excluded from the estimate multiplier.
+  markupExempt: boolean;
 }
 
 interface EditorState {
@@ -272,6 +276,7 @@ function makeDraftLine(kind: EstimateLineKind): DraftLine {
     internalNotes: null,
     hiddenFromCustomer: false,
     customerDescription: null,
+    markupExempt: false,
   };
 }
 
@@ -324,6 +329,7 @@ function snapshot(s: EditorState): string {
       l.internalNotes,
       l.hiddenFromCustomer,
       l.customerDescription,
+      l.markupExempt,
     ]),
   });
 }
@@ -416,6 +422,7 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
     internalNotes: l.internalNotes,
     hiddenFromCustomer: l.hiddenFromCustomer,
     customerDescription: l.customerDescription,
+    markupExempt: l.markupExempt,
   }));
   const editable = !isEstimateEditorReadOnly(b.estimate.status);
   const withBlank = editable ? withTrailingBlank(lines) : lines;
@@ -465,6 +472,7 @@ export function EstimateEditor({
       kind: l.kind,
       qtyMilli: l.qtyMilli,
       unitCostCents: l.unitCostCents,
+      markupExempt: l.markupExempt,
     }));
     return computeEstimate({
       multiplierMilli: state.multiplierMilli,

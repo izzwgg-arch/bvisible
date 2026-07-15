@@ -5,6 +5,27 @@ records what changed, the files touched, the risks, and the verification.
 
 ---
 
+## 2026-07-15 — [SHEET-DRIVEN GUIDED FLOW: HOME · GUIDED ESTIMATE · SHOP ORDER · PRICING BACKEND]
+
+**Why:** Customer redesign (audited from their reference app + contractor handoff). The live Google Sheet "B Visible Formula" (`1mvk26cMgwpPE3nEYSHmOtKTNcoRvTvdIJGNssDR1yiI`) becomes the pricing/catalog source of truth; estimates are built line-by-line via a 3-option chooser; purchasing auto-splits POs by lowest-price vendor.
+
+**What changed:**
+- **R-EST-05 (new pricing rule):** `EstimateLineItem.markupExempt` — Sheet sq-ft rates and vehicle-wrap prices are FINAL (already include markup) and are excluded from the estimate multiplier. `computeEstimate` gained `markupExempt` on `LineInput` and `markupExemptCents` on output; `finalPrice = round(nonExempt × mult) + exempt`. Editor threads the flag through bootstrap/state/compute; `saveEstimateAction` preserves it (and `sourceKind`) by line id across replace-all saves. Never mark up a sq-ft/wrap line twice.
+- **Sheet sync** (`apps/web/lib/sheet-sync/`): server-side GViz readers for tabs `Meterial price`, `Machinary Price`, `Sq Ft Pricing`, `Vehicle Pricing`, `Estimator Packages`, `Package Components`, `Estimator Recommendations`, `Vendor Catalog`, `Vendor Directory`, `ALIASES` (exact names incl. intentional spellings). Snapshot cached in `sheet_sync_state` (5-min TTL + manual refresh). Sync upserts `ShopMaterialItem` (by new `sheetKey`), `Machine` rates (by name), and `Vendor` rows (from Vendor Directory). Overrides in `sheet_price_overrides` (active = override ?? sheet); operating rates in `tenant_operating_rates`.
+- **Nav/IA:** new `/home` hub (landing after login, root/login redirects updated); sidebar order Home · Overview (renamed Dashboard label) · Estimates · …; `Pricing backend` added to Administration.
+- **Guided estimate** (`/estimates/new` replaced): job + customer (+quick-create) + markup %; add-line chooser (1 Materials/ready items: Sheet materials · bundles · vehicle wraps; 2 Custom build → saves & opens grid editor; 3 Square footage: final Sheet rates, markup-exempt); sticky totals bar; `createGuidedEstimateAction` writes standard Estimate/lines (multiplier from markup %, designFlat 0, sourceKind tags). Quotes/approval/PO/finalize unchanged.
+- **Shop order** (`/purchase-orders/shop-order`): alias-tolerant search over Vendor Catalog, lowest vendor preselected + per-line vendor/qty, custom materials, review grouped by vendor → one standard PO per vendor (`POEvent CREATED`, audit), optional vendor email via tenant SMTP (status → SENT + events; "no vendor email" degrades gracefully); print-friendly PO document at `/po-print/[id]` (falls back to Harriman NY address when tenant address unset). PO list header: **Blank PO** + **+ Order materials**.
+- **Pricing backend** (`/pricing-backend`, ADMIN+): sync status cards, Refresh Sheet, Open Google Sheet, operating rates form, Materials/Machines tables w/ Sheet vs Active price + override set/reset, read-only Sq-ft/Wraps/Bundles tabs, one-click deactivation of legacy non-Sheet materials (soft).
+- **Catalog:** items page banner (Sheet connected · synced count · link), create-item page notice (Sheet is the point of reference).
+
+**Schema/migration:** `20260715190000_sheet_pricing_source` — enum `SheetOverrideItemType`; tables `sheet_price_overrides`, `tenant_operating_rates`, `sheet_sync_state`; columns `estimate_line_items.markupExempt/sourceKind`, `shop_material_items.sheetKey`. New audit actions: `sheet_sync_run`, `operating_rates_saved`, `sheet_price_override_set/reset`.
+
+**Verification:** `pnpm run typecheck` pass (all packages); vitest 62 files / 395 passed incl. new `lib/estimate/markup-exempt.test.ts` (4 tests); `prisma migrate deploy` applied; `pnpm run build` pass with routes `/home`, `/estimates/new`, `/purchase-orders/shop-order`, `/pricing-backend`, `/po-print/[id]`; all 10 GViz tabs verified readable from the dev machine (429 materials / 4 machines / 5 sq-ft / 222 vehicles).
+
+**Deferred:** QuickBooks-ready block on estimate preview; PDF attachment on vendor emails (print view + HTML email body today); Sheet write-back (PO Log tabs); AI describe-a-sign; Amazon/Home Depot cart import.
+
+---
+
 ## 2026-06-16 — [PREMIUM ESTIMATE EDITOR WORKSPACE]
 
 **Audit findings:** The old estimate detail rendered too many operational surfaces at once: large hero metrics, line grid, tools, totals, closeout/status, quote link, customer response, timeline, linked POs, and reconciliation details. The estimate itself was not visually dominant, and secondary workflow panels created a tall stacked-card page.

@@ -85,5 +85,5 @@ export async function completeResetAction(
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
   });
-  redirect('/dashboard');
+  redirect('/home');
 }

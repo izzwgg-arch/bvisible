@@ -29,6 +29,7 @@ export {
   VehicleDimensionConfidenceLevel,
   VehiclePhotoType,
   VehicleTemplateFileType,
+  SheetOverrideItemType,
 } from '@prisma/client';
 export type {
   PrismaClient,

@@ -44,6 +44,12 @@ export default async function NewItemPage() {
 
   return (
     <>
+      <div className="mb-4 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[#fdf6ef] px-4 py-3 text-[12.5px] text-[#8a5a33]">
+        <b className="text-[#b05c1e]">The Google Sheet is the catalog&apos;s point of reference.</b>{' '}
+        Standard materials belong in the Sheet (they sync here automatically, and Sheet prices win
+        on every sync). Use this form only for app-only extras like labor items or bundles — or
+        add the row in the Sheet and hit Refresh on the Pricing backend.
+      </div>
       <CatalogItemEditor
         mode="create"
         machines={machines}

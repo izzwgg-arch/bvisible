@@ -156,11 +156,22 @@ export default async function ItemsPage({
     }),
   ]);
 
+  // Google Sheet sync status — the Sheet is the catalog's source of truth.
+  const [sheetSync, sheetItemCount] = await Promise.all([
+    prisma.sheetSyncState.findUnique({
+      where: { tenantId: me.tenantId },
+      select: { status: true, syncedAt: true },
+    }),
+    prisma.shopMaterialItem.count({
+      where: { tenantId: me.tenantId, sheetKey: { not: null }, isActive: true },
+    }),
+  ]);
+
   return (
     <>
       <PageHeader
         title="Catalog"
-        subtitle="Modern pricing catalog for estimate building, internal rates, markup guidance, and vendor intelligence."
+        subtitle="The live Google Sheet is the catalog's point of reference — items and prices sync from it automatically. Vendor intelligence and markup guidance layer on top."
         actions={
           canManage ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -170,6 +181,36 @@ export default async function ItemsPage({
           ) : null
         }
       />
+
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3 shadow-[var(--shadow-bv-card)]">
+        <div className="flex items-center gap-2 text-[12.5px] text-[var(--color-bv-muted)]">
+          <span
+            className={`h-2 w-2 rounded-full ${sheetSync?.status === 'OK' && sheetSync.syncedAt ? 'bg-emerald-500' : 'bg-amber-500'}`}
+          />
+          {sheetSync?.status === 'OK' && sheetSync.syncedAt ? (
+            <span>
+              <b className="text-[var(--color-bv-text)]">Google Sheet connected</b> ·{' '}
+              {sheetItemCount} items synced from the Sheet · last sync{' '}
+              {sheetSync.syncedAt.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+              })}{' '}
+              · Sheet prices win on every sync
+            </span>
+          ) : (
+            <span>
+              Google Sheet not synced yet — open the Pricing backend and hit Refresh Sheet to
+              populate the catalog.
+            </span>
+          )}
+        </div>
+        <Link
+          href="/pricing-backend"
+          className="text-[12px] font-bold text-[var(--color-bv-accent)]"
+        >
+          Pricing backend →
+        </Link>
+      </div>
 
       <section className="mb-5 grid gap-3 sm:grid-cols-2 min-[1500px]:grid-cols-4">
         <CatalogMetric label="Visible items" value={activeCount.toString()} detail="Active in estimate picker" tone="blue" />

@@ -117,7 +117,7 @@ export async function acceptInviteAction(
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
   });
-  redirect('/dashboard');
+  redirect('/home');
 }
 
 class InviteError extends Error {

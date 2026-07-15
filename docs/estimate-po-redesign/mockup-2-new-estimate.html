@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B Visible — Guided new estimate</title>
+<style>
+  :root{--bg:#f8f4ef;--surface:#fffdfa;--border:#eadfd3;--text:#1C4972;--muted:#6d7480;--accent:#F28744;--radius:16px;
+    --shadow:0 1px 2px rgba(16,47,74,.05),0 14px 34px rgba(16,47,74,.08);
+    --shadow-lg:0 8px 22px rgba(16,47,74,.10),0 24px 58px rgba(16,47,74,.14)}
+  *{box-sizing:border-box;margin:0}
+  body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .side{width:200px;background:var(--surface);border-right:1px solid var(--border);box-shadow:var(--shadow);display:flex;flex-direction:column;padding:20px 12px;flex-shrink:0}
+  .brand{display:flex;gap:10px;align-items:center;padding:0 8px 18px}
+  .brand .tile{width:34px;height:34px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-style:italic;font-size:15px}
+  .brand b{font-size:13.5px;display:block}
+  .brand small{font-size:8.5px;letter-spacing:.16em;color:var(--muted);font-weight:700;text-transform:uppercase}
+  .nav a{display:block;padding:8px 11px;border-radius:10px;font-size:12.5px;color:var(--text);text-decoration:none;font-weight:500;margin-bottom:2px}
+  .nav a.on{background:#fdeee1;box-shadow:inset 0 0 0 1.5px var(--accent);font-weight:700}
+  .user{margin-top:auto;display:flex;gap:9px;align-items:center;border-top:1px solid var(--border);padding:12px 6px 0}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+  .user b{font-size:12px;display:block}
+  .chip{font-size:8.5px;font-weight:700;letter-spacing:.08em;background:#fdeee1;color:#b05c1e;padding:2px 7px;border-radius:99px;text-transform:uppercase}
+  .main{flex:1;padding:34px 44px 130px;max-width:1120px}
+  .crumb{font-size:11.5px;color:var(--muted);margin-bottom:10px}
+  .crumb b{color:var(--text)}
+  .eyebrow{color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+  h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:6px 0 4px}
+  .sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
+  .meta{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 22px;display:grid;grid-template-columns:2fr 1.4fr .6fr;gap:16px;margin-bottom:18px}
+  label{font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--text);opacity:.75;text-transform:uppercase;display:block;margin-bottom:6px}
+  input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13.5px;font-family:inherit;background:#fff;color:var(--text)}
+  .lines{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px}
+  .line{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border)}
+  .line:last-child{border-bottom:none}
+  .num{width:26px;height:26px;border-radius:8px;background:#f6ece1;display:grid;place-items:center;font-size:12px;font-weight:800}
+  .line .d b{font-size:14px;display:block}
+  .line .d span{font-size:11.5px;color:var(--muted)}
+  .badge{margin-left:auto;font-size:9.5px;font-weight:800;letter-spacing:.1em;color:#b05c1e;background:#fdeee1;padding:4px 10px;border-radius:99px;text-transform:uppercase;white-space:nowrap}
+  .badge.blue{color:#1C4972;background:#e7eef5}
+  .price{font-weight:800;font-size:14.5px;width:96px;text-align:right}
+  .x{color:#b9c0c9;cursor:pointer;font-size:15px}
+  /* chooser */
+  .chooser{border:2px dashed #ecc39e;background:#fdf6ef;border-radius:var(--radius);padding:26px;margin-bottom:18px}
+  .chooser h3{font-size:19px;font-weight:800;margin-bottom:2px}
+  .chooser>p{color:var(--muted);font-size:12.5px;margin-bottom:16px}
+  .opts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  .opt{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);cursor:pointer}
+  .opt:hover{box-shadow:var(--shadow-lg);border-color:var(--accent)}
+  .opt .ic{width:34px;height:34px;border-radius:10px;background:var(--text);color:#fff;display:grid;place-items:center;font-size:13px;margin-bottom:12px}
+  .opt b{font-size:14px;display:block;margin-bottom:5px}
+  .opt p{font-size:11.5px;color:var(--muted);line-height:1.5}
+  .opt .go{color:var(--accent);font-weight:800;font-size:12px;margin-top:10px}
+  .ai{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-top:14px;font-size:12.5px;color:var(--muted)}
+  .ai .spark{width:28px;height:28px;border-radius:9px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px}
+  .ai b{color:var(--text)}
+  /* totals bar */
+  .totals{position:fixed;bottom:22px;left:calc(200px + 44px);right:44px;max-width:1032px;background:var(--text);color:#fff;display:flex;align-items:stretch;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-lg)}
+  .tcell{padding:15px 24px;border-right:1px solid rgba(255,255,255,.12);flex:1}
+  .tcell small{display:block;font-size:9px;letter-spacing:.15em;color:#a9bccd;font-weight:800;margin-bottom:3px;text-transform:uppercase}
+  .tcell b{font-size:20px}
+  .save{background:var(--accent);border:none;color:#fff;font-weight:800;font-size:15px;padding:0 40px;cursor:pointer;font-family:inherit}
+  .hint{font-size:10px;color:#a9bccd;align-self:center;padding:0 16px;max-width:225px;line-height:1.45}
+  .note{background:#fdf3ea;border:1px dashed #ecc39e;border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#8a5a33}
+  .note b{color:#b05c1e}
+</style>
+</head>
+<body>
+  <aside class="side">
+    <div class="brand"><div class="tile">B</div><div><b>B Visible</b><small>Operations</small></div></div>
+    <div class="nav">
+      <a href="#">⌂ Home</a>
+      <a href="#">◔ Overview</a>
+      <a class="on" href="#">▤ Estimates</a>
+      <a href="#">⛟ Purchase orders</a>
+    </div>
+    <div class="user"><div class="avatar">I</div><div><b>Izzy</b><span class="chip">Estimator</span></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="crumb">Estimates / <b>New estimate</b> · EST-000231 · DRAFT · Live Sheet · 429 materials · 3 bundles · 222 wraps</div>
+    <div class="eyebrow">New estimate</div>
+    <h1>Storefront sign — Main St</h1>
+    <div class="sub">Enter the job once, then build it one line at a time. Saves as a normal B Visible estimate — quote, approval, PO, and finalize gates unchanged.</div>
+
+    <div class="meta">
+      <div><label>Job name</label><input value="Storefront sign — Main St"></div>
+      <div><label>Customer</label><input value="Test Customer LLC"></div>
+      <div><label>Markup %</label><input value="200"></div>
+    </div>
+
+    <div class="lines">
+      <div class="line">
+        <div class="num">1</div>
+        <div class="d"><b>Chevrolet City Express — Full wrap</b><span>235 sq ft · vehicle wrap ready item · price from Live Sheet (already includes markup)</span></div>
+        <div class="badge">Vehicle wrap</div>
+        <div class="price">$3,055.00</div><div class="x">✕</div>
+      </div>
+      <div class="line">
+        <div class="num">2</div>
+        <div class="d"><b>Custom build — lighted address pylon</b><span>3 materials · CNC 0.25 hr · shop 2 hr · install 2 hr × 2 installers · open to edit</span></div>
+        <div class="badge blue">Custom build</div>
+        <div class="price">$1,259.70</div><div class="x">✕</div>
+      </div>
+    </div>
+
+    <div class="chooser">
+      <h3>Add line 3 — choose one of three options</h3>
+      <p>This is the permanent estimate structure. Every line starts from one of these paths.</p>
+      <div class="opts">
+        <div class="opt">
+          <div class="ic">▤</div>
+          <b>1. Materials / ready items</b>
+          <p>Full stocked sheets, saved bundles, or a vehicle wrap from the vehicle list.</p>
+          <div class="go">Choose →</div>
+        </div>
+        <div class="opt">
+          <div class="ic">⚙</div>
+          <b>2. Custom build</b>
+          <p>Open the full estimator: materials, machines, labor, design, installation, recommendations — and Save as bundle.</p>
+          <div class="go">Choose →</div>
+        </div>
+        <div class="opt">
+          <div class="ic">▢</div>
+          <b>3. Square footage items</b>
+          <p>Coroplast, banner, Dura-Bond, reflective, wrap — rates and shop minutes come from the Sheet.</p>
+          <div class="go">Choose →</div>
+        </div>
+      </div>
+      <div class="ai"><div class="spark">✦</div><div><b>Describe the sign and generate a suggested build.</b> AI recommends materials, machines, and shop labor. Everything stays optional.</div><div style="margin-left:auto;color:var(--accent);font-weight:800;font-size:12px">Generate →</div></div>
+    </div>
+
+    <div class="note"><b>Integration note:</b> lines persist as today's EstimateLineItem rows tagged READY_ITEM / BUNDLE / VEHICLE_WRAP / SQFT_ITEM / CUSTOM. Markup 200% = the existing ×3 multiplier, applied to <b>custom cost-up lines only</b> — wrap, ready-item, and sq-ft prices already include markup (handoff rule, never doubled). Power users can still open this estimate in the line-grid workspace.</div>
+  </main>
+
+  <div class="totals">
+    <div class="tcell"><small>Subtotal</small><b>$4,314.70</b></div>
+    <div class="tcell"><small>Markup 200% · custom lines only</small><b>$2,519.40</b></div>
+    <div class="tcell"><small>Estimate total</small><b>$6,834.10</b></div>
+    <div class="hint">Wrap &amp; sq-ft prices already include markup — never marked up twice.</div>
+    <button class="save">Save estimate</button>
+  </div>
+</body>
+</html>

@@ -3,7 +3,7 @@ import { Role } from '@bvisible/db';
 import { getDashboardMetrics } from '@/lib/dashboard/get-dashboard-metrics';
 import { DashboardAnalyticsBoard } from './dashboard-widgets';
 
-export const metadata = { title: 'Dashboard' };
+export const metadata = { title: 'Overview' };
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage({

@@ -136,12 +136,20 @@ export default async function PurchaseOrdersPage({
         title="Purchase orders"
         subtitle={`Vendor spend command center for ${me.tenant.name}. Track authorization, receiving, and estimate coverage.`}
         actions={
-          <Link
-            href="/purchase-orders/new"
-            className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95"
-          >
-            Create PO
-          </Link>
+          <>
+            <Link
+              href="/purchase-orders/new"
+              className="inline-flex items-center justify-center rounded-[12px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Blank PO
+            </Link>
+            <Link
+              href="/purchase-orders/shop-order"
+              className="inline-flex items-center justify-center rounded-[12px] bg-[var(--color-bv-accent)] px-4 py-2.5 text-[13.5px] font-semibold text-[var(--color-bv-accent-foreground)] shadow-[0_16px_34px_rgba(47,90,243,0.24)] transition-all hover:-translate-y-0.5 hover:opacity-95"
+            >
+              + Order materials
+            </Link>
+          </>
         }
       />
 

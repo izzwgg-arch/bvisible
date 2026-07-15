@@ -96,7 +96,11 @@ export type AuditAction =
   | 'clients_bulk_deleted'
   | 'vendors_bulk_deleted'
   | 'shop_material_items_bulk_deactivated'
-  | 'vehicles_bulk_archived';
+  | 'vehicles_bulk_archived'
+  | 'sheet_sync_run'
+  | 'operating_rates_saved'
+  | 'sheet_price_override_set'
+  | 'sheet_price_override_reset';
 
 export interface AuditEntry {
   action: AuditAction;

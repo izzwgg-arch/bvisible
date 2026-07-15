@@ -114,6 +114,19 @@ export async function saveEstimateAction(
     }
   }
 
+  // R-EST-05: preserve markup exemption + guided-flow provenance for
+  // lines that round-trip through the grid editor (the editor doesn't
+  // surface these flags). Lines keep their DB ids across a save, so we
+  // key both off the existing rows before replace-all below.
+  const flagRows = await prisma.estimateLineItem.findMany({
+    where: { estimateId: data.estimateId, tenantId: me.tenantId },
+    select: { id: true, markupExempt: true, sourceKind: true },
+  });
+  const exemptIds = new Set(flagRows.filter((r) => r.markupExempt).map((r) => r.id));
+  const sourceKindById = new Map(
+    flagRows.filter((r) => r.sourceKind != null).map((r) => [r.id, r.sourceKind as string])
+  );
+
   // Run the central pricing engine on the incoming lines so the
   // cached totals on the Estimate row match what the editor showed
   // the user, byte-for-byte. The same function runs in the browser
@@ -126,6 +139,7 @@ export async function saveEstimateAction(
       kind: l.kind,
       qtyMilli: l.qtyMilli,
       unitCostCents: l.unitCostCents,
+      markupExempt: l.id ? exemptIds.has(l.id) : false,
     })),
   });
 
@@ -172,6 +186,9 @@ export async function saveEstimateAction(
           internalNotes: l.internalNotes ?? null,
           hiddenFromCustomer: l.hiddenFromCustomer ?? false,
           customerDescription: l.customerDescription ?? null,
+          // R-EST-05 flags survive the replace-all save via the old row id.
+          markupExempt: l.id ? exemptIds.has(l.id) : false,
+          sourceKind: l.id ? (sourceKindById.get(l.id) ?? null) : null,
         })),
       });
     }

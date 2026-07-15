@@ -17,7 +17,7 @@ export default async function LoginPage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await getCurrentUser();
-  if (user) redirect('/dashboard');
+  if (user) redirect('/home');
 
   const { next } = await searchParams;
   // Only allow same-origin relative paths in `next` to prevent open-redirect.

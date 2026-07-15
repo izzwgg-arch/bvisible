@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B Visible — Shop order</title>
+<style>
+  :root{--bg:#f8f4ef;--surface:#fffdfa;--border:#eadfd3;--text:#1C4972;--muted:#6d7480;--accent:#F28744;--radius:16px;
+    --shadow:0 1px 2px rgba(16,47,74,.05),0 14px 34px rgba(16,47,74,.08);
+    --shadow-lg:0 8px 22px rgba(16,47,74,.10),0 24px 58px rgba(16,47,74,.14)}
+  *{box-sizing:border-box;margin:0}
+  body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .side{width:200px;background:var(--surface);border-right:1px solid var(--border);box-shadow:var(--shadow);display:flex;flex-direction:column;padding:20px 12px;flex-shrink:0}
+  .brand{display:flex;gap:10px;align-items:center;padding:0 8px 18px}
+  .brand .tile{width:34px;height:34px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-style:italic;font-size:15px}
+  .brand b{font-size:13.5px;display:block}
+  .brand small{font-size:8.5px;letter-spacing:.16em;color:var(--muted);font-weight:700;text-transform:uppercase}
+  .nav a{display:block;padding:8px 11px;border-radius:10px;font-size:12.5px;color:var(--text);text-decoration:none;font-weight:500;margin-bottom:2px}
+  .nav a.on{background:#fdeee1;box-shadow:inset 0 0 0 1.5px var(--accent);font-weight:700}
+  .user{margin-top:auto;display:flex;gap:9px;align-items:center;border-top:1px solid var(--border);padding:12px 6px 0}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+  .user b{font-size:12px;display:block}
+  .chip{font-size:8.5px;font-weight:700;letter-spacing:.08em;background:#fdeee1;color:#b05c1e;padding:2px 7px;border-radius:99px;text-transform:uppercase}
+  .main{flex:1;padding:34px 44px 60px;max-width:1060px}
+  .crumb{font-size:11.5px;color:var(--muted);margin-bottom:10px}
+  .crumb b{color:var(--text)}
+  .eyebrow{color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+  h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:6px 0 4px}
+  .sub{color:var(--muted);font-size:13.5px;margin-bottom:18px}
+  .search{width:100%;border:1.5px solid var(--accent);border-radius:var(--radius);padding:15px 18px;font-size:15px;font-family:inherit;background:#fff;color:var(--text);margin-bottom:10px;box-shadow:var(--shadow)}
+  .custom{display:inline-block;font-size:11.5px;font-weight:700;border:1px solid var(--border);background:var(--surface);border-radius:99px;padding:7px 14px;color:var(--muted);margin-bottom:20px}
+  .result{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;padding:13px 18px;margin-bottom:10px}
+  .ac{width:38px;height:38px;border-radius:10px;background:#f6ece1;display:grid;place-items:center;font-size:11px;font-weight:800;color:#b05c1e}
+  .result .d b{font-size:14px;display:block}
+  .result .d span{font-size:11.5px;color:var(--muted)}
+  .result .pr{margin-left:auto;text-align:right}
+  .result .pr small{display:block;font-size:8.5px;font-weight:800;letter-spacing:.13em;color:var(--muted)}
+  .result .pr b{font-size:15px}
+  .result .pr .v{font-size:10.5px;color:var(--accent);font-weight:800}
+  .add{background:var(--text);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:800;font-size:12px;cursor:pointer;font-family:inherit}
+  .review{margin-top:32px}
+  h2.big{font-size:25px;font-weight:800;letter-spacing:-.01em;margin:4px 0 4px}
+  .vendorcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px}
+  .vhead{background:var(--text);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+  .vhead small{display:block;font-size:8.5px;letter-spacing:.15em;color:#a9bccd;font-weight:800}
+  .vhead .nm{font-size:17px;font-weight:800}
+  .vhead .em{font-size:10px;color:#a9bccd}
+  .vhead .tot{color:#ffb98a;font-size:19px;font-weight:800}
+  .vline{display:flex;align-items:center;gap:14px;padding:13px 20px;font-size:13px}
+  .vline .d{flex:1}
+  .vline .d b{display:block;font-size:13.5px}
+  .vline .d span{font-size:11px;color:var(--muted)}
+  select,.qty{border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12.5px;font-family:inherit;background:#fff;color:var(--text)}
+  .qty{width:60px;text-align:right}
+  .vline .lp{width:76px;text-align:right;font-weight:800}
+  .notes{width:100%;border:1px solid var(--border);border-radius:var(--radius);padding:13px 16px;font-size:13px;font-family:inherit;background:var(--surface);margin:6px 0 14px;color:var(--muted)}
+  .mailbox{background:#fdf6e3;border:1px solid #ecd9a8;border-radius:var(--radius);padding:13px 18px;font-size:12px;color:#8a6d2f;margin-bottom:14px}
+  .footer{background:var(--text);color:#fff;border-radius:var(--radius);display:flex;align-items:center;padding:16px 22px;gap:18px;box-shadow:var(--shadow-lg)}
+  .footer small{display:block;font-size:9px;letter-spacing:.15em;color:#a9bccd;font-weight:800}
+  .footer .amt{font-size:24px;font-weight:800}
+  .footer .sep{flex:1}
+  .ghost{background:#fff;color:var(--text);border:none;border-radius:11px;padding:13px 22px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
+  .primary{background:var(--accent);color:#fff;border:none;border-radius:11px;padding:13px 22px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
+  .note{margin-top:16px;background:#fdf3ea;border:1px dashed #ecc39e;border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#8a5a33}
+  .note b{color:#b05c1e}
+</style>
+</head>
+<body>
+  <aside class="side">
+    <div class="brand"><div class="tile">B</div><div><b>B Visible</b><small>Operations</small></div></div>
+    <div class="nav">
+      <a href="#">⌂ Home</a>
+      <a href="#">◔ Overview</a>
+      <a href="#">▤ Estimates</a>
+      <a class="on" href="#">⛟ Purchase orders</a>
+    </div>
+    <div class="user"><div class="avatar">I</div><div><b>Izzy</b><span class="chip">Shop</span></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="crumb">Purchase orders / <b>Shop order</b> · 2 items requested by Izzy · Live Sheet · 148 orderable materials</div>
+    <div class="eyebrow">Shop order</div>
+    <h1>What materials do you need?</h1>
+    <div class="sub">Type the material name — misspellings are okay (aliases from the Sheet). The lowest-price vendor is selected first, but you can change it on any line.</div>
+
+    <input class="search" placeholder="Start typing: Durabond, vinyl, acrylic, blade…" value="acrylic">
+    <div class="custom">+ Order a custom material not in the list</div>
+
+    <div class="result">
+      <div class="ac">AC</div>
+      <div class="d"><b>Black Acrylic Sheet — 1/4 — 4′×8′</b><span>Acrylic Sheets · 1/4 · 4×8 sheet</span></div>
+      <div class="pr"><small>LOWEST PRICE</small><b>$87.00</b><div class="v">Letra lit</div></div>
+      <button class="add">+ Add</button>
+    </div>
+    <div class="result">
+      <div class="ac">AC</div>
+      <div class="d"><b>Black Acrylic Sheet — 1/8 — 4′×8′</b><span>Acrylic Sheets · 1/8 · 4×8 sheet</span></div>
+      <div class="pr"><small>LOWEST PRICE</small><b>$57.08</b><div class="v">S&amp;F</div></div>
+      <button class="add">+ Add</button>
+    </div>
+
+    <div class="review">
+      <div class="eyebrow">Review order</div>
+      <h2 class="big">2 purchase orders will be created</h2>
+      <div class="sub">Grouped by vendor. Change any line's vendor before creating the POs.</div>
+
+      <div class="vendorcard">
+        <div class="vhead"><div><small>VENDOR</small><div class="nm">Letra lit</div><div class="em">sales@letralit.com · kunter@letralit.com</div></div><div class="tot">$87.00</div></div>
+        <div class="vline"><div class="d"><b>Black Acrylic Sheet — 1/4 — 4′×8′</b><span>1/4 · 4×8 sheet</span></div><select><option>Letra lit — $87.00 (lowest)</option><option>S&amp;F — $126.50</option><option>Grimco — $160.46</option></select><input class="qty" value="1"><div class="lp">$87.00</div><span style="color:#b9c0c9">✕</span></div>
+      </div>
+
+      <div class="vendorcard">
+        <div class="vhead"><div><small>VENDOR</small><div class="nm">S&amp;F</div><div class="em">jacobw@sfsupplies.com · manny@sfsupplies.com</div></div><div class="tot">$57.08</div></div>
+        <div class="vline"><div class="d"><b>Black Acrylic Sheet — 1/8 — 4′×8′</b><span>1/8 · 4×8 sheet</span></div><select><option>S&amp;F — $57.08 (lowest)</option><option>Grimco — $71.52</option><option>Letra lit — $57.63</option></select><input class="qty" value="1"><div class="lp">$57.08</div><span style="color:#b9c0c9">✕</span></div>
+      </div>
+
+      <textarea class="notes" rows="2">Optional delivery or order notes for suppliers…</textarea>
+
+      <div class="mailbox"><b>Supplier mailbox: estimates@bvisible.us.</b> Drafts save instantly; vendor emails send through B Visible's existing mail system with the branded PO PDF attached. Every send is logged on the PO timeline, and replies flow back into the Purchase inbox automatically.</div>
+
+      <div class="footer">
+        <div><small>COMBINED TOTAL</small><div class="amt">$144.08</div><small style="letter-spacing:.02em">2 separate vendor POs · PO-000409 / PO-000410 · PDFs generated</small></div>
+        <div class="sep"></div>
+        <button class="ghost">Save as drafts only</button>
+        <button class="primary">Create POs &amp; email vendors</button>
+      </div>
+    </div>
+
+    <div class="note"><b>Integration note:</b> creates standard PurchaseOrder + POLineItem rows (one per vendor) with CREATED events. PO detail, QBO number, receipt OCR, reconciliation, and lifecycle queues apply unchanged. Vendor emails come from the Sheet's Vendor Directory; PDF uses the company format (97 Route 17M, Harriman, NY).</div>
+  </main>
+</body>
+</html>

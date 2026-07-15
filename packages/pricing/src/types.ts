@@ -26,6 +26,11 @@ export interface LineInput {
   kind: LineKind;
   qtyMilli: number;
   unitCostCents: number;
+  // R-EST-05 (Sheet pricing rule): when true this line's price already
+  // includes markup (square-foot items, vehicle wraps, ready items priced
+  // from the live Google Sheet). Exempt lines are added to the final sell
+  // price as-is and are NEVER multiplied by the estimate multiplier.
+  markupExempt?: boolean;
 }
 
 export interface EstimateInput {
@@ -50,4 +55,8 @@ export interface EstimateOutput {
   breakdown: BreakdownByKind;
   subtotalCostCents: number;
   finalPriceCents: number;
+  // Sum of markup-exempt line costs (already-marked-up Sheet prices).
+  // subtotalCostCents still includes these; the multiplier is applied
+  // only to (subtotalCostCents - markupExemptCents).
+  markupExemptCents: number;
 }

@@ -50,3 +50,10 @@ Thumbs.db
 
 # Local-only deploy helper scripts (keep untracked)
 server-scripts/.enqueue-*.sh
+
+# Customer reference material (not our code) + agent scratch
+docs/estimate-po-redesign/reference-handoff/
+.agent-*.cmd
+.agent-*.log
+.git-commit-message.txt
+_tmp_16_*

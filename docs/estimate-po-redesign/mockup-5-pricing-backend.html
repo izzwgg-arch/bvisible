@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B Visible — Pricing backend</title>
+<style>
+  :root{--bg:#f8f4ef;--surface:#fffdfa;--border:#eadfd3;--text:#1C4972;--muted:#6d7480;--accent:#F28744;--radius:16px;
+    --shadow:0 1px 2px rgba(16,47,74,.05),0 14px 34px rgba(16,47,74,.08);
+    --shadow-lg:0 8px 22px rgba(16,47,74,.10),0 24px 58px rgba(16,47,74,.14)}
+  *{box-sizing:border-box;margin:0}
+  body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .side{width:248px;background:var(--surface);border-right:1px solid var(--border);box-shadow:var(--shadow);display:flex;flex-direction:column;padding:22px 16px;flex-shrink:0}
+  .brand{display:flex;gap:11px;align-items:center;padding:0 8px 20px}
+  .brand .tile{width:38px;height:38px;border-radius:11px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-style:italic;font-size:17px}
+  .brand b{font-size:15px;display:block}
+  .brand small{font-size:9px;letter-spacing:.18em;color:var(--muted);font-weight:700;text-transform:uppercase}
+  .navgroup{font-size:9.5px;letter-spacing:.16em;font-weight:700;color:var(--muted);text-transform:uppercase;padding:14px 10px 6px}
+  .nav a{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:11px;font-size:13px;color:var(--text);text-decoration:none;font-weight:500;margin-bottom:2px}
+  .nav a.on{background:#fdeee1;box-shadow:inset 0 0 0 1.5px var(--accent);font-weight:700}
+  .nav a span{width:17px;text-align:center;opacity:.75}
+  .user{margin-top:auto;display:flex;gap:10px;align-items:center;border-top:1px solid var(--border);padding:14px 8px 0}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--text);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700}
+  .user b{font-size:13px;display:block}
+  .chip{font-size:9px;font-weight:700;letter-spacing:.1em;background:#fdeee1;color:#b05c1e;padding:2px 8px;border-radius:99px;text-transform:uppercase}
+  .main{flex:1;padding:38px 46px;max-width:1180px}
+  .eyebrow{color:var(--accent);font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+  h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:6px 0 4px}
+  .sub{color:var(--muted);font-size:13.5px;margin-bottom:22px}
+  .headrow{display:flex;justify-content:space-between;align-items:flex-end}
+  .headbtns{display:flex;gap:10px}
+  .refresh{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;box-shadow:var(--shadow);color:var(--text)}
+  .opensheet{background:var(--text);color:#fff;border:none;border-radius:11px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px}
+  .stat small{font-size:9px;font-weight:800;letter-spacing:.15em;color:var(--muted);text-transform:uppercase}
+  .stat .v{font-size:22px;font-weight:800;margin:4px 0 2px;display:flex;align-items:center;gap:8px}
+  .stat p{font-size:11px;color:var(--muted)}
+  .dot{width:9px;height:9px;border-radius:50%;background:#2f9e63;display:inline-block}
+  .rates{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin-bottom:18px}
+  .rates h2{font-size:16px;font-weight:800;margin-bottom:2px}
+  .rates .hint{font-size:11.5px;color:var(--muted);margin-bottom:14px}
+  .rategrid{display:grid;grid-template-columns:repeat(4,1fr) auto;gap:14px;align-items:end}
+  .rate label{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:6px;opacity:.75}
+  .rate .box{display:flex;align-items:center;border:1px solid var(--border);border-radius:10px;background:#fff}
+  .rate .box span{padding:0 10px;color:var(--muted);font-size:12px;white-space:nowrap}
+  .rate input{border:none;background:none;padding:10px 0;font-size:14px;width:100%;font-family:inherit;color:var(--text)}
+  .saver{background:var(--accent);color:#fff;border:none;border-radius:11px;padding:12px 20px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
+  .tablecard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .tabbar{display:flex;gap:8px;padding:14px 18px;align-items:center;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .tab{border-radius:99px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer}
+  .tab.on{background:var(--text);color:#fff}
+  .tab.off{background:#f6ece1;color:var(--muted)}
+  .tabbar input{margin-left:auto;border:1px solid var(--border);border-radius:10px;padding:9px 13px;font-size:12.5px;width:270px;font-family:inherit;background:#fff;color:var(--text)}
+  .legend{display:flex;justify-content:space-between;background:#fdf6ef;font-size:10.5px;color:#b05c1e;padding:8px 18px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:9px;letter-spacing:.13em;color:var(--muted);text-transform:uppercase;padding:10px 18px;border-bottom:1px solid var(--border);font-weight:800}
+  td{padding:11px 18px;border-bottom:1px solid #f3ebe0}
+  td b{font-size:12.5px}
+  .src{font-size:9.5px;font-weight:800;padding:4px 10px;border-radius:99px}
+  .src.sheet{background:#e7f5ec;color:#22794a}
+  .src.override{background:#fdeee1;color:#b05c1e}
+  .edit{border:1px solid var(--border);background:#fff;border-radius:8px;font-size:11px;font-weight:800;padding:5px 12px;cursor:pointer;font-family:inherit;color:var(--text)}
+  .ov{color:#b05c1e;font-weight:800}
+  .foot{display:flex;justify-content:space-between;padding:11px 18px;font-size:10.5px;color:var(--muted);background:#fbf7f1}
+  .note{margin-top:16px;background:#fdf3ea;border:1px dashed #ecc39e;border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#8a5a33}
+  .note b{color:#b05c1e}
+</style>
+</head>
+<body>
+  <aside class="side">
+    <div class="brand"><div class="tile">B</div><div><b>B Visible</b><small>Operations platform</small></div></div>
+    <div class="nav">
+      <div class="navgroup">Workspace</div>
+      <a href="#"><span>⌂</span> Home</a>
+      <a href="#"><span>◔</span> Overview</a>
+      <a href="#"><span>▤</span> Estimates</a>
+      <a href="#"><span>⛟</span> Purchase orders</a>
+      <div class="navgroup">Administration</div>
+      <a class="on" href="#"><span>$</span> Pricing backend</a>
+      <a href="#"><span>✉</span> Purchase inbox</a>
+      <a href="#"><span>▣</span> Receipt scan</a>
+      <a href="#"><span>⚙</span> Users &amp; settings</a>
+    </div>
+    <div class="user"><div class="avatar">I</div><div><b>Izzy</b><span class="chip">Admin</span></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="headrow">
+      <div>
+        <div class="eyebrow">Control center</div>
+        <h1>Pricing backend</h1>
+        <div class="sub">The Google Sheet supplies the catalog — the owner keeps editing prices there. Overrides and operating rates are managed here.</div>
+      </div>
+      <div class="headbtns">
+        <button class="refresh">⟳ Refresh Sheet</button>
+        <button class="opensheet">Open Google Sheet ↗</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><small>Google Sheet</small><div class="v"><span class="dot"></span>Connected</div><p>“B Visible Formula” · synced 1:05 PM · every 5 min</p></div>
+      <div class="stat"><small>Materials</small><div class="v">429</div><p>Meterial price + Vendor Catalog tabs</p></div>
+      <div class="stat"><small>Machines</small><div class="v">4</div><p>Machinary Price tab · live hourly rates</p></div>
+      <div class="stat"><small>Overrides</small><div class="v">1</div><p>App-controlled prices · reset to follow Sheet</p></div>
+    </div>
+
+    <div class="rates">
+      <h2>Operating rates</h2>
+      <div class="hint">Used immediately in every new estimate. Stored in B Visible (not the Sheet), audited on change.</div>
+      <div class="rategrid">
+        <div class="rate"><label>Shop labor</label><div class="box"><span>$</span><input value="50"><span>/hour</span></div></div>
+        <div class="rate"><label>Design</label><div class="box"><span>$</span><input value="150"><span>flat</span></div></div>
+        <div class="rate"><label>Installation</label><div class="box"><span>$</span><input value="150"><span>/person/hr</span></div></div>
+        <div class="rate"><label>Default markup</label><div class="box"><input value="200" style="padding-left:12px"><span>% (= ×3.00)</span></div></div>
+        <button class="saver">Save rates</button>
+      </div>
+    </div>
+
+    <div class="tablecard">
+      <div class="tabbar">
+        <div class="tab on">Materials · 429</div>
+        <div class="tab off">Machines · 4</div>
+        <div class="tab off">Sq-ft rates · 5</div>
+        <div class="tab off">Vehicle wraps · 222</div>
+        <div class="tab off">Bundles · 3</div>
+        <input placeholder="Search name, category, or vendor…">
+      </div>
+      <div class="legend"><span>Sheet prices update automatically on sync.</span><span>An orange override stays active until you reset it to the Sheet price.</span></div>
+      <table>
+        <tr><th>Material</th><th>Category</th><th>Sheet price</th><th>Active price</th><th>Vendor</th><th>Source</th><th></th></tr>
+        <tr><td><b>Black Acrylic Sheet — 1/16 — 4′×6′</b></td><td>Acrylic Sheets</td><td>$34.96</td><td><b>$34.96</b></td><td>S&amp;F</td><td><span class="src sheet">Google Sheet</span></td><td><button class="edit">Edit</button></td></tr>
+        <tr><td><b>Black Acrylic Sheet — 1/4 — 4′×8′</b></td><td>Acrylic Sheets</td><td>$87.00</td><td><b>$87.00</b></td><td>Letra lit</td><td><span class="src sheet">Google Sheet</span></td><td><button class="edit">Edit</button></td></tr>
+        <tr><td><b>White Acrylic Sheet — 1/8 — 4′×8′</b></td><td>Acrylic Sheets</td><td>$51.99</td><td><b class="ov">$48.50</b></td><td>S&amp;F</td><td><span class="src override">App override</span></td><td><button class="edit">Reset</button></td></tr>
+        <tr><td><b>Black Acrylic Sheet — 3/16 — 4′×8′</b></td><td>Acrylic Sheets</td><td>$84.09</td><td><b>$84.09</b></td><td>S&amp;F</td><td><span class="src sheet">Google Sheet</span></td><td><button class="edit">Edit</button></td></tr>
+      </table>
+      <div class="foot"><span>Showing 4 of 429 live items</span><span>Auto-refresh: every 5 minutes in the estimator · vendor-intel suggestions (OCR / email) keep flowing into the estimate rail</span></div>
+    </div>
+
+    <div class="note"><b>Integration note (Phase A):</b> sync service reads the exact Sheet tabs (incl. intentional names “Meterial price” / “Machinary Price”) via the Sheets API into tenant tables; active price = override ?? sheet price. Sq-ft rates carry already-marked-up $/sq ft — flagged so the engine never applies the 200% markup twice. Existing OCR/email price intelligence remains a suggestion layer.</div>
+  </main>
+</body>
+</html>

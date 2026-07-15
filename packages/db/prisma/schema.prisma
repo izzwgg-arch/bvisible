@@ -395,8 +395,74 @@ model Tenant {
   vehicleTemplates         VehicleTemplate[]
   vehicleWrapPricing       VehicleWrapPricing[]
   estimateVehicles         EstimateVehicle[]
+  sheetPriceOverrides      SheetPriceOverride[]
+  operatingRates           TenantOperatingRates?
+  sheetSyncState           SheetSyncState?
 
   @@map("tenants")
+}
+
+/// Which Sheet-priced entity an app override targets.
+enum SheetOverrideItemType {
+  MATERIAL
+  MACHINE
+}
+
+/// App-controlled price override on top of the live Google Sheet catalog.
+/// Active price = override ?? sheet price. Deleting the row resets the
+/// item to follow the Sheet again (Pricing backend "Reset").
+model SheetPriceOverride {
+  id         String                @id @default(cuid())
+  tenantId   String
+  itemType   SheetOverrideItemType
+  /// Normalized sheet item key (lowercased item name).
+  itemKey    String                @db.VarChar(400)
+  priceCents Int
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, itemType, itemKey])
+  @@index([tenantId, itemType])
+  @@map("sheet_price_overrides")
+}
+
+/// Fixed shop rates used by the guided estimate flow (Pricing backend →
+/// Operating rates). Markup is stored as percent × 1000 (200000 = 200%
+/// = ×3.00 sell multiplier).
+model TenantOperatingRates {
+  id                        String   @id @default(cuid())
+  tenantId                  String   @unique
+  shopLaborCentsPerHour     Int      @default(5000)
+  designFlatCents           Int      @default(15000)
+  installPerPersonHourCents Int      @default(15000)
+  defaultMarkupPercentMilli Int      @default(200000)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_operating_rates")
+}
+
+/// Cached snapshot of the live Google pricing Sheet ("B Visible Formula").
+/// One row per tenant; `dataJson` holds every parsed tab. Refreshed by
+/// runSheetSync (manual button + 5-minute TTL on read).
+model SheetSyncState {
+  id        String    @id @default(cuid())
+  tenantId  String    @unique
+  sheetId   String    @db.VarChar(120)
+  dataJson  Json
+  status    String    @default("OK") @db.VarChar(20)
+  lastError String?   @db.VarChar(2000)
+  syncedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("sheet_sync_state")
 }
 
 model User {
@@ -758,6 +824,13 @@ model EstimateLineItem {
   internalNotes             String?
   hiddenFromCustomer        Boolean               @default(false)
   customerDescription       String?
+  /// R-EST-05: line price already includes markup (Sheet sq-ft rates,
+  /// vehicle wraps). Excluded from the estimate multiplier — never
+  /// marked up twice. See packages/pricing/src/estimate.ts.
+  markupExempt              Boolean               @default(false)
+  /// Guided-flow provenance: READY_ITEM | BUNDLE | VEHICLE_WRAP |
+  /// SQFT_ITEM | CUSTOM (null for grid-authored lines).
+  sourceKind                String?               @db.VarChar(30)
   createdAt                 DateTime              @default(now())
   updatedAt                 DateTime              @updatedAt
 
@@ -1479,6 +1552,10 @@ model ShopMaterialItem {
   pricingCalculatedAt   DateTime?
   pricingCalculatedById String?
   isActive              Boolean              @default(true)
+  /// Non-null when this row is synced from the live Google Sheet catalog
+  /// (normalized sheet item name). Sheet is the source of truth: sync
+  /// upserts by (tenantId, sheetKey) and refreshes cost on every run.
+  sheetKey              String?              @db.VarChar(400)
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 

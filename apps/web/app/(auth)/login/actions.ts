@@ -96,7 +96,7 @@ async function performLogin(
     userAgent: ctx.userAgent,
   });
 
-  redirect(next ?? '/dashboard');
+  redirect(next ?? '/home');
 }
 
 export async function loginAction(

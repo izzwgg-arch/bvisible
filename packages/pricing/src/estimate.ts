@@ -45,6 +45,7 @@ function bucketKey(kind: LineKind): keyof BreakdownByKind {
 export function computeEstimate(input: EstimateInput): EstimateOutput {
   const breakdown: BreakdownByKind = { ...EMPTY_BREAKDOWN };
   const lineCosts: Record<string, number> = {};
+  let markupExemptCents = 0;
 
   for (const line of input.lines) {
     const cost = computeLineCostCents({
@@ -54,6 +55,11 @@ export function computeEstimate(input: EstimateInput): EstimateOutput {
     lineCosts[line.id] = cost;
     const key = bucketKey(line.kind);
     breakdown[key] = breakdown[key] + cost;
+    // R-EST-05: markup-exempt lines carry an already-marked-up Sheet
+    // price (sq-ft items, vehicle wraps). They roll into the subtotal
+    // buckets like any other line but are excluded from the multiplier
+    // below — never marked up twice.
+    if (line.markupExempt) markupExemptCents += cost;
   }
 
   // The flat design fee is added on top of any DESIGN-kind line
@@ -72,9 +78,12 @@ export function computeEstimate(input: EstimateInput): EstimateOutput {
     breakdown.miscCents;
 
   // multiplier_milli / 1000 is the actual sell multiplier
-  // (default 3000 → 3.000×). Rounded to the nearest cent.
+  // (default 3000 → 3.000×). Rounded to the nearest cent. Markup-exempt
+  // lines (already-marked-up Sheet prices) pass through at face value.
   const multiplierMilli = Math.max(0, Math.trunc(input.multiplierMilli));
-  const finalPriceCents = roundCents((subtotalCostCents * multiplierMilli) / 1000);
+  const markupBaseCents = subtotalCostCents - markupExemptCents;
+  const finalPriceCents =
+    roundCents((markupBaseCents * multiplierMilli) / 1000) + markupExemptCents;
 
-  return { lineCosts, breakdown, subtotalCostCents, finalPriceCents };
+  return { lineCosts, breakdown, subtotalCostCents, finalPriceCents, markupExemptCents };
 }

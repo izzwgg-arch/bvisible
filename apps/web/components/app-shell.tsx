@@ -6,7 +6,8 @@ import { SidebarFrame } from './app/sidebar-frame';
 import { Role } from '@bvisible/db';
 
 const BASE_NAV: ReadonlyArray<NavItem> = [
-  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/home', label: 'Home' },
+  { href: '/dashboard', label: 'Overview' },
   { href: '/estimates', label: 'Estimates' },
   { href: '/purchase-orders', label: 'Purchase Orders' },
   { href: '/clients', label: 'Customers' },
@@ -17,6 +18,7 @@ const BASE_NAV: ReadonlyArray<NavItem> = [
 ];
 
 const ADMIN_NAV: ReadonlyArray<NavItem> = [
+  { href: '/pricing-backend', label: 'Pricing backend' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/email-ingestion', label: 'Email ingestion' },
   { href: '/admin/ocr-review', label: 'Receipt OCR' },
