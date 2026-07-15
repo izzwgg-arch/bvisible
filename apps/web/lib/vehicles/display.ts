@@ -28,6 +28,37 @@ export function formatSqFt(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(value % 1 ? 1 : 0)} sq ft` : 'Missing';
 }
 
+/**
+ * Format a currency amount (accepts number, Prisma Decimal, or string).
+ * Returns a dash when there is no value (e.g. an unpriced placeholder variant).
+ */
+export function formatMoney(value: number | string | { toString(): string } | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = typeof value === 'number' ? value : Number(value.toString());
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/**
+ * Format a per-square-foot rate (accepts number, Prisma Decimal, or string).
+ */
+export function formatRatePerSf(value: number | string | { toString(): string } | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = typeof value === 'number' ? value : Number(value.toString());
+  if (!Number.isFinite(n)) return '—';
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}/SF`;
+}
+
+/**
+ * Human vehicle name that omits the sentinel year 0 (used by wrap-pricing
+ * models that are year-agnostic across the whole model line).
+ */
+export function vehicleTitle(parts: { year: number; makeName: string; modelName: string; trimName?: string | null }): string {
+  const yearPart = parts.year && parts.year > 0 ? `${parts.year} ` : '';
+  const trimPart = parts.trimName && parts.trimName !== 'All variants' ? ` ${parts.trimName}` : '';
+  return `${yearPart}${parts.makeName} ${parts.modelName}${trimPart}`;
+}
+
 export function confidenceLabel(value: VehicleDimensionConfidenceLevel | null | undefined): string {
   switch (value) {
     case VehicleDimensionConfidenceLevel.MANUAL:

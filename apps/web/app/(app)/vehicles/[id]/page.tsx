@@ -5,7 +5,7 @@ import { prisma, Role } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { archiveVehicleAction } from '../actions';
-import { confidenceLabel, formatInches, formatSqFt, VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
+import { confidenceLabel, formatInches, formatSqFt, formatMoney, formatRatePerSf, vehicleTitle, VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 
 export const metadata = { title: 'Vehicle detail' };
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,15 @@ export default async function VehicleDetailPage({ params }: { params: Promise<{ 
       transmission: true,
       createdAt: true,
       updatedAt: true,
-      model: { select: { name: true, bodyClass: true, vehicleType: true, make: { select: { name: true, country: true, logoUrl: true } } } },
+      model: {
+        select: {
+          name: true,
+          bodyClass: true,
+          vehicleType: true,
+          make: { select: { name: true, country: true, logoUrl: true } },
+          wrapPricing: { orderBy: [{ sortOrder: 'asc' }] },
+        },
+      },
       dimensionProfiles: { orderBy: [{ updatedAt: 'desc' }], take: 3 },
       photos: { orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }] },
       templates: { orderBy: [{ createdAt: 'desc' }] },
@@ -37,7 +45,9 @@ export default async function VehicleDetailPage({ params }: { params: Promise<{ 
   if (!vehicle) notFound();
   const profile = vehicle.dimensionProfiles[0];
   const photo = vehicle.photos[0];
-  const name = `${vehicle.year} ${vehicle.model.make.name} ${vehicle.model.name}${vehicle.trimName ? ` ${vehicle.trimName}` : ''}`;
+  const wrapPricing = vehicle.model.wrapPricing;
+  const pricedCount = wrapPricing.filter((w) => w.charge !== null).length;
+  const name = vehicleTitle({ year: vehicle.year, makeName: vehicle.model.make.name, modelName: vehicle.model.name, trimName: vehicle.trimName });
 
   return (
     <>
@@ -61,6 +71,7 @@ export default async function VehicleDetailPage({ params }: { params: Promise<{ 
               <Badge label={profile ? 'Dimensions' : 'Missing dimensions'} tone={profile ? 'emerald' : 'slate'} />
               <Badge label={profile ? confidenceLabel(profile.confidenceLevel) : 'Unverified'} tone={profile?.confidenceLevel === 'VERIFIED' ? 'blue' : 'slate'} />
               <Badge label={vehicle.templates.length > 0 ? 'Template attached' : 'No template'} tone={vehicle.templates.length > 0 ? 'emerald' : 'slate'} />
+              <Badge label={wrapPricing.length > 0 ? `${pricedCount}/${wrapPricing.length} variants priced` : 'No wrap pricing'} tone={pricedCount > 0 ? 'emerald' : 'slate'} />
             </div>
             <p className="mt-4 text-[13px] leading-relaxed text-slate-500">
               Wrap square footage is an estimate and can be edited. Public vehicle specs should not be treated as exact production template measurements.
@@ -126,6 +137,60 @@ export default async function VehicleDetailPage({ params }: { params: Promise<{ 
           {profile?.sourceUrl ? <a href={profile.sourceUrl} className="mt-3 block text-[13px] font-bold text-blue-600 underline">Open source URL</a> : null}
           {photo?.licenseNote ? <p className="mt-3 text-[12.5px] leading-relaxed text-slate-500">{photo.licenseNote}</p> : null}
         </Panel>
+      </section>
+
+      <section className="mt-5">
+        <div className="rounded-[22px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[15px] font-black tracking-[-0.01em] text-slate-950">Wrap rapid pricing</h2>
+            <span className="text-[12px] font-semibold text-slate-500">{wrapPricing.length} variant{wrapPricing.length === 1 ? '' : 's'} · {pricedCount} priced</span>
+          </div>
+          {wrapPricing.length === 0 ? (
+            <p className="text-[13px] text-slate-500">No wrap pricing variants imported for this model yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1180px] text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[10.5px] uppercase tracking-[0.14em] text-slate-400">
+                    <th className="px-3 py-2.5">Variant</th>
+                    <th className="px-3 py-2.5">Roof wrap</th>
+                    <th className="px-3 py-2.5">Wheelbase</th>
+                    <th className="px-3 py-2.5">Height</th>
+                    <th className="px-3 py-2.5">Cab / config</th>
+                    <th className="px-3 py-2.5">Option</th>
+                    <th className="px-3 py-2.5 text-right">Sq ft</th>
+                    <th className="px-3 py-2.5 text-right">Rate/SF</th>
+                    <th className="px-3 py-2.5 text-right">Charge</th>
+                    <th className="px-3 py-2.5">SKU</th>
+                    <th className="px-3 py-2.5">Pricing rule</th>
+                    <th className="px-3 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {wrapPricing.map((w) => (
+                    <tr key={w.id} className="align-top hover:bg-slate-50/70">
+                      <td className="px-3 py-2.5 font-bold text-slate-800">{w.variant ?? '—'}</td>
+                      <td className="px-3 py-2.5">{w.roofWrapOption ?? '—'}</td>
+                      <td className="px-3 py-2.5">{w.wheelbase ?? '—'}</td>
+                      <td className="px-3 py-2.5">{w.height ?? '—'}</td>
+                      <td className="px-3 py-2.5">{w.extraVersion1 ?? '—'}</td>
+                      <td className="px-3 py-2.5">{[w.extraOption1, w.extraOption2].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{w.squareFootage ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{formatRatePerSf(w.ratePerSf)}</td>
+                      <td className="px-3 py-2.5 text-right font-black tabular-nums text-emerald-700">{formatMoney(w.charge)}</td>
+                      <td className="px-3 py-2.5 font-semibold text-slate-600">{w.sku ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-slate-500">{w.pricingRule ?? '—'}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${w.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{w.isActive ? 'Active' : 'Inactive'}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-4 text-[12px] leading-relaxed text-slate-500">Wrap pricing is imported from the wrap pricing app export. Blank charge/SKU indicates a variant that has not been priced yet. Rates and rules are estimating guidance.</p>
+        </div>
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-2">

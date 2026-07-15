@@ -393,6 +393,7 @@ model Tenant {
   vehicleDimensionProfiles VehicleDimensionProfile[]
   vehiclePhotos            VehiclePhoto[]
   vehicleTemplates         VehicleTemplate[]
+  vehicleWrapPricing       VehicleWrapPricing[]
   estimateVehicles         EstimateVehicle[]
 
   @@map("tenants")
@@ -856,10 +857,11 @@ model VehicleModel {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  make   VehicleMake    @relation(fields: [makeId], references: [id], onDelete: Cascade)
-  trims  VehicleTrim[]
-  photos VehiclePhoto[]
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  make        VehicleMake          @relation(fields: [makeId], references: [id], onDelete: Cascade)
+  trims       VehicleTrim[]
+  photos      VehiclePhoto[]
+  wrapPricing VehicleWrapPricing[]
 
   @@unique([tenantId, makeId, slug])
   @@index([tenantId, makeId, slug])
@@ -889,6 +891,7 @@ model VehicleTrim {
   dimensionProfiles VehicleDimensionProfile[]
   photos            VehiclePhoto[]
   templates         VehicleTemplate[]
+  wrapPricing       VehicleWrapPricing[]
   estimateVehicles  EstimateVehicle[]
 
   @@index([tenantId, modelId, year])
@@ -988,6 +991,45 @@ model VehicleTemplate {
 
   @@index([tenantId, trimId])
   @@map("vehicle_templates")
+}
+
+// Vehicle wrap rapid-pricing rows. One row per priced variant (roof-wrap
+// option x wheelbase x cab/box config) as exported from the wrap pricing
+// app. Attached at the model level (a model has many priced variants);
+// trimId is optional for future per-trim overrides. Charge/rate/sqft may be
+// blank on placeholder variants that have not been priced yet.
+model VehicleWrapPricing {
+  id             String   @id @default(cuid())
+  tenantId       String
+  modelId        String
+  trimId         String?
+  productName    String?  @db.VarChar(200)
+  variant        String?  @db.VarChar(220)
+  wheelbase      String?  @db.VarChar(120)
+  height         String?  @db.VarChar(120)
+  roofWrapOption String?  @db.VarChar(80)
+  extraVersion1  String?  @db.VarChar(120)
+  extraOption1   String?  @db.VarChar(120)
+  extraOption2   String?  @db.VarChar(120)
+  charge         Decimal? @db.Decimal(10, 2)
+  sku            String?  @db.VarChar(80)
+  squareFootage  Int?
+  ratePerSf      Decimal? @db.Decimal(10, 2)
+  pricingRule    String?  @db.VarChar(400)
+  exportNote     String?  @db.VarChar(200)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  model  VehicleModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  trim   VehicleTrim? @relation(fields: [trimId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, modelId, sortOrder])
+  @@index([tenantId, trimId])
+  @@index([tenantId, sku])
+  @@map("vehicle_wrap_pricing")
 }
 
 model EstimateVehicle {
