@@ -22,7 +22,7 @@ const guidedLineSchema = z.object({
   qtyMilli: z.number().int().min(0).max(1_000_000_000),
   unitCostCents: z.number().int().min(0).max(1_000_000_000),
   markupExempt: z.boolean().default(false),
-  sourceKind: z.enum(['READY_ITEM', 'BUNDLE', 'VEHICLE_WRAP', 'SQFT_ITEM']),
+  sourceKind: z.enum(['READY_ITEM', 'BUNDLE', 'VEHICLE_WRAP', 'SQFT_ITEM', 'CUSTOM']),
   /// Normalized Sheet item key — resolved to catalogItemId server-side.
   sheetKey: z.string().trim().max(400).nullish(),
   machineName: z.string().trim().max(200).nullish(),

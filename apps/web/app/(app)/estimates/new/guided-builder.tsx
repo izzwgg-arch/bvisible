@@ -10,6 +10,7 @@
 import { useActionState, useMemo, useState } from 'react';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
+import { CustomBuildPanel } from './custom-build-panel';
 
 /* ---------- data shapes provided by the server page ---------- */
 
@@ -81,7 +82,7 @@ interface GuidedRow {
   qtyMilli: number;
   unitCostCents: number;
   markupExempt: boolean;
-  sourceKind: 'READY_ITEM' | 'BUNDLE' | 'VEHICLE_WRAP' | 'SQFT_ITEM';
+  sourceKind: 'READY_ITEM' | 'BUNDLE' | 'VEHICLE_WRAP' | 'SQFT_ITEM' | 'CUSTOM';
   sheetKey?: string | null;
   machineName?: string | null;
   notes?: string | null;
@@ -99,8 +100,6 @@ let nextUid = 1;
 
 const inputCls =
   'w-full rounded-[10px] border border-[var(--color-bv-border)] bg-white px-3 py-2 text-[13.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]';
-const btnPrimary =
-  'inline-flex items-center justify-center rounded-[10px] bg-[var(--color-bv-accent)] px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-50';
 const btnDark =
   'inline-flex items-center justify-center rounded-[10px] bg-[var(--color-bv-text)] px-3.5 py-2 text-[12.5px] font-semibold text-white hover:opacity-95 disabled:opacity-50';
 const cardCls =
@@ -327,7 +326,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     });
   }
 
-  function buildPayload(intent: 'save' | 'custom-build') {
+  function buildPayload(intent: 'save') {
     return JSON.stringify({
       title,
       clientId: clientId === '__new__' || clientId === '' ? null : clientId,
@@ -348,7 +347,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     : 0;
 
   return (
-    <form action={formAction} className="pb-28">
+    <form action={formAction} className="pb-8">
       <input type="hidden" name="payload" id="guided-payload" />
 
       {/* meta */}
@@ -594,34 +593,16 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
           </div>
         ) : null}
 
-        {/* custom build panel */}
+        {/* custom build panel — full cost-up workspace, returns as one line group */}
         {panel === 'custom' ? (
-          <div className={`${cardCls} mt-4 flex flex-wrap items-center justify-between gap-4 p-5`}>
-            <div className="max-w-xl text-[13px] leading-relaxed text-[var(--color-bv-muted)]">
-              <span className="font-semibold text-[var(--color-bv-text)]">
-                Custom build opens the full estimate workspace
-              </span>{' '}
-              — materials, machines, labor, design, installation, catalog intelligence, and the
-              pricing helper. Lines added here are saved first, then the editor opens on the line
-              grid.
-            </div>
-            <button
-              type="submit"
-              className={btnPrimary}
-              disabled={
-                pending ||
-                !title.trim() ||
-                clientId === '' ||
-                (clientId === '__new__' && !newClientName.trim())
-              }
-              onClick={() => {
-                const el = document.getElementById('guided-payload') as HTMLInputElement | null;
-                if (el) el.value = buildPayload('custom-build');
-              }}
-            >
-              {pending ? 'Opening…' : 'Save & open custom build →'}
-            </button>
-          </div>
+          <CustomBuildPanel
+            materials={props.materials}
+            machines={props.machines}
+            rates={props.rates}
+            markupPercent={Number(markupPercent) || 0}
+            nextLineNumber={cards.length + 1}
+            onAdd={(card) => addCard(card)}
+          />
         ) : null}
 
         {/* sq-ft panel */}
@@ -684,8 +665,8 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
         </div>
       ) : null}
 
-      {/* sticky totals bar */}
-      <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-[min(1040px,calc(100%-2rem))] items-stretch overflow-hidden rounded-[var(--radius-bv)] bg-[var(--color-bv-text)] text-white shadow-[var(--shadow-bv-elevated)]">
+      {/* sticky totals bar — sticks inside the content column, never over the sidebar */}
+      <div className="sticky bottom-4 z-40 mt-6 flex w-full flex-wrap items-stretch overflow-hidden rounded-[var(--radius-bv)] bg-[var(--color-bv-text)] text-white shadow-[var(--shadow-bv-elevated)]">
         <div className="flex-1 border-r border-white/10 px-6 py-3.5">
           <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-white/60">Subtotal</div>
           <div className="text-[19px] font-bold">{formatMoney(totals.subtotalCostCents)}</div>

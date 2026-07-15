@@ -7,13 +7,14 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { prisma, Role, SheetOverrideItemType } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { readRequestContext } from '@/lib/request-context';
 import { runSheetSync } from '@/lib/sheet-sync/sync';
 
 async function requireAdminWithTenant() {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
+  // Resolves the effective company for SUPER_ADMIN too (single-company mode).
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   if (!me.tenantId) throw new Error('No workspace selected.');
   return me as typeof me & { tenantId: string };
 }

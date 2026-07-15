@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { prisma, Role } from '@bvisible/db';
-import { requireRole } from '@/lib/auth/current-user';
+import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { formatMoney } from '@bvisible/pricing';
 import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
@@ -108,7 +108,7 @@ export default async function PricingBackendPage({
 }: {
   searchParams: Promise<{ tab?: string; q?: string }>;
 }) {
-  const me = await requireRole(Role.ADMIN, Role.SUPER_ADMIN);
+  const me = await requireRoleWithEffectiveCompany(Role.ADMIN, Role.SUPER_ADMIN);
   const sp = await searchParams;
   const tab: TabKey = (TABS.find((t) => t.key === sp.tab)?.key ?? 'materials') as TabKey;
   const q = (sp.q ?? '').trim().toLowerCase();
