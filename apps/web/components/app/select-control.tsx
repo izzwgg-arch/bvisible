@@ -13,6 +13,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/cn';
 
@@ -74,6 +75,8 @@ export function SelectControl({
   const buttonId = id ?? `select-${reactId}`;
   const listboxId = `${buttonId}-listbox`;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const selectRef = useRef<HTMLSelectElement | null>(null);
   const options = useMemo(() => readOptions(children), [children]);
   const initialValue =
@@ -84,6 +87,10 @@ export function SelectControl({
       : String(value);
   const [internalValue, setInternalValue] = useState(initialValue);
   const [open, setOpen] = useState(false);
+  // Popup coordinates in viewport space. The listbox renders through a
+  // portal with position:fixed so it can never be clipped by scroll
+  // containers (e.g. the estimate line grid's overflow-x-auto wrapper).
+  const [popupPos, setPopupPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const [query, setQuery] = useState('');
   const selectedValue = value == null ? internalValue : String(value);
   const selectedOption =
@@ -99,11 +106,47 @@ export function SelectControl({
   useEffect(() => {
     if (!open) return;
     function closeOnOutsidePointer(event: PointerEvent) {
-      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (wrapperRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function closeOnScroll(event: Event) {
+      // Scrolls inside the popup's own option list shouldn't close it.
+      if (popupRef.current && event.target instanceof Node && popupRef.current.contains(event.target)) return;
+      setOpen(false);
+    }
+    function closeOnResize() {
+      setOpen(false);
     }
     window.addEventListener('pointerdown', closeOnOutsidePointer);
-    return () => window.removeEventListener('pointerdown', closeOnOutsidePointer);
+    window.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', closeOnResize);
+    return () => {
+      window.removeEventListener('pointerdown', closeOnOutsidePointer);
+      window.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', closeOnResize);
+    };
   }, [open]);
+
+  function toggleOpen() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.max(rect.width, 170);
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+    const estimatedHeight = 380;
+    const openUp = rect.bottom + estimatedHeight > window.innerHeight && rect.top > estimatedHeight;
+    setPopupPos(
+      openUp
+        ? { bottom: window.innerHeight - rect.top + 6, left, width }
+        : { top: rect.bottom + 6, left, width },
+    );
+    setOpen(true);
+  }
 
   function commit(nextValue: string) {
     const nextOption = options.find((option) => option.value === nextValue);
@@ -135,7 +178,7 @@ export function SelectControl({
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      setOpen((current) => !current);
+      toggleOpen();
     }
     if (event.key === 'Escape') setOpen(false);
   }
@@ -171,7 +214,8 @@ export function SelectControl({
         aria-required={required || undefined}
         disabled={disabled}
         id={buttonId}
-        onClick={() => setOpen((current) => !current)}
+        ref={buttonRef}
+        onClick={toggleOpen}
         onKeyDown={onButtonKeyDown}
         className={cn(
           'flex min-h-10 w-full items-center justify-between gap-3 rounded-[12px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 text-left text-[13.5px] font-medium text-[var(--color-bv-text)] shadow-[0_1px_2px_rgba(15,23,41,0.04),0_10px_24px_rgba(15,23,41,0.06)] outline-none transition-all hover:border-slate-300 hover:bg-white focus:border-[var(--color-bv-accent)] focus:bg-white focus:shadow-[0_0_0_4px_rgba(242,135,68,0.16),0_12px_28px_rgba(28,73,114,0.08)] disabled:cursor-not-allowed disabled:opacity-60',
@@ -198,9 +242,18 @@ export function SelectControl({
           </svg>
         </span>
       </button>
-      {open ? (
+      {open && popupPos
+        ? createPortal(
         <div
-          className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-50 overflow-hidden rounded-[16px] border border-slate-200 bg-white p-1.5 shadow-[0_20px_60px_rgba(15,23,41,0.18)] ring-1 ring-slate-950/5"
+          ref={popupRef}
+          style={{
+            position: 'fixed',
+            top: popupPos.top,
+            bottom: popupPos.bottom,
+            left: popupPos.left,
+            width: popupPos.width,
+          }}
+          className="z-[1000] overflow-hidden rounded-[16px] border border-slate-200 bg-white p-1.5 shadow-[0_20px_60px_rgba(15,23,41,0.18)] ring-1 ring-slate-950/5"
           id={listboxId}
           role="listbox"
           aria-labelledby={buttonId}
@@ -254,8 +307,10 @@ export function SelectControl({
               </div>
             ) : null}
           </div>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+        )
+        : null}
     </div>
   );
 }
