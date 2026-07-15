@@ -34,7 +34,9 @@
     "reset-super-admin-password": "tsx scripts/reset-super-admin-password.ts",
     "vehicles:import": "tsx scripts/import-vehicles.ts",
     "vehicles:import:dry-run": "tsx scripts/import-vehicles.ts --dry-run",
-    "vehicles:import:recent": "tsx scripts/import-vehicles.ts --recent-years=10"
+    "vehicles:import:recent": "tsx scripts/import-vehicles.ts --recent-years=10",
+    "vehicles:import-wrap": "tsx scripts/import-wrap-pricing.ts",
+    "vehicles:import-wrap:dry-run": "tsx scripts/import-wrap-pricing.ts --dry-run"
   },
   "dependencies": {
     "@bvisible/db": "workspace:*",

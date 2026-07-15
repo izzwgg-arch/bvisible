@@ -1,0 +1,223 @@
+Product Name,Make,Model,Variant,Wheelbase,Height,Roof Wrap Option,Extra Version 1,Extra Option 1,Extra Option 2,Charge,SKU,Square Footage,Rate Per SF,Pricing Rule,Export Note
+Chevrolet city express,Chevrolet,City Express,Full,,,Full,,,,3055,235SF,235,13,Till 325 SF: $13/SF,Active variant
+Chevrolet city express,Chevrolet,City Express,No,,,No,,,,3000,180SF,180,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Chevrolet city express,Chevrolet,City Express,Top Front,,,Top Front,,,,3000,190SF,190,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Chevy Express,Chevrolet,Express,Long | Full,Long,,Full,,,,3850,350SF,350,11,Roof/Full over 325 SF: $11/SF,Active variant
+Chevy Express,Chevrolet,Express,Long | No,Long,,No,,,,3250,250SF,250,13,Till 325 SF: $13/SF,Active variant
+Chevy Express,Chevrolet,Express,Long | Top Front Only,Long,,Top Front,,,,3510,270SF,270,13,Till 325 SF: $13/SF,Active variant
+Chevy Express,Chevrolet,Express,Short | Full,Short,,Full,,,,3965,305SF,305,13,Till 325 SF: $13/SF,Active variant
+Chevy Express,Chevrolet,Express,Short | No,Short,,No,,,,3055,235SF,235,13,Till 325 SF: $13/SF,Active variant
+Chevy Express,Chevrolet,Express,Short | Top Front Only,Short,,Top Front,,,,3315,255SF,255,13,Till 325 SF: $13/SF,Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | craw | Full,Chassis,,Full,Crew Cab,,,3000,180SF,180,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | craw | No,Chassis,,No,Crew Cab,,,3000,150SF,150,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | Double | Full,Chassis,,Full,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | Double | No,Chassis,,No,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | Reg. Cab | Full,Chassis,,Full,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | Reg. Cab | No,Chassis,,No,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | Single | Full,Chassis,,Full,Single Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Chassis | Single | No,Chassis,,No,Single Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Long Box | craw | Full,Long Box,,Full,Crew Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Long Box | craw | No,Long Box,,No,Crew Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Long Box | Double | Full,Long Box,,Full,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Long Box | Double | No,Long Box,,No,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Long Box | Reg. Cab | Full,Long Box,,Full,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Long Box | Reg. Cab | No,Long Box,,No,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | craw | Full,Short Box,,Full,Crew Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | craw | No,Short Box,,No,Crew Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | Double | Full,Short Box,,Full,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | Double | No,Short Box,,No,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | Reg. Cab | Full,Short Box,,Full,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | Reg. Cab | No,Short Box,,No,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | Single | Full,Short Box,,Full,Single Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Short box | Single | No,Short Box,,No,Single Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | craw | Full,Standard Box,,Full,Crew Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | craw | No,Standard Box,,No,Crew Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | Double | Full,Standard Box,,Full,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | Double | No,Standard Box,,No,Double Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | Reg. Cab | Full,Standard Box,,Full,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | Reg. Cab | No,Standard Box,,No,Regular Cab,,,,,,,,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | Single | Full,Standard Box,,Full,Single Cab,,,3185,245SF,245,13,Till 325 SF: $13/SF,Active variant
+Chevy Silverado,Chevrolet,Silverado,Standard Box | Single | No,Standard Box,,No,Single Cab,,,3000,225SF,225,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Crysler - Pacifica,Crysler,Pacifica,Full,,,Full,,,,3000,230 SF,230,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Crysler - Pacifica,Crysler,Pacifica,No,,,No,,,,3000,185SF,185,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Dodge ProMaster,Dodge,ProMaster,City | High | Full,City,High,Full,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,City | High | No,City,High,No,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,City | High | Top Front,City,High,Top Front,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,City | Low | Full,City,Low,Full,,,,3458,266SF,266,13,Till 325 SF: $13/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,City | Low | No,City,Low,No,,,,3000,222SF,222,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Dodge ProMaster,Dodge,ProMaster,City | Low | Top Front,City,Low,Top Front,,,,3003,231SF,231,13,Till 325 SF: $13/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Extended | High | Full,Extended,High,Full,,,,4752,432SF,432,11,Roof/Full over 325 SF: $11/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Extended | High | No,Extended,High,No,,,,3960,330SF,330,12,From 325 SF and up: $12/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Extended | High | Top Front,Extended,High,Top Front,,,,4176,348SF,348,12,From 325 SF and up: $12/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Extended | Low | Full,Extended,Low,Full,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Extended | Low | No,Extended,Low,No,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Extended | Low | Top Front,Extended,Low,Top Front,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Medium | High | Full,Medium,High,Full,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Medium | High | No,Medium,High,No,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Medium | High | Top Front,Medium,High,Top Front,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Medium | Low | Full,Medium,Low,Full,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Medium | Low | No,Medium,Low,No,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Medium | Low | Top Front,Medium,Low,Top Front,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Short | High | Full,Short,High,Full,,,,4488,408SF,408,11,Roof/Full over 325 SF: $11/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Short | High | No,Short,High,No,,,,3900,300SF,300,13,Till 325 SF: $13/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Short | High | Top Front,Short,High,Top Front,,,,4140,345SF,345,12,From 325 SF and up: $12/SF,Active variant
+Dodge ProMaster,Dodge,ProMaster,Short | Low | Full,Short,Low,Full,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Short | Low | No,Short,Low,No,,,,,,,,,Active variant
+Dodge ProMaster,Dodge,ProMaster,Short | Low | Top Front,Short,Low,Top Front,,,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | craw | Full | 1500,Long Box,,Full,Crew Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | craw | Full | 2500-3500,Long Box,,Full,Crew Cab,2500-3500,,3471,267SF,267,13,Till 325 SF: $13/SF,Active variant
+Dodge Ram,Dodge,Ram,Long Box | craw | No | 1500,Long Box,,No,Crew Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | craw | No | 2500-3500,Long Box,,No,Crew Cab,2500-3500,,3000,230SF,230,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Dodge Ram,Dodge,Ram,Long Box | Quad | Full | 1500,Long Box,,Full,Quad Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | Quad | No | 1500,Long Box,,No,Quad Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | Reg. | Full | 2500-3500,Long Box,,Full,Regular Cab,2500-3500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | Reg. | No | 1500,Long Box,,No,Regular Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Long Box | Reg. | No | 2500-3500,Long Box,,No,Regular Cab,2500-3500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,RamBox | craw | Full | 1500,RamBox,,Full,Crew Cab,1500,,3000,230SF,230,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Dodge Ram,Dodge,Ram,RamBox | craw | No | 1500,RamBox,,No,Crew Cab,1500,,3000,200SF,200,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Dodge Ram,Dodge,Ram,Short box | craw | Full | 1500,Short Box,,Full,Crew Cab,1500,,3000,230SF,230,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Dodge Ram,Dodge,Ram,Short box | craw | Full | 2500-3500,Short Box,,Full,Crew Cab,2500-3500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Short box | craw | No | 1500,Short Box,,No,Crew Cab,1500,,3000,200SF,200,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Dodge Ram,Dodge,Ram,Short box | craw | No | 2500-3500,Short Box,,No,Crew Cab,2500-3500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Short box | Quad | Full | 1500,Short Box,,Full,Quad Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Short box | Quad | No | 1500,Short Box,,No,Quad Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Short box | Reg. | No | 1500,Short Box,,No,Regular Cab,1500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Short box | Mage | Full | 2500-3500,Short Box,Mage,Full,,2500-3500,,,,,,,Active variant
+Dodge Ram,Dodge,Ram,Short box | Mage | No | 2500-3500,Short Box,Mage,No,,2500-3500,,,,,,,Active variant
+Ford E - Series,Ford,E-Series,Long | Full,Long,,Full,,,,3663,333SF,333,11,Roof/Full over 325 SF: $11/SF,Active variant
+Ford E - Series,Ford,E-Series,Long | No,Long,,No,,,,3250,250SF,250,13,Till 325 SF: $13/SF,Active variant
+Ford E - Series,Ford,E-Series,Long | Top Front Only,Long,,Top Front,,,,3510,270SF,270,13,Till 325 SF: $13/SF,Active variant
+Ford E - Series,Ford,E-Series,Short | Full,Short,,Full,,,,,,,,,Active variant
+Ford E - Series,Ford,E-Series,Short | No,Short,,No,,,,,,,,,Active variant
+Ford E - Series,Ford,E-Series,Short | Top Front Only,Short,,Top Front,,,,,,,,,Active variant
+Ford exploder,Ford,Exploder,Full,,,Full,,,,3250,250SF,250,13,Till 325 SF: $13/SF,Active variant
+Ford exploder,Ford,Exploder,No,,,No,,,,3000,200SF,200,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,5.5 | Reg. Cab | Yes,5.5,,Full,Regular Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,5.5 | Reg. Cab | No,5.5,,No,Regular Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,5.5 | Super cab | Yes,5.5,,Full,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,5.5 | Super cab | No,5.5,,No,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,5.5 | Super craw | Yes,5.5,,Full,Super Crew,,,3000,190 SF,190,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,5.5 | Super craw | No,5.5,,No,Super Crew,,,3000,160SF,160,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,6.5 | Reg. Cab | Yes,6.5,,Full,Regular Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,6.5 | Reg. Cab | No,6.5,,No,Regular Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,6.5 | Super cab | Yes,6.5,,Full,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,6.5 | Super cab | No,6.5,,No,Super Cab,,,3000,200SF,200,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,6.5 | Super craw | Yes,6.5,,Full,Super Crew,,,3068,236SF,236,13,Till 325 SF: $13/SF,Active variant
+Ford Pickup,Ford,Pickup,6.5 | Super craw | No,6.5,,No,Super Crew,,,3000,220SF,220,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,8 | Reg. Cab | Yes,8,,Full,Regular Cab,,,3000,180SF,180,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,8 | Reg. Cab | No,8,,No,Regular Cab,,,3000,158SF,158,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,8 | Super cab | Yes,8,,Full,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,8 | Super cab | No,8,,No,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,8 | Super craw | Yes,8,,Full,Super Crew,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,8 | Super craw | No,8,,No,Super Crew,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Long Wheelbase | Reg. Cab | Yes,Long Wheelbase,,Full,Regular Cab,,,3000,210SF,210,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,Long Wheelbase | Reg. Cab | No,Long Wheelbase,,No,Regular Cab,,,3000,195SF,195,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Ford Pickup,Ford,Pickup,Long Wheelbase | Super cab | Yes,Long Wheelbase,,Full,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Long Wheelbase | Super cab | No,Long Wheelbase,,No,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Long Wheelbase | Super craw | Yes,Long Wheelbase,,Full,Super Crew,,,3679,283SF,283,13,Till 325 SF: $13/SF,Active variant
+Ford Pickup,Ford,Pickup,Long Wheelbase | Super craw | No,Long Wheelbase,,No,Super Crew,,,3250,250SF,250,13,Till 325 SF: $13/SF,Active variant
+Ford Pickup,Ford,Pickup,Short Wheelbase | Reg. Cab | Yes,Short Wheelbase,,Full,Regular Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Short Wheelbase | Reg. Cab | No,Short Wheelbase,,No,Regular Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Short Wheelbase | Super cab | Yes,Short Wheelbase,,Full,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Short Wheelbase | Super cab | No,Short Wheelbase,,No,Super Cab,,,,,,,,Active variant
+Ford Pickup,Ford,Pickup,Short Wheelbase | Super craw | Yes,Short Wheelbase,,Full,Super Crew,,,3549,273SF,273,13,Till 325 SF: $13/SF,Active variant
+Ford Pickup,Ford,Pickup,Short Wheelbase | Super craw | No,Short Wheelbase,,No,Super Crew,,,3120,240SF,240,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Extended | High | Full,Extended,High,Full,,,,5225,475SF,475,11,Roof/Full over 325 SF: $11/SF,Active variant
+Ford Transit,Ford,Transit,Extended | High | No,Extended,High,No,,,,3380,260SF,260,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Extended | High | Top Front,Extended,High,Top Front,,,,4776,398SF,398,12,From 325 SF and up: $12/SF,Active variant
+Ford Transit,Ford,Transit,Extended | Low | Full,Extended,Low,Full,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Extended | Low | No,Extended,Low,No,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Extended | Low | Top Front,Extended,Low,Top Front,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Extended | Medium | Full,Extended,Medium,Full,,,,4620,420SF,420,11,Roof/Full over 325 SF: $11/SF,Active variant
+Ford Transit,Ford,Transit,Extended | Medium | No,Extended,Medium,No,,,,4121,317SF,317,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Extended | Medium | Top Front,Extended,Medium,Top Front,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Long/Medium | High | Full,Long/Medium,High,Full,,,,4532,412SF,412,11,Roof/Full over 325 SF: $11/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | High | No,Long/Medium,High,No,,,,4030,310SF,310,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | High | Top Front,Long/Medium,High,Top Front,,,,3936,328SF,328,12,From 325 SF and up: $12/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | Low | Full,Long/Medium,Low,Full,,,,4056,312SF,312,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | Low | No,Long/Medium,Low,No,,,,3016,232SF,232,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | Low | Top Front,Long/Medium,Low,Top Front,,,,3198,246SF,246,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | Medium | Full,Long/Medium,Medium,Full,,,,4114,374SF,374,11,Roof/Full over 325 SF: $11/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | Medium | No,Long/Medium,Medium,No,,,,3640,280SF,280,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Long/Medium | Medium | Top Front,Long/Medium,Medium,Top Front,,,,3952,304SF,304,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Short | High | Full,Short,High,Full,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Short | High | No,Short,High,No,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Short | High | Top Front,Short,High,Top Front,,,,,,,,,Active variant
+Ford Transit,Ford,Transit,Short | Low | Full,Short,Low,Full,,,,3900,300SF,300,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Short | Low | No,Short,Low,No,,,,3000,220SF,220,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Ford Transit,Ford,Transit,Short | Low | Top Front,Short,Low,Top Front,,,,3000,230SF,230,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Ford Transit,Ford,Transit,Short | Medium | Full,Short,Medium,Full,,,,4125,375SF,375,11,Roof/Full over 325 SF: $11/SF,Active variant
+Ford Transit,Ford,Transit,Short | Medium | No,Short,Medium,No,,,,3692,284SF,284,13,Till 325 SF: $13/SF,Active variant
+Ford Transit,Ford,Transit,Short | Medium | Top Front,Short,Medium,Top Front,,,,3952,304SF,304,13,Till 325 SF: $13/SF,Active variant
+Ford Transit Connect,Ford,Transit Connect,Long/Medium | Full,Long/Medium,,Full,,,,3432,264SF,264,13,Till 325 SF: $13/SF,Active variant
+Ford Transit Connect,Ford,Transit Connect,Long/Medium | No,Long/Medium,,No,,,,3000,213SF,213,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Ford Transit Connect,Ford,Transit Connect,Long/Medium | Top Front,Long/Medium,,Top Front,,,,3000,225SF,225,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+Ford Transit Connect,Ford,Transit Connect,Short | Full,Short,,Full,,,,,,,,,Active variant
+Ford Transit Connect,Ford,Transit Connect,Short | No,Short,,No,,,,,,,,,Active variant
+Ford Transit Connect,Ford,Transit Connect,Short | Top Front,Short,,Top Front,,,,,,,,,Active variant
+GMC Savana,GMC,Savana,Long | Full,Long,,Full,,,,3762,342SF,342,11,Roof/Full over 325 SF: $11/SF,Active variant
+GMC Savana,GMC,Savana,Long | No,Long,,No,,,,3250,250SF,250,13,Till 325 SF: $13/SF,Active variant
+GMC Savana,GMC,Savana,Long | Top Front Only,Long,,Top Front,,,,3406,262SF,262,13,Till 325 SF: $13/SF,Active variant
+GMC Savana,GMC,Savana,Short | Full,Short,,Full,,,,3055,235SF,235,13,Till 325 SF: $13/SF,Active variant
+GMC Savana,GMC,Savana,Short | No,Short,,No,,,,3133,241SF,241,13,Till 325 SF: $13/SF,Active variant
+GMC Savana,GMC,Savana,Short | Top Front Only,Short,,Top Front,,,,3315,255SF,255,13,Till 325 SF: $13/SF,Active variant
+GMC Sierra,GMC,Sierra,Long Box | Crew | Full,Long Box,,Full,Crew Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Long Box | Crew | No,Long Box,,No,Crew Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Long Box | Double | Full,Long Box,,Full,Double Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Long Box | Double | No,Long Box,,No,Double Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Long Box | Single | Full,Long Box,,Full,Single Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Long Box | Single | No,Long Box,,No,Single Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Standard Box | Crew | Full,Standard Box,,Full,Crew Cab,,,3120,240SF,240,13,Till 325 SF: $13/SF,Active variant
+GMC Sierra,GMC,Sierra,Standard Box | Crew | No,Standard Box,,No,Crew Cab,,,3000,200SF,200,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+GMC Sierra,GMC,Sierra,Standard Box | Double | Full,Standard Box,,Full,Double Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Standard Box | Double | No,Standard Box,,No,Double Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Standard Box | Single | Full,Standard Box,,Full,Single Cab,,,,,,,,Active variant
+GMC Sierra,GMC,Sierra,Standard Box | Single | No,Standard Box,,No,Single Cab,,,,,,,,Active variant
+Honda Ridgeline,Honda,Ridgeline,Full,,,Full,,,,3000,195SF,195,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Honda Ridgeline,Honda,Ridgeline,No,,,No,,,,3000,165SF,165,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+hyundai Santa Cruz,Hyundai,Santa Cruz,Full,,,Full,,,,3000,205SF,205,13,"Till 325 SF: $13/SF + $3,000 minimum",Active variant
+hyundai Santa Cruz,Hyundai,Santa Cruz,No,,,No,,,,3000,180SF,180,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Kenworth T880,Kenworth,T880,2 Doors,,,,,2 Doors,,3000,60SF,60,16,"Till 100 SF: $16/SF + $3,000 minimum",Active variant
+Kenworth T880,Kenworth,T880,Back,,,,,Back,,3000,49SF,49,16,"Till 100 SF: $16/SF + $3,000 minimum",Active variant
+Kenworth T880,Kenworth,T880,Full Hood,,,,,Full Hood,,3000,118SF,118,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Kenworth T880,Kenworth,T880,Roof,,,,,Roof,,3000,26SF,26,16,"Till 100 SF: $16/SF + $3,000 minimum",Active variant
+Kia Soul,Kia,Soul,Full,,,Full,,,,3000,192SF,192,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Kia Soul,Kia,Soul,No,,,No,,,,3000,156SF,156,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | High/medium | Full,Extended,High/Medium,Full,,,,5500,500SF,500,11,Roof/Full over 325 SF: $11/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | High/medium | No,Extended,High/Medium,No,,,,4440,370SF,370,12,From 325 SF and up: $12/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | High/medium | Top Front,Extended,High/Medium,Top Front,,,,4740,395SF,395,12,From 325 SF and up: $12/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | Mage | Full,Extended,Mage,Full,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | Mage | No,Extended,Mage,No,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | Mage | Top Front,Extended,Mage,Top Front,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | Standerd | Full,Extended,Standard,Full,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | Standerd | No,Extended,Standard,No,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Extended | Standerd | Top Front,Extended,Standard,Top Front,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | High/medium | Full,Long/Medium,High/Medium,Full,,,,4225,325SFError,325,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | High/medium | No,Long/Medium,High/Medium,No,,,,3250,250SFErrorr,250,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | High/medium | Top Front,Long/Medium,High/Medium,Top Front,,,,4560,380SF,380,12,From 325 SF and up: $12/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | Mage | Full,Long/Medium,Mage,Full,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | Mage | No,Long/Medium,Mage,No,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | Mage | Top Front,Long/Medium,Mage,Top Front,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | Standerd | Full,Long/Medium,Standard,Full,,,,4180,380SF,380,11,Roof/Full over 325 SF: $11/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | Standerd | No,Long/Medium,Standard,No,,,,3900,300SF,300,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Long/Medium | Standerd | Top Front,Long/Medium,Standard,Top Front,,,,4147,319SF,319,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | High/medium | Full,Short,High/Medium,Full,,,,4290,390SF,390,11,Roof/Full over 325 SF: $11/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | High/medium | No,Short,High/Medium,No,,,,3900,300SF,300,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | High/medium | Top Front,Short,High/Medium,Top Front,,,,4030,310SF,310,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | Mage | Full,Short,Mage,Full,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | Mage | No,Short,Mage,No,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | Mage | Top Front,Short,Mage,Top Front,,,,,,,,,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | Standerd | Full,Short,Standard,Full,,,,3718,338SF,338,11,Roof/Full over 325 SF: $11/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | Standerd | No,Short,Standard,No,,,,3510,270SF,270,13,Till 325 SF: $13/SF,Active variant
+Mercedes / Dodge Sprinter,Mercedes / Dodge,Sprinter,Short | Standerd | Top Front,Short,Standard,Top Front,,,,3744,288SF,288,13,Till 325 SF: $13/SF,Active variant
+Nissan NV cargo van,Nissan,NV Cargo Van,Full,,,Full,,,,4510,410SF,410,11,Roof/Full over 325 SF: $11/SF,Active variant
+Nissan NV cargo van,Nissan,NV Cargo Van,No,,,No,,,,4160,320SF,320,13,Till 325 SF: $13/SF,Active variant
+Nissan NV cargo van,Nissan,NV Cargo Van,Top Front,,,Top Front,,,,4200,350SF,350,12,From 325 SF and up: $12/SF,Active variant
+Nissan sentra,Nissan,Sentra,Full,,,Full,,,,3000,195SF,195,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Nissan sentra,Nissan,Sentra,No,,,No,,,,3000,175SF,175,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Tesla - Cybertruck,Tesla,Cybertruck,Base,,,,,,,4043,311SF,311,13,Till 325 SF: $13/SF,Variants inactive - exported base product only
+Tesla - Model Y,Tesla,Model Y,Base,,,,,,,3000,180SF,180,14,"Till 200 SF: $14/SF + $3,000 minimum",Variants inactive - exported base product only
+Toyota Camry,Toyota,Camry,Full,,,Full,,,,3000,150SF,150,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Toyota Camry,Toyota,Camry,No,,,No,,,,3000,180SF,180,14,"Till 200 SF: $14/SF + $3,000 minimum",Active variant
+Toyota RAV4,Toyota,RAV4,Full,,,Full,,,,,,,,,Active variant
+Toyota RAV4,Toyota,RAV4,No,,,No,,,,,,,,,Active variant

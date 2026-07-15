@@ -6,7 +6,7 @@ import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-
 import { EmptyState } from '@/components/app/empty-state';
 import { BulkDeleteForm } from '@/components/app/bulk-delete-form';
 import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
-import { formatInches, formatSqFt, VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
+import { formatInches, formatSqFt, vehicleTitle, VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 import { bulkArchiveVehiclesAction } from './actions';
 
 export const metadata = { title: 'Vehicle Library' };
@@ -243,7 +243,7 @@ function VehicleCard({ vehicle }: { vehicle: VehicleRow }) {
         <div className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-[16px] font-black tracking-[-0.02em] text-slate-950">{vehicle.year} {vehicle.model.make.name} {vehicle.model.name}</h2>
+              <h2 className="text-[16px] font-black tracking-[-0.02em] text-slate-950">{vehicleTitle({ year: vehicle.year, makeName: vehicle.model.make.name, modelName: vehicle.model.name })}</h2>
               <p className="mt-1 text-[13px] font-semibold text-slate-500">{vehicle.trimName ?? 'Base trim'} · {vehicle.bodyStyle ?? vehicle.model.vehicleType ?? 'Body style missing'}</p>
             </div>
             <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">{formatSqFt(profile?.totalApproxWrapSqFt)}</span>
@@ -289,7 +289,7 @@ function VehicleTable({ vehicles }: { vehicles: VehicleRow[] }) {
                     />
                   </td>
                   <td className="px-4 py-3"><img src={photo?.url ?? VEHICLE_PLACEHOLDER_SVG} alt="" className="h-12 w-16 rounded-[10px] object-cover ring-1 ring-slate-200" /></td>
-                  <td className="font-bold">{vehicle.year}</td>
+                  <td className="font-bold">{vehicle.year && vehicle.year > 0 ? vehicle.year : 'All'}</td>
                   <td>{vehicle.model.make.name}</td>
                   <td className="font-semibold">{vehicle.model.name}</td>
                   <td>{vehicle.trimName ?? '-'}</td>
