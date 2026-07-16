@@ -137,6 +137,13 @@ function NavIcon({ label }: { label: string }) {
           <path d="M4 20h6v-3H4v3Z" />
         </svg>
       );
+    case 'Assistant':
+      return (
+        <svg {...common}>
+          <path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4L12 3Z" />
+          <path d="M18.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1Z" />
+        </svg>
+      );
     case 'Pricing backend':
       return (
         <svg {...common}>
