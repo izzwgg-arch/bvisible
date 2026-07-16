@@ -7,6 +7,11 @@
 // (guided builder, estimate editor) also register an applier so the
 // agent's proposed lines land in the page with one click — client-side
 // only, nothing is saved until the operator saves.
+//
+// State lives on globalThis: the dock (layout client graph) and the
+// pages (page client graphs) can be bundled as separate module
+// instances, and a plain module-level variable would silently split
+// into two stores.
 
 export interface ProposedLine {
   kind: 'MATERIAL' | 'MACHINE' | 'LABOR' | 'DESIGN' | 'INSTALL' | 'MISC';
@@ -27,36 +32,43 @@ export interface AssistantPageContext {
 
 type Listener = () => void;
 
-let currentContext: AssistantPageContext | null = null;
-let lineApplier: ((lines: ProposedLine[]) => void) | null = null;
-const listeners = new Set<Listener>();
+interface StoreState {
+  ctx: AssistantPageContext | null;
+  applier: ((lines: ProposedLine[]) => void) | null;
+  listeners: Set<Listener>;
+}
+
+const globalKey = '__bvAssistantContextStore';
+const holder = globalThis as unknown as Record<string, StoreState | undefined>;
+const store: StoreState =
+  holder[globalKey] ?? (holder[globalKey] = { ctx: null, applier: null, listeners: new Set() });
 
 function emit() {
-  for (const l of listeners) l();
+  for (const l of store.listeners) l();
 }
 
 export function setAssistantContext(ctx: Omit<AssistantPageContext, 'canApplyLines'> | null) {
-  currentContext = ctx ? { ...ctx, canApplyLines: lineApplier != null } : null;
+  store.ctx = ctx ? { ...ctx, canApplyLines: store.applier != null } : null;
   emit();
 }
 
 export function registerLineApplier(fn: ((lines: ProposedLine[]) => void) | null) {
-  lineApplier = fn;
-  if (currentContext) {
-    currentContext = { ...currentContext, canApplyLines: fn != null };
+  store.applier = fn;
+  if (store.ctx) {
+    store.ctx = { ...store.ctx, canApplyLines: fn != null };
   }
   emit();
 }
 
 /// Returns true when a page accepted the lines.
 export function applyProposedLines(lines: ProposedLine[]): boolean {
-  if (!lineApplier) return false;
-  lineApplier(lines);
+  if (!store.applier) return false;
+  store.applier(lines);
   return true;
 }
 
 export function getAssistantContext(): AssistantPageContext | null {
-  return currentContext;
+  return store.ctx;
 }
 
 export function getAssistantContextServer(): AssistantPageContext | null {
@@ -64,6 +76,6 @@ export function getAssistantContextServer(): AssistantPageContext | null {
 }
 
 export function subscribeAssistantContext(cb: Listener): () => void {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
+  store.listeners.add(cb);
+  return () => store.listeners.delete(cb);
 }
