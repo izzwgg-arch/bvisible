@@ -397,6 +397,7 @@ model Tenant {
   estimateVehicles         EstimateVehicle[]
   sheetPriceOverrides      SheetPriceOverride[]
   assistantSetting         AssistantSetting?
+  assistantMemories        AssistantMemory[]
   operatingRates           TenantOperatingRates?
   sheetSyncState           SheetSyncState?
 
@@ -460,6 +461,22 @@ model AssistantSetting {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("assistant_settings")
+}
+
+/// Persistent lessons the business assistant learns for a tenant —
+/// corrections, shop preferences, recipes ("90 LED modules for a 66x48
+/// lightbox"). Injected into every agent turn so it improves over time.
+model AssistantMemory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  content   String   @db.VarChar(600)
+  category  String?  @db.VarChar(60)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("assistant_memories")
 }
 
 /// Cached snapshot of the live Google pricing Sheet ("B Visible Formula").

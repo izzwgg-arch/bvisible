@@ -7,13 +7,16 @@
 // tenant's OpenAI key. The conversation follows the operator across pages.
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
+  applyEstimatePrefill,
   applyProposedLines,
   getAssistantContext,
   getAssistantContextServer,
+  parkPendingPrefill,
   subscribeAssistantContext,
+  type EstimatePrefill,
   type ProposedLine,
 } from '@/lib/assistant/context-store';
 
@@ -25,6 +28,8 @@ interface DockMsg {
   proposedLines?: ProposedLine[] | null;
   proposalNote?: string | null;
   linesApplied?: boolean;
+  prefill?: EstimatePrefill | null;
+  prefillApplied?: boolean;
 }
 
 const STORAGE_KEY = 'bv-assistant-dock-v1';
@@ -66,6 +71,7 @@ function loadStored(): { messages: DockMsg[]; open: boolean } {
 
 export function AssistantDock() {
   const pathname = usePathname() ?? '/';
+  const router = useRouter();
   const ctx = useSyncExternalStore(
     subscribeAssistantContext,
     getAssistantContext,
@@ -150,8 +156,22 @@ export function AssistantDock() {
         createdEstimate?: { id: string; number: string } | null;
         proposedLines?: ProposedLine[] | null;
         proposalNote?: string | null;
+        prefill?: EstimatePrefill | null;
         error?: string;
       };
+
+      // Full-estimate prefill: fill the Create-estimate page in place, or
+      // park it and route there when the operator asked from another page.
+      let prefillApplied = false;
+      if (data.prefill && data.prefill.lines.length > 0) {
+        prefillApplied = applyEstimatePrefill(data.prefill);
+        if (!prefillApplied) {
+          parkPendingPrefill(data.prefill);
+          router.push('/estimates/new');
+          prefillApplied = true;
+        }
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -161,6 +181,8 @@ export function AssistantDock() {
           createdEstimate: data.createdEstimate ?? null,
           proposedLines: data.proposedLines && data.proposedLines.length > 0 ? data.proposedLines : null,
           proposalNote: data.proposalNote ?? null,
+          prefill: data.prefill && data.prefill.lines.length > 0 ? data.prefill : null,
+          prefillApplied,
         },
       ]);
     } catch {
@@ -329,6 +351,28 @@ export function AssistantDock() {
                   >
                     Open →
                   </Link>
+                </div>
+              ) : null}
+              {m.prefill ? (
+                <div className="mt-2 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-2.5 py-2">
+                  <div className="text-[11.5px] font-bold">✦ Estimate prefilled — {m.prefill.title}</div>
+                  <div className="text-[10px] text-[#8a5a33]">
+                    {m.prefill.lines.length} lines
+                    {m.prefill.customerName ? ` · ${m.prefill.customerName}` : ''} · nothing saved —
+                    review it and press Save
+                  </div>
+                  {m.prefillApplied ? (
+                    <div className="mt-1 text-[10.5px] font-bold text-emerald-700">
+                      ✓ Filled into the Create-estimate page
+                    </div>
+                  ) : (
+                    <Link
+                      href="/estimates/new"
+                      className="mt-1.5 inline-block rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[10.5px] font-bold text-white"
+                    >
+                      Open Create estimate →
+                    </Link>
+                  )}
                 </div>
               ) : null}
               {m.proposedLines && m.proposedLines.length > 0 ? (

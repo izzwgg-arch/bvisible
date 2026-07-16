@@ -3,13 +3,16 @@
 // Chat UI for the B Visible business assistant.
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
+import { parkPendingPrefill, type EstimatePrefill } from '@/lib/assistant/context-store';
 
 interface ChatMsg {
   role: 'user' | 'assistant';
   content: string;
   toolEvents?: Array<{ tool: string; summary: string }>;
   createdEstimate?: { id: string; number: string } | null;
+  prefill?: EstimatePrefill | null;
 }
 
 const SUGGESTIONS = [
@@ -21,6 +24,7 @@ const SUGGESTIONS = [
 ];
 
 export function AssistantChat({ configured }: { configured: boolean }) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,8 +49,14 @@ export function AssistantChat({ configured }: { configured: boolean }) {
         reply?: string;
         toolEvents?: Array<{ tool: string; summary: string }>;
         createdEstimate?: { id: string; number: string } | null;
+        prefill?: EstimatePrefill | null;
         error?: string;
       };
+      // Full-estimate prefill: park it and open the Create-estimate page.
+      if (data.prefill && data.prefill.lines.length > 0) {
+        parkPendingPrefill(data.prefill);
+        router.push('/estimates/new');
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -54,6 +64,7 @@ export function AssistantChat({ configured }: { configured: boolean }) {
           content: data.reply ?? data.error ?? 'Something went wrong.',
           toolEvents: data.toolEvents ?? [],
           createdEstimate: data.createdEstimate ?? null,
+          prefill: data.prefill && data.prefill.lines.length > 0 ? data.prefill : null,
         },
       ]);
     } catch {
@@ -111,6 +122,22 @@ export function AssistantChat({ configured }: { configured: boolean }) {
                     className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[11px] font-bold text-white"
                   >
                     Open estimate →
+                  </Link>
+                </div>
+              ) : null}
+              {m.prefill ? (
+                <div className="mt-2.5 flex items-center gap-3 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-3 py-2">
+                  <div>
+                    <div className="text-[12.5px] font-bold">✦ Estimate prefilled — {m.prefill.title}</div>
+                    <div className="text-[10.5px] text-[#8a5a33]">
+                      {m.prefill.lines.length} lines · nothing saved — review and press Save
+                    </div>
+                  </div>
+                  <Link
+                    href="/estimates/new"
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[11px] font-bold text-white"
+                  >
+                    Open Create estimate →
                   </Link>
                 </div>
               ) : null}

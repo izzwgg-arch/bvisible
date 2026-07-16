@@ -12,7 +12,10 @@ import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
 import { fuzzyScore, fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import {
   registerLineApplier,
+  registerPrefillApplier,
   setAssistantContext,
+  takePendingPrefill,
+  type EstimatePrefill,
   type ProposedLine,
 } from '@/lib/assistant/context-store';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
@@ -297,31 +300,58 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
   // in the card list exactly like manually added lines and are saved only
   // when the operator saves the estimate.
   useEffect(() => {
+    function cardsFromProposedLines(lines: ProposedLine[]) {
+      return lines.map((l) => ({
+        uid: nextUid++,
+        label: l.description,
+        sublabel: `Added by the assistant · ${l.qty} × ${formatMoney(Math.max(0, Math.round(l.unitCostCents)))}${l.markupExempt ? ' · final price, never marked up' : ''}`,
+        badge: 'AI suggested',
+        rows: [
+          {
+            kind: l.kind as LineKind,
+            description: l.description,
+            qtyMilli: Math.max(1, Math.round(l.qty * 1000)),
+            unitCostCents: Math.max(0, Math.round(l.unitCostCents)),
+            markupExempt: l.markupExempt,
+            sourceKind: 'CUSTOM' as const,
+          },
+        ],
+      }));
+    }
+
+    function applyPrefill(p: EstimatePrefill) {
+      if (p.title) setTitle(p.title);
+      if (p.markupPercent != null) setMarkupPercent(p.markupPercent);
+      if (p.customerName) {
+        const existing = props.clients.find(
+          (c) => c.companyName.toLowerCase() === p.customerName!.toLowerCase()
+        );
+        if (existing) {
+          setClientId(existing.id);
+        } else {
+          setClientId('__new__');
+          setNewClientName(p.customerName);
+        }
+      }
+      if (p.lines.length > 0) setCards((prev) => [...prev, ...cardsFromProposedLines(p.lines)]);
+    }
+
     registerLineApplier((lines: ProposedLine[]) => {
-      setCards((prev) => [
-        ...prev,
-        ...lines.map((l) => ({
-          uid: nextUid++,
-          label: l.description,
-          sublabel: `Added by the assistant · ${l.qty} × ${formatMoney(Math.max(0, Math.round(l.unitCostCents)))}${l.markupExempt ? ' · final price, never marked up' : ''}`,
-          badge: 'AI suggested',
-          rows: [
-            {
-              kind: l.kind as LineKind,
-              description: l.description,
-              qtyMilli: Math.max(1, Math.round(l.qty * 1000)),
-              unitCostCents: Math.max(0, Math.round(l.unitCostCents)),
-              markupExempt: l.markupExempt,
-              sourceKind: 'CUSTOM' as const,
-            },
-          ],
-        })),
-      ]);
+      setCards((prev) => [...prev, ...cardsFromProposedLines(lines)]);
     });
+    registerPrefillApplier(applyPrefill);
+
+    // Prefill parked by the assistant dock on another page (the operator
+    // asked for an estimate from Home etc. and was routed here).
+    const pending = takePendingPrefill();
+    if (pending) applyPrefill(pending);
+
     return () => {
       registerLineApplier(null);
+      registerPrefillApplier(null);
       setAssistantContext(null);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fuzzy search: tolerates misspellings, partial words, and Sheet ALIASES.

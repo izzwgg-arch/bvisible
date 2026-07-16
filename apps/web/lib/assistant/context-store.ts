@@ -30,18 +30,30 @@ export interface AssistantPageContext {
   canApplyLines: boolean;
 }
 
+/// Complete estimate the agent built — applied into the Create-estimate
+/// page (job name, customer, markup, lines). Operator reviews and saves.
+export interface EstimatePrefill {
+  title: string;
+  customerName: string | null;
+  markupPercent: number | null;
+  note: string | null;
+  lines: ProposedLine[];
+}
+
 type Listener = () => void;
 
 interface StoreState {
   ctx: AssistantPageContext | null;
   applier: ((lines: ProposedLine[]) => void) | null;
+  prefillApplier: ((prefill: EstimatePrefill) => void) | null;
   listeners: Set<Listener>;
 }
 
 const globalKey = '__bvAssistantContextStore';
 const holder = globalThis as unknown as Record<string, StoreState | undefined>;
 const store: StoreState =
-  holder[globalKey] ?? (holder[globalKey] = { ctx: null, applier: null, listeners: new Set() });
+  holder[globalKey] ??
+  (holder[globalKey] = { ctx: null, applier: null, prefillApplier: null, listeners: new Set() });
 
 function emit() {
   for (const l of store.listeners) l();
@@ -65,6 +77,43 @@ export function applyProposedLines(lines: ProposedLine[]): boolean {
   if (!store.applier) return false;
   store.applier(lines);
   return true;
+}
+
+export function registerPrefillApplier(fn: ((prefill: EstimatePrefill) => void) | null) {
+  store.prefillApplier = fn;
+}
+
+/// Apply a full estimate prefill if the Create-estimate page is mounted.
+export function applyEstimatePrefill(prefill: EstimatePrefill): boolean {
+  if (!store.prefillApplier) return false;
+  store.prefillApplier(prefill);
+  return true;
+}
+
+/* Cross-page handoff: when the operator asks for an estimate from any
+   other page, the dock parks the prefill here and navigates to
+   /estimates/new; the guided builder picks it up on mount. */
+
+const PENDING_PREFILL_KEY = 'bv-assistant-pending-prefill';
+
+export function parkPendingPrefill(prefill: EstimatePrefill) {
+  try {
+    sessionStorage.setItem(PENDING_PREFILL_KEY, JSON.stringify(prefill));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+export function takePendingPrefill(): EstimatePrefill | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PREFILL_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(PENDING_PREFILL_KEY);
+    const parsed = JSON.parse(raw) as EstimatePrefill;
+    return parsed && typeof parsed.title === 'string' && Array.isArray(parsed.lines) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getAssistantContext(): AssistantPageContext | null {
