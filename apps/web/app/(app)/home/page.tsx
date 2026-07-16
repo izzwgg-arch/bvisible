@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { Role } from '@bvisible/db';
 import { requireUserForAppShell } from '@/lib/auth/current-user';
 import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
 
@@ -40,23 +39,8 @@ function BigCard({
   );
 }
 
-function SmallCard({ href, title, body }: { href: string; title: string; body: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center justify-between gap-4 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-5 py-4 shadow-[var(--shadow-bv-card)] transition-shadow hover:shadow-[var(--shadow-bv-elevated)]"
-    >
-      <span className="text-[14px] font-semibold text-[var(--color-bv-text)]">{title}</span>
-      <span className="max-w-[55%] text-right text-[11.5px] leading-snug text-[var(--color-bv-muted)]">
-        {body}
-      </span>
-    </Link>
-  );
-}
-
 export default async function HomePage() {
   const user = await requireUserForAppShell();
-  const isAdmin = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
 
   let sheetLine: { ok: boolean; text: string } = {
     ok: false,
@@ -120,48 +104,6 @@ export default async function HomePage() {
         />
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <SmallCard
-          href="/estimates"
-          title="Estimates"
-          body="Saved estimates, quotes, and approvals"
-        />
-        <SmallCard
-          href="/purchase-orders"
-          title="Purchase orders"
-          body="Every PO, QBO numbers, and reconciliation"
-        />
-        <SmallCard
-          href="/dashboard"
-          title="Overview"
-          body="Queues, reconciliation, and alerts — the full command center"
-        />
-        <SmallCard href="/items" title="Catalog" body="All items, synced from the Google Sheet" />
-        {isAdmin ? (
-          <>
-            <SmallCard
-              href="/pricing-backend"
-              title="Pricing backend"
-              body="Google Sheet sync, price overrides, operating rates"
-            />
-            <SmallCard
-              href="/admin/email-ingestion"
-              title="Purchase inbox"
-              body="Vendor emails and order confirmations"
-            />
-            <SmallCard
-              href="/admin/ocr-review"
-              title="Scan & receive"
-              body="Photograph receipts and approve material prices"
-            />
-            <SmallCard
-              href="/admin/users"
-              title="Manage users"
-              body="Invite people and control their roles"
-            />
-          </>
-        ) : null}
-      </div>
     </div>
   );
 }
