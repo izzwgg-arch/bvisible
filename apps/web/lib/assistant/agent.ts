@@ -54,6 +54,11 @@ WHAT YOU CAN DO:
 - Answer business questions from the database snapshot (estimates, POs, customers — read-only).
 - Create DRAFT estimates with create_estimate_draft. Always confirm the built line list and total in your reply, with the estimate number.
 
+SCREEN CONTEXT:
+- When a "CURRENT SCREEN" note is present, the operator has that page open right now. Use it — never ask them to re-explain what they are working on.
+- If the operator is building or editing an estimate ON SCREEN and wants lines added or something is missing, call propose_estimate_lines — the lines appear on their screen with a one-click "Add" button. Do NOT create a separate draft with create_estimate_draft in that case.
+- Only use create_estimate_draft when there is no estimate open on screen.
+
 WHAT YOU MUST NEVER DO:
 - Never send, email, approve, finalize, or delete anything. Drafts only. The operator reviews everything.
 - Never guess prices — if a lookup returns nothing, say so and ask.
@@ -113,6 +118,35 @@ const TOOL_DEFS = [
       name: 'business_snapshot',
       description: 'Read-only tenant stats: estimate/PO counts by status, recent estimates and POs with totals, top customers.',
       parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'propose_estimate_lines',
+      description:
+        'Propose lines for the estimate the operator has OPEN ON SCREEN (see CURRENT SCREEN note). The lines show up on their screen with a one-click "Add" button — nothing is added or saved until they click. Use real prices from prior tool lookups. sqft/wrap lines: markupExempt=true with the FINAL price.',
+      parameters: {
+        type: 'object',
+        properties: {
+          note: { type: 'string', description: 'One short line explaining why (shown to the operator).' },
+          lines: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                kind: { type: 'string', enum: ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'] },
+                description: { type: 'string' },
+                qty: { type: 'number' },
+                unitCostCents: { type: 'number' },
+                markupExempt: { type: 'boolean' },
+              },
+              required: ['kind', 'description', 'qty', 'unitCostCents'],
+            },
+          },
+        },
+        required: ['lines'],
+      },
     },
   },
   {
@@ -221,6 +255,29 @@ async function runTool(
     };
   }
 
+  if (name === 'propose_estimate_lines') {
+    const rawLines = Array.isArray(args.lines) ? (args.lines as Array<Record<string, unknown>>) : [];
+    if (rawLines.length === 0 || rawLines.length > 50) {
+      return { error: '1–50 proposed lines are required.' };
+    }
+    const lines = rawLines.map((l) => ({
+      kind: (['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'].includes(String(l.kind)) ? String(l.kind) : 'MATERIAL') as
+        | 'MATERIAL' | 'MACHINE' | 'LABOR' | 'DESIGN' | 'INSTALL' | 'MISC',
+      description: String(l.description ?? '').slice(0, 400),
+      qty: Math.max(0.001, Number(l.qty) || 1),
+      unitCostCents: Math.max(0, Math.round(Number(l.unitCostCents) || 0)),
+      markupExempt: Boolean(l.markupExempt),
+    }));
+    return {
+      ok: true,
+      proposedCount: lines.length,
+      note: String(args.note ?? '').slice(0, 300),
+      lines,
+      delivered:
+        'The lines are now on the operator’s screen with a one-click "Add" button. Nothing is added or saved until they click it.',
+    };
+  }
+
   if (name === 'create_estimate_draft') {
     const title = String(args.title ?? '').trim().slice(0, 200);
     const customerName = String(args.customerName ?? '').trim().slice(0, 200);
@@ -311,15 +368,28 @@ async function runTool(
 
 /* --------------------------- agent loop --------------------------- */
 
+export interface ProposedAssistantLine {
+  kind: 'MATERIAL' | 'MACHINE' | 'LABOR' | 'DESIGN' | 'INSTALL' | 'MISC';
+  description: string;
+  qty: number;
+  unitCostCents: number;
+  markupExempt: boolean;
+}
+
 export interface AssistantTurn {
   reply: string;
   toolEvents: Array<{ tool: string; summary: string }>;
   createdEstimate?: { id: string; number: string } | null;
+  /// Lines the agent proposed for the estimate open on the operator's
+  /// screen — rendered client-side with a one-click Add button.
+  proposedLines?: ProposedAssistantLine[] | null;
+  proposalNote?: string | null;
 }
 
 export async function runAssistant(
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
-  me: { id: string; tenantId: string }
+  me: { id: string; tenantId: string },
+  pageContext?: string | null
 ): Promise<AssistantTurn> {
   const { apiKey, model } = await loadAssistantConfig(me.tenantId);
   if (!apiKey) {
@@ -328,10 +398,15 @@ export async function runAssistant(
 
   const messages: Array<Record<string, unknown>> = [
     { role: 'system', content: SYSTEM_PROMPT },
+    ...(pageContext && pageContext.trim()
+      ? [{ role: 'system', content: `CURRENT SCREEN (live, auto-captured — the operator sees this page right now):\n${pageContext.trim().slice(0, 4000)}` }]
+      : []),
     ...history.slice(-16),
   ];
   const toolEvents: AssistantTurn['toolEvents'] = [];
   let createdEstimate: AssistantTurn['createdEstimate'] = null;
+  const proposedLines: ProposedAssistantLine[] = [];
+  let proposalNote: string | null = null;
 
   for (let round = 0; round < 8; round += 1) {
     const res = await fetch(OPENAI_URL, {
@@ -342,13 +417,13 @@ export async function runAssistant(
     });
     if (!res.ok) {
       const text = (await res.text()).slice(0, 300);
-      return { reply: `OpenAI request failed (${res.status}): ${text}`, toolEvents, createdEstimate };
+      return { reply: `OpenAI request failed (${res.status}): ${text}`, toolEvents, createdEstimate, proposedLines, proposalNote };
     }
     const json = (await res.json()) as {
       choices: Array<{ message: { content: string | null; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> } }>;
     };
     const msg = json.choices[0]?.message;
-    if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate };
+    if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate, proposedLines, proposalNote };
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: msg.tool_calls });
@@ -374,13 +449,54 @@ export async function runAssistant(
           const r = result as { estimateId: string; number: string };
           createdEstimate = { id: r.estimateId, number: r.number };
         }
+        if (
+          call.function.name === 'propose_estimate_lines' &&
+          result &&
+          typeof result === 'object' &&
+          'lines' in result
+        ) {
+          const r = result as { lines: ProposedAssistantLine[]; note?: string };
+          proposedLines.push(...r.lines);
+          if (r.note) proposalNote = r.note;
+        }
         toolEvents.push({ tool: call.function.name, summary: JSON.stringify(parsed).slice(0, 160) });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000) });
       }
       continue;
     }
 
-    return { reply: msg.content ?? '(empty reply)', toolEvents, createdEstimate };
+    return { reply: msg.content ?? '(empty reply)', toolEvents, createdEstimate, proposedLines, proposalNote };
   }
-  return { reply: 'Stopped after too many tool steps — try a more specific request.', toolEvents, createdEstimate };
+  return { reply: 'Stopped after too many tool steps — try a more specific request.', toolEvents, createdEstimate, proposedLines, proposalNote };
+}
+
+/* ------------------------- voice transcription ------------------------- */
+
+/// Transcribe a recorded voice note with OpenAI (same stored key).
+/// Audio never persists anywhere — it is forwarded and discarded.
+export async function transcribeVoiceNote(
+  tenantId: string,
+  audio: Blob,
+  fileName: string
+): Promise<{ text: string } | { error: string }> {
+  const { apiKey } = await loadAssistantConfig(tenantId);
+  if (!apiKey) return { error: 'Assistant not configured — add your OpenAI API key in Assistant settings.' };
+
+  const form = new FormData();
+  form.append('file', audio, fileName);
+  form.append('model', 'whisper-1');
+  form.append('response_format', 'json');
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 200);
+    return { error: `Transcription failed (${res.status}): ${text}` };
+  }
+  const json = (await res.json()) as { text?: string };
+  return { text: (json.text ?? '').trim() };
 }

@@ -5,10 +5,11 @@
 // preselected, then review grouped by vendor before creating one PO per
 // vendor. Optional custom materials for anything not in the list.
 
-import { useActionState, useMemo, useState, useTransition } from 'react';
+import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { formatMoney } from '@bvisible/pricing';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
+import { setAssistantContext } from '@/lib/assistant/context-store';
 import {
   createShopOrderAction,
   sendShopOrderPoAction,
@@ -71,6 +72,29 @@ export function ShopOrderFlow(props: FlowProps) {
     createShopOrderAction,
     { error: null }
   );
+
+  // Publish live screen context for the floating assistant dock.
+  useEffect(() => {
+    const vendors = Array.from(new Set(lines.map((l) => l.vendor)));
+    const totalCents = lines.reduce((s, l) => s + Math.round(l.qty * l.unitPriceCents), 0);
+    setAssistantContext({
+      page: 'Order materials (shop order)',
+      summary: [
+        `Items (${lines.length}):`,
+        lines
+          .slice(0, 15)
+          .map((l, i) => `${i + 1}. ${l.name} — ${l.qty} × ${formatMoney(l.unitPriceCents)} from ${l.vendor}`)
+          .join('\n') || '(none yet — the operator is searching the Sheet vendor catalog)',
+        `Vendors involved: ${vendors.join(', ') || '(none yet)'}`,
+        `Order total: ${formatMoney(totalCents)}`,
+        'POs are created as DRAFTS grouped per vendor; nothing is emailed until the operator clicks Send PO.',
+      ].join('\n'),
+    });
+  }, [lines]);
+
+  useEffect(() => {
+    return () => setAssistantContext(null);
+  }, []);
 
   const results = useMemo(() => {
     const q = search.trim();

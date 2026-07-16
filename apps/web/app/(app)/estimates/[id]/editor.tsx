@@ -27,6 +27,7 @@ import type { SaveEstimateInput } from '@/lib/validators';
 import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
 import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/estimate-surface';
 import { SelectControl } from '@/components/app/select-control';
+import { registerLineApplier, setAssistantContext } from '@/lib/assistant/context-store';
 
 type EstimateTypeValue = 'CUSTOM' | 'STOCK_ITEM' | 'SQUARE_FOOTAGE';
 
@@ -483,6 +484,57 @@ export function EstimateEditor({
       lines,
     });
   }, [state.lines, state.multiplierMilli, state.designFlatCents]);
+
+  // Publish live screen context for the floating assistant dock.
+  useEffect(() => {
+    const lines = state.lines.filter((l) => !isBlankLine(l));
+    const lineList = lines
+      .slice(0, 15)
+      .map(
+        (l, i) =>
+          `${i + 1}. [${l.kind}] ${l.description || '(no description)'} — qty ${l.qtyMilli / 1000} × $${(l.unitCostCents / 100).toFixed(2)}${l.markupExempt ? ' (markup-exempt final price)' : ''}`
+      )
+      .join('\n');
+    setAssistantContext({
+      page: `Estimate ${bootstrap.estimate.number} (editor)`,
+      summary: [
+        `Title: ${state.title || '(empty)'}`,
+        `Customer: ${bootstrap.estimate.client.companyName}`,
+        `Status: ${bootstrap.estimate.status}${readOnly ? ' (read-only)' : ''}`,
+        `Markup multiplier: ×${(state.multiplierMilli / 1000).toFixed(2)}`,
+        `Lines (${lines.length}):`,
+        lineList || '(none yet)',
+        `Subtotal cost $${(computed.subtotalCostCents / 100).toFixed(2)} · estimate total $${(computed.finalPriceCents / 100).toFixed(2)}`,
+      ].join('\n'),
+    });
+  }, [state, computed, bootstrap.estimate.number, bootstrap.estimate.client.companyName, bootstrap.estimate.status, readOnly]);
+
+  // Accept lines proposed by the assistant — added to the grid like
+  // manually typed rows; nothing persists until the operator saves.
+  useEffect(() => {
+    if (readOnly) {
+      registerLineApplier(null);
+      return () => setAssistantContext(null);
+    }
+    registerLineApplier((lines) => {
+      for (const l of lines) {
+        dispatch({
+          type: 'add-line',
+          kind: l.kind as EstimateLineKind,
+          patch: {
+            description: l.description,
+            qtyMilli: Math.max(1, Math.round(l.qty * 1000)),
+            unitCostCents: Math.max(0, Math.round(l.unitCostCents)),
+            markupExempt: l.markupExempt,
+          },
+        });
+      }
+    });
+    return () => {
+      registerLineApplier(null);
+      setAssistantContext(null);
+    };
+  }, [readOnly]);
 
   const previousLineCountRef = useRef(state.lines.length);
   useEffect(() => {

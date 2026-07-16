@@ -7,9 +7,14 @@
 //   3. Square footage items     (Sheet sq-ft rates — final prices, R-EST-05)
 // Totals run through the same computeEstimate engine as the editor.
 
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useEffect, useMemo, useState } from 'react';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
 import { fuzzyScore, fuzzySearch } from '@/lib/sheet-sync/fuzzy';
+import {
+  registerLineApplier,
+  setAssistantContext,
+  type ProposedLine,
+} from '@/lib/assistant/context-store';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
 import { CustomBuildPanel } from './custom-build-panel';
 import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
@@ -263,6 +268,61 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
   }, [cards, multiplierMilli]);
 
   const markupAmount = totals.finalPriceCents - totals.subtotalCostCents;
+
+  // Publish live screen context for the floating assistant dock so the
+  // operator never has to explain what they're building.
+  useEffect(() => {
+    const customerName =
+      clientId === '__new__'
+        ? newClientName.trim() || '(new customer, name not typed yet)'
+        : (props.clients.find((c) => c.id === clientId)?.companyName ?? '(not chosen yet)');
+    const lineList = cards
+      .slice(0, 15)
+      .map((c, i) => `${i + 1}. [${c.badge}] ${c.label} — sells ${formatMoney(cardSellCents(c, multiplierMilli))}`)
+      .join('\n');
+    setAssistantContext({
+      page: 'New estimate (guided flow)',
+      summary: [
+        `Job name: ${title.trim() || '(empty)'}`,
+        `Customer: ${customerName}`,
+        `Markup: ${Number(markupPercent) || 0}% (does not apply to markup-exempt sq-ft/wrap lines)`,
+        `Lines (${cards.length}):`,
+        lineList || '(none yet)',
+        `Subtotal cost ${formatMoney(totals.subtotalCostCents)} · estimate total ${formatMoney(totals.finalPriceCents)}`,
+      ].join('\n'),
+    });
+  }, [title, clientId, newClientName, markupPercent, cards, totals, multiplierMilli, props.clients]);
+
+  // Accept lines proposed by the assistant — client-side only; they land
+  // in the card list exactly like manually added lines and are saved only
+  // when the operator saves the estimate.
+  useEffect(() => {
+    registerLineApplier((lines: ProposedLine[]) => {
+      setCards((prev) => [
+        ...prev,
+        ...lines.map((l) => ({
+          uid: nextUid++,
+          label: l.description,
+          sublabel: `Added by the assistant · ${l.qty} × ${formatMoney(Math.max(0, Math.round(l.unitCostCents)))}${l.markupExempt ? ' · final price, never marked up' : ''}`,
+          badge: 'AI suggested',
+          rows: [
+            {
+              kind: l.kind as LineKind,
+              description: l.description,
+              qtyMilli: Math.max(1, Math.round(l.qty * 1000)),
+              unitCostCents: Math.max(0, Math.round(l.unitCostCents)),
+              markupExempt: l.markupExempt,
+              sourceKind: 'CUSTOM' as const,
+            },
+          ],
+        })),
+      ]);
+    });
+    return () => {
+      registerLineApplier(null);
+      setAssistantContext(null);
+    };
+  }, []);
 
   // Fuzzy search: tolerates misspellings, partial words, and Sheet ALIASES.
   const filterText = search.trim();

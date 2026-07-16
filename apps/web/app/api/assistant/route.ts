@@ -13,7 +13,7 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   }
-  let body: { messages?: Array<{ role: string; content: string }> };
+  let body: { messages?: Array<{ role: string; content: string }>; context?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
   if (history.length === 0 || history[history.length - 1]?.role !== 'user') {
     return NextResponse.json({ error: 'Last message must be from the user.' }, { status: 400 });
   }
-  const turn = await runAssistant(history, { id: me.id, tenantId: me.tenantId });
+  const context = typeof body.context === 'string' ? body.context.slice(0, 4000) : null;
+  const turn = await runAssistant(history, { id: me.id, tenantId: me.tenantId }, context);
   return NextResponse.json(turn);
 }

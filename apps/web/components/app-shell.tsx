@@ -3,6 +3,7 @@ import { Brand } from './brand';
 import { NavLinks, type NavItem } from './app/nav-links';
 import { UserMenu } from './app/user-menu';
 import { SidebarFrame } from './app/sidebar-frame';
+import { AssistantDock } from './assistant/assistant-dock';
 import { Role } from '@bvisible/db';
 
 const BASE_NAV: ReadonlyArray<NavItem> = [
@@ -94,6 +95,7 @@ export function AppShell({
       }
     >
       {children}
+      <AssistantDock />
     </SidebarFrame>
   );
 }
