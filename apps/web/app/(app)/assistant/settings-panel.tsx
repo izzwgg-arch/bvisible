@@ -16,7 +16,7 @@ export function AssistantSettingsPanel({
   );
 
   return (
-    <details className="mb-4 max-w-[1000px] rounded-[var(--radius-bv)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
+    <details className="mb-4 max-w-[1000px] shrink-0 rounded-[var(--radius-bv)] bg-[var(--color-bv-surface)] shadow-[var(--shadow-bv-card)]">
       <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-bold text-[var(--color-bv-text)]">
         ⚙ Assistant settings — API key{' '}
         <span className={keyConfigured ? 'text-emerald-700' : 'text-amber-700'}>

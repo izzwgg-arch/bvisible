@@ -68,7 +68,7 @@ export function AssistantChat({ configured }: { configured: boolean }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-190px)] max-w-[1000px] flex-col">
+    <div className="flex min-h-0 w-full max-w-[1000px] flex-1 flex-col">
       <div className="flex-1 space-y-3.5 overflow-y-auto pb-4 pr-2">
         {messages.length === 0 ? (
           <div className="rounded-[14px] bg-[var(--color-bv-surface)] p-5 text-[13px] leading-relaxed text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
