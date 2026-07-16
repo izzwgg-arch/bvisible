@@ -21,7 +21,7 @@ export default async function NewEstimatePage({
   const me = await requireTenantId();
   const sp = await searchParams;
 
-  const [clients, snapshot, overrides, rates, machines] = await Promise.all([
+  const [clients, snapshot, overrides, rates, machines, users] = await Promise.all([
     prisma.client.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
       orderBy: [{ companyName: 'asc' }],
@@ -33,6 +33,11 @@ export default async function NewEstimatePage({
     prisma.machine.findMany({
       where: { tenantId: me.tenantId, isActive: true },
       select: { name: true, ratePerHourCents: true },
+    }),
+    prisma.user.findMany({
+      where: { tenantId: me.tenantId, disabledAt: null },
+      orderBy: [{ name: 'asc' }],
+      select: { id: true, name: true, email: true },
     }),
   ]);
 
@@ -131,6 +136,8 @@ export default async function NewEstimatePage({
         bundles={bundles}
         aliases={data.aliases}
         recommendations={data.recommendations}
+        salesReps={users.map((u) => ({ id: u.id, name: u.name ?? u.email }))}
+        currentUserId={me.id}
       />
     </>
   );

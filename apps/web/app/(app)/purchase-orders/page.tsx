@@ -347,7 +347,7 @@ export default async function PurchaseOrdersPage({
                 )}
               </div>
             </div>
-            <div className="grid gap-3 border-t border-slate-100 bg-gradient-to-r from-blue-50/70 to-cyan-50/60 px-5 py-4 text-[12.5px] text-slate-600 md:grid-cols-3">
+            <div className="grid gap-3 border-t border-slate-100 bg-blue-50/70 px-5 py-4 text-[12.5px] text-slate-600 md:grid-cols-3">
               <Insight label="Review cadence" value="Check ordered and partially received POs daily." />
               <Insight label="Best practice" value="Link POs back to estimates for quote-to-spend visibility." />
               <Insight label="Ready state" value="Received POs are clean handoffs for reconciliation." />
@@ -384,7 +384,7 @@ function MetricCard({
   }[tone];
 
   return (
-    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+    <div className={`rounded-[18px] border border-white/80 px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
       <div className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</div>
       <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</div>
       <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>

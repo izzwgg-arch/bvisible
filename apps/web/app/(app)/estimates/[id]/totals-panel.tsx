@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type ReactNode } from 'react';
+import { useState, useTransition, type ReactNode } from 'react';
 import { EstimateStatus } from '@bvisible/db';
+import { updateEstimateSalesRepAction } from './actions';
 import type { BreakdownByKind } from '@bvisible/pricing';
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney } from '@/lib/estimate/format';
@@ -105,8 +106,8 @@ export function TotalsPanel(props: TotalsPanelProps) {
   if (variant === 'sidebar') {
     return (
       <aside className="sticky top-4 flex flex-col gap-3">
-        <SectionCard className="overflow-hidden rounded-[14px] border-[#eadfd3] bg-gradient-to-b from-[#fffdfa] via-white to-[#fff4e8] p-4 ring-1 ring-[#F28744]/10">
-          <div className="-mx-4 -mt-4 mb-4 flex items-center justify-between gap-2 border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-[#fffdfa] to-[#eef5f9] px-4 py-3 shadow-[inset_0_-1px_0_rgba(242,135,68,0.16)]">
+        <SectionCard className="overflow-hidden rounded-[14px] border-[#eadfd3] bg-[#fffdfa] p-4 ring-1 ring-[#F28744]/10">
+          <div className="-mx-4 -mt-4 mb-4 flex items-center justify-between gap-2 border-b border-[#eadfd3] bg-[#fff4e8] px-4 py-3 shadow-[inset_0_-1px_0_rgba(242,135,68,0.16)]">
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-[#F28744] shadow-[0_0_0_4px_rgba(242,135,68,0.14)]" />
               <h2 className="text-[14px] font-black text-[#1C4972]">Estimate Summary</h2>
@@ -205,11 +206,51 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 />
               ) : null}
               <SideRow label="Profit" value={formatMoney(profitCents)} valueClass={profitCents >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
-              <SideRow label="Margin" value={marginPct == null ? '-' : `${marginPct.toFixed(1)}%`} valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'} />
-              <SideRow label="Markup" value={markupPct == null ? '-' : `${markupPct.toFixed(1)}%`} valueClass="text-emerald-700" />
+              {isFinalized ? (
+                <>
+                  <SideRow label="Margin" value={marginPct == null ? '-' : `${marginPct.toFixed(1)}%`} valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'} />
+                  <SideRow label="Markup" value={markupPct == null ? '-' : `${markupPct.toFixed(1)}%`} valueClass="text-emerald-700" />
+                </>
+              ) : (
+                <>
+                  <PercentEditorRow
+                    label="Margin"
+                    value={marginPct}
+                    valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'}
+                    onCommit={(pct) => {
+                      // margin% → multiplier: mult = 1 / (1 - margin)
+                      if (pct <= 0) dispatch({ type: 'set-multiplier', value: 1000 });
+                      else if (pct < 95)
+                        dispatch({
+                          type: 'set-multiplier',
+                          value: Math.max(1000, Math.round((1 / (1 - pct / 100)) * 1000)),
+                        });
+                    }}
+                  />
+                  <PercentEditorRow
+                    label="Markup"
+                    value={markupPct}
+                    valueClass="text-emerald-700"
+                    onCommit={(pct) => {
+                      if (pct >= 0 && pct <= 10000)
+                        dispatch({
+                          type: 'set-multiplier',
+                          value: Math.max(0, Math.round((1 + pct / 100) * 1000)),
+                        });
+                    }}
+                  />
+                </>
+              )}
               <SideRow label="Hours" value={totalHours > 0 ? `${totalHours} available` : '-'} muted={totalHours === 0} />
             </dl>
           </div>
+
+          <SalesRepSelect
+            estimateId={bootstrap.estimate.id}
+            salesRepId={bootstrap.estimate.salesRepId}
+            salesReps={bootstrap.salesReps}
+            disabled={isFinalized}
+          />
 
           <section className="mt-5">
             <h3 className="text-[13px] font-black text-[#1C4972]">Workflow</h3>
@@ -248,7 +289,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
       {showPricing ? (
       <SectionCard className="overflow-hidden bg-white/95">
         {lineItems ? (
-          <div className="border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/35 to-teal-50/35">
+          <div className="border-b border-slate-100 bg-white">
             {lineItems}
           </div>
         ) : null}
@@ -549,6 +590,95 @@ function SummaryMetric({
         {value}
       </p>
     </div>
+  );
+}
+
+/// Editable percent row for Margin / Markup — commits on blur or Enter,
+/// repricing the whole estimate through the standard dispatch.
+function PercentEditorRow({
+  label,
+  value,
+  valueClass,
+  onCommit,
+}: {
+  label: string;
+  value: number | null;
+  valueClass: string;
+  onCommit: (pct: number) => void;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="font-medium text-[#6d7480]">{label}</dt>
+      <dd className="flex items-center gap-1">
+        <input
+          key={value == null ? 'empty' : value.toFixed(1)}
+          type="number"
+          min={0}
+          step="0.1"
+          defaultValue={value == null ? '' : value.toFixed(1)}
+          onBlur={(e) => {
+            const n = Number(e.currentTarget.value);
+            if (Number.isFinite(n)) onCommit(n);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              (e.currentTarget as HTMLInputElement).blur();
+            }
+          }}
+          className={`w-[64px] rounded-md border border-[#eadfd3] bg-white px-1.5 py-0.5 text-right text-[12px] font-bold tabular-nums outline-none focus:border-[#F28744] ${valueClass}`}
+          aria-label={`${label} percent`}
+        />
+        <span className={`text-[11px] font-bold ${valueClass}`}>%</span>
+      </dd>
+    </div>
+  );
+}
+
+/// Sales representative picker — persists immediately via server action.
+function SalesRepSelect({
+  estimateId,
+  salesRepId,
+  salesReps,
+  disabled,
+}: {
+  estimateId: string;
+  salesRepId: string | null;
+  salesReps: ReadonlyArray<{ id: string; name: string }>;
+  disabled: boolean;
+}) {
+  const [value, setValue] = useState(salesRepId ?? '');
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section className="mt-5">
+      <h3 className="text-[13px] font-black text-[#1C4972]">Sales rep</h3>
+      <select
+        className="mt-2 w-full rounded-[9px] border border-[#eadfd3] bg-white px-2.5 py-2 text-[12.5px] font-semibold text-[#1C4972] outline-none focus:border-[#F28744] disabled:opacity-60"
+        value={value}
+        disabled={disabled || pending}
+        onChange={(e) => {
+          const next = e.target.value;
+          setValue(next);
+          if (!next) return;
+          startTransition(async () => {
+            const result = await updateEstimateSalesRepAction({
+              estimateId,
+              salesRepId: next,
+            });
+            setError(result.error);
+          });
+        }}
+      >
+        <option value="">Unassigned</option>
+        {salesReps.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.name}
+          </option>
+        ))}
+      </select>
+      {error ? <p className="mt-1 text-[11px] font-medium text-rose-600">{error}</p> : null}
+    </section>
   );
 }
 

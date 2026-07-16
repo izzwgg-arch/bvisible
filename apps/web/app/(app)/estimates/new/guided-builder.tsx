@@ -9,7 +9,7 @@
 
 import { useActionState, useMemo, useState } from 'react';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
-import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
+import { fuzzyScore, fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
 import { CustomBuildPanel } from './custom-build-panel';
 import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
@@ -77,6 +77,8 @@ export interface BuilderProps {
   bundles: BuilderBundle[];
   aliases: Array<{ alias: string; canonical: string }>;
   recommendations: BuilderRecommendation[];
+  salesReps: Array<{ id: string; name: string }>;
+  currentUserId: string;
 }
 
 /* ---------- internal line model ---------- */
@@ -102,6 +104,95 @@ interface GuidedCard {
 }
 
 let nextUid = 1;
+
+/* ---------- vehicle-wrap make parsing (original Sheet names) ---------- */
+
+const KNOWN_MAKES = [
+  'Mercedes-Benz',
+  'Mercedes',
+  'Chevrolet',
+  'Chevy',
+  'Ford',
+  'GMC',
+  'RAM',
+  'Dodge',
+  'Nissan',
+  'Toyota',
+  'Honda',
+  'Isuzu',
+  'Freightliner',
+  'Tesla',
+  'Jeep',
+  'Kia',
+  'Hyundai',
+  'Subaru',
+  'Volkswagen',
+  'VW',
+] as const;
+
+const MAKE_CANONICAL: Record<string, string> = {
+  chevy: 'Chevrolet',
+  mercedes: 'Mercedes-Benz',
+  vw: 'Volkswagen',
+};
+
+function wrapMakeOf(name: string): string {
+  const lower = name.toLowerCase();
+  for (const mk of KNOWN_MAKES) {
+    if (lower.startsWith(mk.toLowerCase())) {
+      return MAKE_CANONICAL[mk.toLowerCase()] ?? mk;
+    }
+  }
+  const first = name.split(/[\s|–-]+/)[0] ?? name;
+  return MAKE_CANONICAL[first.toLowerCase()] ?? first;
+}
+
+const MAKE_LOGO_DOMAIN: Record<string, string> = {
+  Chevrolet: 'chevrolet.com',
+  Ford: 'ford.com',
+  GMC: 'gmc.com',
+  RAM: 'ramtrucks.com',
+  Dodge: 'dodge.com',
+  'Mercedes-Benz': 'mercedes-benz.com',
+  Nissan: 'nissanusa.com',
+  Toyota: 'toyota.com',
+  Honda: 'honda.com',
+  Isuzu: 'isuzu.com',
+  Freightliner: 'freightliner.com',
+  Tesla: 'tesla.com',
+  Jeep: 'jeep.com',
+  Kia: 'kia.com',
+  Hyundai: 'hyundaiusa.com',
+  Subaru: 'subaru.com',
+  Volkswagen: 'vw.com',
+};
+
+function MakeLogo({ make, size = 20 }: { make: string; size?: number }) {
+  const domain = MAKE_LOGO_DOMAIN[make];
+  if (!domain) {
+    return (
+      <span
+        className="grid shrink-0 place-items-center rounded-full bg-[var(--color-bv-bg)] text-[9px] font-bold text-[var(--color-bv-muted)]"
+        style={{ width: size, height: size }}
+      >
+        {make.slice(0, 2).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://logo.clearbit.com/${domain}`}
+      alt={make}
+      width={size}
+      height={size}
+      className="shrink-0 rounded-full object-contain"
+      onError={(e) => {
+        (e.target as HTMLImageElement).style.display = 'none';
+      }}
+    />
+  );
+}
 
 const inputCls =
   'w-full rounded-[10px] border border-[var(--color-bv-border)] bg-white px-3 py-2 text-[13.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]';
@@ -141,6 +232,13 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
 
   // Extra tool panels (suggestions by sign type, JSON import).
   const [toolPanel, setToolPanel] = useState<'recommend' | 'json' | null>(null);
+  const [autoRecommendDismissed, setAutoRecommendDismissed] = useState(false);
+
+  // Sales representative (defaults to the signed-in user).
+  const [salesRepId, setSalesRepId] = useState(props.currentUserId);
+
+  // Vehicle-wrap make filter (manufacturer dropdown with logos).
+  const [wrapMake, setWrapMake] = useState('');
 
   const [state, formAction, pending] = useActionState<GuidedEstimateState, FormData>(
     createGuidedEstimateAction,
@@ -185,15 +283,14 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
         : props.bundles,
     [props.bundles, filterText]
   );
-  const filteredWraps = useMemo(
-    () =>
-      filterText
-        ? fuzzySearch(filterText, props.vehicleWraps, (w) => `${w.name} ${w.coverage}`, {
-            limit: 30,
-          })
-        : props.vehicleWraps.slice(0, 30),
-    [props.vehicleWraps, filterText]
-  );
+  const filteredWraps = useMemo(() => {
+    const pool = wrapMake
+      ? props.vehicleWraps.filter((w) => wrapMakeOf(w.name) === wrapMake)
+      : props.vehicleWraps;
+    return filterText
+      ? fuzzySearch(filterText, pool, (w) => `${w.name} ${w.coverage}`, { limit: 40 })
+      : pool.slice(0, 40);
+  }, [props.vehicleWraps, filterText, wrapMake]);
 
   // Which Sheet materials are already on the estimate (for recommendations).
   const addedMaterialKeys = useMemo(() => {
@@ -203,6 +300,35 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     }
     return keys;
   }, [cards]);
+
+  // AI sign-type detection from the job name (deterministic fuzzy match
+  // against the Sheet's recommendation sign types) with a confidence %.
+  const detectedSign = useMemo(() => {
+    const t = title.trim();
+    if (t.length < 3) return null;
+    let best: { signType: string; score: number } | null = null;
+    for (const st of Array.from(new Set(props.recommendations.map((r) => r.signType)))) {
+      const score = fuzzyScore(t, st);
+      if (!best || score > best.score) best = { signType: st, score };
+    }
+    return best && best.score >= 0.5
+      ? { signType: best.signType, confidence: Math.min(99, Math.round(best.score * 100)) }
+      : null;
+  }, [title, props.recommendations]);
+
+  const autoRecommendOpen =
+    detectedSign != null && !autoRecommendDismissed && toolPanel === null;
+  const recommendOpen = toolPanel === 'recommend' || autoRecommendOpen;
+
+  // Vehicle-wrap make list parsed from the Sheet's original vehicle names.
+  const wrapMakes = useMemo(() => {
+    const makes = new Map<string, number>();
+    for (const w of props.vehicleWraps) {
+      const make = wrapMakeOf(w.name);
+      makes.set(make, (makes.get(make) ?? 0) + 1);
+    }
+    return Array.from(makes.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [props.vehicleWraps]);
 
   function addCard(card: Omit<GuidedCard, 'uid'>) {
     setCards((prev) => [...prev, { ...card, uid: nextUid++ }]);
@@ -423,6 +549,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
       clientId: clientId === '__new__' || clientId === '' ? null : clientId,
       newClientName: clientId === '__new__' ? newClientName : null,
       markupPercent: Number(markupPercent) || 0,
+      salesRepId: salesRepId || null,
       intent,
       lines: cards.flatMap((c) => c.rows),
     });
@@ -441,7 +568,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
       <input type="hidden" name="payload" id="guided-payload" />
 
       {/* meta */}
-      <section className={`${cardCls} grid gap-4 p-5 md:grid-cols-[2fr_1.6fr_0.7fr]`}>
+      <section className={`${cardCls} grid gap-4 p-5 md:grid-cols-[2fr_1.6fr_0.6fr_1fr]`}>
         <label className="block">
           <span className="mb-1.5 block text-[10.5px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-text)] opacity-75">
             Job name
@@ -490,6 +617,22 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
             value={markupPercent}
             onChange={(e) => setMarkupPercent(Number(e.target.value))}
           />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[10.5px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-text)] opacity-75">
+            Sales rep
+          </span>
+          <select
+            className={inputCls}
+            value={salesRepId}
+            onChange={(e) => setSalesRepId(e.target.value)}
+          >
+            {props.salesReps.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
         </label>
       </section>
 
@@ -621,18 +764,47 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                   {label}
                 </button>
               ))}
-              <input
-                className={`${inputCls} ml-auto max-w-xs`}
-                placeholder="Search — misspellings okay…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              {readyTab === 'wraps' ? (
+                <div className="ml-auto flex items-center gap-2">
+                  {wrapMake ? <MakeLogo make={wrapMake} size={22} /> : null}
+                  <select
+                    className={`${inputCls} w-44`}
+                    value={wrapMake}
+                    onChange={(e) => setWrapMake(e.target.value)}
+                    aria-label="Filter by manufacturer"
+                  >
+                    <option value="">All makes</option>
+                    {wrapMakes.map(([make, count]) => (
+                      <option key={make} value={make}>
+                        {make} · {count}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={`${inputCls} max-w-xs`}
+                    placeholder="Search — misspellings okay…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <input
+                  className={`${inputCls} ml-auto max-w-xs`}
+                  placeholder="Search — misspellings okay…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              )}
             </div>
 
             <div className="mt-3 max-h-80 divide-y divide-[var(--color-bv-border)] overflow-y-auto">
               {readyTab === 'materials'
                 ? filteredMaterials.map((m) => (
-                    <div key={m.key} className="flex items-center gap-3 py-2.5">
+                    <div
+                      key={m.key}
+                      className="flex cursor-pointer items-center gap-3 rounded-[8px] px-1 py-2.5 hover:bg-[var(--color-bv-bg)]"
+                      onClick={() => addMaterial(m)}
+                    >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
                           {m.name}
@@ -652,15 +824,17 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                           </div>
                         ) : null}
                       </div>
-                      <button type="button" className={btnDark} onClick={() => addMaterial(m)}>
-                        + Add
-                      </button>
+                      <span className={`${btnDark} pointer-events-none`}>+ Add</span>
                     </div>
                   ))
                 : null}
               {readyTab === 'bundles'
                 ? filteredBundles.map((b) => (
-                    <div key={b.id} className="flex items-center gap-3 py-2.5">
+                    <div
+                      key={b.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-[8px] px-1 py-2.5 hover:bg-[var(--color-bv-bg)]"
+                      onClick={() => addBundle(b)}
+                    >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
                           {b.name}
@@ -670,15 +844,18 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                           {b.shopHours > 0 ? ` · ${b.shopHours} shop hr` : ''}
                         </div>
                       </div>
-                      <button type="button" className={btnDark} onClick={() => addBundle(b)}>
-                        + Add bundle
-                      </button>
+                      <span className={`${btnDark} pointer-events-none`}>+ Add bundle</span>
                     </div>
                   ))
                 : null}
               {readyTab === 'wraps'
                 ? filteredWraps.map((w) => (
-                    <div key={w.id} className="flex items-center gap-3 py-2.5">
+                    <div
+                      key={w.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-[8px] px-1 py-2.5 hover:bg-[var(--color-bv-bg)]"
+                      onClick={() => addWrap(w)}
+                    >
+                      <MakeLogo make={wrapMakeOf(w.name)} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
                           {w.name}
@@ -691,9 +868,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                       <div className="text-[13px] font-bold text-[var(--color-bv-text)]">
                         {formatMoney(w.priceCents)}
                       </div>
-                      <button type="button" className={btnDark} onClick={() => addWrap(w)}>
-                        + Add wrap
-                      </button>
+                      <span className={`${btnDark} pointer-events-none`}>+ Add wrap</span>
                     </div>
                   ))
                 : null}
@@ -791,14 +966,24 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setToolPanel(toolPanel === 'recommend' ? null : 'recommend')}
+            onClick={() => {
+              if (autoRecommendOpen) {
+                setAutoRecommendDismissed(true);
+              } else if (toolPanel === 'recommend') {
+                setToolPanel(null);
+                setAutoRecommendDismissed(true);
+              } else {
+                setToolPanel('recommend');
+              }
+            }}
             className={`rounded-full px-4 py-1.5 text-[11.5px] font-bold ${
-              toolPanel === 'recommend'
+              recommendOpen
                 ? 'bg-[var(--color-bv-accent)] text-white'
                 : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
             }`}
           >
             ✦ Suggested materials by sign type
+            {detectedSign ? ` · ${detectedSign.signType} ${detectedSign.confidence}%` : ''}
           </button>
           <button
             type="button"
@@ -813,13 +998,15 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
           </button>
         </div>
 
-        {toolPanel === 'recommend' ? (
+        {recommendOpen ? (
           <RecommendationsPanel
+            key={detectedSign?.signType ?? 'manual'}
             recommendations={props.recommendations}
             materials={props.materials}
             addedKeys={addedMaterialKeys}
             onAdd={addRecommendedMaterial}
             onRemove={removeMaterialByKey}
+            detected={detectedSign}
           />
         ) : null}
 

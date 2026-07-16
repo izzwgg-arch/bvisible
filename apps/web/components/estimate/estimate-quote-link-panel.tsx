@@ -236,7 +236,7 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
               type="button"
               disabled={pending}
               onClick={runIssue}
-              className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,90,243,0.6)] transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,90,243,0.6)] transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
             >
               <IconLink width={15} height={15} />
               Generate public link
@@ -253,7 +253,7 @@ export function EstimateQuoteLinkPanel(props: EstimateQuoteLinkPanelProps) {
                   : undefined
               }
               onClick={runIssue}
-              className="inline-flex items-center justify-center rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-[10px] bg-blue-600 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60"
             >
               Regenerate link
             </button>

@@ -133,7 +133,7 @@ export function OcrQueueTable({ rows, nowIso }: { rows: OcrQueueRow[]; nowIso: s
           ))}
         </tbody>
       </table>
-      <p className="border-t border-slate-100 bg-gradient-to-r from-blue-50/70 to-cyan-50/60 px-3 py-2 text-[10.5px] text-slate-500">
+      <p className="border-t border-slate-100 bg-blue-50/70 px-3 py-2 text-[10.5px] text-slate-500">
         Tip: focus a row link, then <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd>{' '}
         to move · Shift+click opens review
       </p>

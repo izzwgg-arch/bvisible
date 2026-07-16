@@ -53,6 +53,22 @@ function tokenScore(queryToken: string, hayTokens: string[]): number {
   return best;
 }
 
+/// Score a single query/text pair (0–1). Used for sign-type detection
+/// confidence in the estimate builder.
+export function fuzzyScore(query: string, text: string): number {
+  const q = normalize(query);
+  const t = normalize(text);
+  if (!q || !t) return 0;
+  if (q.includes(t) || t.includes(q)) return 0.98;
+  const tTokens = t.split(' ');
+  const qTokens = q.split(' ').filter(Boolean);
+  // Score the TEXT's tokens against the query (how much of the sign type
+  // appears in the job name), so long job names don't dilute the match.
+  let sum = 0;
+  for (const tt of tTokens) sum += tokenScore(tt, qTokens);
+  return tTokens.length > 0 ? sum / tTokens.length : 0;
+}
+
 /// Fuzzy-match a query against candidates. `haystack(item)` returns the
 /// searchable text; `aliases` maps misspelling → canonical text appended
 /// to the query when it matches. Returns candidates scoring above the

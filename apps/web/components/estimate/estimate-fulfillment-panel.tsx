@@ -116,7 +116,7 @@ export function EstimateFulfillmentPanel(props: {
       ) : null}
 
       {showInvoiceCta ? (
-        <div className="mt-4 overflow-hidden rounded-[14px] border border-indigo-200/70 bg-gradient-to-br from-indigo-50 to-blue-50 px-4 py-3.5">
+        <div className="mt-4 overflow-hidden rounded-[14px] border border-indigo-200/70 bg-indigo-50 px-4 py-3.5">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-indigo-900">
             <IconReceipt width={16} height={16} />
             Bill the customer
@@ -140,7 +140,7 @@ export function EstimateFulfillmentPanel(props: {
           </Link>
           <Link
             href="#estimate-create-po"
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,90,243,0.6)] transition hover:from-blue-500 hover:to-indigo-500 sm:flex-none"
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-blue-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(47,90,243,0.6)] transition hover:from-blue-500 hover:to-indigo-500 sm:flex-none"
           >
             Create purchase order from estimate
             <IconArrowRight width={15} height={15} />
@@ -158,7 +158,7 @@ export function EstimateFulfillmentPanel(props: {
           </Link>
           <Link
             href="#estimate-create-po"
-            className="inline-flex items-center justify-center rounded-[10px] bg-gradient-to-br from-blue-600 to-indigo-600 px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm transition hover:from-blue-500 hover:to-indigo-500"
+            className="inline-flex items-center justify-center rounded-[10px] bg-blue-600 px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm transition hover:from-blue-500 hover:to-indigo-500"
           >
             Create another PO from estimate
           </Link>

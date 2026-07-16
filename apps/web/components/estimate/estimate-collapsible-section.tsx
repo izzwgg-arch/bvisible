@@ -18,7 +18,7 @@ export function EstimateCollapsibleSection({
       open={defaultOpen}
       className="group overflow-hidden rounded-[26px] border border-white/80 bg-white/90 shadow-[0_22px_64px_-38px_rgba(15,23,42,0.36)] backdrop-blur-xl"
     >
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-gradient-to-br from-white to-blue-50/45 px-6 py-5 marker:content-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-white px-6 py-5 marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-3 text-[15px] font-bold tracking-tight text-slate-950">
           <span
             aria-hidden

@@ -470,7 +470,7 @@ function MetricCard({
   }[tone];
 
   return (
-    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+    <div className={`rounded-[18px] border border-white/80 px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
       <p className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</p>
       <p className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</p>
     </div>

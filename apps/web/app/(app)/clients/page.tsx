@@ -281,7 +281,7 @@ function CustomerStat({ label, value, detail, tone }: { label: string; value: st
     violet: 'from-violet-600/10 to-fuchsia-500/10 text-violet-700 ring-violet-500/15',
   }[tone];
   return (
-    <div className={`rounded-[18px] border border-white/80 bg-gradient-to-br px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
+    <div className={`rounded-[18px] border border-white/80 px-4 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 backdrop-blur-xl ${toneClass}`}>
       <div className="text-[10px] font-black uppercase tracking-[0.13em] opacity-70">{label}</div>
       <div className="mt-2 text-[20px] font-black leading-none tracking-[-0.02em]">{value}</div>
       <p className="mt-2 text-[11.5px] font-semibold leading-snug opacity-70">{detail}</p>

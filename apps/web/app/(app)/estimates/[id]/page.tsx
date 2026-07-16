@@ -35,6 +35,12 @@ export default async function EstimateDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
+  const tenantUsers = await prisma.user.findMany({
+    where: { tenantId: me.tenantId, disabledAt: null },
+    orderBy: [{ name: 'asc' }],
+    select: { id: true, name: true, email: true },
+  });
+
   const [
     estimate,
     machines,
@@ -60,6 +66,7 @@ export default async function EstimateDetailPage({
         designFlatCents: true,
         subtotalCostCents: true,
         finalPriceCents: true,
+        salesRepId: true,
         client: { select: { id: true, companyName: true, contactName: true, email: true, phone: true } },
         vehicle: {
           select: {
@@ -301,7 +308,9 @@ export default async function EstimateDetailPage({
       quoteSent: quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT,
       hasInvoice: linkedInvoiceRow != null,
       invoicePaid: linkedInvoiceRow?.paidAt != null,
+      salesRepId: estimate.salesRepId,
     },
+    salesReps: tenantUsers.map((u) => ({ id: u.id, name: u.name ?? u.email })),
     estimateVehicle: estimate.vehicle
       ? {
           id: estimate.vehicle.id,
@@ -455,7 +464,7 @@ function WorkflowTabPreview({
 }) {
   return (
     <div className="grid min-h-[220px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm md:grid-cols-[1fr_1fr]">
-      <div className="border-b border-slate-100 bg-gradient-to-br from-blue-50 via-white to-white p-5 md:border-b-0 md:border-r">
+      <div className="border-b border-slate-100 bg-blue-50 p-5 md:border-b-0 md:border-r">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-600">Recommended next step</p>
         <div className="mt-4 flex items-start gap-4">
           <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-100">
@@ -468,7 +477,7 @@ function WorkflowTabPreview({
             </p>
             <Link
               href={primaryHref as never}
-              className="mt-4 inline-flex items-center justify-center rounded-[12px] bg-gradient-to-br from-blue-600 to-indigo-600 px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_12px_24px_-14px_rgba(37,99,235,0.8)] transition hover:-translate-y-0.5 hover:from-blue-500 hover:to-indigo-500"
+              className="mt-4 inline-flex items-center justify-center rounded-[12px] bg-blue-600 px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[0_12px_24px_-14px_rgba(37,99,235,0.8)] transition hover:-translate-y-0.5 hover:from-blue-500 hover:to-indigo-500"
             >
               {primaryLabel}
             </Link>

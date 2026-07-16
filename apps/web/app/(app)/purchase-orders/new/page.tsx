@@ -50,7 +50,7 @@ export default async function NewPurchaseOrderPage({
       />
       <div className="grid min-w-0 gap-5 min-[1500px]:grid-cols-[minmax(0,1fr)_340px]">
         <section className="overflow-hidden rounded-[24px] border border-white/80 bg-white/90 shadow-[0_24px_70px_rgba(15,23,42,0.10)] backdrop-blur-xl">
-          <div className="border-b border-slate-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5">
+          <div className="border-b border-slate-100 bg-blue-50 px-6 py-5">
             <div className="inline-flex rounded-full border border-blue-100 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700">
               Procurement setup
             </div>

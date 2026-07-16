@@ -333,7 +333,7 @@ function CatalogThumb({ name, index }: { name: string; index: number }) {
     'from-emerald-300 via-orange-300 to-violet-400',
   ];
   return (
-    <div className={`relative h-[74px] overflow-hidden rounded-[10px] bg-gradient-to-br ${palette[index % palette.length]}`} title={name}>
+    <div className={`relative h-[74px] overflow-hidden rounded-[10px] ${palette[index % palette.length]}`} title={name}>
       <div className="absolute inset-x-3 top-4 h-3 rotate-[-18deg] rounded-full bg-white/35" />
       <div className="absolute inset-x-4 bottom-4 h-4 rotate-[-18deg] rounded-full bg-black/20" />
     </div>

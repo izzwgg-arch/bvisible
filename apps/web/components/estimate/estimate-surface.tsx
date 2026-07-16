@@ -80,7 +80,7 @@ export function IconBadge({
   return (
     <span
       aria-hidden
-      className={`grid h-7 w-7 shrink-0 place-items-center rounded-[7px] bg-gradient-to-br ring-1 ring-inset ${TONE_BADGE[tone] ?? TONE_BADGE.blue}`}
+      className={`grid h-7 w-7 shrink-0 place-items-center rounded-[7px] ring-1 ring-inset ${TONE_BADGE[tone] ?? TONE_BADGE.blue}`}
     >
       {children}
     </span>

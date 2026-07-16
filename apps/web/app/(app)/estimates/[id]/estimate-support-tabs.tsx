@@ -54,7 +54,7 @@ export function EstimateSupportTabs({
 
   return (
     <section className="overflow-hidden rounded-[22px] border border-white/80 bg-white/95 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_46px_-24px_rgba(15,23,42,0.26)] ring-1 ring-slate-900/[0.03]">
-      <div className="grid grid-cols-2 gap-1.5 overflow-visible border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-3 py-2.5 2xl:grid-cols-3">
+      <div className="grid grid-cols-2 gap-1.5 overflow-visible border-b border-slate-100 bg-white px-3 py-2.5 2xl:grid-cols-3">
         {TAB_COPY.map((tab) => {
           const selected = active === tab.id;
           const count = countFor(tab.id);

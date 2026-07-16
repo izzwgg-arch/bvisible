@@ -24,7 +24,21 @@ const shopOrderLineSchema = z.object({
   unitPriceCents: z.number().int().min(0).max(1_000_000_000),
   catalogId: z.string().trim().max(200).default(''),
   vendorSku: z.string().trim().max(200).default(''),
+  productUrl: z.string().trim().max(1000).default(''),
 });
+
+/// Retail vendors are never emailed a PO — the office reviews a cart +
+/// draft email instead, and places the order manually.
+const RETAIL_VENDOR_RE = /amazon|home\s*depot|walmart|lowe'?s/i;
+const ASIN_RE = /^B0[A-Z0-9]{8}$/i;
+
+export interface RetailCartItem {
+  name: string;
+  qty: number;
+  url: string;
+  sku: string;
+  unitPriceCents: number;
+}
 
 const shopOrderSchema = z.object({
   notes: z.string().trim().max(2000).default(''),
@@ -40,6 +54,14 @@ export interface ShopOrderResult {
     vendor: string;
     totalCents: number;
     emailStatus: 'SENT' | 'NOT_SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED';
+    /// Present for Amazon / Home Depot / Walmart / Lowe's POs: cart data
+    /// for office review. Nothing is ordered automatically.
+    retail?: {
+      vendor: string;
+      /// Amazon add-to-cart URL when every SKU is an ASIN; otherwise null.
+      cartUrl: string | null;
+      items: RetailCartItem[];
+    };
   }>;
 }
 
@@ -146,13 +168,35 @@ export async function createShopOrderAction(
     });
 
     // Nothing is emailed at creation time. Every PO is saved as a DRAFT
-    // for review; the operator sends each one explicitly with Send PO.
+    // for review; the operator sends each one explicitly with Send PO —
+    // and retail vendors (Amazon/Home Depot/…) get a cart + office draft
+    // email instead of a vendor email.
+    let retail: NonNullable<ShopOrderResult['created']>[number]['retail'];
+    if (RETAIL_VENDOR_RE.test(vendorName)) {
+      const items: RetailCartItem[] = lines.map((l) => ({
+        name: l.detail ? `${l.name} — ${l.detail}` : l.name,
+        qty: Math.max(1, Math.round(l.qty)),
+        url: l.productUrl,
+        sku: l.vendorSku,
+        unitPriceCents: l.unitPriceCents,
+      }));
+      let cartUrl: string | null = null;
+      if (/amazon/i.test(vendorName) && items.every((i) => ASIN_RE.test(i.sku))) {
+        const params = items
+          .map((i, idx) => `ASIN.${idx + 1}=${encodeURIComponent(i.sku)}&Quantity.${idx + 1}=${i.qty}`)
+          .join('&');
+        cartUrl = `https://www.amazon.com/gp/aws/cart/add.html?${params}`;
+      }
+      retail = { vendor: vendor.name, cartUrl, items };
+    }
+
     created.push({
       id: po.id,
       number: po.number,
       vendor: vendor.name,
       totalCents,
       emailStatus: vendor.email || vendor.emails[0] ? 'NOT_SENT' : 'NO_VENDOR_EMAIL',
+      retail,
     });
   }
 

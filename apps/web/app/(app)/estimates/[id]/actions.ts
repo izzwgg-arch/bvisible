@@ -561,6 +561,47 @@ export async function updateEstimateClientAction(payload: {
   return { error: null };
 }
 
+export async function updateEstimateSalesRepAction(payload: {
+  estimateId: string;
+  salesRepId: string;
+}): Promise<{ error: string | null }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+  const estimateId = payload.estimateId?.trim();
+  const salesRepId = payload.salesRepId?.trim();
+  if (!estimateId || !salesRepId) return { error: 'Estimate and sales rep are required.' };
+
+  const [estimate, rep] = await Promise.all([
+    prisma.estimate.findFirst({
+      where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
+      select: { id: true, number: true },
+    }),
+    prisma.user.findFirst({
+      where: { id: salesRepId, tenantId: me.tenantId, disabledAt: null },
+      select: { id: true, name: true, email: true },
+    }),
+  ]);
+  if (!estimate) return { error: 'Estimate not found.' };
+  if (!rep) return { error: 'That user is not available as a sales rep.' };
+
+  await prisma.estimate.update({
+    where: { id: estimate.id, tenantId: me.tenantId },
+    data: { salesRepId: rep.id },
+  });
+  await writeAuditLog({
+    action: 'estimate_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: estimate.number, salesRepId: rep.id, field: 'salesRep' },
+  });
+  revalidatePath(`/estimates/${estimate.id}`);
+  return { error: null };
+}
+
 export async function createClientAndAttachEstimateAction(payload: {
   estimateId: string;
   companyName: string;

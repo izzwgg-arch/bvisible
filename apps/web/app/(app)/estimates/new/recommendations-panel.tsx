@@ -25,18 +25,22 @@ export function RecommendationsPanel({
   addedKeys,
   onAdd,
   onRemove,
+  detected,
 }: {
   recommendations: BuilderRecommendation[];
   materials: BuilderMaterial[];
   addedKeys: ReadonlySet<string>;
   onAdd: (material: BuilderMaterial, reason: string) => void;
   onRemove: (materialKey: string) => void;
+  /// Auto-detected from the job name (AI suggestion) with confidence 0–100.
+  detected?: { signType: string; confidence: number } | null;
 }) {
   const signTypes = useMemo(
     () => Array.from(new Set(recommendations.map((r) => r.signType))),
     [recommendations]
   );
-  const [signType, setSignType] = useState('');
+  const [signType, setSignType] = useState(detected?.signType ?? '');
+  const showingDetected = detected != null && signType === detected.signType;
 
   const resolved = useMemo(() => {
     if (!signType) return [];
@@ -66,8 +70,13 @@ export function RecommendationsPanel({
           ✦
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-bold text-[var(--color-bv-text)]">
+          <div className="flex flex-wrap items-center gap-2 text-[13.5px] font-bold text-[var(--color-bv-text)]">
             Suggested materials by sign type
+            {showingDetected ? (
+              <span className="rounded-full bg-[#fdeee1] px-2.5 py-0.5 text-[10px] font-bold text-[#b05c1e]">
+                AI detected from job name · {detected.confidence}% confidence
+              </span>
+            ) : null}
           </div>
           <div className="text-[11px] text-[var(--color-bv-muted)]">
             What this job normally needs — add or remove anything.
@@ -92,7 +101,13 @@ export function RecommendationsPanel({
           {resolved.map(({ rec, material }, i) => {
             const added = material ? addedKeys.has(material.key) : false;
             return (
-              <div key={`${rec.preferredItem}-${i}`} className="flex items-center gap-3 py-2.5">
+              <div
+                key={`${rec.preferredItem}-${i}`}
+                className={`flex items-center gap-3 py-2.5 ${material && !added ? 'cursor-pointer rounded-[8px] hover:bg-[var(--color-bv-bg)]' : ''}`}
+                onClick={() => {
+                  if (material && !added) onAdd(material, rec.reason);
+                }}
+              >
                 <span
                   className={`rounded-full px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.08em] ${
                     rec.priority === 'Required'
@@ -121,18 +136,17 @@ export function RecommendationsPanel({
                     <button
                       type="button"
                       className="rounded-[9px] border border-[var(--color-bv-border)] px-3 py-1.5 text-[11.5px] font-bold text-[var(--color-bv-muted)] hover:text-red-600"
-                      onClick={() => onRemove(material.key)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(material.key);
+                      }}
                     >
                       Added ✓ — remove
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      className="rounded-[9px] bg-[var(--color-bv-text)] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95"
-                      onClick={() => onAdd(material, rec.reason)}
-                    >
+                    <span className="pointer-events-none rounded-[9px] bg-[var(--color-bv-text)] px-3.5 py-1.5 text-[11.5px] font-bold text-white">
                       + Add
-                    </button>
+                    </span>
                   )
                 ) : null}
               </div>

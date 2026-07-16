@@ -56,7 +56,10 @@ export interface EditorBootstrap {
     quoteSent: boolean;
     hasInvoice: boolean;
     invoicePaid: boolean;
+    salesRepId: string | null;
   };
+  /// Active tenant users selectable as the sales representative.
+  salesReps: ReadonlyArray<{ id: string; name: string }>;
   estimateVehicle: {
     id: string;
     trimId: string | null;
@@ -710,7 +713,7 @@ export function EstimateEditor({
       ref={rootRef}
       className="w-full bg-[radial-gradient(circle_at_top_left,rgba(242,135,68,0.16),transparent_34%),linear-gradient(135deg,#fffaf4_0%,#f8f4ef_55%,#eef5f9_100%)] px-6 pb-7"
     >
-      <div className="-mx-6 border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-[#fffdfa] to-[#eef5f9] shadow-[0_10px_28px_rgba(28,73,114,0.06)]">
+      <div className="-mx-6 border-b border-[#eadfd3] bg-[#fff4e8] shadow-[0_10px_28px_rgba(28,73,114,0.06)]">
         <EstimateContextStrip
           client={bootstrap.estimate.client}
           title={state.title}

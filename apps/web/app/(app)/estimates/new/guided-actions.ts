@@ -34,6 +34,7 @@ const guidedEstimateSchema = z.object({
   clientId: z.string().trim().min(1).nullish(),
   newClientName: z.string().trim().max(200).nullish(),
   markupPercent: z.number().min(0).max(10000),
+  salesRepId: z.string().trim().min(1).nullish(),
   intent: z.enum(['save', 'custom-build']),
   lines: z.array(guidedLineSchema).max(200),
 });
@@ -103,6 +104,17 @@ export async function createGuidedEstimateAction(
     }
   }
 
+  // Validate the sales rep belongs to this tenant (defaults to creator).
+  let salesRepId: string | null = data.salesRepId ?? null;
+  if (salesRepId) {
+    const rep = await prisma.user.findFirst({
+      where: { id: salesRepId, tenantId: me.tenantId },
+      select: { id: true },
+    });
+    if (!rep) salesRepId = null;
+  }
+  if (!salesRepId) salesRepId = me.id;
+
   // Resolve Sheet-synced catalog + machine references in bulk.
   const sheetKeys = Array.from(
     new Set(data.lines.map((l) => l.sheetKey).filter((k): k is string => !!k))
@@ -160,6 +172,7 @@ export async function createGuidedEstimateAction(
         subtotalCostCents: computed.subtotalCostCents,
         finalPriceCents: computed.finalPriceCents,
         createdById: me.id,
+        salesRepId,
       },
       select: { id: true, number: true },
     });

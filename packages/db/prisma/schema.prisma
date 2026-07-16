@@ -488,6 +488,7 @@ model User {
   resetTokens                     PasswordResetToken[]
   invitesIssued                   UserInvite[]           @relation("UserInviteInviter")
   estimatesCreated                Estimate[]             @relation("EstimateCreator")
+  estimatesAsSalesRep             Estimate[]             @relation("EstimateSalesRep")
   purchaseOrdersCreated           PurchaseOrder[]        @relation("POCreator")
   poAttachmentsUploaded           POAttachment[]         @relation("POAttachmentUploader")
   poEventsAuthored                POEvent[]              @relation("POEventActor")
@@ -712,6 +713,9 @@ model Estimate {
   subtotalCostCents Int            @default(0)
   finalPriceCents   Int            @default(0)
   createdById       String
+  /// Sales representative for this estimate (defaults to the creator in
+  /// the guided flow; changeable on the estimate).
+  salesRepId        String?
   deletedAt         DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -719,6 +723,7 @@ model Estimate {
   tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client         Client                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
   createdBy      User                    @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  salesRep       User?                   @relation("EstimateSalesRep", fields: [salesRepId], references: [id], onDelete: SetNull)
   lines          EstimateLineItem[]
   purchaseOrders PurchaseOrder[]
   quoteLinks     EstimateQuoteLink[]

@@ -28,6 +28,7 @@ export default async function ShopOrderPage() {
     vendor: item.vendor,
     vendorPrices: item.vendorPrices,
     vendorSku: item.vendorSku,
+    productUrl: item.productUrl,
   }));
 
   const vendorEmails: Record<string, string> = {};

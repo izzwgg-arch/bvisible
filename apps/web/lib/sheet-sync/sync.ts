@@ -154,20 +154,49 @@ export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
     );
   }
 
-  // --- Machine hourly rates by exact name (4 rows — upserts are fine).
-  await Promise.all(
-    data.machines.map((machine) =>
-      prisma.machine.upsert({
-        where: { tenantId_name: { tenantId, name: machine.name } },
-        update: { ratePerHourCents: machine.ratePerHourCents, isActive: true },
-        create: {
-          tenantId,
-          name: machine.name,
-          ratePerHourCents: machine.ratePerHourCents,
-        },
-      })
-    )
-  );
+  // --- Machine hourly rates, matched by NORMALIZED name so punctuation
+  // variants never duplicate ("Colex Sharp Cut Cutter — CNC" vs "-CNC").
+  // The row whose name exactly matches the Sheet wins; other active rows
+  // with the same normalized name are deactivated.
+  const normalizeMachine = (name: string) =>
+    name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const allMachines = await prisma.machine.findMany({
+    where: { tenantId },
+    select: { id: true, name: true, isActive: true, ratePerHourCents: true },
+  });
+  for (const machine of data.machines) {
+    const norm = normalizeMachine(machine.name);
+    const matches = allMachines.filter((m) => normalizeMachine(m.name) === norm);
+    const exact = matches.find((m) => m.name === machine.name);
+    const keeper = exact ?? matches[0];
+    if (keeper) {
+      if (
+        keeper.name !== machine.name ||
+        keeper.ratePerHourCents !== machine.ratePerHourCents ||
+        !keeper.isActive
+      ) {
+        // Renaming is safe: any exact-name duplicate IS the keeper.
+        await prisma.machine.update({
+          where: { id: keeper.id },
+          data:
+            exact || matches.length === 1
+              ? { name: machine.name, ratePerHourCents: machine.ratePerHourCents, isActive: true }
+              : { ratePerHourCents: machine.ratePerHourCents, isActive: true },
+        });
+      }
+      const dupes = matches.filter((m) => m.id !== keeper.id && m.isActive);
+      if (dupes.length > 0) {
+        await prisma.machine.updateMany({
+          where: { id: { in: dupes.map((d) => d.id) } },
+          data: { isActive: false },
+        });
+      }
+    } else {
+      await prisma.machine.create({
+        data: { tenantId, name: machine.name, ratePerHourCents: machine.ratePerHourCents },
+      });
+    }
+  }
 
   // --- Vendors from the directory (order emails for the shop-order flow).
   const CHUNK_V = 15;

@@ -375,7 +375,7 @@ export function LineGrid({
 
   const content = (
     <div>
-      <div className="flex items-start justify-between gap-3 border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-white to-[#eef5f9] px-4 py-3">
+      <div className="flex items-start justify-between gap-3 border-b border-[#eadfd3] bg-[#fff4e8] px-4 py-3">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-[15px] font-black tracking-[-0.01em] text-[#1C4972]">Line Items</h2>
@@ -391,7 +391,7 @@ export function LineGrid({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[920px] text-[12px]">
           <thead>
-            <tr className="border-b border-[#eadfd3] bg-gradient-to-r from-[#fff4e8] via-[#fffdfa] to-[#eef5f9] text-left text-[9px] font-black uppercase tracking-[0.11em] text-[#1C4972]/70 shadow-[inset_0_-1px_0_rgba(242,135,68,0.14)]">
+            <tr className="border-b border-[#eadfd3] bg-[#fff4e8] text-left text-[9px] font-black uppercase tracking-[0.11em] text-[#1C4972]/70 shadow-[inset_0_-1px_0_rgba(242,135,68,0.14)]">
               <th className="w-[30px] px-2 py-2">#</th>
               <th className="w-[31%] px-2 py-2">Item</th>
               <th className="w-[74px] px-2 py-2">Category</th>

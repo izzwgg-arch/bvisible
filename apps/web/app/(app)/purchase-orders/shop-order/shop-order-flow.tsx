@@ -26,6 +26,7 @@ export interface CatalogEntry {
   vendor: string;
   vendorPrices: Array<{ vendor: string; priceCents: number }>;
   vendorSku: string;
+  productUrl: string;
 }
 
 export interface FlowProps {
@@ -44,6 +45,7 @@ interface OrderLine {
   unitPriceCents: number;
   catalogId: string;
   vendorSku: string;
+  productUrl: string;
   vendorOptions: Array<{ vendor: string; priceCents: number }>;
 }
 
@@ -94,6 +96,7 @@ export function ShopOrderFlow(props: FlowProps) {
         unitPriceCents: item.priceCents,
         catalogId: item.id,
         vendorSku: item.vendorSku,
+        productUrl: item.productUrl,
         vendorOptions:
           item.vendorPrices.length > 0
             ? item.vendorPrices
@@ -117,6 +120,7 @@ export function ShopOrderFlow(props: FlowProps) {
         unitPriceCents: priceCents,
         catalogId: '',
         vendorSku: '',
+        productUrl: '',
         vendorOptions: [{ vendor: customVendor.trim(), priceCents }],
       },
     ]);
@@ -154,6 +158,7 @@ export function ShopOrderFlow(props: FlowProps) {
         unitPriceCents: l.unitPriceCents,
         catalogId: l.catalogId,
         vendorSku: l.vendorSku,
+        productUrl: l.productUrl,
       })),
     });
   }
@@ -216,7 +221,11 @@ export function ShopOrderFlow(props: FlowProps) {
       {results.length > 0 ? (
         <div className="mt-3 space-y-2">
           {results.map((item) => (
-            <div key={item.id} className={`${cardCls} flex items-center gap-4 px-4 py-3`}>
+            <div
+              key={item.id}
+              className={`${cardCls} flex cursor-pointer items-center gap-4 px-4 py-3 hover:border-[var(--color-bv-accent)]`}
+              onClick={() => addItem(item)}
+            >
               <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-[#fdeee1] text-[10px] font-bold text-[#b05c1e]">
                 {item.name.slice(0, 2).toUpperCase()}
               </div>
@@ -239,9 +248,7 @@ export function ShopOrderFlow(props: FlowProps) {
                   {item.vendor}
                 </div>
               </div>
-              <button type="button" className={btnDark} onClick={() => addItem(item)}>
-                + Add
-              </button>
+              <span className={`${btnDark} pointer-events-none`}>+ Add</span>
             </div>
           ))}
         </div>
@@ -415,6 +422,25 @@ export function ShopOrderFlow(props: FlowProps) {
 
 /* ---------- review & send: drafts saved; PDF + explicit Send PO per vendor ---------- */
 
+function buildOfficeDraftMailto(
+  poNumber: string,
+  retail: { vendor: string; cartUrl: string | null; items: Array<{ name: string; qty: number; url: string; unitPriceCents: number }> }
+): string {
+  const subject = `Review & place order: ${poNumber} — ${retail.vendor}`;
+  const lines = [
+    `Purchase order ${poNumber} (${retail.vendor}) is ready for review.`,
+    '',
+    ...retail.items.map(
+      (i) =>
+        `• ${i.name} × ${i.qty} @ ${formatMoney(i.unitPriceCents)}${i.url ? `\n  ${i.url}` : ''}`
+    ),
+    '',
+    retail.cartUrl ? `Prefilled cart: ${retail.cartUrl}` : '',
+    'Please review the cart and place the order manually. Nothing has been ordered automatically.',
+  ].filter(Boolean);
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
+}
+
 function ReviewAndSend({
   created,
   smtpConfigured,
@@ -494,24 +520,75 @@ function ReviewAndSend({
                 >
                   Generate PDF
                 </Link>
-                <button
-                  type="button"
-                  className="rounded-[9px] bg-[var(--color-bv-accent)] px-4 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95 disabled:opacity-50"
-                  disabled={
-                    noEmail || !smtpConfigured || s.status === 'sending' || s.status === 'sent'
-                  }
-                  title={
-                    noEmail
-                      ? 'Add a vendor email in the Sheet Vendor Directory first.'
-                      : !smtpConfigured
-                        ? 'Configure SMTP first (Settings → Email test).'
-                        : undefined
-                  }
-                  onClick={() => sendPo(po.id)}
-                >
-                  {s.status === 'sending' ? 'Sending…' : s.status === 'sent' ? 'Sent ✓' : 'Send PO'}
-                </button>
+                {po.retail ? null : (
+                  <button
+                    type="button"
+                    className="rounded-[9px] bg-[var(--color-bv-accent)] px-4 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95 disabled:opacity-50"
+                    disabled={
+                      noEmail || !smtpConfigured || s.status === 'sending' || s.status === 'sent'
+                    }
+                    title={
+                      noEmail
+                        ? 'Add a vendor email in the Sheet Vendor Directory first.'
+                        : !smtpConfigured
+                          ? 'Configure SMTP first (Settings → Email test).'
+                          : undefined
+                    }
+                    onClick={() => sendPo(po.id)}
+                  >
+                    {s.status === 'sending' ? 'Sending…' : s.status === 'sent' ? 'Sent ✓' : 'Send PO'}
+                  </button>
+                )}
               </div>
+
+              {po.retail ? (
+                <div className="mt-3 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-3">
+                  <div className="text-[11.5px] font-bold text-[var(--color-bv-text)]">
+                    {po.retail.vendor} is a retail vendor — review the cart, then the office places
+                    the order. Nothing is ordered automatically.
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {po.retail.cartUrl ? (
+                      <a
+                        href={po.retail.cartUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-[9px] bg-[var(--color-bv-text)] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95"
+                      >
+                        Open Amazon cart ({po.retail.items.length} item
+                        {po.retail.items.length > 1 ? 's' : ''})
+                      </a>
+                    ) : (
+                      po.retail.items
+                        .filter((i) => i.url)
+                        .map((i, idx) => (
+                          <a
+                            key={idx}
+                            href={i.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-[9px] border border-[var(--color-bv-border)] bg-white px-3 py-1.5 text-[11px] font-bold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+                          >
+                            {i.name.slice(0, 34)}
+                            {i.name.length > 34 ? '…' : ''} ↗
+                          </a>
+                        ))
+                    )}
+                    <a
+                      href={buildOfficeDraftMailto(po.number, po.retail)}
+                      className="rounded-[9px] bg-[var(--color-bv-accent)] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95"
+                    >
+                      Draft email for office review
+                    </a>
+                  </div>
+                  {po.retail.items.some((i) => !i.url) ? (
+                    <p className="mt-2 text-[10.5px] text-[var(--color-bv-muted)]">
+                      Some items have no product URL in the Sheet's Vendor Catalog — add one in the
+                      Product URL column to enable direct cart links.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           );
         })}

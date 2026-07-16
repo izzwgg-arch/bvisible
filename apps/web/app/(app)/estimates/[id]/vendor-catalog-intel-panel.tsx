@@ -136,7 +136,7 @@ export function VendorCatalogIntelPanel({
       <div className="flex flex-col items-center gap-2 text-center">
         <span
           aria-hidden
-          className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/15"
+          className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/15"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 3v18h18" />
