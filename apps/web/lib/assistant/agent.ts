@@ -16,8 +16,28 @@ import { writeAuditLog } from '@/lib/auth/audit';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
-export function assistantConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY?.trim());
+import { openSecret } from '@/lib/email-ingest/crypto';
+
+/// DB-stored key (Assistant settings, encrypted) wins; env is fallback.
+export async function loadAssistantConfig(
+  tenantId: string
+): Promise<{ apiKey: string | null; model: string }> {
+  const row = await prisma.assistantSetting.findUnique({ where: { tenantId } });
+  let apiKey: string | null = null;
+  if (row?.apiKeyCipher) {
+    try {
+      apiKey = openSecret(row.apiKeyCipher);
+    } catch {
+      apiKey = null;
+    }
+  }
+  if (!apiKey) apiKey = process.env.OPENAI_API_KEY?.trim() || null;
+  const model = row?.model?.trim() || process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini';
+  return { apiKey, model };
+}
+
+export async function assistantConfigured(tenantId: string): Promise<boolean> {
+  return Boolean((await loadAssistantConfig(tenantId)).apiKey);
 }
 
 const SYSTEM_PROMPT = `You are the B Visible business assistant for B Visible Signs & Printing (sign shop, Harriman NY). You help the operator with estimating, purchasing insight, and day-to-day business questions.
@@ -301,11 +321,10 @@ export async function runAssistant(
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
   me: { id: string; tenantId: string }
 ): Promise<AssistantTurn> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const { apiKey, model } = await loadAssistantConfig(me.tenantId);
   if (!apiKey) {
-    return { reply: 'The assistant is not configured yet — add OPENAI_API_KEY to the server environment.', toolEvents: [] };
+    return { reply: 'The assistant is not configured yet — add your OpenAI API key in Assistant settings.', toolEvents: [] };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini';
 
   const messages: Array<Record<string, unknown>> = [
     { role: 'system', content: SYSTEM_PROMPT },

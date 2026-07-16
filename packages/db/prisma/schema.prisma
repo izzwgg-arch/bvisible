@@ -396,6 +396,7 @@ model Tenant {
   vehicleWrapPricing       VehicleWrapPricing[]
   estimateVehicles         EstimateVehicle[]
   sheetPriceOverrides      SheetPriceOverride[]
+  assistantSetting         AssistantSetting?
   operatingRates           TenantOperatingRates?
   sheetSyncState           SheetSyncState?
 
@@ -444,6 +445,21 @@ model TenantOperatingRates {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_operating_rates")
+}
+
+/// AI assistant settings — OpenAI key sealed with AES-256-GCM
+/// (lib/email-ingest/crypto.ts); never returned to the browser.
+model AssistantSetting {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique
+  apiKeyCipher String?  @db.VarChar(2000)
+  model        String   @default("gpt-5-mini") @db.VarChar(80)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("assistant_settings")
 }
 
 /// Cached snapshot of the live Google pricing Sheet ("B Visible Formula").

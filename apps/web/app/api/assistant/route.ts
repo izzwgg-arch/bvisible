@@ -7,9 +7,9 @@ export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const me = await requireTenantId();
-  if (!assistantConfigured()) {
+  if (!(await assistantConfigured(me.tenantId))) {
     return NextResponse.json(
-      { reply: 'Assistant not configured — add OPENAI_API_KEY to the server environment.', toolEvents: [] },
+      { reply: 'Assistant not configured — add your OpenAI API key in Assistant settings.', toolEvents: [] },
       { status: 200 }
     );
   }
