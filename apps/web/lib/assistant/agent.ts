@@ -10,6 +10,7 @@ import { prisma } from '@bvisible/db';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
+import { sheetItemKey } from '@/lib/sheet-sync/types';
 import { loadOverrides, activeMaterialPrice } from '@/lib/sheet-sync/active-price';
 import { nextEstimateNumber } from '@/lib/estimate/number';
 import { writeAuditLog } from '@/lib/auth/audit';
@@ -113,6 +114,7 @@ BUILDING FULL ESTIMATES (draft in the estimate workspace — the default):
 - Build the FULL recipe the way the shop would: structure/face/back materials at real Sheet prices with realistic quantities and sheet counts for the dimensions; for lit signs add LED modules (spaced ~1 per 0.35–0.5 sq ft of lit face), power supplies (~1 per 20–30 modules), low-voltage wire by linear feet, silicone/hardware/glue; machine time on the right machines from get_rates (CNC/router for cutting, flatbed or roll printer for prints); shop labor hours; design units; installation as INSTALL lines (hours × installers at the per-person rate). Start from get_recommendations for the sign type, then add what the description requires.
 - Printed graphics: include printer machine time, and if ink/consumables aren't in the Sheet add a MISC line with a stated cost assumption.
 - ALWAYS pass summaryForOperator with the create_estimate_draft / prefill_estimate call: the full line list with prices, the total, and a short "Assumptions to verify" list (sizes, coverage, counts you estimated). That text IS your final reply — the turn ends the moment the draft is created, with no extra round.
+- On every MATERIAL line, set materialName to the EXACT name from your search_materials results (copy it verbatim). This links the line to the catalog so the operator sees vendors and cheapest prices on the estimate page.
 - Use prefill_estimate only if the operator explicitly asks you to fill in the Create-estimate form without saving anything yet.
 
 EFFICIENCY (critical):
@@ -287,6 +289,11 @@ const TOOL_DEFS = [
                 qty: { type: 'number' },
                 unitCostCents: { type: 'number' },
                 markupExempt: { type: 'boolean' },
+                materialName: {
+                  type: 'string',
+                  description:
+                    'MATERIAL lines: the EXACT material name as returned by search_materials. Links the line to the catalog so vendor + cheapest pricing show on the estimate page.',
+                },
               },
               required: ['kind', 'description', 'qty', 'unitCostCents'],
             },
@@ -463,7 +470,37 @@ async function runTool(
       qtyMilli: Math.max(1, Math.round((Number(l.qty) || 1) * 1000)),
       unitCostCents: Math.max(0, Math.round(Number(l.unitCostCents) || 0)),
       markupExempt: Boolean(l.markupExempt),
+      materialName: String(l.materialName ?? '').trim().slice(0, 400),
     }));
+
+    // Link MATERIAL lines to the shop catalog so the estimate workspace
+    // shows vendor + cheapest pricing for them, exactly like hand-picked
+    // lines. Exact Sheet name (from the model's own search_materials
+    // results) wins; a conservative fuzzy match on the description is the
+    // fallback. Unmatched lines simply stay unlinked.
+    const lineSheetKeys = lines.map((l) => {
+      if (l.kind !== 'MATERIAL') return null;
+      if (l.materialName) {
+        const exactKey = sheetItemKey(l.materialName);
+        if (data.materials.some((m) => m.key === exactKey)) return exactKey;
+      }
+      const best = fuzzySearch(l.materialName || l.description, data.materials, (m) => m.name, {
+        limit: 1,
+        threshold: 0.55,
+      })[0];
+      return best?.key ?? null;
+    });
+    const wantedKeys = Array.from(new Set(lineSheetKeys.filter((k): k is string => k != null)));
+    const catalogRows =
+      wantedKeys.length > 0
+        ? await prisma.shopMaterialItem.findMany({
+            where: { tenantId: me.tenantId, sheetKey: { in: wantedKeys }, isActive: true },
+            select: { id: true, sheetKey: true },
+          })
+        : [];
+    const catalogIdBySheetKey = new Map(
+      catalogRows.filter((r) => r.sheetKey).map((r) => [r.sheetKey!, r.id])
+    );
 
     let client = await prisma.client.findFirst({
       where: { tenantId: me.tenantId, companyName: { equals: customerName, mode: 'insensitive' }, deletedAt: null },
@@ -510,6 +547,7 @@ async function runTool(
           computedCostCents: computed.lineCosts[`l${i}`] ?? 0,
           markupExempt: l.markupExempt,
           sourceKind: 'CUSTOM',
+          catalogItemId: lineSheetKeys[i] ? (catalogIdBySheetKey.get(lineSheetKeys[i]!) ?? null) : null,
         })),
       });
       return created;
@@ -630,9 +668,15 @@ export async function runAssistant(
         messages,
         tools: TOOL_DEFS,
         tool_choice: lastRound ? 'none' : 'auto',
-        // Reasoning models: low effort. Estimate building is structured
-        // tool work — long private chains of thought only add latency.
-        ...(/^(gpt-5|o[0-9])/.test(model) ? { reasoning_effort: 'low' } : {}),
+        // Reasoning models: keep private chain-of-thought at the floor.
+        // Estimate building is structured tool work — long thinking only
+        // adds latency. gpt-5 family supports 'minimal'; o-series' floor
+        // is 'low'.
+        ...(model.startsWith('gpt-5')
+          ? { reasoning_effort: 'minimal' }
+          : /^o\d/.test(model)
+            ? { reasoning_effort: 'low' }
+            : {}),
       })
     );
     if (!apiCall.ok) {
