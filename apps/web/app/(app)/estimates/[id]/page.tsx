@@ -311,6 +311,9 @@ export default async function EstimateDetailPage({
       salesRepId: estimate.salesRepId,
     },
     salesReps: tenantUsers.map((u) => ({ id: u.id, name: u.name ?? u.email })),
+    // Markup / multiplier / design fee edits are reserved for admins;
+    // regular users see the values read-only (server enforces too).
+    canEditPricing: me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN,
     estimateVehicle: estimate.vehicle
       ? {
           id: estimate.vehicle.id,

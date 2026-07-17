@@ -61,6 +61,9 @@ export interface EditorBootstrap {
   };
   /// Active tenant users selectable as the sales representative.
   salesReps: ReadonlyArray<{ id: string; name: string }>;
+  /// True when the signed-in user may change markup / multiplier and the
+  /// design fee (ADMIN or SUPER_ADMIN). The server enforces this too.
+  canEditPricing: boolean;
   estimateVehicle: {
     id: string;
     trimId: string | null;

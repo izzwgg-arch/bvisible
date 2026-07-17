@@ -54,6 +54,7 @@ export async function saveEstimateAction(
       id: true,
       status: true,
       multiplierMilli: true,
+      designFlatCents: true,
       number: true,
       lines: { select: { machineId: true }, take: 0 },
     },
@@ -64,6 +65,20 @@ export async function saveEstimateAction(
   if (existing.status === EstimateStatus.FINALIZED) {
     return {
       error: 'Estimate is finalized. Unfinalize before editing lines or totals.',
+    };
+  }
+
+  // Markup (multiplier) and design fee changes are reserved for admins.
+  // Regular users can still edit lines; the pricing knobs are read-only
+  // for them in the UI and rejected here as the enforcement of record.
+  const isPricingAdmin = me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN;
+  if (
+    !isPricingAdmin &&
+    (data.multiplierMilli !== existing.multiplierMilli ||
+      data.designFlatCents !== existing.designFlatCents)
+  ) {
+    return {
+      error: 'Only an admin can change the markup or design fee on an estimate.',
     };
   }
 
@@ -598,7 +613,11 @@ export async function updateEstimateSalesRepAction(payload: {
     userAgent: ctx.userAgent,
     metadata: { number: estimate.number, salesRepId: rep.id, field: 'salesRep' },
   });
+  // Refresh every surface that renders the representative: the editor,
+  // the customer-facing preview (Rep box on the document), and the list.
   revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath(`/estimates/${estimate.id}/preview`);
+  revalidatePath('/estimates');
   return { error: null };
 }
 

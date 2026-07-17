@@ -82,6 +82,9 @@ export function TotalsPanel(props: TotalsPanelProps) {
   const [vendorChoice, setVendorChoice] = useState<string>('');
 
   const isFinalized = readOnly || bootstrap.estimate.status === EstimateStatus.FINALIZED;
+  // Markup / multiplier / design fee edits are for authorized (admin)
+  // users only — everyone else sees the values read-only.
+  const canEditPricing = !isFinalized && bootstrap.canEditPricing;
   const linkedPos = bootstrap.linkedPos;
   const canStartEstimatePoHandoff =
     bootstrap.estimate.status === EstimateStatus.APPROVED && !isFinalized;
@@ -92,9 +95,6 @@ export function TotalsPanel(props: TotalsPanelProps) {
     ? (designFlatCents / DEFAULT_DESIGN_FEE_CENTS).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
     : '0';
   const profitCents = finalPriceCents - subtotalCostCents;
-  const marginPct =
-    finalPriceCents > 0 ? (profitCents / finalPriceCents) * 100 : null;
-  const marginHealthy = marginPct != null && marginPct >= 50;
   const markupPct = subtotalCostCents > 0 ? (profitCents / subtotalCostCents) * 100 : null;
   const totalHours = Object.values(breakdown).reduce((total, value) => total + (value > 0 ? 1 : 0), 0);
   const showPricing = variant == null || variant === 'pricing';
@@ -119,7 +119,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
             <div className="rounded-[9px] border border-[#F28744]/25 bg-[#fff0e5] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-black text-[#1C4972]">Design fee</span>
-                {isFinalized ? (
+                {!canEditPricing ? (
                   <span className="tabular-nums font-bold text-slate-900">
                     {designFeeEnabled ? `x${designFeeMultiplierLabel}` : 'Off'}
                   </span>
@@ -149,7 +149,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
               {designFeeEnabled ? (
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <span className="text-[11px] font-semibold text-[#1C4972]/65">Multiplier</span>
-                  {isFinalized ? (
+                  {!canEditPricing ? (
                     <span className="tabular-nums font-bold text-slate-900">
                       x{designFeeMultiplierLabel}
                     </span>
@@ -197,8 +197,8 @@ export function TotalsPanel(props: TotalsPanelProps) {
 
           <div className="mt-5 rounded-[9px] border border-[#1C4972]/15 bg-[#eef5f9] px-3 py-3">
             <dl className="space-y-2 text-[12px]">
-              <SideRow label="Total Cost" value={formatMoney(subtotalCostCents)} />
-              <SideRow label="Total Sell" value={formatMoney(finalPriceCents)} />
+              <SideRow label="Total cost (materials + labor)" value={formatMoney(subtotalCostCents)} />
+              <SideRow label="Selling price" value={formatMoney(finalPriceCents)} />
               {designFeeEnabled ? (
                 <SideRow
                   label={`Design fee (${formatMoney(DEFAULT_DESIGN_FEE_CENTS)} x ${designFeeMultiplierLabel})`}
@@ -206,41 +206,27 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 />
               ) : null}
               <SideRow label="Profit" value={formatMoney(profitCents)} valueClass={profitCents >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
-              {isFinalized ? (
-                <>
-                  <SideRow label="Margin" value={marginPct == null ? '-' : `${marginPct.toFixed(1)}%`} valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'} />
-                  <SideRow label="Markup" value={markupPct == null ? '-' : `${markupPct.toFixed(1)}%`} valueClass="text-emerald-700" />
-                </>
+              {canEditPricing ? (
+                <PercentEditorRow
+                  label="Markup % (on cost)"
+                  value={markupPct}
+                  valueClass="text-emerald-700"
+                  onCommit={(pct) => {
+                    if (pct >= 0 && pct <= 10000)
+                      dispatch({
+                        type: 'set-multiplier',
+                        value: Math.max(0, Math.round((1 + pct / 100) * 1000)),
+                      });
+                  }}
+                />
               ) : (
-                <>
-                  <PercentEditorRow
-                    label="Margin"
-                    value={marginPct}
-                    valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'}
-                    onCommit={(pct) => {
-                      // margin% → multiplier: mult = 1 / (1 - margin)
-                      if (pct <= 0) dispatch({ type: 'set-multiplier', value: 1000 });
-                      else if (pct < 95)
-                        dispatch({
-                          type: 'set-multiplier',
-                          value: Math.max(1000, Math.round((1 / (1 - pct / 100)) * 1000)),
-                        });
-                    }}
-                  />
-                  <PercentEditorRow
-                    label="Markup"
-                    value={markupPct}
-                    valueClass="text-emerald-700"
-                    onCommit={(pct) => {
-                      if (pct >= 0 && pct <= 10000)
-                        dispatch({
-                          type: 'set-multiplier',
-                          value: Math.max(0, Math.round((1 + pct / 100) * 1000)),
-                        });
-                    }}
-                  />
-                </>
+                <SideRow label="Markup % (on cost)" value={markupPct == null ? '-' : `${markupPct.toFixed(1)}%`} valueClass="text-emerald-700" />
               )}
+              <p className="!mt-2 text-[10px] leading-snug text-[#1C4972]/55">
+                Markup is on cost: 200% markup = selling price is 3× cost
+                ($100 cost → $300 sell). Changing it recalculates the selling price.
+                {!canEditPricing ? ' Only admins can change markup or the design fee.' : ''}
+              </p>
               <SideRow label="Hours" value={totalHours > 0 ? `${totalHours} available` : '-'} muted={totalHours === 0} />
             </dl>
           </div>
@@ -302,22 +288,18 @@ export function TotalsPanel(props: TotalsPanelProps) {
         </div>
 
         <div className="px-4 pt-4">
-          <div className="mb-3 grid grid-cols-6 gap-3">
+          <div className="mb-3 grid grid-cols-5 gap-3">
             <SummaryMetric label="Total cost" value={formatMoney(subtotalCostCents)} />
-            <SummaryMetric label="Total sell price" value={formatMoney(finalPriceCents)} />
+            <SummaryMetric label="Selling price" value={formatMoney(finalPriceCents)} />
             <SummaryMetric
               label="Total profit"
               value={formatMoney(profitCents)}
               valueClass={profitCents >= 0 ? 'text-emerald-700' : 'text-rose-700'}
             />
             <SummaryMetric
-              label="Margin"
-              value={marginPct == null ? '—' : `${marginPct.toFixed(1)}%`}
-              valueClass={marginHealthy ? 'text-emerald-700' : 'text-amber-700'}
-            />
-            <SummaryMetric
               label="Markup on cost"
-              value={subtotalCostCents > 0 ? `${((profitCents / subtotalCostCents) * 100).toFixed(1)}%` : '—'}
+              value={markupPct == null ? '—' : `${markupPct.toFixed(1)}%`}
+              valueClass="text-emerald-700"
             />
             <SummaryMetric label="Total hours" value={`${Math.max(lineCount, 1)} hrs`} />
           </div>
@@ -341,7 +323,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
               <div className="mt-4 flex flex-col gap-2.5 rounded-[16px] border border-slate-200 bg-white p-3">
             <label className="flex items-center justify-between gap-3 text-[12.5px] text-slate-500">
               <span className="font-semibold text-slate-700">Design flat fee</span>
-              {isFinalized ? (
+              {!canEditPricing ? (
                 <span className="tabular-nums font-semibold text-slate-900">
                   {formatMoney(designFlatCents)}
                 </span>
@@ -365,7 +347,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
                 Multiplier{' '}
                 <span className="font-normal text-slate-400">(×{multiplierLabel || '0'})</span>
               </span>
-              {isFinalized ? (
+              {!canEditPricing ? (
                 <span className="tabular-nums font-semibold text-slate-900">
                   ×{multiplierLabel || '0'}
                 </span>

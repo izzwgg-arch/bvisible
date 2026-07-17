@@ -103,6 +103,9 @@ export default async function EstimatePreviewPage({
           }
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-bv-text)]">
+                Sales rep: {pdfData.salesRepName ?? 'Unassigned'}
+              </span>
               {isFinalized ? <FinalizedReadOnlyChip /> : null}
               <Link
                 href="/estimates"

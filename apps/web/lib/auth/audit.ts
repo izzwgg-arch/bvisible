@@ -46,6 +46,7 @@ export type AuditAction =
   | 'po_attachment_deleted'
   | 'po_note_added'
   | 'po_sent'
+  | 'po_office_draft_emailed'
   | 'po_deleted'
   | 'email_ingest_tick'
   | 'email_ingest_message_ingested'

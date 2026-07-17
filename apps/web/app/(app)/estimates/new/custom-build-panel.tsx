@@ -10,6 +10,13 @@
 import { useMemo, useState } from 'react';
 import { formatMoney } from '@bvisible/pricing';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
+import {
+  MeasurementControls,
+  defaultMeasurementState,
+  measurementDescription,
+  measurementResult,
+  type MeasurementState,
+} from './measurement-entry';
 import type { BuilderMachine, BuilderMaterial, BuilderRates } from './guided-builder';
 
 export interface CustomBuildRow {
@@ -27,8 +34,10 @@ interface MatRow {
   uid: number;
   name: string;
   sheetKey: string | null;
+  /// Cost of ONE full sheet/roll (editable).
   unitCostCents: number;
-  qty: number;
+  /// Measurement entry — quantity, % of sheet/roll, sq ft, or linear ft.
+  meas: MeasurementState;
 }
 interface MachRow {
   uid: number;
@@ -97,7 +106,10 @@ export function CustomBuildPanel({
   const num = (v: string) => Math.max(0, Number(v) || 0);
   const ppl = Math.max(1, Math.round(Number(installers) || 1));
 
-  const materialsCents = matRows.reduce((s, r) => s + Math.round(r.qty * r.unitCostCents), 0);
+  const materialsCents = matRows.reduce((s, r) => {
+    const result = measurementResult(r.meas, r.unitCostCents);
+    return s + (result.ok ? result.costCents : 0);
+  }, 0);
   const machinesCents = machRows.reduce((s, r) => s + Math.round(r.hours * r.rateCents), 0);
   const laborCents = Math.round(num(shopHours) * rates.shopLaborCentsPerHour);
   const designCents = Math.round(num(designUnits) * rates.designFlatCents);
@@ -110,11 +122,13 @@ export function CustomBuildPanel({
   function buildRows(): CustomBuildRow[] {
     const rows: CustomBuildRow[] = [];
     for (const r of matRows) {
+      const result = measurementResult(r.meas, r.unitCostCents);
+      if (!result.ok) continue;
       rows.push({
         kind: 'MATERIAL',
-        description: r.name,
-        qtyMilli: Math.round(r.qty * 1000),
-        unitCostCents: r.unitCostCents,
+        description: measurementDescription(r.name, r.meas, result),
+        qtyMilli: result.qtyMilli,
+        unitCostCents: result.unitCostCents,
         markupExempt: false,
         sourceKind: 'CUSTOM',
         sheetKey: r.sheetKey,
@@ -227,7 +241,13 @@ export function CustomBuildPanel({
                   onClick={() => {
                     setMatRows((prev) => [
                       ...prev,
-                      { uid: uidSeq++, name: m.name, sheetKey: m.key, unitCostCents: m.priceCents, qty: 1 },
+                      {
+                        uid: uidSeq++,
+                        name: m.name,
+                        sheetKey: m.key,
+                        unitCostCents: m.priceCents,
+                        meas: defaultMeasurementState(m.name),
+                      },
                     ]);
                     setMatSearch('');
                   }}
@@ -243,54 +263,60 @@ export function CustomBuildPanel({
               ))}
             </div>
           ) : null}
-          {matRows.map((r) => (
-            <div key={r.uid} className="mt-2 flex items-center gap-2.5 border-t border-[var(--color-bv-border)] pt-2">
-              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
-                {r.name}
-              </span>
-              <span className="text-[9.5px] font-bold uppercase text-[var(--color-bv-muted)]">Unit $</span>
-              <input
-                className={miniCls}
-                type="number"
-                min={0}
-                step="0.01"
-                value={(r.unitCostCents / 100).toString()}
-                onChange={(e) =>
-                  setMatRows((prev) =>
-                    prev.map((x) =>
-                      x.uid === r.uid
-                        ? { ...x, unitCostCents: Math.round((Number(e.target.value) || 0) * 100) }
-                        : x
-                    )
-                  )
-                }
-              />
-              <span className="text-[9.5px] font-bold uppercase text-[var(--color-bv-muted)]">Qty</span>
-              <input
-                className={miniCls}
-                type="number"
-                min={0}
-                step="any"
-                value={r.qty}
-                onChange={(e) =>
-                  setMatRows((prev) =>
-                    prev.map((x) => (x.uid === r.uid ? { ...x, qty: Number(e.target.value) || 0 } : x))
-                  )
-                }
-              />
-              <span className="w-20 text-right text-[13px] font-bold text-[var(--color-bv-text)]">
-                {formatMoney(Math.round(r.qty * r.unitCostCents))}
-              </span>
-              <button
-                type="button"
-                aria-label="Remove material"
-                className="text-slate-400 hover:text-red-500"
-                onClick={() => setMatRows((prev) => prev.filter((x) => x.uid !== r.uid))}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {matRows.map((r) => {
+            const result = measurementResult(r.meas, r.unitCostCents);
+            return (
+              <div key={r.uid} className="mt-2 border-t border-[var(--color-bv-border)] pt-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
+                    {r.name}
+                  </span>
+                  <span className="text-[9.5px] font-bold uppercase text-[var(--color-bv-muted)]">
+                    Full sheet/roll $
+                  </span>
+                  <input
+                    className={miniCls}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={(r.unitCostCents / 100).toString()}
+                    onChange={(e) =>
+                      setMatRows((prev) =>
+                        prev.map((x) =>
+                          x.uid === r.uid
+                            ? { ...x, unitCostCents: Math.round((Number(e.target.value) || 0) * 100) }
+                            : x
+                        )
+                      )
+                    }
+                  />
+                  <span className="w-20 text-right text-[13px] font-bold text-[var(--color-bv-text)]">
+                    {result.ok ? formatMoney(result.costCents) : '—'}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Remove material"
+                    className="text-slate-400 hover:text-red-500"
+                    onClick={() => setMatRows((prev) => prev.filter((x) => x.uid !== r.uid))}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="mt-1.5 pl-1">
+                  <MeasurementControls
+                    state={r.meas}
+                    onChange={(next) =>
+                      setMatRows((prev) =>
+                        prev.map((x) => (x.uid === r.uid ? { ...x, meas: next } : x))
+                      )
+                    }
+                    fullUnitPriceCents={r.unitCostCents}
+                    markupPercent={markupPercent}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* 2 · Machines */}

@@ -15,6 +15,11 @@ import { readRequestContext } from '@/lib/request-context';
 import { nextPoNumber } from '@/lib/po/number';
 import { sendMail } from '@/lib/mailer';
 import { formatMoney } from '@bvisible/pricing';
+import {
+  buildRetailCartUrl,
+  isRetailVendor,
+  normalizeExternalUrl,
+} from '@/lib/po/retail-cart';
 
 const shopOrderLineSchema = z.object({
   name: z.string().trim().min(1).max(400),
@@ -26,11 +31,6 @@ const shopOrderLineSchema = z.object({
   vendorSku: z.string().trim().max(200).default(''),
   productUrl: z.string().trim().max(1000).default(''),
 });
-
-/// Retail vendors are never emailed a PO — the office reviews a cart +
-/// draft email instead, and places the order manually.
-const RETAIL_VENDOR_RE = /amazon|home\s*depot|walmart|lowe'?s/i;
-const ASIN_RE = /^B0[A-Z0-9]{8}$/i;
 
 export interface RetailCartItem {
   name: string;
@@ -172,21 +172,21 @@ export async function createShopOrderAction(
     // and retail vendors (Amazon/Home Depot/…) get a cart + office draft
     // email instead of a vendor email.
     let retail: NonNullable<ShopOrderResult['created']>[number]['retail'];
-    if (RETAIL_VENDOR_RE.test(vendorName)) {
+    if (isRetailVendor(vendorName)) {
       const items: RetailCartItem[] = lines.map((l) => ({
         name: l.detail ? `${l.name} — ${l.detail}` : l.name,
-        qty: Math.max(1, Math.round(l.qty)),
-        url: l.productUrl,
+        // Online carts take whole units — never round a needed amount down.
+        qty: Math.max(1, Math.ceil(l.qty)),
+        // Normalized so scheme-less Sheet URLs never render as broken
+        // app-relative links (the blank-404 bug).
+        url: normalizeExternalUrl(l.productUrl),
         sku: l.vendorSku,
         unitPriceCents: l.unitPriceCents,
       }));
-      let cartUrl: string | null = null;
-      if (/amazon/i.test(vendorName) && items.every((i) => ASIN_RE.test(i.sku))) {
-        const params = items
-          .map((i, idx) => `ASIN.${idx + 1}=${encodeURIComponent(i.sku)}&Quantity.${idx + 1}=${i.qty}`)
-          .join('&');
-        cartUrl = `https://www.amazon.com/gp/aws/cart/add.html?${params}`;
-      }
+      // Amazon: true multi-item cart when every line resolves an ASIN
+      // (from the SKU column or the product URL). Other stores: first
+      // product page. Null only when no line has any usable link.
+      const cartUrl = buildRetailCartUrl(vendor.name, items);
       retail = { vendor: vendor.name, cartUrl, items };
     }
 
@@ -317,6 +317,71 @@ export async function sendShopOrderPoAction(
   });
 
   return { ok: true, message: `Sent to ${to}` };
+}
+
+/// Emails the office-review draft through the tenant's SMTP. Retail
+/// orders stay manual — this only delivers the review email; nothing is
+/// ordered automatically.
+const officeDraftSchema = z.object({
+  poId: z.string().trim().min(1).max(200),
+  to: z.string().trim().email('Enter a valid office email address.'),
+  subject: z.string().trim().min(1).max(300),
+  body: z.string().trim().min(1).max(20000),
+});
+
+export async function sendOfficeDraftEmailAction(payload: {
+  poId: string;
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+
+  const parsed = officeDraftSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? 'Invalid input.' };
+  }
+  const { poId, to, subject, body } = parsed.data;
+
+  // Tenant gate — the draft must belong to one of this tenant's POs.
+  const po = await prisma.purchaseOrder.findFirst({
+    where: { id: poId, tenantId: me.tenantId, deletedAt: null },
+    select: { id: true, number: true },
+  });
+  if (!po) return { ok: false, message: 'Purchase order not found.' };
+
+  const sent = await sendMail({
+    to,
+    subject,
+    text: body,
+    html: `<pre style="font-family:Arial,sans-serif;font-size:13px;white-space:pre-wrap">${escapeHtml(body)}</pre>`,
+  });
+  if (!sent.ok) {
+    return { ok: false, message: `Email to ${to} failed — check SMTP settings and retry.` };
+  }
+
+  await prisma.pOEvent.create({
+    data: {
+      tenantId: me.tenantId,
+      purchaseOrderId: po.id,
+      kind: POEventKind.NOTE_ADDED,
+      message: `Office review draft emailed to ${to} (retail order — manual placement required)`,
+      actorId: me.id,
+    },
+  });
+  await writeAuditLog({
+    action: 'po_office_draft_emailed',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'purchase_order',
+    targetId: po.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: { number: po.number, to },
+  });
+
+  return { ok: true, message: `Draft sent to ${to}` };
 }
 
 function escapeHtml(input: string): string {

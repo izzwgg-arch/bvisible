@@ -62,6 +62,10 @@ export interface EstimatePdfData {
   totalCents: number;
   notes: string | null;
   logoDataUrl: string;
+  /// Sales representative assigned to the estimate — always the live
+  /// `salesRep` relation (never the customer, never a stale hardcoded
+  /// value). Null when unassigned; the Rep box renders blank.
+  salesRepName: string | null;
 }
 
 export function estimatePdfFilename(estimateNumber: string): string {
@@ -81,6 +85,7 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
       finalPriceCents: true,
       updatedAt: true,
       tenant: { select: { id: true, name: true } },
+      salesRep: { select: { name: true, email: true } },
       client: {
         select: {
           companyName: true,
@@ -151,6 +156,7 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
     totalCents: subtotalCents + taxCents,
     notes: estimate.notes,
     logoDataUrl: companyProfile.logoDataUrl?.trim() || readBrandLogoDataUrl(),
+    salesRepName: estimate.salesRep?.name?.trim() || estimate.salesRep?.email?.trim() || null,
   };
 }
 
@@ -216,7 +222,7 @@ export function renderEstimatePdfBody(data: EstimatePdfData): string {
       </div>
       <div class="po-meta">
         <div><span>P.O. No.</span><strong>&nbsp;</strong></div>
-        <div><span>Rep</span><strong>CG</strong></div>
+        <div><span>Rep</span><strong>${data.salesRepName ? escapeHtml(data.salesRepName) : '&nbsp;'}</strong></div>
       </div>
     </section>
 

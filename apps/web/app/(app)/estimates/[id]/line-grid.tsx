@@ -399,7 +399,7 @@ export function LineGrid({
               <th className="w-[96px] px-2 py-2">Unit</th>
               <th className="w-[92px] px-2 py-2 text-right">Cost</th>
               <th className="w-[92px] px-2 py-2 text-right">Sell</th>
-              <th className="w-[58px] px-2 py-2 text-right">Margin</th>
+              <th className="w-[58px] px-2 py-2 text-right">Markup</th>
               <th className="w-[64px] px-2 py-2 text-center">Tax</th>
               <th className="w-[92px] px-2 py-2 text-right">Total</th>
               {!readOnly ? <th className="w-[32px] px-2 py-2 text-right" /> : null}
@@ -409,7 +409,9 @@ export function LineGrid({
             {lines.map((line, idx) => {
               const cost = lineCosts[line.id] ?? 0;
               const sell = Math.round((cost * multiplierMilli) / 1000);
-              const margin = sell > 0 ? Math.round(((sell - cost) / sell) * 1000) / 10 : null;
+              // Markup on cost (200% = sell is 3× cost) — never confused
+              // with margin. Changing the estimate markup recalculates it.
+              const markup = cost > 0 ? Math.round(((sell - cost) / cost) * 1000) / 10 : null;
               const catalogRow = line.catalogItemId ? catalogById.get(line.catalogItemId) ?? null : null;
               const lineMeta = parseLineInternalMeta(line.internalNotes);
               const isBundle = catalogRow?.itemType === 'BUNDLE' || Boolean(lineMeta?.customBundle);
@@ -613,7 +615,7 @@ export function LineGrid({
                       )}
                     </td>
                     <td className="px-2 py-2 text-right font-semibold tabular-nums text-[#159b63]">
-                      {margin == null ? '-' : `${margin.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}
+                      {markup == null ? '-' : `${markup.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}
                     </td>
                     <td className="px-2 py-2 text-center text-[11px] font-semibold text-slate-500">
                       {readOnly ? (

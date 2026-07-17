@@ -257,7 +257,8 @@ function CatalogCard({
 }) {
   const basisCents = catalogPickerCostBasisCents({ row, machinesById });
   const sellHint = catalogPickerSellHintCents({ row, machinesById });
-  const marginPct = sellHint > 0 ? ((sellHint - basisCents) / sellHint) * 100 : null;
+  // Markup on cost — margin is never displayed (R: estimate markup UX).
+  const markupPct = basisCents > 0 ? ((sellHint - basisCents) / basisCents) * 100 : null;
   const vendor = row.catalogPreferredVendorName ?? row.catalogCheapestVendorName ?? 'Cheapest';
   const costSource =
     row.selectedVendorMode === 'CHEAPEST'
@@ -298,7 +299,7 @@ function CatalogCard({
       </div>
       <div className="grid grid-cols-3 border-t border-slate-100 px-3 py-2 text-[10px]">
         <Metric label="Sell hint" value={formatMoney(sellHint)} />
-        <Metric label="Margin" value={marginPct == null ? '-' : `${marginPct.toFixed(1)}%`} valueClass="text-emerald-600" />
+        <Metric label="Markup" value={markupPct == null ? '-' : `${markupPct.toFixed(1)}%`} valueClass="text-emerald-600" />
         <Metric label="Source" value={costSource === 'Internal' ? 'Internal' : `${costSource}: ${vendor}`} />
       </div>
       <div className="px-3 pb-3">

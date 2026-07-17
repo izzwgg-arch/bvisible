@@ -10,6 +10,14 @@
 import { useActionState, useEffect, useMemo, useState } from 'react';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
 import { fuzzyScore, fuzzySearch } from '@/lib/sheet-sync/fuzzy';
+import type { MeasurementResult } from '@/lib/estimate/measurement';
+import {
+  MeasurementControls,
+  defaultMeasurementState,
+  measurementDescription,
+  measurementResult,
+  type MeasurementState,
+} from './measurement-entry';
 import {
   registerLineApplier,
   registerPrefillApplier,
@@ -391,14 +399,40 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     return keys;
   }, [cards]);
 
-  // AI sign-type detection from the job name (deterministic fuzzy match
-  // against the Sheet's recommendation sign types) with a confidence %.
+  // AI sign-type detection from the job name — the recommendations panel
+  // opens automatically as soon as a sign type is recognized, no extra
+  // click needed. Detection is deliberately generous:
+  //   1. The sign type appearing anywhere in the title wins outright
+  //      ("main entrance pylon sign" → Pylon, 95%).
+  //   2. Any single word of the sign type matching a title word counts
+  //      ("channel letters install" → Channel Letters).
+  //   3. Fuzzy fallback catches misspellings ("pilon sign" → Pylon).
   const detectedSign = useMemo(() => {
-    const t = title.trim();
+    const t = title.trim().toLowerCase();
     if (t.length < 3) return null;
+    const titleWords = t.split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
+    const signTypes = Array.from(new Set(props.recommendations.map((r) => r.signType)));
+
     let best: { signType: string; score: number } | null = null;
-    for (const st of Array.from(new Set(props.recommendations.map((r) => r.signType)))) {
-      const score = fuzzyScore(t, st);
+    for (const st of signTypes) {
+      const stLower = st.toLowerCase();
+      let score = 0;
+      if (t.includes(stLower)) {
+        // Whole sign type appears in the job name.
+        score = 0.95;
+      } else {
+        const stWords = stLower.split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
+        const matched = stWords.filter((w) =>
+          titleWords.some((tw) => tw === w || fuzzyScore(tw, w) >= 0.8)
+        );
+        if (stWords.length > 0 && matched.length > 0) {
+          // Word-level match ("pylon" inside "main entrance pylon sign"),
+          // fuzzy per word so misspellings still hit.
+          score = 0.55 + 0.4 * (matched.length / stWords.length);
+        } else {
+          score = fuzzyScore(t, stLower);
+        }
+      }
       if (!best || score > best.score) best = { signType: st, score };
     }
     return best && best.score >= 0.5
@@ -443,23 +477,33 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     );
   }
 
-  function addMaterial(m: BuilderMaterial) {
+  // Measurement entry for the ready-items material list — the amount
+  // (qty / % of sheet-roll / sq ft / linear ft) is chosen while building,
+  // and the portion of the full material + cost calculates automatically.
+  const [readyEntry, setReadyEntry] = useState<{ key: string; state: MeasurementState } | null>(
+    null
+  );
+
+  function addMaterial(m: BuilderMaterial, measurement?: MeasurementResult, description?: string) {
     addCard({
       label: m.name,
-      sublabel: `${m.category}${m.vendor ? ` · cheapest vendor: ${m.vendor}` : ''} · ${formatMoney(m.priceCents)}/unit — from Live Sheet`,
+      sublabel: measurement
+        ? `${m.category} · ${measurement.detail} · cost ${formatMoney(measurement.costCents)} — from Live Sheet`
+        : `${m.category}${m.vendor ? ` · cheapest vendor: ${m.vendor}` : ''} · ${formatMoney(m.priceCents)}/unit — from Live Sheet`,
       badge: 'Material',
       rows: [
         {
           kind: 'MATERIAL',
-          description: m.name,
-          qtyMilli: 1000,
-          unitCostCents: m.priceCents,
+          description: description ?? m.name,
+          qtyMilli: measurement?.qtyMilli ?? 1000,
+          unitCostCents: measurement?.unitCostCents ?? m.priceCents,
           markupExempt: false,
           sourceKind: 'READY_ITEM',
           sheetKey: m.key,
         },
       ],
     });
+    setReadyEntry(null);
   }
 
   function addWrap(w: BuilderVehicleWrap) {
@@ -592,17 +636,22 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     });
   }
 
-  function addRecommendedMaterial(m: BuilderMaterial, reason: string) {
+  function addRecommendedMaterial(
+    m: BuilderMaterial,
+    reason: string,
+    measurement: MeasurementResult,
+    description: string
+  ) {
     addCardKeepPanel({
       label: m.name,
-      sublabel: `Suggested for this sign type — ${reason}`,
+      sublabel: `Suggested for this sign type — ${reason} · ${measurement.detail} · cost ${formatMoney(measurement.costCents)}`,
       badge: 'Material',
       rows: [
         {
           kind: 'MATERIAL',
-          description: m.name,
-          qtyMilli: 1000,
-          unitCostCents: m.priceCents,
+          description,
+          qtyMilli: measurement.qtyMilli,
+          unitCostCents: measurement.unitCostCents,
           markupExempt: false,
           sourceKind: 'READY_ITEM',
           sheetKey: m.key,
@@ -889,34 +938,81 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
 
             <div className="mt-3 max-h-80 divide-y divide-[var(--color-bv-border)] overflow-y-auto">
               {readyTab === 'materials'
-                ? filteredMaterials.map((m) => (
-                    <div
-                      key={m.key}
-                      className="flex cursor-pointer items-center gap-3 rounded-[8px] px-1 py-2.5 hover:bg-[var(--color-bv-bg)]"
-                      onClick={() => addMaterial(m)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
-                          {m.name}
+                ? filteredMaterials.map((m) => {
+                    const open = readyEntry?.key === m.key;
+                    const entryState = open ? readyEntry.state : null;
+                    const entryResult = entryState ? measurementResult(entryState, m.priceCents) : null;
+                    return (
+                      <div key={m.key} className="px-1 py-2.5">
+                        <div
+                          className="flex cursor-pointer items-center gap-3 rounded-[8px] hover:bg-[var(--color-bv-bg)]"
+                          onClick={() =>
+                            setReadyEntry(
+                              open ? null : { key: m.key, state: defaultMeasurementState(m.name) }
+                            )
+                          }
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13px] font-semibold text-[var(--color-bv-text)]">
+                              {m.name}
+                            </div>
+                            <div className="text-[11px] text-[var(--color-bv-muted)]">
+                              {m.category}
+                              {m.source === 'OVERRIDE' ? ' · app override price' : ''}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[13px] font-bold text-[var(--color-bv-text)]">
+                              {formatMoney(m.priceCents)}
+                            </div>
+                            {m.vendor ? (
+                              <div className="text-[10.5px] font-semibold text-[var(--color-bv-accent)]">
+                                {m.vendor}
+                              </div>
+                            ) : null}
+                          </div>
+                          <span className={`${btnDark} pointer-events-none`}>
+                            {open ? 'Choose amount ↓' : '+ Add'}
+                          </span>
                         </div>
-                        <div className="text-[11px] text-[var(--color-bv-muted)]">
-                          {m.category}
-                          {m.source === 'OVERRIDE' ? ' · app override price' : ''}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[13px] font-bold text-[var(--color-bv-text)]">
-                          {formatMoney(m.priceCents)}
-                        </div>
-                        {m.vendor ? (
-                          <div className="text-[10.5px] font-semibold text-[var(--color-bv-accent)]">
-                            {m.vendor}
+                        {open && entryState ? (
+                          <div
+                            className="mt-2 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] p-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
+                              How much of this material? Quantity, % of sheet/roll, sq ft, or linear ft
+                            </div>
+                            <div className="flex flex-wrap items-end gap-3">
+                              <div className="min-w-0 flex-1">
+                                <MeasurementControls
+                                  state={entryState}
+                                  onChange={(next) => setReadyEntry({ key: m.key, state: next })}
+                                  fullUnitPriceCents={m.priceCents}
+                                  markupPercent={Number(markupPercent) || 0}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                className="rounded-[9px] bg-[var(--color-bv-accent)] px-4 py-2 text-[11.5px] font-bold text-white hover:opacity-95 disabled:opacity-50"
+                                disabled={!entryResult?.ok}
+                                onClick={() => {
+                                  if (!entryResult?.ok) return;
+                                  addMaterial(
+                                    m,
+                                    entryResult,
+                                    measurementDescription(m.name, entryState, entryResult)
+                                  );
+                                }}
+                              >
+                                Add to estimate
+                              </button>
+                            </div>
                           </div>
                         ) : null}
                       </div>
-                      <span className={`${btnDark} pointer-events-none`}>+ Add</span>
-                    </div>
-                  ))
+                    );
+                  })
                 : null}
               {readyTab === 'bundles'
                 ? filteredBundles.map((b) => (
@@ -1094,6 +1190,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
             recommendations={props.recommendations}
             materials={props.materials}
             addedKeys={addedMaterialKeys}
+            markupPercent={Number(markupPercent) || 0}
             onAdd={addRecommendedMaterial}
             onRemove={removeMaterialByKey}
             detected={detectedSign}

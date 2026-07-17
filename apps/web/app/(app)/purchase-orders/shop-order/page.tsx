@@ -8,6 +8,15 @@ import { ShopOrderFlow, type CatalogEntry } from './shop-order-flow';
 export const metadata = { title: 'Shop order' };
 export const dynamic = 'force-dynamic';
 
+/// Loose name key for de-duplicating the merged catalog (case,
+/// punctuation, and whitespace insensitive).
+function normalizeCatalogName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export default async function ShopOrderPage() {
   const me = await requireTenantId();
 
@@ -30,6 +39,30 @@ export default async function ShopOrderPage() {
     vendorSku: item.vendorSku,
     productUrl: item.productUrl,
   }));
+
+  // The Vendor Catalog tab alone misses materials that only exist on the
+  // Sheet's "Meterial price" tab (Amazon / Home Depot / Walmart shop
+  // supplies like blue tape). Merge those in so the whole Sheet catalog
+  // is orderable — de-duplicated by normalized name so nothing shows twice.
+  const seenNames = new Set(catalog.map((c) => normalizeCatalogName(c.name)));
+  for (const material of data.materials) {
+    const norm = normalizeCatalogName(material.name);
+    if (!norm || seenNames.has(norm)) continue;
+    seenNames.add(norm);
+    catalog.push({
+      id: `sheet-material:${material.key}`,
+      name: material.name,
+      category: material.category || 'Materials',
+      subcategory: '',
+      spec: '',
+      size: '',
+      priceCents: material.priceCents,
+      vendor: material.vendor,
+      vendorPrices: material.vendorPrices,
+      vendorSku: '',
+      productUrl: '',
+    });
+  }
 
   const vendorEmails: Record<string, string> = {};
   for (const v of data.vendorDirectory) {
