@@ -11,6 +11,7 @@ import type {
   EstimateCatalogBundleComponent,
   EstimateCatalogPickerRow,
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
+import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
 
 const MAX_ITEMS = 420;
 const MAX_HISTORIES = 14_000;
@@ -68,13 +69,50 @@ export async function loadEstimateCatalogPickerRows(
           vendorSnapshotJson: true,
         },
       },
+      sheetKey: true,
       vendorCatalogLinks: { select: { id: true } },
     },
   });
 
+  // Sheet fallback for vendor intel: items synced from the pricing Sheet
+  // carry per-vendor prices on the "Meterial price" tab but have no
+  // vendor_catalog_items links or price observations. When the
+  // observation system has nothing for a material, fall back to the
+  // Sheet's vendor prices so the estimate page shows the cheapest vendor
+  // instead of "No vendor prices".
+  const sheetByKey = new Map<
+    string,
+    { vendor: string; priceCents: number; vendorPrices: Array<{ vendor: string; priceCents: number }> }
+  >();
+  try {
+    const snapshot = await getSheetSnapshot(tenantId);
+    for (const m of snapshot.data.materials) {
+      sheetByKey.set(m.key, { vendor: m.vendor, priceCents: m.priceCents, vendorPrices: m.vendorPrices });
+    }
+  } catch {
+    /* Sheet unavailable — vendor intel simply stays empty */
+  }
+  const applySheetVendorFallback = (
+    row: EstimateCatalogPickerRow,
+    sheetKey: string | null,
+  ): EstimateCatalogPickerRow => {
+    if (row.kind !== EstimateLineKind.MATERIAL || row.catalogCheapestVendorName != null) return row;
+    const sheet = sheetKey ? sheetByKey.get(sheetKey) : undefined;
+    if (!sheet) return row;
+    const sorted = [...sheet.vendorPrices].sort((a, b) => a.priceCents - b.priceCents);
+    const cheapest =
+      sorted[0] ?? (sheet.vendor ? { vendor: sheet.vendor, priceCents: sheet.priceCents } : null);
+    if (!cheapest || !cheapest.vendor) return row;
+    return {
+      ...row,
+      catalogCheapestVendorCostCents: cheapest.priceCents,
+      catalogCheapestVendorName: cheapest.vendor,
+    };
+  };
+
   const catalogIds = [...new Set(items.flatMap((it) => it.vendorCatalogLinks.map((l) => l.id)))];
   if (catalogIds.length === 0) {
-    return items.map((it) => ({
+    return items.map((it) => applySheetVendorFallback({
       id: it.id,
       name: it.name,
       nameNormalized: it.nameNormalized,
@@ -105,7 +143,7 @@ export async function loadEstimateCatalogPickerRows(
       catalogCheapestVendorId: null,
       catalogCheapestVendorName: null,
       bundleComponents: mapBundleComponents(it.bundleComponents),
-    }));
+    }, it.sheetKey));
   }
 
   const histories = await prisma.vendorPriceHistory.findMany({
@@ -171,7 +209,7 @@ export async function loadEstimateCatalogPickerRows(
       catalogCheapestVendorName = cheap?.vendorName ?? null;
     }
 
-    return {
+    return applySheetVendorFallback({
       id: it.id,
       name: it.name,
       nameNormalized: it.nameNormalized,
@@ -202,7 +240,7 @@ export async function loadEstimateCatalogPickerRows(
       catalogCheapestVendorId,
       catalogCheapestVendorName,
       bundleComponents: mapBundleComponents(it.bundleComponents),
-    };
+    }, it.sheetKey);
   });
 }
 
