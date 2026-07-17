@@ -18,6 +18,7 @@ import {
   type SheetBundle,
   type SheetBundleComponent,
   type SheetData,
+  type SheetInternalMaterial,
   type SheetMachine,
   type SheetMaterial,
   type SheetRecommendation,
@@ -222,6 +223,53 @@ function parseVendorCatalog(table: GvizTable): SheetVendorCatalogItem[] {
     .map(({ active: _a, ...rest }) => rest);
 }
 
+/// "Internal Materials" — 999-row shop-supply catalog (tapes, adhesives,
+/// primers, retail items). Cols: 0 catalog id · 1 category · 2 subcategory ·
+/// 3 material name · 4 spec · 5 size/unit · 6 price · 7 preferred vendor ·
+/// 8 price source · 9 notes · 10 unit area sq ft · 11 unit linear ft ·
+/// 12 active. When no preferred vendor is entered, a known retail vendor
+/// mentioned in the price-source/notes text is used (e.g. "Amazon
+/// reference: blue painter tape…") so the shop-order retail-cart flow works.
+const RETAIL_VENDOR_HINTS: Array<[RegExp, string]> = [
+  [/amazon/i, 'Amazon'],
+  [/home\s*depot/i, 'Home Depot'],
+  [/walmart/i, 'Walmart'],
+  [/lowe'?s/i, "Lowe's"],
+];
+
+function parseInternalMaterials(table: GvizTable): SheetInternalMaterial[] {
+  const out: SheetInternalMaterial[] = [];
+  for (const row of rows(table)) {
+    const id = gvizString(row, 0);
+    const name = gvizString(row, 3);
+    const priceCents = dollarsToCents(gvizNumber(row, 6));
+    const active = gvizBool(row, 12);
+    if (!id || !name || name.toLowerCase() === 'material name' || !active || priceCents <= 0) {
+      continue;
+    }
+    let vendor = gvizString(row, 7);
+    if (!vendor) {
+      const hintText = `${gvizString(row, 8)} ${gvizString(row, 9)}`;
+      vendor = RETAIL_VENDOR_HINTS.find(([re]) => re.test(hintText))?.[1] ?? '';
+    }
+    out.push({
+      id,
+      category: gvizString(row, 1) || 'Shop Supplies',
+      subcategory: gvizString(row, 2),
+      name,
+      spec: gvizString(row, 4),
+      size: gvizString(row, 5),
+      priceCents,
+      vendor,
+      unitAreaSqFt: gvizNumber(row, 10),
+      unitLinearFt: gvizNumber(row, 11),
+    });
+  }
+  // De-dupe by catalog id, first occurrence wins.
+  const seen = new Set<string>();
+  return out.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+}
+
 /// "Vendor Directory" — vendor → order email + contact info.
 function parseVendorDirectory(table: GvizTable): SheetVendorDirectoryEntry[] {
   return rows(table)
@@ -257,6 +305,7 @@ export async function fetchAndParseSheet(): Promise<SheetData> {
     components,
     recommendations,
     vendorCatalog,
+    internalMaterials,
     vendorDirectory,
     aliases,
   ] = await Promise.all([
@@ -268,6 +317,7 @@ export async function fetchAndParseSheet(): Promise<SheetData> {
     fetchSheetTab('Package Components'),
     fetchSheetTab('Estimator Recommendations'),
     fetchSheetTab('Vendor Catalog'),
+    fetchSheetTab('Internal Materials'),
     fetchSheetTab('Vendor Directory'),
     fetchSheetTab('ALIASES'),
   ]);
@@ -281,6 +331,7 @@ export async function fetchAndParseSheet(): Promise<SheetData> {
     bundleComponents: parseBundleComponents(components),
     recommendations: parseRecommendations(recommendations),
     vendorCatalog: parseVendorCatalog(vendorCatalog),
+    internalMaterials: parseInternalMaterials(internalMaterials),
     vendorDirectory: parseVendorDirectory(vendorDirectory),
     aliases: parseAliases(aliases),
     fetchedAt: new Date().toISOString(),

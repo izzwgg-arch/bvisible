@@ -92,6 +92,26 @@ export interface SheetVendorCatalogItem {
   productUrl: string;
 }
 
+/// "Internal Materials" — shop-supply catalog (tapes, adhesives, primers,
+/// retail items from Amazon / Home Depot / Walmart…). Purchasing-side:
+/// merged into the shop-order catalog so every supply is orderable.
+export interface SheetInternalMaterial {
+  /// Catalog ID from the Sheet (stable identity), e.g. "blue-tape-roll".
+  id: string;
+  category: string;
+  subcategory: string;
+  name: string;
+  spec: string;
+  /// Unit label, e.g. "Roll", "Each", "8 oz".
+  size: string;
+  priceCents: number;
+  /// Preferred vendor if entered; otherwise a retail vendor detected from
+  /// the price-source/notes text (e.g. "Amazon reference: …").
+  vendor: string;
+  unitAreaSqFt: number;
+  unitLinearFt: number;
+}
+
 export interface SheetVendorDirectoryEntry {
   vendor: string;
   email: string;
@@ -114,6 +134,9 @@ export interface SheetData {
   bundleComponents: SheetBundleComponent[];
   recommendations: SheetRecommendation[];
   vendorCatalog: SheetVendorCatalogItem[];
+  /// May be absent in snapshots cached before this tab was added — always
+  /// read with `?? []`.
+  internalMaterials?: SheetInternalMaterial[];
   vendorDirectory: SheetVendorDirectoryEntry[];
   aliases: SheetAlias[];
   fetchedAt: string;

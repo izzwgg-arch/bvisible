@@ -64,6 +64,31 @@ export default async function ShopOrderPage() {
     });
   }
 
+  // "Internal Materials" tab: the ~1,000-row shop-supply catalog (blue
+  // tape, adhesives, primers, retail items from Amazon / Home Depot /
+  // Walmart). Variants differ by spec/size ("3M #94 Tape Primer" 8 oz vs
+  // Quart), so de-dupe on name+spec+size — name-only would drop variants.
+  for (const item of data.internalMaterials ?? []) {
+    const fullKey = normalizeCatalogName(`${item.name} ${item.spec} ${item.size}`);
+    const nameKey = normalizeCatalogName(item.name);
+    if (!fullKey || seenNames.has(fullKey)) continue;
+    if (!item.spec && !item.size && seenNames.has(nameKey)) continue;
+    seenNames.add(fullKey);
+    catalog.push({
+      id: `internal:${item.id}`,
+      name: item.name,
+      category: item.category || 'Shop Supplies',
+      subcategory: item.subcategory,
+      spec: item.spec,
+      size: item.size,
+      priceCents: item.priceCents,
+      vendor: item.vendor,
+      vendorPrices: item.vendor ? [{ vendor: item.vendor, priceCents: item.priceCents }] : [],
+      vendorSku: '',
+      productUrl: '',
+    });
+  }
+
   const vendorEmails: Record<string, string> = {};
   for (const v of data.vendorDirectory) {
     if (v.email) vendorEmails[v.vendor] = v.email;

@@ -261,6 +261,7 @@ function parseSnapshot(row: {
         bundleComponents: [],
         recommendations: [],
         vendorCatalog: [],
+        internalMaterials: [],
         vendorDirectory: [],
         aliases: [],
         fetchedAt: '',
