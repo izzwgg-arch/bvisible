@@ -1286,6 +1286,9 @@ type MaterialVendorSource = {
   preferredCostCents: number | null;
   selectedVendorName: string | null;
   vendorOptions: string[];
+  /// Unit price per vendor from the pricing Sheet — lets the dropdown
+  /// show "Vendor — $price" for every vendor carrying the item.
+  vendorPriceList: Array<{ vendor: string; priceCents: number }>;
   hasVendorPrices: boolean;
 };
 
@@ -1415,9 +1418,14 @@ function MaterialsCheapestVendorsSection({
                             searchPlaceholder="Search vendors..."
                           >
                             <option value="">Auto cheapest</option>
-                            {row.vendorOptions.map((vendor) => (
-                              <option key={vendor} value={vendor}>{vendor}</option>
-                            ))}
+                            {row.vendorOptions.map((vendor) => {
+                              const priced = row.vendorPriceList.find((v) => v.vendor === vendor);
+                              return (
+                                <option key={vendor} value={vendor}>
+                                  {priced ? `${vendor} — ${formatMoney(priced.priceCents)}` : vendor}
+                                </option>
+                              );
+                            })}
                           </SelectControl>
                         )}
                       </td>
@@ -1464,10 +1472,12 @@ function buildMaterialVendorSummary({
       const preferredCostCents = catalogRow?.catalogPreferredVendorCostCents != null
         ? Math.round((catalogRow.catalogPreferredVendorCostCents * line.qtyMilli) / 1000)
         : null;
+      const vendorPriceList = catalogRow?.sheetVendorPrices ?? [];
       const vendorOptions = uniqueStrings([
         lineMeta?.materialVendorOverrides?.[key],
         catalogRow?.catalogCheapestVendorName,
         catalogRow?.catalogPreferredVendorName,
+        ...vendorPriceList.map((v) => v.vendor),
       ]);
       sources.push({
         key,
@@ -1483,6 +1493,7 @@ function buildMaterialVendorSummary({
         preferredCostCents,
         selectedVendorName: lineMeta?.materialVendorOverrides?.[key] || null,
         vendorOptions,
+        vendorPriceList,
         hasVendorPrices: vendorOptions.length > 0 && cheapestCostCents !== null,
       });
     }
@@ -1526,6 +1537,7 @@ function buildMaterialVendorSummary({
           preferredCostCents,
           selectedVendorName: lineMeta?.materialVendorOverrides?.[key] || component.selectedVendorName || null,
           vendorOptions,
+          vendorPriceList: [],
           hasVendorPrices: vendorOptions.length > 0 && cheapestCostCents !== null,
         });
       });
@@ -1559,6 +1571,11 @@ function buildMaterialVendorSummary({
     }
     existing.allUsedIn = uniqueStrings([...existing.allUsedIn, source.usedIn]);
     existing.vendorOptions = uniqueStrings([...existing.vendorOptions, ...source.vendorOptions]);
+    for (const vp of source.vendorPriceList) {
+      if (!existing.vendorPriceList.some((v) => v.vendor === vp.vendor)) {
+        existing.vendorPriceList = [...existing.vendorPriceList, vp];
+      }
+    }
     existing.hasVendorPrices = existing.hasVendorPrices || source.hasVendorPrices;
     existing.selectedVendorName = existing.selectedVendorName ?? source.selectedVendorName;
     existing.cheapestVendorName = lowerCostVendor(existing, source, 'cheapest');

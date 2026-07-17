@@ -96,15 +96,19 @@ export async function loadEstimateCatalogPickerRows(
     row: EstimateCatalogPickerRow,
     sheetKey: string | null,
   ): EstimateCatalogPickerRow => {
-    if (row.kind !== EstimateLineKind.MATERIAL || row.catalogCheapestVendorName != null) return row;
+    if (row.kind !== EstimateLineKind.MATERIAL) return row;
     const sheet = sheetKey ? sheetByKey.get(sheetKey) : undefined;
     if (!sheet) return row;
+    // Always expose the FULL per-vendor price list from the Sheet — the
+    // Selected-vendor dropdown shows every vendor carrying the item.
+    const withList: EstimateCatalogPickerRow = { ...row, sheetVendorPrices: sheet.vendorPrices };
+    if (withList.catalogCheapestVendorName != null) return withList;
     const sorted = [...sheet.vendorPrices].sort((a, b) => a.priceCents - b.priceCents);
     const cheapest =
       sorted[0] ?? (sheet.vendor ? { vendor: sheet.vendor, priceCents: sheet.priceCents } : null);
-    if (!cheapest || !cheapest.vendor) return row;
+    if (!cheapest || !cheapest.vendor) return withList;
     return {
-      ...row,
+      ...withList,
       catalogCheapestVendorCostCents: cheapest.priceCents,
       catalogCheapestVendorName: cheapest.vendor,
     };

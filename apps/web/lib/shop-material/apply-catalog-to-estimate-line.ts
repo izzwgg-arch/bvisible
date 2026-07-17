@@ -37,6 +37,10 @@ export type EstimateCatalogPickerRow = {
   catalogCheapestVendorCostCents: number | null;
   catalogCheapestVendorId: string | null;
   catalogCheapestVendorName: string | null;
+  /** Every vendor price the pricing Sheet lists for this material (unit
+   *  cents) — shown in the Selected-vendor dropdown so the operator can
+   *  compare all vendors carrying the item, not just the cheapest. */
+  sheetVendorPrices?: Array<{ vendor: string; priceCents: number }>;
   bundleComponents?: EstimateCatalogBundleComponent[];
 };
 
