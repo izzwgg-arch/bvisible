@@ -217,6 +217,22 @@ export function AssistantDock() {
     }
     if (recState !== 'idle') return;
     try {
+      // If the operator previously chose "Block", Chrome rejects WITHOUT
+      // showing the permission popup — no site can force it back open.
+      // Detect that state and walk them through unblocking instead of a
+      // dead-end error. In the "not decided yet" state, the getUserMedia
+      // call below triggers the native permission popup.
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        if (status.state === 'denied') {
+          setMicError(
+            'Chrome has the mic blocked for this site. Click the icon just left of the web address (🔒 or the sliders icon) → turn Microphone ON (Allow) → reload the page, then tap the mic again.'
+          );
+          return;
+        }
+      } catch {
+        /* Permissions API unavailable — getUserMedia will prompt or fail below */
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mime = MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
@@ -258,8 +274,14 @@ export function AssistantDock() {
       recorderRef.current = rec;
       rec.start();
       setRecState('recording');
-    } catch {
-      setMicError('Microphone blocked — allow mic access in the browser and try again.');
+    } catch (e) {
+      const denied =
+        e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      setMicError(
+        denied
+          ? 'Permission not granted — when the popup appears next to the address bar, choose "Allow", then tap the mic again. If no popup appears, click the 🔒 icon by the web address → turn Microphone ON → reload.'
+          : 'Could not start the microphone — check that a mic is connected and not used by another app, then try again.'
+      );
     }
   }
 
