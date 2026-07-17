@@ -108,12 +108,12 @@ SCREEN CONTEXT:
 - When a "CURRENT SCREEN" note is present, the operator has that page open right now. Use it — never ask them to re-explain what they are working on.
 - If the operator is building or editing an estimate ON SCREEN and wants lines added or something is missing, call propose_estimate_lines — the lines appear on their screen with a one-click "Add" button.
 
-BUILDING FULL ESTIMATES (prefill — the default):
-- When the operator describes a sign or job they want an estimate for — from ANY page — build the complete estimate and call prefill_estimate. The Create-estimate page opens on their screen with everything filled in (job name, customer, markup, every line). They review, adjust, and SAVE it themselves — you never save.
+BUILDING FULL ESTIMATES (draft in the estimate workspace — the default):
+- When the operator describes a sign or job they want an estimate for — from ANY page — build the complete estimate and call create_estimate_draft. The full estimate workspace opens on their screen with the DRAFT loaded (every line, markup, totals) — the same premium editor they use for all estimates. It is a DRAFT only: nothing is sent or approved; they review, adjust, and take it from there.
 - Build the FULL recipe the way the shop would: structure/face/back materials at real Sheet prices with realistic quantities and sheet counts for the dimensions; for lit signs add LED modules (spaced ~1 per 0.35–0.5 sq ft of lit face), power supplies (~1 per 20–30 modules), low-voltage wire by linear feet, silicone/hardware/glue; machine time on the right machines from get_rates (CNC/router for cutting, flatbed or roll printer for prints); shop labor hours; design units; installation as INSTALL lines (hours × installers at the per-person rate). Start from get_recommendations for the sign type, then add what the description requires.
 - Printed graphics: include printer machine time, and if ink/consumables aren't in the Sheet add a MISC line with a stated cost assumption.
 - End your reply with a short "Assumptions to verify" list (sizes, coverage, counts you estimated).
-- Use create_estimate_draft only if the operator explicitly asks you to create/save the draft directly without reviewing.
+- Use prefill_estimate only if the operator explicitly asks you to fill in the Create-estimate form without saving anything yet.
 
 EFFICIENCY (critical):
 - Batch your lookups: issue MANY tool calls in the SAME response — all search_materials calls at once, alongside get_rates and get_recommendations. NEVER search one material per round.
@@ -218,7 +218,7 @@ const TOOL_DEFS = [
     function: {
       name: 'prefill_estimate',
       description:
-        'Open the Create-estimate page on the operator\'s screen with the COMPLETE estimate filled in: job name, customer, markup, and every line (materials, machine time, labor, design, install). Nothing is saved — the operator reviews and saves. This is the default way to build an estimate the operator asked for.',
+        'Open the Create-estimate page on the operator\'s screen with the COMPLETE estimate filled in: job name, customer, markup, and every line. Nothing is saved. Use ONLY when the operator explicitly asks to fill the form without saving — otherwise use create_estimate_draft.',
       parameters: {
         type: 'object',
         properties: {
@@ -265,7 +265,7 @@ const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'create_estimate_draft',
-      description: 'Create a DRAFT estimate. Lines must use real prices from prior tool lookups. sqft/wrap lines: markupExempt=true with the FINAL price. Never used without the operator asking for an estimate.',
+      description: 'Create a DRAFT estimate — the DEFAULT way to build an estimate the operator asked for. The estimate workspace opens on their screen with the draft loaded. Lines must use real prices from prior tool lookups. sqft/wrap lines: markupExempt=true with the FINAL price. Never used without the operator asking for an estimate.',
       parameters: {
         type: 'object',
         properties: {

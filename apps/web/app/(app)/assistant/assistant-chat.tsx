@@ -45,8 +45,11 @@ export function AssistantChat({ configured }: { configured: boolean }) {
         { messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })) },
         (label) => setProgress(label)
       );
-      // Full-estimate prefill: park it and open the Create-estimate page.
-      if (data.prefill && data.prefill.lines.length > 0) {
+      // Draft created: open the estimate workspace with it right away.
+      if (data.createdEstimate) {
+        router.push(`/estimates/${data.createdEstimate.id}` as never);
+      } else if (data.prefill && data.prefill.lines.length > 0) {
+        // Prefill fallback: park it and open the Create-estimate page.
         parkPendingPrefill(data.prefill);
         router.push('/estimates/new');
       }

@@ -153,6 +153,12 @@ export function AssistantDock() {
         (label) => setProgress(label)
       );
 
+      // Draft created: open the estimate workspace with it right away —
+      // the operator lands in the full editor with the draft loaded.
+      if (data.createdEstimate) {
+        router.push(`/estimates/${data.createdEstimate.id}` as never);
+      }
+
       // Full-estimate prefill: fill the Create-estimate page in place, or
       // park it and route there when the operator asked from another page.
       let prefillApplied = false;
