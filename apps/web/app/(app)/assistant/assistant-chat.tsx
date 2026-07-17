@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { parkPendingPrefill, type EstimatePrefill } from '@/lib/assistant/context-store';
+import { sendAssistantMessage } from '@/lib/assistant/stream-client';
 
 interface ChatMsg {
   role: 'user' | 'assistant';
@@ -28,6 +29,7 @@ export function AssistantChat({ configured }: { configured: boolean }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   async function send(text: string) {
@@ -37,21 +39,12 @@ export function AssistantChat({ configured }: { configured: boolean }) {
     setMessages(next);
     setInput('');
     setBusy(true);
+    setProgress(null);
     try {
-      const res = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          messages: next.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-      const data = (await res.json()) as {
-        reply?: string;
-        toolEvents?: Array<{ tool: string; summary: string }>;
-        createdEstimate?: { id: string; number: string } | null;
-        prefill?: EstimatePrefill | null;
-        error?: string;
-      };
+      const data = await sendAssistantMessage(
+        { messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })) },
+        (label) => setProgress(label)
+      );
       // Full-estimate prefill: park it and open the Create-estimate page.
       if (data.prefill && data.prefill.lines.length > 0) {
         parkPendingPrefill(data.prefill);
@@ -67,13 +60,20 @@ export function AssistantChat({ configured }: { configured: boolean }) {
           prefill: data.prefill && data.prefill.lines.length > 0 ? data.prefill : null,
         },
       ]);
-    } catch {
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === 'AbortError';
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Request failed — check the connection and try again.' },
+        {
+          role: 'assistant',
+          content: aborted
+            ? 'That one took too long and I stopped waiting — please try again (a smaller ask helps).'
+            : 'Request failed — check the connection and try again.',
+        },
       ]);
     } finally {
       setBusy(false);
+      setProgress(null);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
   }
@@ -146,7 +146,8 @@ export function AssistantChat({ configured }: { configured: boolean }) {
         ))}
         {busy ? (
           <div className="max-w-[75%] rounded-[14px] bg-[var(--color-bv-surface)] px-4 py-2.5 text-[13px] text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
-            Working — looking things up in the Sheet…
+            <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-bv-accent)] align-middle" />
+            {progress ?? 'Working — looking things up in the Sheet…'}
           </div>
         ) : null}
         <div ref={bottomRef} />

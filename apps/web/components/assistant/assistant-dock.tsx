@@ -19,6 +19,7 @@ import {
   type EstimatePrefill,
   type ProposedLine,
 } from '@/lib/assistant/context-store';
+import { sendAssistantMessage } from '@/lib/assistant/stream-client';
 
 interface DockMsg {
   role: 'user' | 'assistant';
@@ -83,6 +84,7 @@ export function AssistantDock() {
   const [messages, setMessages] = useState<DockMsg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [recState, setRecState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
 
@@ -141,24 +143,15 @@ export function AssistantDock() {
     setMessages(next);
     setInput('');
     setBusy(true);
+    setProgress(null);
     try {
-      const res = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+      const data = await sendAssistantMessage(
+        {
           messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })),
           context: contextText,
-        }),
-      });
-      const data = (await res.json()) as {
-        reply?: string;
-        toolEvents?: Array<{ tool: string; summary: string }>;
-        createdEstimate?: { id: string; number: string } | null;
-        proposedLines?: ProposedLine[] | null;
-        proposalNote?: string | null;
-        prefill?: EstimatePrefill | null;
-        error?: string;
-      };
+        },
+        (label) => setProgress(label)
+      );
 
       // Full-estimate prefill: fill the Create-estimate page in place, or
       // park it and route there when the operator asked from another page.
@@ -185,13 +178,20 @@ export function AssistantDock() {
           prefillApplied,
         },
       ]);
-    } catch {
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === 'AbortError';
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Request failed — check the connection and try again.' },
+        {
+          role: 'assistant',
+          content: aborted
+            ? 'That one took too long and I stopped waiting — please try again (a smaller ask helps).'
+            : 'Request failed — check the connection and try again.',
+        },
       ]);
     } finally {
       setBusy(false);
+      setProgress(null);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
   }
@@ -422,7 +422,8 @@ export function AssistantDock() {
         ))}
         {busy ? (
           <div className="max-w-[85%] rounded-[12px] bg-[var(--color-bv-bg)] px-3 py-2 text-[12px] text-[var(--color-bv-muted)]">
-            Working — checking the Sheet and your screen…
+            <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-bv-accent)] align-middle" />
+            {progress ?? 'Working — checking the Sheet and your screen…'}
           </div>
         ) : null}
         <div ref={bottomRef} />

@@ -16,6 +16,56 @@ import { writeAuditLog } from '@/lib/auth/audit';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
+// Reliability guardrails for the agent loop:
+// - Every OpenAI call gets a hard timeout and transient-failure retries.
+// - The WHOLE loop gets a time budget; when it runs out we force a final
+//   answer from what was gathered instead of dying in an nginx 504.
+const OPENAI_CALL_TIMEOUT_MS = 75_000;
+const OPENAI_TRANSIENT_RETRIES = 2;
+const TOTAL_BUDGET_MS = 210_000;
+
+interface OpenAIChatResponse {
+  choices: Array<{
+    message: {
+      content: string | null;
+      tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+    };
+  }>;
+}
+
+/// One OpenAI chat call with timeout + retries on transient failures
+/// (429/5xx/network). Returns a structured error instead of throwing.
+async function callOpenAI(
+  apiKey: string,
+  body: string
+): Promise<{ ok: true; json: OpenAIChatResponse } | { ok: false; error: string }> {
+  let lastError = 'unknown error';
+  for (let attempt = 0; attempt <= OPENAI_TRANSIENT_RETRIES; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, attempt === 1 ? 800 : 2500));
+    }
+    try {
+      const res = await fetch(OPENAI_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        body,
+        signal: AbortSignal.timeout(OPENAI_CALL_TIMEOUT_MS),
+      });
+      if (res.ok) {
+        return { ok: true, json: (await res.json()) as OpenAIChatResponse };
+      }
+      const text = (await res.text()).slice(0, 300);
+      lastError = `OpenAI ${res.status}: ${text}`;
+      // Only transient statuses are worth retrying.
+      if (![429, 500, 502, 503, 504].includes(res.status)) break;
+    } catch (e) {
+      // AbortError (timeout) and network failures — retry.
+      lastError = e instanceof Error ? `${e.name}: ${e.message}` : 'network error';
+    }
+  }
+  return { ok: false, error: lastError };
+}
+
 import { openSecret } from '@/lib/email-ingest/crypto';
 
 /// DB-stored key (Assistant settings, encrypted) wins; env is fallback.
@@ -495,6 +545,13 @@ export interface EstimatePrefillPayload {
   lines: ProposedAssistantLine[];
 }
 
+/// Live progress events emitted while the agent works — streamed to the
+/// client so the operator sees what is happening (and so nginx never
+/// times out waiting for the first byte).
+export type AssistantProgressEvent =
+  | { type: 'round'; round: number }
+  | { type: 'tool'; tool: string; summary: string };
+
 export interface AssistantTurn {
   reply: string;
   toolEvents: Array<{ tool: string; summary: string }>;
@@ -511,7 +568,8 @@ export interface AssistantTurn {
 export async function runAssistant(
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
   me: { id: string; tenantId: string },
-  pageContext?: string | null
+  pageContext?: string | null,
+  onEvent?: (e: AssistantProgressEvent) => void
 ): Promise<AssistantTurn> {
   const { apiKey, model } = await loadAssistantConfig(me.tenantId);
   if (!apiKey) {
@@ -548,29 +606,30 @@ export async function runAssistant(
   let prefill: EstimatePrefillPayload | null = null;
 
   const MAX_ROUNDS = 16;
+  const startedAt = Date.now();
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    // On the last round force a final answer from what was gathered
-    // instead of failing with "too many tool steps".
-    const lastRound = round === MAX_ROUNDS - 1;
-    const res = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
+    // On the last round — or when the time budget is spent — force a
+    // final answer from what was gathered instead of failing with
+    // "too many tool steps" or dying in a proxy timeout.
+    const lastRound = round === MAX_ROUNDS - 1 || Date.now() - startedAt > TOTAL_BUDGET_MS;
+    onEvent?.({ type: 'round', round: round + 1 });
+    const apiCall = await callOpenAI(
+      apiKey,
+      JSON.stringify({
         model,
         messages,
         tools: TOOL_DEFS,
         tool_choice: lastRound ? 'none' : 'auto',
-      }),
-      signal: AbortSignal.timeout(90000),
-    });
-    if (!res.ok) {
-      const text = (await res.text()).slice(0, 300);
-      return { reply: `OpenAI request failed (${res.status}): ${text}`, toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
+      })
+    );
+    if (!apiCall.ok) {
+      console.error('[assistant] OpenAI call failed after retries:', apiCall.error);
+      return {
+        reply: `The AI service didn't respond after several tries (${apiCall.error}). Please send that again in a moment.`,
+        toolEvents, createdEstimate, proposedLines, proposalNote, prefill,
+      };
     }
-    const json = (await res.json()) as {
-      choices: Array<{ message: { content: string | null; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> } }>;
-    };
-    const msg = json.choices[0]?.message;
+    const msg = apiCall.json.choices[0]?.message;
     if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
@@ -618,6 +677,7 @@ export async function runAssistant(
           prefill = { title: r.title, customerName: r.customerName, markupPercent: r.markupPercent, note: r.note, lines: r.lines };
         }
         toolEvents.push({ tool: call.function.name, summary: JSON.stringify(parsed).slice(0, 160) });
+        onEvent?.({ type: 'tool', tool: call.function.name, summary: JSON.stringify(parsed).slice(0, 160) });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000) });
       }
       continue;
