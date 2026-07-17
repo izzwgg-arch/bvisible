@@ -408,10 +408,16 @@ export function LineGrid({
           <tbody>
             {lines.map((line, idx) => {
               const cost = lineCosts[line.id] ?? 0;
-              const sell = Math.round((cost * multiplierMilli) / 1000);
+              // R-EST-05: markup-exempt lines (sq-ft rates, vehicle wraps)
+              // carry FINAL selling prices — sell = cost, never multiplied.
+              const sell = line.markupExempt ? cost : Math.round((cost * multiplierMilli) / 1000);
               // Markup on cost (200% = sell is 3× cost) — never confused
               // with margin. Changing the estimate markup recalculates it.
-              const markup = cost > 0 ? Math.round(((sell - cost) / cost) * 1000) / 10 : null;
+              const markup = line.markupExempt
+                ? null
+                : cost > 0
+                  ? Math.round(((sell - cost) / cost) * 1000) / 10
+                  : null;
               const catalogRow = line.catalogItemId ? catalogById.get(line.catalogItemId) ?? null : null;
               const lineMeta = parseLineInternalMeta(line.internalNotes);
               const isBundle = catalogRow?.itemType === 'BUNDLE' || Boolean(lineMeta?.customBundle);
@@ -600,7 +606,9 @@ export function LineGrid({
                           onCommit={(v) => {
                             if (multiplierMilli <= 0) return;
                             const qty = line.qtyMilli > 0 ? line.qtyMilli : 1000;
-                            const targetCost = Math.round((v * 1000) / multiplierMilli);
+                            // Markup-exempt lines: the sell IS the final
+                            // price — never divide it back by the multiplier.
+                            const targetCost = line.markupExempt ? v : Math.round((v * 1000) / multiplierMilli);
                             dispatch({ type: 'set-line', id: line.id, patch: { unitCostCents: Math.round((targetCost * 1000) / qty) } });
                           }}
                           format={formatMoney}
