@@ -112,12 +112,12 @@ BUILDING FULL ESTIMATES (draft in the estimate workspace — the default):
 - When the operator describes a sign or job they want an estimate for — from ANY page — build the complete estimate and call create_estimate_draft. The full estimate workspace opens on their screen with the DRAFT loaded (every line, markup, totals) — the same premium editor they use for all estimates. It is a DRAFT only: nothing is sent or approved; they review, adjust, and take it from there.
 - Build the FULL recipe the way the shop would: structure/face/back materials at real Sheet prices with realistic quantities and sheet counts for the dimensions; for lit signs add LED modules (spaced ~1 per 0.35–0.5 sq ft of lit face), power supplies (~1 per 20–30 modules), low-voltage wire by linear feet, silicone/hardware/glue; machine time on the right machines from get_rates (CNC/router for cutting, flatbed or roll printer for prints); shop labor hours; design units; installation as INSTALL lines (hours × installers at the per-person rate). Start from get_recommendations for the sign type, then add what the description requires.
 - Printed graphics: include printer machine time, and if ink/consumables aren't in the Sheet add a MISC line with a stated cost assumption.
-- End your reply with a short "Assumptions to verify" list (sizes, coverage, counts you estimated).
+- ALWAYS pass summaryForOperator with the create_estimate_draft / prefill_estimate call: the full line list with prices, the total, and a short "Assumptions to verify" list (sizes, coverage, counts you estimated). That text IS your final reply — the turn ends the moment the draft is created, with no extra round.
 - Use prefill_estimate only if the operator explicitly asks you to fill in the Create-estimate form without saving anything yet.
 
 EFFICIENCY (critical):
 - Batch your lookups: issue MANY tool calls in the SAME response — all search_materials calls at once, alongside get_rates and get_recommendations. NEVER search one material per round.
-- Target 3–4 rounds total even for complex signs. If a search misses, move on with your best Sheet match or a stated assumption instead of endless searching.
+- Target 2 rounds total: round 1 = ALL lookups batched in parallel; round 2 = create_estimate_draft with summaryForOperator. Add a round only when a needed price is genuinely missing — never to double-check something you already have.
 
 LEARNING (you have permanent memory):
 - A MEMORY section with lessons from this shop may follow. Apply those lessons — they override generic guesses.
@@ -226,6 +226,11 @@ const TOOL_DEFS = [
           customerName: { type: 'string', description: 'Customer/company if the operator gave one.' },
           markupPercent: { type: 'number', description: 'Default 200 unless the operator says otherwise.' },
           note: { type: 'string', description: 'One short line shown to the operator.' },
+          summaryForOperator: {
+            type: 'string',
+            description:
+              'Your COMPLETE final reply to the operator: the line list with quantities and prices, the total, and a short "Assumptions to verify" list. The turn ends with this text — always provide it.',
+          },
           lines: {
             type: 'array',
             items: {
@@ -286,6 +291,11 @@ const TOOL_DEFS = [
               required: ['kind', 'description', 'qty', 'unitCostCents'],
             },
           },
+          summaryForOperator: {
+            type: 'string',
+            description:
+              'Your COMPLETE final reply to the operator: the line list with quantities and prices, the total, and a short "Assumptions to verify" list. The turn ends with this text — always provide it.',
+          },
         },
         required: ['title', 'customerName', 'lines'],
       },
@@ -304,7 +314,7 @@ async function runTool(
   if (name === 'search_materials') {
     const overrides = await loadOverrides(me.tenantId);
     return fuzzySearch(String(args.query ?? ''), data.materials, (m) => `${m.name} ${m.category}`, {
-      limit: 10,
+      limit: 6,
     }).map((m) => {
       const active = activeMaterialPrice(overrides, m.key, m.priceCents);
       return { name: m.name, category: m.category, priceCents: active.priceCents, price: formatMoney(active.priceCents), vendor: m.vendor };
@@ -620,6 +630,9 @@ export async function runAssistant(
         messages,
         tools: TOOL_DEFS,
         tool_choice: lastRound ? 'none' : 'auto',
+        // Reasoning models: low effort. Estimate building is structured
+        // tool work — long private chains of thought only add latency.
+        ...(/^(gpt-5|o[0-9])/.test(model) ? { reasoning_effort: 'low' } : {}),
       })
     );
     if (!apiCall.ok) {
@@ -634,6 +647,10 @@ export async function runAssistant(
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: msg.tool_calls });
+      // When the model hands us its operator summary together with the
+      // draft/prefill call, the turn can end right here — skipping the
+      // final wrap-up round saves 15–40s per estimate.
+      let finalSummary: string | null = null;
       for (const call of msg.tool_calls) {
         let parsed: Record<string, unknown> = {};
         try {
@@ -655,6 +672,8 @@ export async function runAssistant(
         ) {
           const r = result as { estimateId: string; number: string };
           createdEstimate = { id: r.estimateId, number: r.number };
+          const s = String(parsed.summaryForOperator ?? '').trim();
+          if (s) finalSummary = s;
         }
         if (
           call.function.name === 'propose_estimate_lines' &&
@@ -675,10 +694,15 @@ export async function runAssistant(
         ) {
           const r = result as { title: string; customerName: string | null; markupPercent: number | null; note: string | null; lines: ProposedAssistantLine[] };
           prefill = { title: r.title, customerName: r.customerName, markupPercent: r.markupPercent, note: r.note, lines: r.lines };
+          const s = String(parsed.summaryForOperator ?? '').trim();
+          if (s) finalSummary = s;
         }
         toolEvents.push({ tool: call.function.name, summary: JSON.stringify(parsed).slice(0, 160) });
         onEvent?.({ type: 'tool', tool: call.function.name, summary: JSON.stringify(parsed).slice(0, 160) });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000) });
+      }
+      if (finalSummary && (createdEstimate || prefill)) {
+        return { reply: finalSummary, toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
       }
       continue;
     }
