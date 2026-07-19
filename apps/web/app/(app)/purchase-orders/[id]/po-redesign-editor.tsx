@@ -503,7 +503,7 @@ function VendorSection({
           <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{group.lines.length} item{group.lines.length === 1 ? '' : 's'}</span>
         </div>
         <div className="flex items-center gap-4 text-[11.5px] text-slate-500">
-          <span>{group.vendor?.emails[0] ?? group.vendor?.email ?? 'No vendor email'}</span>
+          <span>{[...(group.vendor?.emails ?? []), group.vendor?.email].filter((e, i, a) => e && a.indexOf(e) === i).join(', ') || 'No vendor email'}</span>
           <span className="font-bold text-slate-900">{formatMoney(group.subtotalCents)}</span>
         </div>
       </div>

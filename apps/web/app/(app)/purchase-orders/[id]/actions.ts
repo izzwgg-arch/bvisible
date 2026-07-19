@@ -39,6 +39,7 @@ import { insertPoAttachmentAndTimelineEvent } from '@/lib/po/attachment-insert';
 import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import { renderPurchaseOrderEmail } from '@/lib/emails/purchase-order';
 import { sendMail } from '@/lib/mailer';
+import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
 import { unlink } from 'node:fs/promises';
 
 export interface SavePoState {
@@ -637,7 +638,8 @@ export async function sendPurchaseOrderAction(
   let failedCount = 0;
 
   for (const [vendorId, group] of groups) {
-    const recipient = group.vendor.emails[0] ?? group.vendor.email;
+    // Send to EVERY email on file for the vendor, not just the first.
+    const recipient = vendorRecipientLine(group.vendor) || null;
     const subtotalCents = group.lines.reduce((sum, line) => sum + line.computedCostCents, 0);
     if (!recipient) {
       failedCount += 1;

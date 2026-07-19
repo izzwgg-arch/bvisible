@@ -20,6 +20,7 @@ import {
   isRetailVendor,
   normalizeExternalUrl,
 } from '@/lib/po/retail-cart';
+import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
 
 const shopOrderLineSchema = z.object({
   name: z.string().trim().min(1).max(400),
@@ -228,7 +229,8 @@ export async function sendShopOrderPoAction(
     },
   });
   if (!po) return { ok: false, message: 'Purchase order not found.' };
-  const to = po.vendor?.email ?? po.vendor?.emails[0] ?? null;
+  // Send to EVERY email on file for the vendor, not just the first.
+  const to = po.vendor ? vendorRecipientLine(po.vendor) || null : null;
   if (!to) {
     return { ok: false, message: 'No vendor email on file — add one in the Sheet Vendor Directory or on the vendor record.' };
   }
