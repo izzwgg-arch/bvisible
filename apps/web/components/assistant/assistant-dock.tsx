@@ -19,7 +19,11 @@ import {
   type EstimatePrefill,
   type ProposedLine,
 } from '@/lib/assistant/context-store';
-import { sendAssistantMessage } from '@/lib/assistant/stream-client';
+import {
+  sendAssistantMessage,
+  confirmAssistantAction,
+  type AssistantPendingAction,
+} from '@/lib/assistant/stream-client';
 
 interface DockMsg {
   role: 'user' | 'assistant';
@@ -31,6 +35,9 @@ interface DockMsg {
   linesApplied?: boolean;
   prefill?: EstimatePrefill | null;
   prefillApplied?: boolean;
+  pendingActions?: AssistantPendingAction[] | null;
+  /// token -> 'approved' | 'cancelled' once the operator acts.
+  actionResults?: Record<string, string>;
 }
 
 const STORAGE_KEY = 'bv-assistant-dock-v1';
@@ -182,8 +189,16 @@ export function AssistantDock() {
           proposalNote: data.proposalNote ?? null,
           prefill: data.prefill && data.prefill.lines.length > 0 ? data.prefill : null,
           prefillApplied,
+          pendingActions: data.pendingActions && data.pendingActions.length > 0 ? data.pendingActions : null,
+          actionResults: {},
         },
       ]);
+
+      // A create/add ran server-side — refresh so the operator sees it.
+      const didWrite = (data.toolEvents ?? []).some((t) =>
+        t.tool === 'create_catalog_item' || t.tool === 'add_estimate_line'
+      );
+      if (didWrite) router.refresh();
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === 'AbortError';
       setMessages((prev) => [
@@ -200,6 +215,30 @@ export function AssistantDock() {
       setProgress(null);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
+  }
+
+  async function handleApproveAction(idx: number, action: AssistantPendingAction) {
+    setMessages((prev) =>
+      prev.map((m, i) =>
+        i === idx ? { ...m, actionResults: { ...(m.actionResults ?? {}), [action.token]: 'working' } } : m
+      )
+    );
+    const res = await confirmAssistantAction(action);
+    const outcome = 'error' in res ? `error:${res.error}` : 'approved';
+    setMessages((prev) =>
+      prev.map((m, i) =>
+        i === idx ? { ...m, actionResults: { ...(m.actionResults ?? {}), [action.token]: outcome } } : m
+      )
+    );
+    if (!('error' in res)) router.refresh();
+  }
+
+  function handleCancelAction(idx: number, token: string) {
+    setMessages((prev) =>
+      prev.map((m, i) =>
+        i === idx ? { ...m, actionResults: { ...(m.actionResults ?? {}), [token]: 'cancelled' } } : m
+      )
+    );
   }
 
   function handleApplyLines(idx: number, lines: ProposedLine[]) {
@@ -367,6 +406,46 @@ export function AssistantDock() {
               }
             >
               {m.content}
+              {m.pendingActions && m.pendingActions.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {m.pendingActions.map((action) => {
+                    const outcome = m.actionResults?.[action.token];
+                    return (
+                      <div key={action.token} className="rounded-[10px] border border-rose-200 bg-rose-50 px-2.5 py-2">
+                        <div className="text-[11.5px] font-bold text-rose-900">Approve delete?</div>
+                        <div className="text-[11px] font-semibold text-rose-800">{action.label}</div>
+                        <div className="text-[9.5px] text-rose-600">{action.detail}</div>
+                        {outcome === 'approved' ? (
+                          <div className="mt-1 text-[10.5px] font-bold text-emerald-700">✓ Deleted — recover it from the Recycle Bin</div>
+                        ) : outcome === 'cancelled' ? (
+                          <div className="mt-1 text-[10.5px] font-semibold text-[var(--color-bv-muted)]">Cancelled — nothing was deleted</div>
+                        ) : outcome === 'working' ? (
+                          <div className="mt-1 text-[10.5px] font-semibold text-rose-700">Deleting…</div>
+                        ) : outcome?.startsWith('error:') ? (
+                          <div className="mt-1 text-[10.5px] font-semibold text-rose-700">{outcome.slice(6)}</div>
+                        ) : (
+                          <div className="mt-1.5 flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => void handleApproveAction(i, action)}
+                              className="rounded-[8px] bg-rose-600 px-3 py-1.5 text-[10.5px] font-bold text-white hover:bg-rose-700"
+                            >
+                              Approve delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCancelAction(i, action.token)}
+                              className="rounded-[8px] border border-[var(--color-bv-border)] bg-white px-3 py-1.5 text-[10.5px] font-bold text-[var(--color-bv-text)]"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
               {m.createdEstimate ? (
                 <div className="mt-2 flex items-center gap-2 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-2.5 py-1.5">
                   <div>

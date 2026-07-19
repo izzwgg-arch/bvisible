@@ -102,7 +102,8 @@ export type AuditAction =
   | 'operating_rates_saved'
   | 'sheet_price_override_set'
   | 'sheet_price_override_reset'
-  | 'assistant_settings_saved';
+  | 'assistant_settings_saved'
+  | 'assistant_record_restored';
 
 export interface AuditEntry {
   action: AuditAction;

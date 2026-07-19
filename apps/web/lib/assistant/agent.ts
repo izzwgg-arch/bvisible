@@ -14,6 +14,13 @@ import { sheetItemKey } from '@/lib/sheet-sync/types';
 import { loadOverrides, activeMaterialPrice } from '@/lib/sheet-sync/active-price';
 import { nextEstimateNumber } from '@/lib/estimate/number';
 import { writeAuditLog } from '@/lib/auth/audit';
+import {
+  addEstimateLine,
+  createCatalogItem,
+  prepareDelete,
+  type PendingAction,
+  type RecyclableEntity,
+} from '@/lib/assistant/operator-actions';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -100,10 +107,13 @@ NON-NEGOTIABLE PRICING RULES (from the owner):
 - Operating rates: shop labor $/hr, design flat fee, installation $/person/hr come from get_rates.
 - Sign-type jobs (stop sign, pylon, channel letters, vehicle wrap, ACM, coroplast, monument…) should start from get_recommendations for that sign type, plus bundles when one matches.
 
-WHAT YOU CAN DO:
-- Look up materials, bundles, vehicle wraps, sq-ft rates, machines, recommendations (Sheet tools).
-- Answer business questions from the database snapshot (estimates, POs, customers — read-only).
-- Create DRAFT estimates with create_estimate_draft. Always confirm the built line list and total in your reply, with the estimate number.
+WHAT YOU CAN DO — you are a full operator assistant. You can carry out any normal user task in the app:
+- Look up materials, bundles, vehicle wraps, sq-ft rates, machines, recommendations (Sheet tools) and answer business questions from the database.
+- Create estimates (create_estimate_draft), add lines to an existing estimate (add_estimate_line), and create catalog items (create_catalog_item). These run immediately.
+- Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item. Deletes NEVER happen instantly: the operator gets a one-tap Approve card, and the delete is soft — the record goes to the Recycle Bin, recoverable for 30 days. Just call delete_record; the approval + recovery are handled for you.
+- When the operator asks you to do something (add, change, delete), DO IT with the tools — don't just describe it. Confirm what you did (or, for a delete, that it's waiting for their approval) in plain language.
+
+THE ONE HARD LIMIT: you work only with the database and normal in-app actions. You can NEVER change code, the backend, server, or app settings, and you never touch payments or pension. If asked for any of those, say it's outside what you can do.
 
 SCREEN CONTEXT:
 - When a "CURRENT SCREEN" note is present, the operator has that page open right now. Use it — never ask them to re-explain what they are working on.
@@ -126,7 +136,7 @@ LEARNING (you have permanent memory):
 - Whenever the operator corrects you, states a preference or shop rule, or you learn something reusable (a recipe, a quantity rule, a preferred material, a pricing practice), call save_memory with a short general lesson (e.g. "Lightbox faces: use Dura-Bond Black 4x8 matt"). Don't save one-off job details, customer PII, or anything sensitive.
 
 WHAT YOU MUST NEVER DO:
-- Never send, email, approve, finalize, or delete anything. Drafts only. The operator reviews everything.
+- Never change code, backend, server, or app configuration, and never touch payments or pension.
 - Never guess prices — if a lookup returns nothing, say so and ask.
 
 STYLE: concise, practical, dollars formatted, show your material picks as a short list. When you create an estimate, end with "Draft <number> created — review it in Estimates."`;
@@ -305,6 +315,62 @@ const TOOL_DEFS = [
           },
         },
         required: ['title', 'customerName', 'lines'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_catalog_item',
+      description:
+        'Create a new catalog (shop material) item in the database — runs immediately. Use when the operator says "add … to the catalog".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          kind: { type: 'string', enum: ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'] },
+          unit: { type: 'string', enum: ['EACH', 'SHEET', 'SQ_FT', 'HOUR', 'LINEAR_FT', 'ROLL', 'CUSTOM'] },
+          category: { type: 'string' },
+          internalCostCents: { type: 'number', description: 'Internal unit cost in cents.' },
+          markupPercent: { type: 'number', description: 'Default 200.' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_estimate_line',
+      description:
+        'Append a line item to an EXISTING estimate (by number, e.g. EST-000021) — runs immediately. Use catalog prices from search_materials.',
+      parameters: {
+        type: 'object',
+        properties: {
+          estimate: { type: 'string', description: 'Estimate number or id.' },
+          kind: { type: 'string', enum: ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'] },
+          description: { type: 'string' },
+          qty: { type: 'number' },
+          unitCostCents: { type: 'number' },
+          markupExempt: { type: 'boolean' },
+        },
+        required: ['estimate', 'description', 'qty', 'unitCostCents'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_record',
+      description:
+        'Delete a record (estimate, customer, vendor, purchase_order, or catalog_item). This is IRREVERSIBLE-feeling, so it does NOT run immediately — it returns a request the operator must approve with one tap. The delete is a soft delete: the record goes to the Recycle Bin and is recoverable for 30 days.',
+      parameters: {
+        type: 'object',
+        properties: {
+          entity: { type: 'string', enum: ['estimate', 'customer', 'vendor', 'purchase_order', 'catalog_item'] },
+          reference: { type: 'string', description: 'Name or number identifying the record (e.g. "EST-000021", "Valley Plumbing").' },
+        },
+        required: ['entity', 'reference'],
       },
     },
   },
@@ -572,7 +638,32 @@ async function runTool(
     };
   }
 
+  if (name === 'create_catalog_item') {
+    return createCatalogItem(me, args);
+  }
+
+  if (name === 'add_estimate_line') {
+    return addEstimateLine(me, args);
+  }
+
+  if (name === 'delete_record') {
+    const entity = String(args.entity ?? '') as RecyclableEntity;
+    const reference = String(args.reference ?? '');
+    const prepared = await prepareDelete(me, entity, reference);
+    if ('error' in prepared) return prepared;
+    // Signal to the loop that this needs the operator's approval — it is
+    // NOT executed here.
+    return { __pendingAction: prepared };
+  }
+
   return { error: `Unknown tool ${name}` };
+}
+
+function extractPendingAction(result: unknown): PendingAction | null {
+  if (result && typeof result === 'object' && '__pendingAction' in result) {
+    return (result as { __pendingAction: PendingAction }).__pendingAction;
+  }
+  return null;
 }
 
 /* --------------------------- agent loop --------------------------- */
@@ -611,6 +702,9 @@ export interface AssistantTurn {
   /// Complete estimate to prefill into the Create-estimate page —
   /// applied client-side; the operator reviews and saves.
   prefill?: EstimatePrefillPayload | null;
+  /// Irreversible actions (deletes) the agent wants to run — each shown as
+  /// a one-tap Approve card. Nothing happens until the operator approves.
+  pendingActions?: PendingAction[] | null;
 }
 
 export async function runAssistant(
@@ -652,6 +746,7 @@ export async function runAssistant(
   const proposedLines: ProposedAssistantLine[] = [];
   let proposalNote: string | null = null;
   let prefill: EstimatePrefillPayload | null = null;
+  const pendingActions: PendingAction[] = [];
 
   const MAX_ROUNDS = 16;
   const startedAt = Date.now();
@@ -687,7 +782,7 @@ export async function runAssistant(
       };
     }
     const msg = apiCall.json.choices[0]?.message;
-    if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
+    if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: msg.tool_calls });
@@ -707,6 +802,14 @@ export async function runAssistant(
           result = await runTool(call.function.name, parsed, me);
         } catch (e) {
           result = { error: e instanceof Error ? e.message : 'tool failed' };
+        }
+        // Delete requests come back as a PendingAction — collect it for the
+        // operator's approval and let the model tell them what it wants to
+        // delete (the tool result reflects that it's awaiting approval).
+        const pending = extractPendingAction(result);
+        if (pending) {
+          pendingActions.push(pending);
+          result = { awaitingApproval: true, willDelete: pending.label, note: 'Shown to the operator for one-tap approval; nothing deleted yet.' };
         }
         if (
           call.function.name === 'create_estimate_draft' &&
@@ -746,14 +849,14 @@ export async function runAssistant(
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000) });
       }
       if (finalSummary && (createdEstimate || prefill)) {
-        return { reply: finalSummary, toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
+        return { reply: finalSummary, toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
       }
       continue;
     }
 
-    return { reply: msg.content ?? '(empty reply)', toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
+    return { reply: msg.content ?? '(empty reply)', toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
   }
-  return { reply: 'I could not finish that one — please try again.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill };
+  return { reply: 'I could not finish that one — please try again.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
 }
 
 /* ------------------------- voice transcription ------------------------- */

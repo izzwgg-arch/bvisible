@@ -17,6 +17,7 @@ const BASE_NAV: ReadonlyArray<NavItem> = [
   { href: '/items', label: 'Catalog' },
   { href: '/vehicles', label: 'Vehicles' },
   { href: '/reports', label: 'Reports' },
+  { href: '/recycle', label: 'Recycle Bin' },
 ];
 
 const ADMIN_NAV: ReadonlyArray<NavItem> = [

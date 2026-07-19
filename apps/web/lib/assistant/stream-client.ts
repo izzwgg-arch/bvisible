@@ -7,6 +7,17 @@
 
 import type { EstimatePrefill, ProposedLine } from './context-store';
 
+/// A delete the assistant wants to run, awaiting the operator's one-tap
+/// approval. Mirrors PendingAction on the server.
+export interface AssistantPendingAction {
+  token: string;
+  kind: 'delete';
+  entity: string;
+  recordId: string;
+  label: string;
+  detail: string;
+}
+
 export interface AssistantTurnPayload {
   reply?: string;
   toolEvents?: Array<{ tool: string; summary: string }>;
@@ -14,8 +25,33 @@ export interface AssistantTurnPayload {
   proposedLines?: ProposedLine[] | null;
   proposalNote?: string | null;
   prefill?: EstimatePrefill | null;
+  pendingActions?: AssistantPendingAction[] | null;
   error?: string;
 }
+
+/// Execute an approved action via the confirm endpoint.
+export async function confirmAssistantAction(
+  action: AssistantPendingAction,
+): Promise<{ ok: true; label: string } | { error: string }> {
+  try {
+    const res = await fetch('/api/assistant/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = (await res.json()) as { ok?: boolean; label?: string; error?: string };
+    if (data.error) return { error: data.error };
+    return { ok: true, label: data.label ?? action.label };
+  } catch {
+    return { error: 'Could not reach the server — try again.' };
+  }
+}
+
+const TOOL_LABELS_EXTRA: Record<string, string> = {
+  create_catalog_item: 'Creating the catalog item…',
+  add_estimate_line: 'Adding the line to the estimate…',
+  delete_record: 'Preparing the delete for your approval…',
+};
 
 /// Friendly labels for the live progress line under the chat.
 const TOOL_LABELS: Record<string, string> = {
@@ -28,6 +64,7 @@ const TOOL_LABELS: Record<string, string> = {
   prefill_estimate: 'Building the full estimate…',
   save_memory: 'Saving what you taught me…',
   create_estimate_draft: 'Creating the draft estimate…',
+  ...TOOL_LABELS_EXTRA,
 };
 
 export async function sendAssistantMessage(
