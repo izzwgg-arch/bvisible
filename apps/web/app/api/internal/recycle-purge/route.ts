@@ -1,24 +1,36 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
+import { safeCompareSecret } from '@/lib/email-ingest/crypto';
 import { purgeExpiredRecycleBin } from '@/lib/assistant/recycle';
 
-// Nightly cleanup endpoint for the Recycle Bin — hard-deletes records that
-// were soft-deleted more than 30 days ago. Called by a server-side timer
-// hitting 127.0.0.1 directly (bypassing nginx). Public requests always come
-// through nginx, which stamps X-Forwarded-For; a direct local call has none,
-// so the presence of that header means "not the local cron" → rejected.
+// Nightly Recycle Bin purge — hard-deletes records soft-deleted more than
+// 30 days ago. Invoked by a systemd timer on the host, authenticated with
+// the same shared secret the email-ingest tick uses (INGEST_TICK_SECRET).
+// Same model: 127.0.0.1-bound app, /api/internal/* not proxied by nginx,
+// and the secret header is the real auth boundary.
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function POST(req: Request) {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+const HEADER = 'x-bvisible-ingest-secret';
+
+export async function POST(): Promise<NextResponse> {
+  const headerStore = await headers();
+  const presented = headerStore.get(HEADER);
+  const expected = process.env.INGEST_TICK_SECRET ?? '';
+
+  if (!expected) {
+    return NextResponse.json({ ok: false, error: 'Secret not configured.' }, { status: 503 });
   }
+  if (!safeCompareSecret(presented, expected)) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized.' }, { status: 401 });
+  }
+
   try {
     const { purged } = await purgeExpiredRecycleBin();
     return NextResponse.json({ ok: true, purged });
   } catch (e) {
     console.error('[recycle-purge] failed:', e);
-    return NextResponse.json({ error: 'purge failed' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'purge failed' }, { status: 500 });
   }
 }
