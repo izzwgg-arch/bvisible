@@ -202,6 +202,34 @@ export function CatalogItemEditor({
   }))];
   const cheapestVendor = allVendorRows.filter((row) => row.priceCents >= 0).sort((a, b) => a.priceCents - b.priceCents)[0] ?? null;
   const preferredVendor = allVendorRows.find((row) => row.vendorId === preferredVendorId || row.isPreferred) ?? null;
+
+  // "+ Add Vendor" (Vendor Pricing table) adds a new editable draft row and
+  // scrolls to the Vendor pricing editor above, where the operator fills in
+  // vendor + unit cost. Rows save with the item — as many as they like.
+  function addVendorDraftRow() {
+    setVendorDraftRows((rows) => [
+      ...rows,
+      {
+        id: `draft-${Date.now()}-${rows.length}`,
+        vendorId: '',
+        newVendorName: '',
+        vendorSku: '',
+        unitCostUsd: '',
+        unit: pricingValues.catalogUnit.replace(/_/g, ' '),
+        leadTimeDays: '',
+        notes: '',
+        preferred: false,
+        active: true,
+      },
+    ]);
+    if (typeof document !== 'undefined') {
+      requestAnimationFrame(() => {
+        document
+          .getElementById('vendor-pricing-editor')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }
   const pricingOutputText = formatJsonPreview(pricingValues.pricing.pricingOutputJson);
   const pricingInputs = parseJsonRecord(pricingValues.pricing.pricingInputsJson);
   const pricingPreviewRows = previewRowsForEngine(pricingValues.pricing.pricingEngine, pricingInputs, {
@@ -380,7 +408,13 @@ export function CatalogItemEditor({
                 </tbody>
               </table>
             </div>
-            <button type="button" className="mt-2 text-[10.5px] font-semibold text-[#2563eb]">+ Add Vendor</button>
+            <button
+              type="button"
+              onClick={addVendorDraftRow}
+              className="mt-2 text-[10.5px] font-semibold text-[#2563eb] hover:underline"
+            >
+              + Add Vendor
+            </button>
           </section>
 
           <section className={panelClass}>

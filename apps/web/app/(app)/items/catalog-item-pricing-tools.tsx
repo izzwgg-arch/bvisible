@@ -1101,7 +1101,7 @@ function VendorPricingTool({
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4" id="vendor-pricing-editor">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h4 className="text-[14px] font-semibold text-slate-950">Vendor pricing</h4>
