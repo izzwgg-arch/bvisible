@@ -133,6 +133,7 @@ export function CatalogItemEditor({
     normalizeVendorCostSourceMode(item?.selectedVendorMode),
   );
   const [vendorDraftRows, setVendorDraftRows] = useState<CatalogVendorDraftRow[]>([]);
+  const [openVendorsTabSignal, setOpenVendorsTabSignal] = useState(0);
   const [pricingValues, setPricingValues] = useState<CatalogPricingToolValues>({
     internalCostUsd: moneyString(item?.internalCostCents ?? 0) || '0.00',
     markupPercent: markupString(item?.markupPercentMilli ?? 200000),
@@ -222,12 +223,15 @@ export function CatalogItemEditor({
         active: true,
       },
     ]);
+    // Jump the Pricing Engine to the Vendors tab (where the editable rows
+    // live) and scroll it into view so the new row is right there.
+    setOpenVendorsTabSignal((n) => n + 1);
     if (typeof document !== 'undefined') {
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         document
           .getElementById('vendor-pricing-editor')
           ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
+      }, 80);
     }
   }
   const pricingOutputText = formatJsonPreview(pricingValues.pricing.pricingOutputJson);
@@ -354,6 +358,7 @@ export function CatalogItemEditor({
               selectedMachineId={selectedMachineId}
               onSelectedMachineIdChange={(machineId) => setSelectedMachineId(machineId ?? '')}
               catalogUnitLabel={pricingValues.catalogUnit.replace(/_/g, ' ')}
+              openVendorsTabSignal={openVendorsTabSignal}
             />
           </section>
 

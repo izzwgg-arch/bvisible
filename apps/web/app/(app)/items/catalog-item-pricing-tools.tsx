@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ShopCatalogUnit } from '@bvisible/db';
 import {
   bannerPrice,
@@ -190,6 +190,7 @@ export function CatalogItemPricingTools({
   selectedMachineId,
   onSelectedMachineIdChange,
   catalogUnitLabel,
+  openVendorsTabSignal,
 }: {
   values: CatalogPricingToolValues;
   onChange: (patch: CatalogPricingToolChange) => void;
@@ -207,11 +208,19 @@ export function CatalogItemPricingTools({
   selectedMachineId?: string | null;
   onSelectedMachineIdChange?: (machineId: string | null) => void;
   catalogUnitLabel?: string;
+  /// Incrementing counter: when it changes, jump to the Vendors tab so the
+  /// vendor-price editor is visible (driven by the "+ Add Vendor" button in
+  /// the Vendor Pricing table below).
+  openVendorsTabSignal?: number;
 }) {
   const initialEngine = normalizePricingEngine(values.pricing.pricingEngine || values.pricing.pricingMethod);
   const [method, setMethod] = useState<PricingTab>(
     initialEngine === 'MANUAL' ? 'SHEET_GOODS' : initialEngine,
   );
+
+  useEffect(() => {
+    if (openVendorsTabSignal && openVendorsTabSignal > 0) setMethod('VENDORS');
+  }, [openVendorsTabSignal]);
 
   const [sqW, setSqW] = useState('48');
   const [sqH, setSqH] = useState('96');
