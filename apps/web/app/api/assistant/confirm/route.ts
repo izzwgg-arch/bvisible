@@ -18,7 +18,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
   const action = body.action;
-  if (!action || action.kind !== 'delete' || !action.entity || !action.recordId) {
+  const validDelete = action?.kind === 'delete' && !!action.entity && !!action.recordId;
+  const validStatus = action?.kind === 'set_estimate_status' && !!action.recordId && !!action.targetStatus;
+  if (!action || (!validDelete && !validStatus)) {
     return NextResponse.json({ error: 'No valid action to confirm.' }, { status: 400 });
   }
   const result = await executeConfirmedAction({ id: me.id, tenantId: me.tenantId }, action);

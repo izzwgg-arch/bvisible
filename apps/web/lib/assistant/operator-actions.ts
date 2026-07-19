@@ -30,13 +30,20 @@ export type RecyclableEntity =
 export interface PendingAction {
   /// Stable opaque id so the client can echo the exact action back.
   token: string;
-  kind: 'delete';
-  entity: RecyclableEntity;
+  kind: 'delete' | 'set_estimate_status';
+  /// For deletes.
+  entity?: RecyclableEntity;
   recordId: string;
+  /// For status changes.
+  targetStatus?: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED';
   /// Human label shown on the approval card, e.g. "Estimate EST-000021 — test 3".
   label: string;
   /// One-line description of the consequence, shown under the label.
   detail: string;
+  /// Card heading, e.g. "Approve delete?" / "Approve this estimate?".
+  question: string;
+  /// Confirm button text, e.g. "Approve delete".
+  confirmLabel: string;
 }
 
 const ENTITY_LABEL: Record<RecyclableEntity, string> = {
@@ -213,6 +220,165 @@ export async function prepareDelete(
     recordId,
     label: `${ENTITY_LABEL[entity]} ${label}`,
     detail: `Moves to the Recycle Bin — recoverable for ${RECYCLE_RETENTION_DAYS} days.`,
+    question: 'Approve delete?',
+    confirmLabel: 'Approve delete',
+  };
+}
+
+/* ------------------- create / edit (immediate) ------------------- */
+
+export async function createCustomer(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; id: string; name: string } | { error: string }> {
+  const companyName = String(args.companyName ?? args.name ?? '').trim().slice(0, 200);
+  if (!companyName) return { error: 'A company/customer name is required.' };
+  const created = await prisma.client.create({
+    data: {
+      tenantId: me.tenantId,
+      companyName,
+      contactName: String(args.contactName ?? '').trim().slice(0, 200) || null,
+      email: String(args.email ?? '').trim().slice(0, 200) || null,
+      phone: String(args.phone ?? '').trim().slice(0, 60) || null,
+    },
+    select: { id: true, companyName: true },
+  });
+  await writeAuditLog({ action: 'client_created', userId: me.id, tenantId: me.tenantId, targetType: 'client', targetId: created.id, metadata: { via: 'ai_assistant', name: created.companyName } });
+  return { ok: true, id: created.id, name: created.companyName };
+}
+
+export async function createVendor(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; id: string; name: string } | { error: string }> {
+  const name = String(args.name ?? '').trim().slice(0, 200);
+  if (!name) return { error: 'A vendor name is required.' };
+  const existing = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, name: { equals: name, mode: 'insensitive' }, deletedAt: null }, select: { id: true } });
+  if (existing) return { error: `A vendor named "${name}" already exists.` };
+  const created = await prisma.vendor.create({
+    data: {
+      tenantId: me.tenantId,
+      name,
+      email: String(args.email ?? '').trim().slice(0, 200) || null,
+      phone: String(args.phone ?? '').trim().slice(0, 60) || null,
+    },
+    select: { id: true, name: true },
+  });
+  await writeAuditLog({ action: 'vendor_created', userId: me.id, tenantId: me.tenantId, targetType: 'vendor', targetId: created.id, metadata: { via: 'ai_assistant', name: created.name } });
+  return { ok: true, id: created.id, name: created.name };
+}
+
+export async function updateCustomer(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; name: string } | { error: string }> {
+  const ref = String(args.reference ?? args.id ?? '').trim();
+  if (!ref) return { error: 'Which customer? Give their name.' };
+  const rec = await prisma.client.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { companyName: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
+  if (!rec) return { error: `No customer found matching "${ref}".` };
+  const data: Record<string, string> = {};
+  if (args.newName != null && String(args.newName).trim()) data.companyName = String(args.newName).trim().slice(0, 200);
+  if (args.contactName != null) data.contactName = String(args.contactName).trim().slice(0, 200);
+  if (args.email != null) data.email = String(args.email).trim().slice(0, 200);
+  if (args.phone != null) data.phone = String(args.phone).trim().slice(0, 60);
+  if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, contact, email, phone).' };
+  const updated = await prisma.client.update({ where: { id: rec.id }, data, select: { companyName: true } });
+  await writeAuditLog({ action: 'client_updated', userId: me.id, tenantId: me.tenantId, targetType: 'client', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+  return { ok: true, name: updated.companyName };
+}
+
+export async function updateVendor(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; name: string } | { error: string }> {
+  const ref = String(args.reference ?? args.id ?? '').trim();
+  if (!ref) return { error: 'Which vendor? Give their name.' };
+  const rec = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
+  if (!rec) return { error: `No vendor found matching "${ref}".` };
+  const data: Record<string, string> = {};
+  if (args.newName != null && String(args.newName).trim()) data.name = String(args.newName).trim().slice(0, 200);
+  if (args.email != null) data.email = String(args.email).trim().slice(0, 200);
+  if (args.phone != null) data.phone = String(args.phone).trim().slice(0, 60);
+  if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, email, phone).' };
+  const updated = await prisma.vendor.update({ where: { id: rec.id }, data, select: { name: true } });
+  await writeAuditLog({ action: 'vendor_updated', userId: me.id, tenantId: me.tenantId, targetType: 'vendor', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+  return { ok: true, name: updated.name };
+}
+
+export async function updateCatalogItem(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; name: string } | { error: string }> {
+  const ref = String(args.reference ?? args.id ?? '').trim();
+  if (!ref) return { error: 'Which catalog item? Give its name.' };
+  const rec = await prisma.shopMaterialItem.findFirst({ where: { tenantId: me.tenantId, isActive: true, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
+  if (!rec) return { error: `No catalog item found matching "${ref}".` };
+  const data: Record<string, unknown> = {};
+  if (args.newName != null && String(args.newName).trim()) {
+    data.name = String(args.newName).trim().slice(0, 400);
+    data.nameNormalized = normalizeVendorItemName(String(args.newName));
+  }
+  if (args.internalCostCents != null) data.internalCostCents = Math.max(0, Math.round(Number(args.internalCostCents) || 0));
+  if (args.markupPercent != null) data.markupPercentMilli = Math.max(0, Math.round((Number(args.markupPercent) || 0) * 1000));
+  if (args.category != null && String(args.category).trim()) data.categories = [String(args.category).trim().slice(0, 120)];
+  if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, cost, markup, category).' };
+  const updated = await prisma.shopMaterialItem.update({ where: { id: rec.id }, data, select: { name: true } });
+  await writeAuditLog({ action: 'shop_material_item_saved', userId: me.id, tenantId: me.tenantId, targetType: 'shop_material_item', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+  return { ok: true, name: updated.name };
+}
+
+export async function updateEstimate(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; number: string } | { error: string }> {
+  const ref = String(args.estimate ?? args.reference ?? args.id ?? '').trim();
+  if (!ref) return { error: 'Which estimate? Give its number (e.g. EST-000021).' };
+  const rec = await prisma.estimate.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] }, select: { id: true, number: true, status: true } });
+  if (!rec) return { error: `No estimate found matching "${ref}".` };
+  if (rec.status === EstimateStatus.FINALIZED) return { error: `${rec.number} is finalized and locked.` };
+  const data: Record<string, unknown> = {};
+  if (args.title != null && String(args.title).trim()) data.title = String(args.title).trim().slice(0, 200);
+  if (args.markupPercent != null) data.multiplierMilli = Math.round((1 + (Number(args.markupPercent) || 0) / 100) * 1000);
+  if (args.customerName != null && String(args.customerName).trim()) {
+    const name = String(args.customerName).trim().slice(0, 200);
+    let client = await prisma.client.findFirst({ where: { tenantId: me.tenantId, companyName: { equals: name, mode: 'insensitive' }, deletedAt: null }, select: { id: true } });
+    if (!client) client = await prisma.client.create({ data: { tenantId: me.tenantId, companyName: name }, select: { id: true } });
+    data.clientId = client.id;
+  }
+  if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (title, markup %, customer).' };
+  await prisma.estimate.update({ where: { id: rec.id }, data });
+  await writeAuditLog({ action: 'estimate_saved', userId: me.id, tenantId: me.tenantId, targetType: 'estimate', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+  return { ok: true, number: rec.number };
+}
+
+/* ------------- approval-gated: estimate status change ------------- */
+
+const STATUS_QUESTION: Record<string, string> = {
+  APPROVED: 'Approve this estimate?',
+  SENT: 'Mark this estimate as sent?',
+  REJECTED: 'Mark this estimate rejected?',
+  DRAFT: 'Move this estimate back to draft?',
+};
+
+export async function prepareStatusChange(
+  me: { tenantId: string },
+  ref: string,
+  targetStatus: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED',
+): Promise<PendingAction | { error: string }> {
+  const trimmed = ref.trim();
+  if (!trimmed) return { error: 'Which estimate? Give its number.' };
+  const rec = await prisma.estimate.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: trimmed }, { number: { equals: trimmed, mode: 'insensitive' } }] }, select: { id: true, number: true, title: true, status: true } });
+  if (!rec) return { error: `No estimate found matching "${trimmed}".` };
+  if (rec.status === EstimateStatus.FINALIZED) return { error: `${rec.number} is finalized and locked.` };
+  return {
+    token: newToken(),
+    kind: 'set_estimate_status',
+    recordId: rec.id,
+    targetStatus,
+    label: `${rec.number} — ${rec.title}`,
+    detail: `Status will change to ${targetStatus}.`,
+    question: STATUS_QUESTION[targetStatus] ?? 'Approve this change?',
+    confirmLabel: 'Approve',
   };
 }
 
@@ -221,8 +387,21 @@ export async function executeConfirmedAction(
   me: { id: string; tenantId: string },
   action: PendingAction,
 ): Promise<{ ok: true; label: string } | { error: string }> {
+  if (action.kind === 'set_estimate_status') {
+    const target = action.targetStatus;
+    if (!target) return { error: 'No target status.' };
+    const r = await prisma.estimate.updateMany({
+      where: { id: action.recordId, tenantId: me.tenantId, deletedAt: null, status: { not: EstimateStatus.FINALIZED } },
+      data: { status: target as EstimateStatus },
+    });
+    if (r.count === 0) return { error: 'That estimate can no longer change status.' };
+    await writeAuditLog({ action: 'estimate_status_changed', userId: me.id, tenantId: me.tenantId, targetType: 'estimate', targetId: action.recordId, metadata: { via: 'ai_assistant', status: target } });
+    return { ok: true, label: action.label };
+  }
+
   if (action.kind !== 'delete') return { error: 'Unsupported action.' };
   const { entity, recordId } = action;
+  if (!entity) return { error: 'No entity to delete.' };
   const now = new Date();
 
   // Every branch re-checks tenant ownership — the confirm request is a

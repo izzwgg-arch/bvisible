@@ -11,11 +11,14 @@ import type { EstimatePrefill, ProposedLine } from './context-store';
 /// approval. Mirrors PendingAction on the server.
 export interface AssistantPendingAction {
   token: string;
-  kind: 'delete';
-  entity: string;
+  kind: 'delete' | 'set_estimate_status';
+  entity?: string;
   recordId: string;
+  targetStatus?: string;
   label: string;
   detail: string;
+  question: string;
+  confirmLabel: string;
 }
 
 export interface AssistantTurnPayload {

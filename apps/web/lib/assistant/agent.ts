@@ -17,7 +17,14 @@ import { writeAuditLog } from '@/lib/auth/audit';
 import {
   addEstimateLine,
   createCatalogItem,
+  createCustomer,
+  createVendor,
   prepareDelete,
+  prepareStatusChange,
+  updateCatalogItem,
+  updateCustomer,
+  updateEstimate,
+  updateVendor,
   type PendingAction,
   type RecyclableEntity,
 } from '@/lib/assistant/operator-actions';
@@ -109,9 +116,11 @@ NON-NEGOTIABLE PRICING RULES (from the owner):
 
 WHAT YOU CAN DO — you are a full operator assistant. You can carry out any normal user task in the app:
 - Look up materials, bundles, vehicle wraps, sq-ft rates, machines, recommendations (Sheet tools) and answer business questions from the database.
-- Create estimates (create_estimate_draft), add lines to an existing estimate (add_estimate_line), and create catalog items (create_catalog_item). These run immediately.
-- Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item. Deletes NEVER happen instantly: the operator gets a one-tap Approve card, and the delete is soft — the record goes to the Recycle Bin, recoverable for 30 days. Just call delete_record; the approval + recovery are handled for you.
-- When the operator asks you to do something (add, change, delete), DO IT with the tools — don't just describe it. Confirm what you did (or, for a delete, that it's waiting for their approval) in plain language.
+- Create: estimates (create_estimate_draft), estimate lines (add_estimate_line), catalog items (create_catalog_item), customers (create_customer), vendors (create_vendor). Run immediately.
+- Edit: update_customer, update_vendor, update_catalog_item, update_estimate (title / markup % / customer). Run immediately.
+- Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item, and change an estimate's status (set_estimate_status: APPROVED/SENT/REJECTED/DRAFT). These do NOT happen instantly — the operator gets a one-tap Approve card. Deletes are soft: the record goes to the Recycle Bin, recoverable for 30 days. Just call the tool; approval + recovery are handled for you.
+- When the operator asks you to do something (add, change, delete, approve), DO IT with the tools — don't just describe it.
+- SPEED: for a create/edit tool, pass a short "reply" argument (your one-line confirmation, e.g. "Added Blue Tape to the catalog."). The turn ends immediately with that reply — no extra round. Only skip "reply" if you still need another tool call afterward.
 
 THE ONE HARD LIMIT: you work only with the database and normal in-app actions. You can NEVER change code, the backend, server, or app settings, and you never touch payments or pension. If asked for any of those, say it's outside what you can do.
 
@@ -371,6 +380,130 @@ const TOOL_DEFS = [
           reference: { type: 'string', description: 'Name or number identifying the record (e.g. "EST-000021", "Valley Plumbing").' },
         },
         required: ['entity', 'reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_customer',
+      description: 'Create a customer/client — runs immediately.',
+      parameters: {
+        type: 'object',
+        properties: {
+          companyName: { type: 'string' },
+          contactName: { type: 'string' },
+          email: { type: 'string' },
+          phone: { type: 'string' },
+          reply: { type: 'string', description: 'Your one-line confirmation to the operator. The turn ends with it.' },
+        },
+        required: ['companyName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_vendor',
+      description: 'Create a vendor — runs immediately.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          email: { type: 'string' },
+          phone: { type: 'string' },
+          reply: { type: 'string', description: 'Your one-line confirmation. The turn ends with it.' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_customer',
+      description: 'Edit a customer (rename, contact, email, phone) — runs immediately.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reference: { type: 'string', description: 'Current customer name or id.' },
+          newName: { type: 'string' },
+          contactName: { type: 'string' },
+          email: { type: 'string' },
+          phone: { type: 'string' },
+          reply: { type: 'string' },
+        },
+        required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_vendor',
+      description: 'Edit a vendor (rename, email, phone) — runs immediately.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reference: { type: 'string' },
+          newName: { type: 'string' },
+          email: { type: 'string' },
+          phone: { type: 'string' },
+          reply: { type: 'string' },
+        },
+        required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_catalog_item',
+      description: 'Edit a catalog item (rename, internal cost, markup %, category) — runs immediately.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reference: { type: 'string' },
+          newName: { type: 'string' },
+          internalCostCents: { type: 'number' },
+          markupPercent: { type: 'number' },
+          category: { type: 'string' },
+          reply: { type: 'string' },
+        },
+        required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_estimate',
+      description: 'Edit an estimate\'s title, markup %, or customer — runs immediately. (Do NOT use this to change status; use set_estimate_status.)',
+      parameters: {
+        type: 'object',
+        properties: {
+          estimate: { type: 'string', description: 'Estimate number or id.' },
+          title: { type: 'string' },
+          markupPercent: { type: 'number' },
+          customerName: { type: 'string' },
+          reply: { type: 'string' },
+        },
+        required: ['estimate'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_estimate_status',
+      description: 'Change an estimate\'s status (APPROVED, SENT, REJECTED, DRAFT). This is a meaningful action, so it does NOT run immediately — the operator approves it with one tap.',
+      parameters: {
+        type: 'object',
+        properties: {
+          estimate: { type: 'string', description: 'Estimate number or id.' },
+          status: { type: 'string', enum: ['DRAFT', 'SENT', 'APPROVED', 'REJECTED'] },
+        },
+        required: ['estimate', 'status'],
       },
     },
   },
@@ -646,6 +779,13 @@ async function runTool(
     return addEstimateLine(me, args);
   }
 
+  if (name === 'create_customer') return createCustomer(me, args);
+  if (name === 'create_vendor') return createVendor(me, args);
+  if (name === 'update_customer') return updateCustomer(me, args);
+  if (name === 'update_vendor') return updateVendor(me, args);
+  if (name === 'update_catalog_item') return updateCatalogItem(me, args);
+  if (name === 'update_estimate') return updateEstimate(me, args);
+
   if (name === 'delete_record') {
     const entity = String(args.entity ?? '') as RecyclableEntity;
     const reference = String(args.reference ?? '');
@@ -653,6 +793,14 @@ async function runTool(
     if ('error' in prepared) return prepared;
     // Signal to the loop that this needs the operator's approval — it is
     // NOT executed here.
+    return { __pendingAction: prepared };
+  }
+
+  if (name === 'set_estimate_status') {
+    const reference = String(args.estimate ?? args.reference ?? '');
+    const status = String(args.status ?? '') as 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED';
+    const prepared = await prepareStatusChange(me, reference, status);
+    if ('error' in prepared) return prepared;
     return { __pendingAction: prepared };
   }
 
@@ -790,6 +938,7 @@ export async function runAssistant(
       // draft/prefill call, the turn can end right here — skipping the
       // final wrap-up round saves 15–40s per estimate.
       let finalSummary: string | null = null;
+      let didImmediateAction = false;
       for (const call of msg.tool_calls) {
         let parsed: Record<string, unknown> = {};
         try {
@@ -809,7 +958,22 @@ export async function runAssistant(
         const pending = extractPendingAction(result);
         if (pending) {
           pendingActions.push(pending);
-          result = { awaitingApproval: true, willDelete: pending.label, note: 'Shown to the operator for one-tap approval; nothing deleted yet.' };
+          result = { awaitingApproval: true, action: pending.label, note: 'Shown to the operator for one-tap approval; nothing changed yet.' };
+        }
+        // Immediate action tools (create/edit) carry an optional `reply`.
+        // When present and the action succeeded, end the turn in this same
+        // round — no wrap-up call — so simple actions finish in ~2s.
+        const IMMEDIATE_ACTION_TOOLS = new Set([
+          'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
+          'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate',
+        ]);
+        if (
+          IMMEDIATE_ACTION_TOOLS.has(call.function.name) &&
+          result && typeof result === 'object' && 'ok' in result
+        ) {
+          didImmediateAction = true;
+          const s = String(parsed.reply ?? '').trim();
+          if (s) finalSummary = s;
         }
         if (
           call.function.name === 'create_estimate_draft' &&
@@ -848,7 +1012,7 @@ export async function runAssistant(
         onEvent?.({ type: 'tool', tool: call.function.name, summary: JSON.stringify(parsed).slice(0, 160) });
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000) });
       }
-      if (finalSummary && (createdEstimate || prefill)) {
+      if (finalSummary && (createdEstimate || prefill || didImmediateAction)) {
         return { reply: finalSummary, toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
       }
       continue;

@@ -194,11 +194,12 @@ export function AssistantDock() {
         },
       ]);
 
-      // A create/add ran server-side — refresh so the operator sees it.
-      const didWrite = (data.toolEvents ?? []).some((t) =>
-        t.tool === 'create_catalog_item' || t.tool === 'add_estimate_line'
-      );
-      if (didWrite) router.refresh();
+      // A create/edit ran server-side — refresh so the operator sees it.
+      const WRITE_TOOLS = new Set([
+        'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
+        'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate',
+      ]);
+      if ((data.toolEvents ?? []).some((t) => WRITE_TOOLS.has(t.tool))) router.refresh();
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === 'AbortError';
       setMessages((prev) => [
@@ -412,15 +413,17 @@ export function AssistantDock() {
                     const outcome = m.actionResults?.[action.token];
                     return (
                       <div key={action.token} className="rounded-[10px] border border-rose-200 bg-rose-50 px-2.5 py-2">
-                        <div className="text-[11.5px] font-bold text-rose-900">Approve delete?</div>
+                        <div className="text-[11.5px] font-bold text-rose-900">{action.question}</div>
                         <div className="text-[11px] font-semibold text-rose-800">{action.label}</div>
                         <div className="text-[9.5px] text-rose-600">{action.detail}</div>
                         {outcome === 'approved' ? (
-                          <div className="mt-1 text-[10.5px] font-bold text-emerald-700">✓ Deleted — recover it from the Recycle Bin</div>
+                          <div className="mt-1 text-[10.5px] font-bold text-emerald-700">
+                            ✓ Done{action.kind === 'delete' ? ' — recover it from the Recycle Bin' : ''}
+                          </div>
                         ) : outcome === 'cancelled' ? (
-                          <div className="mt-1 text-[10.5px] font-semibold text-[var(--color-bv-muted)]">Cancelled — nothing was deleted</div>
+                          <div className="mt-1 text-[10.5px] font-semibold text-[var(--color-bv-muted)]">Cancelled — nothing changed</div>
                         ) : outcome === 'working' ? (
-                          <div className="mt-1 text-[10.5px] font-semibold text-rose-700">Deleting…</div>
+                          <div className="mt-1 text-[10.5px] font-semibold text-rose-700">Working…</div>
                         ) : outcome?.startsWith('error:') ? (
                           <div className="mt-1 text-[10.5px] font-semibold text-rose-700">{outcome.slice(6)}</div>
                         ) : (
@@ -430,7 +433,7 @@ export function AssistantDock() {
                               onClick={() => void handleApproveAction(i, action)}
                               className="rounded-[8px] bg-rose-600 px-3 py-1.5 text-[10.5px] font-bold text-white hover:bg-rose-700"
                             >
-                              Approve delete
+                              {action.confirmLabel}
                             </button>
                             <button
                               type="button"
