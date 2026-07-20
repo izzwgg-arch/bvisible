@@ -11,9 +11,11 @@
 //     moves to the 30-day Recycle Bin and can be restored. A nightly purge
 //     hard-deletes anything deleted more than 30 days ago.
 
-import { prisma, EstimateLineKind, ShopCatalogUnit, EstimateStatus } from '@bvisible/db';
+import { prisma, EstimateLineKind, ShopCatalogUnit, EstimateStatus, POLineKind, POEventKind } from '@bvisible/db';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { writeAuditLog } from '@/lib/auth/audit';
+import { nextPoNumber } from '@/lib/po/number';
+import { sheetItemKey } from '@/lib/sheet-sync/types';
 
 export const RECYCLE_RETENTION_DAYS = 30;
 
@@ -162,6 +164,192 @@ export async function addEstimateLine(
   });
 
   return { ok: true, estimateId: estimate.id, number: estimate.number };
+}
+
+/// Create a DRAFT purchase order to order materials from a vendor. This is
+/// reversible (soft-delete → Recycle Bin), so it runs immediately — exactly
+/// like a draft estimate. It never emails anyone: the operator sends the PO
+/// to vendors later with the deliberate "Send PO" action on the PO page.
+///
+/// Each line is linked to the shop catalog (by Sheet key, then exact name)
+/// so vendor + pricing context show up on the PO, and the vendor is resolved
+/// from (in order) an explicit per-line vendor, the PO-level vendor, or the
+/// catalog item's preferred/selected vendor. Named vendors that don't exist
+/// yet are created.
+export async function createPurchaseOrder(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<
+  | { ok: true; purchaseOrderId: string; number: string; url: string; lineCount: number; vendorCount: number; subtotalCents: number; subtotal: string }
+  | { error: string }
+> {
+  const rawLines = Array.isArray(args.lines) ? (args.lines as Array<Record<string, unknown>>) : [];
+  if (rawLines.length === 0 || rawLines.length > 100) {
+    return { error: '1–100 lines are required to create a purchase order.' };
+  }
+  const poVendorName = String(args.vendorName ?? '').trim().slice(0, 200);
+  const notes = String(args.notes ?? '').trim().slice(0, 2000) || null;
+
+  const lines = rawLines
+    .map((l) => {
+      const kind = (['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'].includes(String(l.kind))
+        ? String(l.kind)
+        : 'MATERIAL') as POLineKind;
+      const unit = (['EACH', 'SHEET', 'SQ_FT', 'HOUR', 'LINEAR_FT', 'ROLL', 'CUSTOM'].includes(String(l.unit))
+        ? String(l.unit)
+        : 'EACH') as ShopCatalogUnit;
+      const qtyMilli = Math.max(1, Math.round((Number(l.qty) || 1) * 1000));
+      const unitCostCents = Math.max(0, Math.round(Number(l.unitCostCents) || 0));
+      return {
+        kind,
+        unit,
+        qtyMilli,
+        unitCostCents,
+        computedCostCents: Math.round((unitCostCents * qtyMilli) / 1000),
+        description: String(l.description ?? '').trim().slice(0, 400),
+        materialName: String(l.materialName ?? '').trim().slice(0, 400),
+        vendorName: String(l.vendorName ?? '').trim().slice(0, 200),
+      };
+    })
+    .filter((l) => l.description.length > 0);
+
+  if (lines.length === 0) return { error: 'Each purchase-order line needs a description.' };
+
+  // Find-or-create a vendor by name, cached so we never create duplicates
+  // within one PO. Sequential (not Promise.all) to avoid a create race.
+  const vendorIdByName = new Map<string, string>();
+  const resolveVendorByName = async (name: string): Promise<string | null> => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const cacheKey = trimmed.toLowerCase();
+    const cached = vendorIdByName.get(cacheKey);
+    if (cached) return cached;
+    let vendor = await prisma.vendor.findFirst({
+      where: { tenantId: me.tenantId, name: { equals: trimmed, mode: 'insensitive' }, deletedAt: null },
+      select: { id: true },
+    });
+    if (!vendor) {
+      vendor = await prisma.vendor.create({
+        data: { tenantId: me.tenantId, name: trimmed.slice(0, 200) },
+        select: { id: true },
+      });
+    }
+    vendorIdByName.set(cacheKey, vendor.id);
+    return vendor.id;
+  };
+
+  const resolved: Array<{
+    kind: POLineKind;
+    unit: ShopCatalogUnit;
+    qtyMilli: number;
+    unitCostCents: number;
+    computedCostCents: number;
+    description: string;
+    catalogItemId: string | null;
+    vendorId: string | null;
+  }> = [];
+
+  for (const line of lines) {
+    // Link to the shop catalog by Sheet key first, then exact name.
+    const orClauses: Array<Record<string, unknown>> = [];
+    if (line.materialName) {
+      orClauses.push({ sheetKey: sheetItemKey(line.materialName) });
+      orClauses.push({ name: { equals: line.materialName, mode: 'insensitive' } });
+    }
+    const catalog =
+      line.kind === POLineKind.MATERIAL && orClauses.length > 0
+        ? await prisma.shopMaterialItem.findFirst({
+            where: { tenantId: me.tenantId, isActive: true, OR: orClauses },
+            select: { id: true, catalogUnit: true, preferredVendorId: true, selectedVendorId: true },
+          })
+        : null;
+
+    let vendorId: string | null = null;
+    const explicitVendor = line.vendorName || poVendorName;
+    if (explicitVendor) vendorId = await resolveVendorByName(explicitVendor);
+    else vendorId = catalog?.preferredVendorId ?? catalog?.selectedVendorId ?? null;
+
+    resolved.push({
+      kind: line.kind,
+      unit: catalog?.catalogUnit ?? line.unit,
+      qtyMilli: line.qtyMilli,
+      unitCostCents: line.unitCostCents,
+      computedCostCents: line.computedCostCents,
+      description: line.description,
+      catalogItemId: catalog?.id ?? null,
+      vendorId,
+    });
+  }
+
+  const subtotalCents = resolved.reduce((sum, l) => sum + l.computedCostCents, 0);
+  const vendorIds = [...new Set(resolved.map((l) => l.vendorId).filter((v): v is string => Boolean(v)))];
+  const primaryVendorId = vendorIds.length === 1 ? vendorIds[0] : null;
+
+  const po = await prisma.$transaction(async (tx) => {
+    const number = await nextPoNumber(tx, me.tenantId);
+    const created = await tx.purchaseOrder.create({
+      data: {
+        tenantId: me.tenantId,
+        vendorId: primaryVendorId,
+        number,
+        subtotalCents,
+        notes,
+        createdById: me.id,
+      },
+      select: { id: true, number: true },
+    });
+    await tx.pOLineItem.createMany({
+      data: resolved.map((l, index) => ({
+        tenantId: me.tenantId,
+        purchaseOrderId: created.id,
+        sortOrder: index,
+        kind: l.kind,
+        description: l.description,
+        qtyMilli: l.qtyMilli,
+        unitCostCents: l.unitCostCents,
+        computedCostCents: l.computedCostCents,
+        catalogItemId: l.catalogItemId,
+        vendorId: l.vendorId,
+        unit: l.unit,
+      })),
+    });
+    if (vendorIds.length > 0) {
+      await tx.purchaseOrderVendor.createMany({
+        data: vendorIds.map((vendorId) => ({ tenantId: me.tenantId, purchaseOrderId: created.id, vendorId })),
+      });
+    }
+    await tx.pOEvent.create({
+      data: {
+        tenantId: me.tenantId,
+        purchaseOrderId: created.id,
+        kind: POEventKind.CREATED,
+        message: `Created by the assistant with ${resolved.length} line${resolved.length === 1 ? '' : 's'} across ${vendorIds.length} vendor${vendorIds.length === 1 ? '' : 's'}`,
+        metadata: { via: 'ai_assistant', lineCount: resolved.length, vendorCount: vendorIds.length, subtotalCents },
+        actorId: me.id,
+      },
+    });
+    return created;
+  });
+
+  await writeAuditLog({
+    action: 'po_created',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'purchase_order',
+    targetId: po.id,
+    metadata: { via: 'ai_assistant', number: po.number, lineCount: resolved.length, vendorCount: vendorIds.length },
+  });
+
+  return {
+    ok: true,
+    purchaseOrderId: po.id,
+    number: po.number,
+    url: `/purchase-orders/${po.id}`,
+    lineCount: resolved.length,
+    vendorCount: vendorIds.length,
+    subtotalCents,
+    subtotal: `$${(subtotalCents / 100).toFixed(2)}`,
+  };
 }
 
 /* --------------------- delete (approval-gated) --------------------- */

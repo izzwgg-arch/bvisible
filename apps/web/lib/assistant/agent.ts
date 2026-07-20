@@ -2,9 +2,11 @@
 // the live Google Sheet and tenant data. Trained on the shop's rules via
 // the system prompt (from the owner's handoff + this system's docs).
 //
-// Safety: tools are whitelisted. Reads are tenant-scoped. The ONLY write
-// is creating DRAFT estimates — the agent can never send, email, approve,
-// finalize, or delete anything.
+// Safety: tools are whitelisted and tenant-scoped. Reversible writes
+// (draft estimates, draft purchase orders, customers, vendors, catalog
+// items, edits) run immediately; irreversible actions (delete, send/email,
+// approve, finalize) never run from the loop — the agent can only email or
+// send anything through a separate, operator-approved step.
 
 import { prisma } from '@bvisible/db';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
@@ -18,6 +20,7 @@ import {
   addEstimateLine,
   createCatalogItem,
   createCustomer,
+  createPurchaseOrder,
   createVendor,
   prepareDelete,
   prepareStatusChange,
@@ -116,7 +119,8 @@ NON-NEGOTIABLE PRICING RULES (from the owner):
 
 WHAT YOU CAN DO — you are a full operator assistant. You can carry out any normal user task in the app:
 - Look up materials, bundles, vehicle wraps, sq-ft rates, machines, recommendations (Sheet tools) and answer business questions from the database.
-- Create: estimates (create_estimate_draft), estimate lines (add_estimate_line), catalog items (create_catalog_item), customers (create_customer), vendors (create_vendor). Run immediately.
+- Create: estimates (create_estimate_draft), estimate lines (add_estimate_line), catalog items (create_catalog_item), customers (create_customer), vendors (create_vendor), purchase orders (create_purchase_order). Run immediately.
+- ORDERING MATERIALS / PURCHASE ORDERS: when the operator says "make me a PO", "order …", "buy …", first search_materials for each item (exact name, unit cost, vendor), then call create_purchase_order with those lines. It creates a DRAFT PO only — NOTHING is emailed to any vendor; the operator sends it themselves with "Send PO" on the PO page. End with "Draft <PO number> created — review it in Purchase Orders."
 - Edit: update_customer, update_vendor, update_catalog_item, update_estimate (title / markup % / customer). Run immediately.
 - Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item, and change an estimate's status (set_estimate_status: APPROVED/SENT/REJECTED/DRAFT). These do NOT happen instantly — the operator gets a one-tap Approve card. Deletes are soft: the record goes to the Recycle Bin, recoverable for 30 days. Just call the tool; approval + recovery are handled for you.
 - When the operator asks you to do something (add, change, delete, approve), DO IT with the tools — don't just describe it.
@@ -324,6 +328,45 @@ const TOOL_DEFS = [
           },
         },
         required: ['title', 'customerName', 'lines'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_purchase_order',
+      description:
+        'Create a DRAFT purchase order to ORDER materials from a vendor — runs immediately. Use whenever the operator says "make me a PO", "order …", "buy …", "PO for …". First call search_materials to get the exact material name, unit cost, and vendor, then pass materialName (verbatim), unitCostCents (from priceCents), and vendorName from those results. The PO is a DRAFT only — NOTHING is emailed to any vendor; the operator sends it later with the "Send PO" button on the PO page.',
+      parameters: {
+        type: 'object',
+        properties: {
+          vendorName: {
+            type: 'string',
+            description: 'Vendor for the whole PO (created if it does not exist yet). Omit if each line names its own vendor, or if unknown.',
+          },
+          notes: { type: 'string', description: 'Optional PO notes.' },
+          lines: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                kind: { type: 'string', enum: ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'] },
+                description: { type: 'string', description: 'What to order, e.g. \'4x8 1/2" white PVC\'.' },
+                materialName: {
+                  type: 'string',
+                  description: 'EXACT material name from search_materials (copy verbatim). Links the line to the catalog for vendor + pricing and auto-picks the preferred vendor.',
+                },
+                qty: { type: 'number' },
+                unit: { type: 'string', enum: ['EACH', 'SHEET', 'SQ_FT', 'HOUR', 'LINEAR_FT', 'ROLL', 'CUSTOM'] },
+                unitCostCents: { type: 'number', description: 'Vendor unit cost in cents (use priceCents from search_materials).' },
+                vendorName: { type: 'string', description: 'Per-line vendor, only if different from the PO vendor.' },
+              },
+              required: ['description', 'qty', 'unitCostCents'],
+            },
+          },
+          reply: { type: 'string', description: 'Your one-line confirmation to the operator. The turn ends with it.' },
+        },
+        required: ['lines'],
       },
     },
   },
@@ -781,6 +824,7 @@ async function runTool(
 
   if (name === 'create_customer') return createCustomer(me, args);
   if (name === 'create_vendor') return createVendor(me, args);
+  if (name === 'create_purchase_order') return createPurchaseOrder(me, args);
   if (name === 'update_customer') return updateCustomer(me, args);
   if (name === 'update_vendor') return updateVendor(me, args);
   if (name === 'update_catalog_item') return updateCatalogItem(me, args);
@@ -969,6 +1013,7 @@ export async function runAssistant(
         // round — no wrap-up call — so simple actions finish in ~2s.
         const IMMEDIATE_ACTION_TOOLS = new Set([
           'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
+          'create_purchase_order',
           'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate',
         ]);
         if (
