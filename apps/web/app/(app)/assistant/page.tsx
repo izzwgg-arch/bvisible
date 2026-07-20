@@ -31,7 +31,7 @@ export default async function AssistantPage() {
       {isAdmin ? (
         <AssistantSettingsPanel
           keyConfigured={Boolean(setting?.apiKeyCipher) || configured}
-          model={setting?.model ?? 'gpt-5-mini'}
+          model={setting?.model ?? 'gpt-5.6-sol'}
         />
       ) : null}
       {!configured ? (

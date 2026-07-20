@@ -22,7 +22,7 @@ export async function saveAssistantSettingsAction(
   if (!me.tenantId) return { error: 'No workspace selected.' };
 
   const apiKey = String(formData.get('apiKey') ?? '').trim();
-  const model = String(formData.get('model') ?? '').trim().slice(0, 80) || 'gpt-5-mini';
+  const model = String(formData.get('model') ?? '').trim().slice(0, 80) || 'gpt-5.6-sol';
   const clear = formData.get('clear') === '1';
 
   if (!clear && apiKey && (apiKey.length < 20 || !/^sk-/.test(apiKey))) {

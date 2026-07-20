@@ -97,7 +97,7 @@ export async function loadAssistantConfig(
     }
   }
   if (!apiKey) apiKey = process.env.OPENAI_API_KEY?.trim() || null;
-  const model = row?.model?.trim() || process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini';
+  const model = row?.model?.trim() || process.env.OPENAI_MODEL?.trim() || 'gpt-5.6-sol';
   return { apiKey, model };
 }
 
@@ -913,13 +913,17 @@ export async function runAssistant(
         tool_choice: lastRound ? 'none' : 'auto',
         // Reasoning models: keep private chain-of-thought at the floor.
         // Estimate building is structured tool work — long thinking only
-        // adds latency. gpt-5 family supports 'minimal'; o-series' floor
+        // adds latency. Original gpt-5 family (gpt-5, gpt-5-mini, gpt-5-nano)
+        // supports 'minimal'; the gpt-5.x line (5.5, 5.6 Sol/Terra/Luna, ...)
+        // dropped 'minimal' — 'none' is its floor instead. o-series' floor
         // is 'low'.
-        ...(model.startsWith('gpt-5')
-          ? { reasoning_effort: 'minimal' }
-          : /^o\d/.test(model)
-            ? { reasoning_effort: 'low' }
-            : {}),
+        ...(model.startsWith('gpt-5.')
+          ? { reasoning_effort: 'none' }
+          : model.startsWith('gpt-5')
+            ? { reasoning_effort: 'minimal' }
+            : /^o\d/.test(model)
+              ? { reasoning_effort: 'low' }
+              : {}),
       })
     );
     if (!apiCall.ok) {

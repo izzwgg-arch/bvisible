@@ -454,7 +454,7 @@ model AssistantSetting {
   id           String   @id @default(cuid())
   tenantId     String   @unique
   apiKeyCipher String?  @db.VarChar(2000)
-  model        String   @default("gpt-5-mini") @db.VarChar(80)
+  model        String   @default("gpt-5.6-sol") @db.VarChar(80)
   updatedAt    DateTime @updatedAt
   createdAt    DateTime @default(now())
 
