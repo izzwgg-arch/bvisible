@@ -13,6 +13,9 @@ interface ChatMsg {
   content: string;
   toolEvents?: Array<{ tool: string; summary: string }>;
   createdEstimate?: { id: string; number: string } | null;
+  createdPurchaseOrder?: { id: string; number: string } | null;
+  openedEstimate?: { id: string; number: string } | null;
+  openedPurchaseOrder?: { id: string; number: string } | null;
   prefill?: EstimatePrefill | null;
 }
 
@@ -53,6 +56,17 @@ export function AssistantChat({ configured }: { configured: boolean }) {
         parkPendingPrefill(data.prefill);
         router.push('/estimates/new');
       }
+      // PO created, or an estimate/PO looked up by number — open it right
+      // away, same as a new estimate draft.
+      if (data.createdPurchaseOrder) {
+        router.push(`/purchase-orders/${data.createdPurchaseOrder.id}` as never);
+      }
+      if (data.openedEstimate) {
+        router.push(`/estimates/${data.openedEstimate.id}` as never);
+      }
+      if (data.openedPurchaseOrder) {
+        router.push(`/purchase-orders/${data.openedPurchaseOrder.id}` as never);
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -60,6 +74,9 @@ export function AssistantChat({ configured }: { configured: boolean }) {
           content: data.reply ?? data.error ?? 'Something went wrong.',
           toolEvents: data.toolEvents ?? [],
           createdEstimate: data.createdEstimate ?? null,
+          createdPurchaseOrder: data.createdPurchaseOrder ?? null,
+          openedEstimate: data.openedEstimate ?? null,
+          openedPurchaseOrder: data.openedPurchaseOrder ?? null,
           prefill: data.prefill && data.prefill.lines.length > 0 ? data.prefill : null,
         },
       ]);
@@ -125,6 +142,48 @@ export function AssistantChat({ configured }: { configured: boolean }) {
                     className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[11px] font-bold text-white"
                   >
                     Open estimate →
+                  </Link>
+                </div>
+              ) : null}
+              {m.createdPurchaseOrder ? (
+                <div className="mt-2.5 flex items-center gap-3 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-3 py-2">
+                  <div>
+                    <div className="text-[12.5px] font-bold">{m.createdPurchaseOrder.number} · DRAFT</div>
+                    <div className="text-[10.5px] text-[#8a5a33]">Nothing sent — review required</div>
+                  </div>
+                  <Link
+                    href={`/purchase-orders/${m.createdPurchaseOrder.id}`}
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[11px] font-bold text-white"
+                  >
+                    Open PO →
+                  </Link>
+                </div>
+              ) : null}
+              {m.openedEstimate ? (
+                <div className="mt-2.5 flex items-center gap-3 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-3 py-2">
+                  <div>
+                    <div className="text-[12.5px] font-bold">{m.openedEstimate.number}</div>
+                    <div className="text-[10.5px] text-[#8a5a33]">Found it — opening now</div>
+                  </div>
+                  <Link
+                    href={`/estimates/${m.openedEstimate.id}`}
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[11px] font-bold text-white"
+                  >
+                    Open estimate →
+                  </Link>
+                </div>
+              ) : null}
+              {m.openedPurchaseOrder ? (
+                <div className="mt-2.5 flex items-center gap-3 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-3 py-2">
+                  <div>
+                    <div className="text-[12.5px] font-bold">{m.openedPurchaseOrder.number}</div>
+                    <div className="text-[10.5px] text-[#8a5a33]">Found it — opening now</div>
+                  </div>
+                  <Link
+                    href={`/purchase-orders/${m.openedPurchaseOrder.id}`}
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-3 py-1.5 text-[11px] font-bold text-white"
+                  >
+                    Open PO →
                   </Link>
                 </div>
               ) : null}

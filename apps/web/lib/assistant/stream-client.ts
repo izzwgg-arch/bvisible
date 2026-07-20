@@ -11,7 +11,7 @@ import type { EstimatePrefill, ProposedLine } from './context-store';
 /// approval. Mirrors PendingAction on the server.
 export interface AssistantPendingAction {
   token: string;
-  kind: 'delete' | 'set_estimate_status';
+  kind: 'delete' | 'set_estimate_status' | 'set_po_status';
   entity?: string;
   recordId: string;
   targetStatus?: string;
@@ -25,6 +25,12 @@ export interface AssistantTurnPayload {
   reply?: string;
   toolEvents?: Array<{ tool: string; summary: string }>;
   createdEstimate?: { id: string; number: string } | null;
+  /// A PO the agent just created — mirrors createdEstimate.
+  createdPurchaseOrder?: { id: string; number: string } | null;
+  /// An estimate/PO the agent found via a lookup (get_estimate /
+  /// get_purchase_order), not a create — open it just the same.
+  openedEstimate?: { id: string; number: string } | null;
+  openedPurchaseOrder?: { id: string; number: string } | null;
   proposedLines?: ProposedLine[] | null;
   proposalNote?: string | null;
   prefill?: EstimatePrefill | null;
@@ -54,6 +60,11 @@ const TOOL_LABELS_EXTRA: Record<string, string> = {
   create_catalog_item: 'Creating the catalog item…',
   add_estimate_line: 'Adding the line to the estimate…',
   delete_record: 'Preparing the delete for your approval…',
+  get_purchase_order: 'Looking up the purchase order…',
+  get_estimate: 'Looking up the estimate…',
+  update_purchase_order: 'Updating the purchase order…',
+  add_purchase_order_line: 'Adding the line to the purchase order…',
+  set_purchase_order_status: 'Preparing the status change for your approval…',
 };
 
 /// Friendly labels for the live progress line under the chat.

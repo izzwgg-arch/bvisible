@@ -30,6 +30,9 @@ interface DockMsg {
   content: string;
   toolEvents?: Array<{ tool: string; summary: string }>;
   createdEstimate?: { id: string; number: string } | null;
+  createdPurchaseOrder?: { id: string; number: string } | null;
+  openedEstimate?: { id: string; number: string } | null;
+  openedPurchaseOrder?: { id: string; number: string } | null;
   proposedLines?: ProposedLine[] | null;
   proposalNote?: string | null;
   linesApplied?: boolean;
@@ -166,6 +169,20 @@ export function AssistantDock() {
         router.push(`/estimates/${data.createdEstimate.id}` as never);
       }
 
+      // PO created: open it right away, same as a new estimate draft.
+      if (data.createdPurchaseOrder) {
+        router.push(`/purchase-orders/${data.createdPurchaseOrder.id}` as never);
+      }
+
+      // Looked up (not created) — open it just the same. "Give him a PO
+      // or estimate number and he opens it right away."
+      if (data.openedEstimate) {
+        router.push(`/estimates/${data.openedEstimate.id}` as never);
+      }
+      if (data.openedPurchaseOrder) {
+        router.push(`/purchase-orders/${data.openedPurchaseOrder.id}` as never);
+      }
+
       // Full-estimate prefill: fill the Create-estimate page in place, or
       // park it and route there when the operator asked from another page.
       let prefillApplied = false;
@@ -185,6 +202,9 @@ export function AssistantDock() {
           content: data.reply ?? data.error ?? 'Something went wrong.',
           toolEvents: data.toolEvents ?? [],
           createdEstimate: data.createdEstimate ?? null,
+          createdPurchaseOrder: data.createdPurchaseOrder ?? null,
+          openedEstimate: data.openedEstimate ?? null,
+          openedPurchaseOrder: data.openedPurchaseOrder ?? null,
           proposedLines: data.proposedLines && data.proposedLines.length > 0 ? data.proposedLines : null,
           proposalNote: data.proposalNote ?? null,
           prefill: data.prefill && data.prefill.lines.length > 0 ? data.prefill : null,
@@ -197,6 +217,7 @@ export function AssistantDock() {
       // A create/edit ran server-side — refresh so the operator sees it.
       const WRITE_TOOLS = new Set([
         'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
+        'create_purchase_order', 'update_purchase_order', 'add_purchase_order_line',
         'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate',
       ]);
       if ((data.toolEvents ?? []).some((t) => WRITE_TOOLS.has(t.tool))) router.refresh();
@@ -457,6 +478,48 @@ export function AssistantDock() {
                   </div>
                   <Link
                     href={`/estimates/${m.createdEstimate.id}`}
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-2.5 py-1 text-[10px] font-bold text-white"
+                  >
+                    Open →
+                  </Link>
+                </div>
+              ) : null}
+              {m.createdPurchaseOrder ? (
+                <div className="mt-2 flex items-center gap-2 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-2.5 py-1.5">
+                  <div>
+                    <div className="text-[11.5px] font-bold">{m.createdPurchaseOrder.number} · DRAFT</div>
+                    <div className="text-[9.5px] text-[#8a5a33]">Nothing sent — review required</div>
+                  </div>
+                  <Link
+                    href={`/purchase-orders/${m.createdPurchaseOrder.id}`}
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-2.5 py-1 text-[10px] font-bold text-white"
+                  >
+                    Open →
+                  </Link>
+                </div>
+              ) : null}
+              {m.openedEstimate ? (
+                <div className="mt-2 flex items-center gap-2 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-2.5 py-1.5">
+                  <div>
+                    <div className="text-[11.5px] font-bold">{m.openedEstimate.number}</div>
+                    <div className="text-[9.5px] text-[#8a5a33]">Found it — opening now</div>
+                  </div>
+                  <Link
+                    href={`/estimates/${m.openedEstimate.id}`}
+                    className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-2.5 py-1 text-[10px] font-bold text-white"
+                  >
+                    Open →
+                  </Link>
+                </div>
+              ) : null}
+              {m.openedPurchaseOrder ? (
+                <div className="mt-2 flex items-center gap-2 rounded-[10px] border border-[#ecc39e] bg-[#fdf6ef] px-2.5 py-1.5">
+                  <div>
+                    <div className="text-[11.5px] font-bold">{m.openedPurchaseOrder.number}</div>
+                    <div className="text-[9.5px] text-[#8a5a33]">Found it — opening now</div>
+                  </div>
+                  <Link
+                    href={`/purchase-orders/${m.openedPurchaseOrder.id}`}
                     className="ml-auto rounded-[8px] bg-[var(--color-bv-accent)] px-2.5 py-1 text-[10px] font-bold text-white"
                   >
                     Open →

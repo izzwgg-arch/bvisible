@@ -11,7 +11,7 @@
 //     moves to the 30-day Recycle Bin and can be restored. A nightly purge
 //     hard-deletes anything deleted more than 30 days ago.
 
-import { prisma, EstimateLineKind, ShopCatalogUnit, EstimateStatus, POLineKind, POEventKind } from '@bvisible/db';
+import { prisma, EstimateLineKind, ShopCatalogUnit, EstimateStatus, POLineKind, POEventKind, POStatus } from '@bvisible/db';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { nextPoNumber } from '@/lib/po/number';
@@ -32,12 +32,15 @@ export type RecyclableEntity =
 export interface PendingAction {
   /// Stable opaque id so the client can echo the exact action back.
   token: string;
-  kind: 'delete' | 'set_estimate_status';
+  kind: 'delete' | 'set_estimate_status' | 'set_po_status';
   /// For deletes.
   entity?: RecyclableEntity;
   recordId: string;
-  /// For status changes.
-  targetStatus?: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED';
+  /// For status changes. Estimate: DRAFT/SENT/APPROVED/REJECTED. PO: DRAFT/
+  /// ORDERED/PARTIALLY_RECEIVED/RECEIVED/CANCELED — never SENT (that only
+  /// happens for real via the operator's own "Send PO" button, which
+  /// emails the vendor).
+  targetStatus?: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELED';
   /// Human label shown on the approval card, e.g. "Estimate EST-000021 — test 3".
   label: string;
   /// One-line description of the consequence, shown under the label.
@@ -352,6 +355,253 @@ export async function createPurchaseOrder(
   };
 }
 
+/* ------------------------- lookup (read-only) ------------------------- */
+
+/// Resolve a PO/estimate reference to the row(s) it could mean: exact
+/// number/id match first, then (since numbers are "PO-000022" / "EST-
+/// 000021" — a fixed prefix + 6-digit zero-padded sequence) a zero-padded
+/// exact match so short forms like "22" or "po 22" resolve precisely, and
+/// only then a lenient fuzzy fallback that can return multiple candidates.
+function padNumberDigits(ref: string): string | null {
+  const digits = ref.replace(/\D/g, '');
+  return digits.length >= 1 && digits.length <= 6 ? digits.padStart(6, '0') : null;
+}
+
+/// Find a purchase order by number (exact, or lenient — "22" / "po-22"
+/// matches PO-000022) or by vendor name, for the assistant to describe
+/// AND for the frontend to open the PO page right away. Read-only.
+export async function getPurchaseOrder(
+  me: { tenantId: string },
+  args: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      purchaseOrderId: string;
+      number: string;
+      url: string;
+      status: string;
+      vendor: string | null;
+      notes: string | null;
+      qboPoNumber: string | null;
+      estimateNumber: string | null;
+      subtotalCents: number;
+      subtotal: string;
+      lineCount: number;
+      lines: Array<{ description: string; qty: number; unit: string; unitCost: string; total: string; vendor: string | null }>;
+      updatedAt: string;
+    }
+  | { error: string; candidates?: Array<{ number: string; status: string; vendor: string | null; subtotal: string }> }
+> {
+  const ref = String(args.reference ?? args.number ?? args.po ?? '').trim();
+  if (!ref) return { error: 'Which purchase order? Give a PO number like PO-000022.' };
+
+  const detailSelect = {
+    id: true,
+    number: true,
+    status: true,
+    notes: true,
+    qboPoNumber: true,
+    subtotalCents: true,
+    updatedAt: true,
+    vendor: { select: { name: true } },
+    estimate: { select: { number: true } },
+    lines: {
+      orderBy: [{ sortOrder: 'asc' as const }],
+      select: { description: true, qtyMilli: true, unit: true, unitCostCents: true, computedCostCents: true, vendor: { select: { name: true } } },
+    },
+  };
+
+  let po = await prisma.purchaseOrder.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
+    select: detailSelect,
+  });
+
+  if (!po) {
+    const padded = padNumberDigits(ref);
+    if (padded) {
+      po = await prisma.purchaseOrder.findFirst({
+        where: { tenantId: me.tenantId, deletedAt: null, number: { equals: `PO-${padded}`, mode: 'insensitive' } },
+        select: detailSelect,
+      });
+    }
+  }
+
+  if (!po) {
+    const digits = ref.replace(/\D/g, '');
+    const orClauses: Array<Record<string, unknown>> = [];
+    if (digits.length >= 2) orClauses.push({ number: { endsWith: digits, mode: 'insensitive' } });
+    if (ref.length >= 2) orClauses.push({ vendor: { name: { contains: ref, mode: 'insensitive' } } });
+    const candidates =
+      orClauses.length > 0
+        ? await prisma.purchaseOrder.findMany({
+            where: { tenantId: me.tenantId, deletedAt: null, OR: orClauses },
+            orderBy: { updatedAt: 'desc' },
+            take: 6,
+            select: { number: true, status: true, subtotalCents: true, vendor: { select: { name: true } } },
+          })
+        : [];
+    if (candidates.length === 1) {
+      po = await prisma.purchaseOrder.findFirst({
+        where: { tenantId: me.tenantId, deletedAt: null, number: candidates[0].number },
+        select: detailSelect,
+      });
+    } else if (candidates.length > 1) {
+      return {
+        error: `Found ${candidates.length} purchase orders matching "${ref}" — tell me which one (by full number).`,
+        candidates: candidates.map((c) => ({
+          number: c.number,
+          status: c.status,
+          vendor: c.vendor?.name ?? null,
+          subtotal: `$${(c.subtotalCents / 100).toFixed(2)}`,
+        })),
+      };
+    }
+  }
+
+  if (!po) return { error: `No purchase order found matching "${ref}".` };
+
+  return {
+    ok: true,
+    purchaseOrderId: po.id,
+    number: po.number,
+    url: `/purchase-orders/${po.id}`,
+    status: po.status,
+    vendor: po.vendor?.name ?? null,
+    notes: po.notes,
+    qboPoNumber: po.qboPoNumber,
+    estimateNumber: po.estimate?.number ?? null,
+    subtotalCents: po.subtotalCents,
+    subtotal: `$${(po.subtotalCents / 100).toFixed(2)}`,
+    lineCount: po.lines.length,
+    lines: po.lines.map((l) => ({
+      description: l.description,
+      qty: l.qtyMilli / 1000,
+      unit: l.unit,
+      unitCost: `$${(l.unitCostCents / 100).toFixed(2)}`,
+      total: `$${(l.computedCostCents / 100).toFixed(2)}`,
+      vendor: l.vendor?.name ?? null,
+    })),
+    updatedAt: po.updatedAt.toISOString(),
+  };
+}
+
+/// Find an estimate by number (exact, or lenient — "21" matches
+/// EST-000021), customer name, or title, for the assistant to describe
+/// AND for the frontend to open the estimate right away. Read-only.
+export async function getEstimate(
+  me: { tenantId: string },
+  args: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      estimateId: string;
+      number: string;
+      url: string;
+      title: string;
+      status: string;
+      customer: string | null;
+      markupPercent: number;
+      finalPriceCents: number;
+      total: string;
+      lineCount: number;
+      lines: Array<{ description: string; qty: number; unitCost: string; total: string; kind: string }>;
+      updatedAt: string;
+    }
+  | { error: string; candidates?: Array<{ number: string; title: string; status: string; total: string }> }
+> {
+  const ref = String(args.reference ?? args.estimate ?? args.number ?? '').trim();
+  if (!ref) return { error: 'Which estimate? Give a number like EST-000021.' };
+
+  const detailSelect = {
+    id: true,
+    number: true,
+    title: true,
+    status: true,
+    multiplierMilli: true,
+    finalPriceCents: true,
+    updatedAt: true,
+    client: { select: { companyName: true } },
+    lines: {
+      orderBy: [{ sortOrder: 'asc' as const }],
+      select: { description: true, qtyMilli: true, unitCostCents: true, computedCostCents: true, kind: true },
+    },
+  };
+
+  let est = await prisma.estimate.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
+    select: detailSelect,
+  });
+
+  if (!est) {
+    const padded = padNumberDigits(ref);
+    if (padded) {
+      est = await prisma.estimate.findFirst({
+        where: { tenantId: me.tenantId, deletedAt: null, number: { equals: `EST-${padded}`, mode: 'insensitive' } },
+        select: detailSelect,
+      });
+    }
+  }
+
+  if (!est) {
+    const digits = ref.replace(/\D/g, '');
+    const orClauses: Array<Record<string, unknown>> = [];
+    if (digits.length >= 2) orClauses.push({ number: { endsWith: digits, mode: 'insensitive' } });
+    if (ref.length >= 2) {
+      orClauses.push({ title: { contains: ref, mode: 'insensitive' } });
+      orClauses.push({ client: { companyName: { contains: ref, mode: 'insensitive' } } });
+    }
+    const candidates =
+      orClauses.length > 0
+        ? await prisma.estimate.findMany({
+            where: { tenantId: me.tenantId, deletedAt: null, OR: orClauses },
+            orderBy: { updatedAt: 'desc' },
+            take: 6,
+            select: { number: true, title: true, status: true, finalPriceCents: true },
+          })
+        : [];
+    if (candidates.length === 1) {
+      est = await prisma.estimate.findFirst({
+        where: { tenantId: me.tenantId, deletedAt: null, number: candidates[0].number },
+        select: detailSelect,
+      });
+    } else if (candidates.length > 1) {
+      return {
+        error: `Found ${candidates.length} estimates matching "${ref}" — tell me which one (by full number).`,
+        candidates: candidates.map((c) => ({
+          number: c.number,
+          title: c.title,
+          status: c.status,
+          total: `$${(c.finalPriceCents / 100).toFixed(2)}`,
+        })),
+      };
+    }
+  }
+
+  if (!est) return { error: `No estimate found matching "${ref}".` };
+
+  return {
+    ok: true,
+    estimateId: est.id,
+    number: est.number,
+    url: `/estimates/${est.id}`,
+    title: est.title,
+    status: est.status,
+    customer: est.client?.companyName ?? null,
+    markupPercent: Math.round((est.multiplierMilli / 1000 - 1) * 100),
+    finalPriceCents: est.finalPriceCents,
+    total: `$${(est.finalPriceCents / 100).toFixed(2)}`,
+    lineCount: est.lines.length,
+    lines: est.lines.map((l) => ({
+      description: l.description,
+      qty: l.qtyMilli / 1000,
+      unitCost: `$${(l.unitCostCents / 100).toFixed(2)}`,
+      total: `$${(l.computedCostCents / 100).toFixed(2)}`,
+      kind: l.kind,
+    })),
+    updatedAt: est.updatedAt.toISOString(),
+  };
+}
+
 /* --------------------- delete (approval-gated) --------------------- */
 
 /// Resolve the record the operator wants to delete and build a PendingAction
@@ -539,6 +789,132 @@ export async function updateEstimate(
   return { ok: true, number: rec.number };
 }
 
+/// Edit a purchase order's notes, PO-level vendor, or QuickBooks PO
+/// number — reversible, so it runs immediately. (Status and lines are
+/// separate tools: set_purchase_order_status / add_purchase_order_line.)
+export async function updatePurchaseOrder(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; number: string } | { error: string }> {
+  const ref = String(args.reference ?? args.purchaseOrder ?? args.id ?? '').trim();
+  if (!ref) return { error: 'Which purchase order? Give its number (e.g. PO-000022).' };
+  const rec = await prisma.purchaseOrder.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
+    select: { id: true, number: true },
+  });
+  if (!rec) return { error: `No purchase order found matching "${ref}".` };
+
+  const data: Record<string, unknown> = {};
+  if (args.notes != null) data.notes = String(args.notes).trim().slice(0, 2000) || null;
+  if (args.qboPoNumber != null) data.qboPoNumber = String(args.qboPoNumber).trim().slice(0, 100) || null;
+  if (args.vendorName != null && String(args.vendorName).trim()) {
+    const name = String(args.vendorName).trim().slice(0, 200);
+    let vendor = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, name: { equals: name, mode: 'insensitive' }, deletedAt: null }, select: { id: true } });
+    if (!vendor) vendor = await prisma.vendor.create({ data: { tenantId: me.tenantId, name }, select: { id: true } });
+    data.vendorId = vendor.id;
+  }
+  if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (notes, vendor, QBO number).' };
+
+  await prisma.purchaseOrder.update({ where: { id: rec.id }, data });
+  await writeAuditLog({ action: 'po_saved', userId: me.id, tenantId: me.tenantId, targetType: 'purchase_order', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+  return { ok: true, number: rec.number };
+}
+
+/// Append a line to an existing purchase order (by number or id).
+/// Reversible (the operator can remove it in the PO editor), so it runs
+/// immediately — mirrors add_estimate_line. Links to the shop catalog by
+/// exact material name, same as create_purchase_order, so vendor +
+/// pricing context show up on the PO.
+export async function addPurchaseOrderLine(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<{ ok: true; purchaseOrderId: string; number: string } | { error: string }> {
+  const ref = String(args.purchaseOrder ?? args.reference ?? args.number ?? '').trim();
+  if (!ref) return { error: 'Which purchase order? Give a PO number like PO-000022.' };
+
+  const po = await prisma.purchaseOrder.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
+    select: { id: true, number: true, vendorId: true, subtotalCents: true, _count: { select: { lines: true } } },
+  });
+  if (!po) return { error: `No purchase order found matching "${ref}".` };
+
+  const description = String(args.description ?? '').trim().slice(0, 400);
+  if (!description) return { error: 'The line needs a description.' };
+  const kind = (['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'].includes(String(args.kind))
+    ? String(args.kind)
+    : 'MATERIAL') as POLineKind;
+  const unit = (['EACH', 'SHEET', 'SQ_FT', 'HOUR', 'LINEAR_FT', 'ROLL', 'CUSTOM'].includes(String(args.unit))
+    ? String(args.unit)
+    : 'EACH') as ShopCatalogUnit;
+  const qtyMilli = Math.max(1, Math.round((Number(args.qty) || 1) * 1000));
+  const unitCostCents = Math.max(0, Math.round(Number(args.unitCostCents) || 0));
+  const computedCostCents = Math.round((unitCostCents * qtyMilli) / 1000);
+
+  const materialName = String(args.materialName ?? '').trim().slice(0, 400);
+  const catalog =
+    kind === POLineKind.MATERIAL && materialName
+      ? await prisma.shopMaterialItem.findFirst({
+          where: {
+            tenantId: me.tenantId,
+            isActive: true,
+            OR: [{ sheetKey: sheetItemKey(materialName) }, { name: { equals: materialName, mode: 'insensitive' } }],
+          },
+          select: { id: true, preferredVendorId: true, selectedVendorId: true },
+        })
+      : null;
+
+  const vendorNameArg = String(args.vendorName ?? '').trim().slice(0, 200);
+  let vendorId: string | null = null;
+  if (vendorNameArg) {
+    let vendor = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, name: { equals: vendorNameArg, mode: 'insensitive' }, deletedAt: null }, select: { id: true } });
+    if (!vendor) vendor = await prisma.vendor.create({ data: { tenantId: me.tenantId, name: vendorNameArg }, select: { id: true } });
+    vendorId = vendor.id;
+  } else {
+    vendorId = catalog?.preferredVendorId ?? catalog?.selectedVendorId ?? po.vendorId ?? null;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.pOLineItem.create({
+      data: {
+        tenantId: me.tenantId,
+        purchaseOrderId: po.id,
+        sortOrder: po._count.lines,
+        kind,
+        description,
+        qtyMilli,
+        unitCostCents,
+        computedCostCents,
+        catalogItemId: catalog?.id ?? null,
+        vendorId,
+        unit,
+      },
+    });
+    // Atomic increment, not read-then-write — safe even if another save
+    // races this one (e.g. the operator editing the PO in another tab).
+    await tx.purchaseOrder.update({ where: { id: po.id }, data: { subtotalCents: { increment: computedCostCents } } });
+    if (vendorId) {
+      await tx.purchaseOrderVendor.upsert({
+        where: { purchaseOrderId_vendorId: { purchaseOrderId: po.id, vendorId } },
+        create: { tenantId: me.tenantId, purchaseOrderId: po.id, vendorId },
+        update: {},
+      });
+    }
+    await tx.pOEvent.create({
+      data: {
+        tenantId: me.tenantId,
+        purchaseOrderId: po.id,
+        kind: POEventKind.LINES_SAVED,
+        message: `Assistant added line: ${description}`,
+        metadata: { via: 'ai_assistant', description, computedCostCents },
+        actorId: me.id,
+      },
+    });
+  });
+
+  await writeAuditLog({ action: 'po_saved', userId: me.id, tenantId: me.tenantId, targetType: 'purchase_order', targetId: po.id, metadata: { via: 'ai_assistant', addedLine: description } });
+  return { ok: true, purchaseOrderId: po.id, number: po.number };
+}
+
 /* ------------- approval-gated: estimate status change ------------- */
 
 const STATUS_QUESTION: Record<string, string> = {
@@ -570,6 +946,47 @@ export async function prepareStatusChange(
   };
 }
 
+/* -------------- approval-gated: PO status change -------------- */
+
+const PO_STATUS_QUESTION: Record<string, string> = {
+  DRAFT: 'Move this PO back to draft?',
+  ORDERED: 'Mark this PO as ordered?',
+  PARTIALLY_RECEIVED: 'Mark this PO as partially received?',
+  RECEIVED: 'Mark this PO as received?',
+  CANCELED: 'Cancel this PO?',
+};
+
+/// Resolve the PO and build a PendingAction for a status change approval.
+/// Deliberately does NOT accept 'SENT' — that only happens for real when
+/// the operator presses "Send PO" themselves, which emails the vendor.
+export async function preparePoStatusChange(
+  me: { tenantId: string },
+  ref: string,
+  targetStatus: string,
+): Promise<PendingAction | { error: string }> {
+  const trimmed = ref.trim();
+  if (!trimmed) return { error: 'Which purchase order? Give its number.' };
+  if (!Object.prototype.hasOwnProperty.call(PO_STATUS_QUESTION, targetStatus)) {
+    return { error: 'That status change has to go through the PO page — e.g. "Send PO" (emails the vendor) on the Purchase Orders page.' };
+  }
+  const rec = await prisma.purchaseOrder.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: trimmed }, { number: { equals: trimmed, mode: 'insensitive' } }] },
+    select: { id: true, number: true, status: true },
+  });
+  if (!rec) return { error: `No purchase order found matching "${trimmed}".` };
+  if (rec.status === targetStatus) return { error: `${rec.number} is already ${targetStatus}.` };
+  return {
+    token: newToken(),
+    kind: 'set_po_status',
+    recordId: rec.id,
+    targetStatus: targetStatus as PendingAction['targetStatus'],
+    label: rec.number,
+    detail: `Status will change to ${targetStatus}.`,
+    question: PO_STATUS_QUESTION[targetStatus] ?? 'Approve this change?',
+    confirmLabel: 'Approve',
+  };
+}
+
 /// Execute a delete the operator approved. Soft delete only (recoverable).
 export async function executeConfirmedAction(
   me: { id: string; tenantId: string },
@@ -584,6 +1001,18 @@ export async function executeConfirmedAction(
     });
     if (r.count === 0) return { error: 'That estimate can no longer change status.' };
     await writeAuditLog({ action: 'estimate_status_changed', userId: me.id, tenantId: me.tenantId, targetType: 'estimate', targetId: action.recordId, metadata: { via: 'ai_assistant', status: target } });
+    return { ok: true, label: action.label };
+  }
+
+  if (action.kind === 'set_po_status') {
+    const target = action.targetStatus;
+    if (!target) return { error: 'No target status.' };
+    const r = await prisma.purchaseOrder.updateMany({
+      where: { id: action.recordId, tenantId: me.tenantId, deletedAt: null },
+      data: { status: target as POStatus },
+    });
+    if (r.count === 0) return { error: 'That purchase order no longer exists.' };
+    await writeAuditLog({ action: 'po_status_changed', userId: me.id, tenantId: me.tenantId, targetType: 'purchase_order', targetId: action.recordId, metadata: { via: 'ai_assistant', status: target } });
     return { ok: true, label: action.label };
   }
 

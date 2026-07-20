@@ -18,15 +18,20 @@ import { nextEstimateNumber } from '@/lib/estimate/number';
 import { writeAuditLog } from '@/lib/auth/audit';
 import {
   addEstimateLine,
+  addPurchaseOrderLine,
   createCatalogItem,
   createCustomer,
   createPurchaseOrder,
   createVendor,
+  getEstimate,
+  getPurchaseOrder,
   prepareDelete,
+  preparePoStatusChange,
   prepareStatusChange,
   updateCatalogItem,
   updateCustomer,
   updateEstimate,
+  updatePurchaseOrder,
   updateVendor,
   type PendingAction,
   type RecyclableEntity,
@@ -119,10 +124,11 @@ NON-NEGOTIABLE PRICING RULES (from the owner):
 
 WHAT YOU CAN DO — you are a full operator assistant. You can carry out any normal user task in the app:
 - Look up materials, bundles, vehicle wraps, sq-ft rates, machines, recommendations (Sheet tools) and answer business questions from the database.
-- Create: estimates (create_estimate_draft), estimate lines (add_estimate_line), catalog items (create_catalog_item), customers (create_customer), vendors (create_vendor), purchase orders (create_purchase_order). Run immediately.
+- Look up / open: get_purchase_order and get_estimate find a record by number (exact match, or lenient — "22" or "po 22" matches PO-000022) or by vendor/customer/title text, and open it on the operator's screen right away — no extra step needed. Use these whenever the operator gives you a PO or estimate number, or asks to see/open/check/look up one. If more than one record matches, you get a short candidate list back instead — read the options out and ask which one they mean, don't guess.
+- Create: estimates (create_estimate_draft), estimate lines (add_estimate_line), catalog items (create_catalog_item), customers (create_customer), vendors (create_vendor), purchase orders (create_purchase_order), purchase-order lines (add_purchase_order_line). Run immediately.
 - ORDERING MATERIALS / PURCHASE ORDERS: when the operator says "make me a PO", "order …", "buy …", first search_materials for each item (exact name, unit cost, vendor), then call create_purchase_order with those lines. It creates a DRAFT PO only — NOTHING is emailed to any vendor; the operator sends it themselves with "Send PO" on the PO page. End with "Draft <PO number> created — review it in Purchase Orders."
-- Edit: update_customer, update_vendor, update_catalog_item, update_estimate (title / markup % / customer). Run immediately.
-- Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item, and change an estimate's status (set_estimate_status: APPROVED/SENT/REJECTED/DRAFT). These do NOT happen instantly — the operator gets a one-tap Approve card. Deletes are soft: the record goes to the Recycle Bin, recoverable for 30 days. Just call the tool; approval + recovery are handled for you.
+- Edit: update_customer, update_vendor, update_catalog_item, update_estimate (title / markup % / customer), update_purchase_order (notes / vendor / QuickBooks PO number). Run immediately.
+- Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item, and change status — set_estimate_status (APPROVED/SENT/REJECTED/DRAFT) or set_purchase_order_status (ORDERED/PARTIALLY_RECEIVED/RECEIVED/CANCELED/DRAFT). These do NOT happen instantly — the operator gets a one-tap Approve card. Deletes are soft: the record goes to the Recycle Bin, recoverable for 30 days. set_purchase_order_status can NEVER mark a PO "SENT" — real sending only happens when the operator presses "Send PO" themselves, which emails the vendor. Just call the tool; approval + recovery are handled for you.
 - When the operator asks you to do something (add, change, delete, approve), DO IT with the tools — don't just describe it.
 - SPEED: for a create/edit tool, pass a short "reply" argument (your one-line confirmation, e.g. "Added Blue Tape to the catalog."). The turn ends immediately with that reply — no extra round. Only skip "reply" if you still need another tool call afterward.
 
@@ -367,6 +373,96 @@ const TOOL_DEFS = [
           reply: { type: 'string', description: 'Your one-line confirmation to the operator. The turn ends with it.' },
         },
         required: ['lines'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_purchase_order',
+      description:
+        'Find a purchase order by number (e.g. "PO-000022", or just "22") or by vendor name, and open it on the operator\'s screen right away. Use whenever the operator asks to see, open, check, or look up a PO, or gives you a PO number. Returns full detail (status, vendor, lines, totals) so you can also describe it in your reply. If several POs match, you get a short candidate list instead — ask which one they mean.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reference: { type: 'string', description: 'PO number, full or partial (e.g. "PO-000022", "22"), or a vendor name.' },
+        },
+        required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_estimate',
+      description:
+        'Find an estimate by number (e.g. "EST-000021", or just "21"), customer name, or title, and open it on the operator\'s screen right away. Use whenever the operator asks to see, open, check, or look up an estimate, or gives you an estimate number. Returns full detail (status, customer, lines, totals) so you can also describe it in your reply. If several estimates match, you get a short candidate list instead — ask which one they mean.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reference: { type: 'string', description: 'Estimate number, full or partial (e.g. "EST-000021", "21"), customer name, or title.' },
+        },
+        required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_purchase_order',
+      description:
+        'Edit a purchase order\'s notes, vendor, or QuickBooks PO number — runs immediately. (Do NOT use this to change status or add lines; use set_purchase_order_status / add_purchase_order_line.)',
+      parameters: {
+        type: 'object',
+        properties: {
+          reference: { type: 'string', description: 'PO number or id.' },
+          notes: { type: 'string' },
+          vendorName: { type: 'string', description: 'Sets the PO-level vendor (created if it does not exist yet).' },
+          qboPoNumber: { type: 'string' },
+          reply: { type: 'string' },
+        },
+        required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_purchase_order_line',
+      description:
+        'Append a line item to an EXISTING purchase order (by number, e.g. PO-000022) — runs immediately. Use catalog prices from search_materials.',
+      parameters: {
+        type: 'object',
+        properties: {
+          purchaseOrder: { type: 'string', description: 'PO number or id.' },
+          kind: { type: 'string', enum: ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'] },
+          description: { type: 'string' },
+          materialName: {
+            type: 'string',
+            description: 'EXACT material name from search_materials (copy verbatim), for MATERIAL lines. Links the line to the catalog for vendor + pricing.',
+          },
+          qty: { type: 'number' },
+          unit: { type: 'string', enum: ['EACH', 'SHEET', 'SQ_FT', 'HOUR', 'LINEAR_FT', 'ROLL', 'CUSTOM'] },
+          unitCostCents: { type: 'number' },
+          vendorName: { type: 'string', description: 'Per-line vendor, only if different from the PO vendor.' },
+        },
+        required: ['purchaseOrder', 'description', 'qty', 'unitCostCents'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_purchase_order_status',
+      description:
+        'Change a purchase order\'s status (DRAFT/ORDERED/PARTIALLY_RECEIVED/RECEIVED/CANCELED). This is a meaningful action, so it does NOT run immediately — the operator approves it with one tap. NEVER use this for "sent" — sending a PO emails the vendor and only happens when the operator presses "Send PO" on the PO page themselves.',
+      parameters: {
+        type: 'object',
+        properties: {
+          purchaseOrder: { type: 'string', description: 'PO number or id.' },
+          status: { type: 'string', enum: ['DRAFT', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELED'] },
+        },
+        required: ['purchaseOrder', 'status'],
       },
     },
   },
@@ -825,10 +921,14 @@ async function runTool(
   if (name === 'create_customer') return createCustomer(me, args);
   if (name === 'create_vendor') return createVendor(me, args);
   if (name === 'create_purchase_order') return createPurchaseOrder(me, args);
+  if (name === 'get_purchase_order') return getPurchaseOrder(me, args);
+  if (name === 'get_estimate') return getEstimate(me, args);
   if (name === 'update_customer') return updateCustomer(me, args);
   if (name === 'update_vendor') return updateVendor(me, args);
   if (name === 'update_catalog_item') return updateCatalogItem(me, args);
   if (name === 'update_estimate') return updateEstimate(me, args);
+  if (name === 'update_purchase_order') return updatePurchaseOrder(me, args);
+  if (name === 'add_purchase_order_line') return addPurchaseOrderLine(me, args);
 
   if (name === 'delete_record') {
     const entity = String(args.entity ?? '') as RecyclableEntity;
@@ -844,6 +944,14 @@ async function runTool(
     const reference = String(args.estimate ?? args.reference ?? '');
     const status = String(args.status ?? '') as 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED';
     const prepared = await prepareStatusChange(me, reference, status);
+    if ('error' in prepared) return prepared;
+    return { __pendingAction: prepared };
+  }
+
+  if (name === 'set_purchase_order_status') {
+    const reference = String(args.purchaseOrder ?? args.reference ?? '');
+    const status = String(args.status ?? '');
+    const prepared = await preparePoStatusChange(me, reference, status);
     if ('error' in prepared) return prepared;
     return { __pendingAction: prepared };
   }
@@ -887,6 +995,13 @@ export interface AssistantTurn {
   reply: string;
   toolEvents: Array<{ tool: string; summary: string }>;
   createdEstimate?: { id: string; number: string } | null;
+  /// A PO the agent just created (create_purchase_order) — the frontend
+  /// navigates straight to it, mirroring createdEstimate.
+  createdPurchaseOrder?: { id: string; number: string } | null;
+  /// An estimate/PO the agent found via get_estimate / get_purchase_order
+  /// (a pure lookup, not a create) — the frontend opens it right away.
+  openedEstimate?: { id: string; number: string } | null;
+  openedPurchaseOrder?: { id: string; number: string } | null;
   /// Lines the agent proposed for the estimate open on the operator's
   /// screen — rendered client-side with a one-click Add button.
   proposedLines?: ProposedAssistantLine[] | null;
@@ -935,6 +1050,9 @@ export async function runAssistant(
   ];
   const toolEvents: AssistantTurn['toolEvents'] = [];
   let createdEstimate: AssistantTurn['createdEstimate'] = null;
+  let createdPurchaseOrder: AssistantTurn['createdPurchaseOrder'] = null;
+  let openedEstimate: AssistantTurn['openedEstimate'] = null;
+  let openedPurchaseOrder: AssistantTurn['openedPurchaseOrder'] = null;
   const proposedLines: ProposedAssistantLine[] = [];
   let proposalNote: string | null = null;
   let prefill: EstimatePrefillPayload | null = null;
@@ -974,11 +1092,11 @@ export async function runAssistant(
       console.error('[assistant] OpenAI call failed after retries:', apiCall.error);
       return {
         reply: `The AI service didn't respond after several tries (${apiCall.error}). Please send that again in a moment.`,
-        toolEvents, createdEstimate, proposedLines, proposalNote, prefill,
+        toolEvents, createdEstimate, createdPurchaseOrder, openedEstimate, openedPurchaseOrder, proposedLines, proposalNote, prefill,
       };
     }
     const msg = apiCall.json.choices[0]?.message;
-    if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
+    if (!msg) return { reply: 'No response from the model.', toolEvents, createdEstimate, createdPurchaseOrder, openedEstimate, openedPurchaseOrder, proposedLines, proposalNote, prefill, pendingActions };
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: msg.tool_calls });
@@ -1013,8 +1131,8 @@ export async function runAssistant(
         // round — no wrap-up call — so simple actions finish in ~2s.
         const IMMEDIATE_ACTION_TOOLS = new Set([
           'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
-          'create_purchase_order',
-          'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate',
+          'create_purchase_order', 'add_purchase_order_line',
+          'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate', 'update_purchase_order',
         ]);
         if (
           IMMEDIATE_ACTION_TOOLS.has(call.function.name) &&
@@ -1034,6 +1152,37 @@ export async function runAssistant(
           createdEstimate = { id: r.estimateId, number: r.number };
           const s = String(parsed.summaryForOperator ?? '').trim();
           if (s) finalSummary = s;
+        }
+        if (
+          call.function.name === 'create_purchase_order' &&
+          result &&
+          typeof result === 'object' &&
+          'purchaseOrderId' in result
+        ) {
+          const r = result as { purchaseOrderId: string; number: string };
+          createdPurchaseOrder = { id: r.purchaseOrderId, number: r.number };
+        }
+        // Pure lookups (get_purchase_order / get_estimate) — the model
+        // hasn't seen the record yet when it makes this call, so it can't
+        // pre-supply a reply; capture the id/number here for the frontend
+        // to open regardless, and let the wrap-up round describe it.
+        if (
+          call.function.name === 'get_purchase_order' &&
+          result &&
+          typeof result === 'object' &&
+          'purchaseOrderId' in result
+        ) {
+          const r = result as { purchaseOrderId: string; number: string };
+          openedPurchaseOrder = { id: r.purchaseOrderId, number: r.number };
+        }
+        if (
+          call.function.name === 'get_estimate' &&
+          result &&
+          typeof result === 'object' &&
+          'estimateId' in result
+        ) {
+          const r = result as { estimateId: string; number: string };
+          openedEstimate = { id: r.estimateId, number: r.number };
         }
         if (
           call.function.name === 'propose_estimate_lines' &&
@@ -1062,14 +1211,14 @@ export async function runAssistant(
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 12000) });
       }
       if (finalSummary && (createdEstimate || prefill || didImmediateAction)) {
-        return { reply: finalSummary, toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
+        return { reply: finalSummary, toolEvents, createdEstimate, createdPurchaseOrder, openedEstimate, openedPurchaseOrder, proposedLines, proposalNote, prefill, pendingActions };
       }
       continue;
     }
 
-    return { reply: msg.content ?? '(empty reply)', toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
+    return { reply: msg.content ?? '(empty reply)', toolEvents, createdEstimate, createdPurchaseOrder, openedEstimate, openedPurchaseOrder, proposedLines, proposalNote, prefill, pendingActions };
   }
-  return { reply: 'I could not finish that one — please try again.', toolEvents, createdEstimate, proposedLines, proposalNote, prefill, pendingActions };
+  return { reply: 'I could not finish that one — please try again.', toolEvents, createdEstimate, createdPurchaseOrder, openedEstimate, openedPurchaseOrder, proposedLines, proposalNote, prefill, pendingActions };
 }
 
 /* ------------------------- voice transcription ------------------------- */
