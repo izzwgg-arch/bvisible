@@ -440,9 +440,10 @@ export async function getPurchaseOrder(
             select: { number: true, status: true, subtotalCents: true, vendor: { select: { name: true } } },
           })
         : [];
-    if (candidates.length === 1) {
+    const onlyCandidate = candidates.length === 1 ? candidates[0] : undefined;
+    if (onlyCandidate) {
       po = await prisma.purchaseOrder.findFirst({
-        where: { tenantId: me.tenantId, deletedAt: null, number: candidates[0].number },
+        where: { tenantId: me.tenantId, deletedAt: null, number: onlyCandidate.number },
         select: detailSelect,
       });
     } else if (candidates.length > 1) {
@@ -559,9 +560,10 @@ export async function getEstimate(
             select: { number: true, title: true, status: true, finalPriceCents: true },
           })
         : [];
-    if (candidates.length === 1) {
+    const onlyCandidate = candidates.length === 1 ? candidates[0] : undefined;
+    if (onlyCandidate) {
       est = await prisma.estimate.findFirst({
-        where: { tenantId: me.tenantId, deletedAt: null, number: candidates[0].number },
+        where: { tenantId: me.tenantId, deletedAt: null, number: onlyCandidate.number },
         select: detailSelect,
       });
     } else if (candidates.length > 1) {
