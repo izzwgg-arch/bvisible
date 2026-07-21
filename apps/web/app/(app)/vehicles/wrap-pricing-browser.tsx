@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 
 export interface WrapRow {
   id: string;
@@ -56,30 +57,32 @@ const MAKE_LOGO_DOMAIN: Record<string, string> = {
   Chrysler: 'chrysler.com',
 };
 
-function MakeLogo({ make, size = 34 }: { make: string; size?: number }) {
+/// Make badge: initials tile is ALWAYS rendered (clean look with zero
+/// network dependency); the brand logo image sits on top and simply
+/// disappears if it fails to load — no broken-image icon, ever.
+function MakeLogo({ make, size = 40 }: { make: string; size?: number }) {
   const domain = MAKE_LOGO_DOMAIN[make];
-  if (!domain) {
-    return (
-      <span
-        className="grid shrink-0 place-items-center rounded-[10px] bg-[var(--color-bv-bg)] text-[11px] font-bold text-[var(--color-bv-muted)]"
-        style={{ width: size, height: size }}
-      >
+  return (
+    <span
+      className="relative grid shrink-0 place-items-center overflow-hidden rounded-[10px] bg-[var(--color-bv-bg)]"
+      style={{ width: size, height: size }}
+    >
+      <span className="text-[12px] font-black tracking-wide text-[var(--color-bv-muted)]">
         {make.slice(0, 2).toUpperCase()}
       </span>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={`https://logo.clearbit.com/${domain}`}
-      alt={`${make} logo`}
-      width={size}
-      height={size}
-      className="shrink-0 rounded-[10px] bg-white object-contain p-1"
-      onError={(e) => {
-        (e.target as HTMLImageElement).style.display = 'none';
-      }}
-    />
+      {domain ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`https://logo.clearbit.com/${domain}?size=${size * 2}`}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full bg-white object-contain p-1.5"
+          onError={(e) => {
+            (e.target as HTMLImageElement).remove();
+          }}
+        />
+      ) : null}
+    </span>
   );
 }
 
@@ -323,28 +326,32 @@ export function WrapPricingBrowser({ rows }: { rows: WrapRow[] }) {
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {filtered.map((r) => (
             <div key={r.id} className="rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-4 shadow-[var(--shadow-bv-card)]">
-              {/* logo + photo strip */}
-              <div className="mb-3 flex items-center gap-2.5">
-                <div className="grid h-16 w-20 shrink-0 place-items-center overflow-hidden rounded-[12px] border border-[var(--color-bv-border)] bg-white">
-                  <MakeLogo make={r.make} size={44} />
-                </div>
-                <div className="grid h-16 min-w-0 flex-1 place-items-center overflow-hidden rounded-[12px] border border-[var(--color-bv-border)] bg-white">
-                  {r.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={r.photoUrl} alt={`${r.productName} ${r.variant}`} className="h-full w-full object-contain" />
-                  ) : (
-                    <span className="text-[10px] font-semibold text-[var(--color-bv-muted)]">No photo</span>
-                  )}
-                </div>
+              {/* photo area with floating make badge — photo always fills
+                  the frame gracefully (contain + soft bg), placeholder
+                  silhouette when the row has no picture. */}
+              <div className="relative mb-3 h-28 overflow-hidden rounded-[12px] border border-[var(--color-bv-border)] bg-gradient-to-br from-white to-[var(--color-bv-bg)] sm:h-32">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={r.photoUrl ?? VEHICLE_PLACEHOLDER_SVG}
+                  alt={`${r.productName} ${r.variant}`.trim()}
+                  loading="lazy"
+                  className="h-full w-full object-contain p-2"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = VEHICLE_PLACEHOLDER_SVG;
+                  }}
+                />
+                <span className="absolute left-2 top-2 rounded-[12px] border border-[var(--color-bv-border)] bg-white/95 p-0.5 shadow-sm">
+                  <MakeLogo make={r.make} size={34} />
+                </span>
               </div>
 
-              {/* title + price */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+              {/* title + price — wraps cleanly on narrow screens */}
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0 flex-1 basis-[160px]">
                   <div className="truncate text-[15px] font-black text-[var(--color-bv-text)]">{r.productName}</div>
                   <div className="text-[12px] text-[var(--color-bv-muted)]">{r.variant || '—'}</div>
                 </div>
-                <div className={`shrink-0 text-right text-[22px] font-black ${r.chargeCents != null ? 'text-[var(--color-bv-text)]' : 'text-[var(--color-bv-muted)]'}`}>
+                <div className={`shrink-0 text-right font-black leading-tight ${r.chargeCents != null ? 'text-[22px] text-[var(--color-bv-text)]' : 'text-[14px] text-[var(--color-bv-muted)]'}`}>
                   {r.chargeCents != null ? money(r.chargeCents) : 'Price not set'}
                 </div>
               </div>
