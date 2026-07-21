@@ -59,6 +59,8 @@ export async function confirmAssistantAction(
 const TOOL_LABELS_EXTRA: Record<string, string> = {
   create_catalog_item: 'Creating the catalog item…',
   add_estimate_line: 'Adding the line to the estimate…',
+  update_estimate_line: 'Updating the estimate line…',
+  remove_estimate_line: 'Removing the estimate line…',
   delete_record: 'Preparing the delete for your approval…',
   get_purchase_order: 'Looking up the purchase order…',
   get_estimate: 'Looking up the estimate…',

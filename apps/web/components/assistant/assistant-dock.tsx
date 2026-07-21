@@ -216,7 +216,8 @@ export function AssistantDock() {
 
       // A create/edit ran server-side — refresh so the operator sees it.
       const WRITE_TOOLS = new Set([
-        'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
+        'create_catalog_item', 'add_estimate_line', 'update_estimate_line', 'remove_estimate_line',
+        'create_customer', 'create_vendor',
         'create_purchase_order', 'update_purchase_order', 'add_purchase_order_line',
         'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate',
       ]);

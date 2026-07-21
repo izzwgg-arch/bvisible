@@ -11,7 +11,8 @@
 //     moves to the 30-day Recycle Bin and can be restored. A nightly purge
 //     hard-deletes anything deleted more than 30 days ago.
 
-import { prisma, EstimateLineKind, ShopCatalogUnit, EstimateStatus, POLineKind, POEventKind, POStatus } from '@bvisible/db';
+import { Prisma, prisma, EstimateLineKind, ShopCatalogUnit, EstimateStatus, POLineKind, POEventKind, POStatus } from '@bvisible/db';
+import { computeEstimate } from '@bvisible/pricing';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { nextPoNumber } from '@/lib/po/number';
@@ -157,6 +158,11 @@ export async function addEstimateLine(
     },
   });
 
+  // Refresh the estimate's cached subtotal + final sell price so the total
+  // reflects the new line immediately (not just after the editor is opened
+  // and saved). Uses the same engine as saveEstimateAction.
+  await recomputeEstimateTotals(prisma, me.tenantId, estimate.id);
+
   await writeAuditLog({
     action: 'estimate_saved',
     userId: me.id,
@@ -167,6 +173,217 @@ export async function addEstimateLine(
   });
 
   return { ok: true, estimateId: estimate.id, number: estimate.number };
+}
+
+/// Recompute an estimate's cached subtotal + final sell price from its
+/// current line rows, using the SAME pricing engine the grid editor and
+/// saveEstimateAction use (computeEstimate) — so the total the assistant
+/// leaves on the estimate is byte-for-byte what the editor would show.
+/// R-EST-05 markup-exempt lines are honored (their face price is never
+/// marked up again). Runs on the passed client so it can join a surrounding
+/// transaction.
+async function recomputeEstimateTotals(
+  client: Prisma.TransactionClient | typeof prisma,
+  tenantId: string,
+  estimateId: string,
+): Promise<{ subtotalCostCents: number; finalPriceCents: number }> {
+  const est = await client.estimate.findFirst({
+    where: { id: estimateId, tenantId },
+    select: { multiplierMilli: true, designFlatCents: true },
+  });
+  if (!est) return { subtotalCostCents: 0, finalPriceCents: 0 };
+  const lines = await client.estimateLineItem.findMany({
+    where: { estimateId, tenantId },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, kind: true, qtyMilli: true, unitCostCents: true, markupExempt: true },
+  });
+  const computed = computeEstimate({
+    multiplierMilli: est.multiplierMilli,
+    designFlatCents: est.designFlatCents,
+    lines: lines.map((l) => ({
+      id: l.id,
+      kind: l.kind,
+      qtyMilli: l.qtyMilli,
+      unitCostCents: l.unitCostCents,
+      markupExempt: l.markupExempt,
+    })),
+  });
+  await client.estimate.update({
+    where: { id: estimateId, tenantId },
+    data: { subtotalCostCents: computed.subtotalCostCents, finalPriceCents: computed.finalPriceCents },
+  });
+  return { subtotalCostCents: computed.subtotalCostCents, finalPriceCents: computed.finalPriceCents };
+}
+
+/// Resolve which estimate line the operator means: by 1-based number (as
+/// shown on the estimate, first line = 1) or by matching text in the
+/// description. Generic so callers keep full access to the line's fields.
+function locateLine<T extends { id: string; description: string }>(
+  lines: T[],
+  args: Record<string, unknown>,
+): { line: T; index: number } | { error: string } {
+  const rawNum = args.lineNumber ?? args.line ?? args.position;
+  if (rawNum != null && String(rawNum).trim() !== '') {
+    const n = Math.round(Number(rawNum));
+    if (!Number.isFinite(n) || n < 1 || n > lines.length) {
+      return { error: `Line ${rawNum} doesn't exist — this estimate has ${lines.length} line${lines.length === 1 ? '' : 's'} (1–${lines.length}).` };
+    }
+    const line = lines[n - 1];
+    if (!line) return { error: `Line ${n} doesn't exist on this estimate.` };
+    return { line, index: n - 1 };
+  }
+  const match = String(args.match ?? args.description ?? '').trim().toLowerCase();
+  if (match) {
+    const hits = lines.map((l, i) => ({ l, i })).filter(({ l }) => l.description.toLowerCase().includes(match));
+    if (hits.length === 0) return { error: `No line matching "${match}" on this estimate.` };
+    if (hits.length > 1) return { error: `More than one line matches "${match}" (${hits.map((h) => `#${h.i + 1}`).join(', ')}) — tell me the line number instead.` };
+    const only = hits[0];
+    if (!only) return { error: `No line matching "${match}" on this estimate.` };
+    return { line: only.l, index: only.i };
+  }
+  return { error: 'Which line? Give the line number (e.g. 7) or some text from the line to match.' };
+}
+
+/// Edit ONE existing estimate line in place — its quantity, rate,
+/// description, kind, or markup-exempt flag — then refresh the estimate's
+/// cached total. Reversible (edit it again), so it runs immediately, like
+/// add_estimate_line. Target by 1-based line number (as shown) or by matching
+/// description text. Markup-exempt lines carry a FINAL price that is never
+/// marked up again (R-EST-05).
+export async function updateEstimateLine(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<
+  | { ok: true; estimateId: string; number: string; lineNumber: number; description: string; markupExempt: boolean; finalPriceCents: number; total: string }
+  | { error: string }
+> {
+  const ref = String(args.estimate ?? args.estimateId ?? args.number ?? '').trim();
+  if (!ref) return { error: 'Which estimate? Give an estimate number like EST-000021.' };
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
+    select: { id: true, number: true, status: true },
+  });
+  if (!estimate) return { error: `No estimate found matching "${ref}".` };
+  if (estimate.status === EstimateStatus.FINALIZED) return { error: `${estimate.number} is finalized — its lines are locked.` };
+
+  const lines = await prisma.estimateLineItem.findMany({
+    where: { estimateId: estimate.id, tenantId: me.tenantId },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, description: true, qtyMilli: true, unitCostCents: true, markupExempt: true },
+  });
+  if (lines.length === 0) return { error: `${estimate.number} has no lines to edit.` };
+
+  const located = locateLine(lines, args);
+  if ('error' in located) return located;
+  const target = located.line;
+  const lineNumber = located.index + 1;
+
+  const data: Record<string, unknown> = {};
+  if (args.description != null && String(args.description).trim()) data.description = String(args.description).trim().slice(0, 400);
+  if (args.kind != null && ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'].includes(String(args.kind))) data.kind = String(args.kind) as EstimateLineKind;
+  if (args.qty != null) data.qtyMilli = Math.max(1, Math.round((Number(args.qty) || 1) * 1000));
+  if (args.unitCostCents != null) data.unitCostCents = Math.max(0, Math.round(Number(args.unitCostCents) || 0));
+  if (args.markupExempt != null) data.markupExempt = Boolean(args.markupExempt);
+  if (Object.keys(data).length === 0) {
+    return { error: 'Nothing to change on that line — tell me what to update (quantity, rate/unitCostCents, description, kind, or markupExempt).' };
+  }
+
+  // Refresh the line's own cached cost from the resulting qty × unit cost.
+  const newQtyMilli = (data.qtyMilli as number | undefined) ?? target.qtyMilli;
+  const newUnitCostCents = (data.unitCostCents as number | undefined) ?? target.unitCostCents;
+  data.computedCostCents = Math.round((newUnitCostCents * newQtyMilli) / 1000);
+
+  const totals = await prisma.$transaction(async (tx) => {
+    await tx.estimateLineItem.update({ where: { id: target.id }, data });
+    return recomputeEstimateTotals(tx, me.tenantId, estimate.id);
+  });
+
+  const finalMarkupExempt = (data.markupExempt as boolean | undefined) ?? target.markupExempt;
+  await writeAuditLog({
+    action: 'estimate_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    metadata: { via: 'ai_assistant', number: estimate.number, editedLine: lineNumber, fields: Object.keys(data).filter((k) => k !== 'computedCostCents') },
+  });
+
+  return {
+    ok: true,
+    estimateId: estimate.id,
+    number: estimate.number,
+    lineNumber,
+    description: (data.description as string | undefined) ?? target.description,
+    markupExempt: finalMarkupExempt,
+    finalPriceCents: totals.finalPriceCents,
+    total: `$${(totals.finalPriceCents / 100).toFixed(2)}`,
+  };
+}
+
+/// Remove ONE line from an estimate (by 1-based number as shown, or by
+/// matching description text), renumber the remaining lines so positions stay
+/// contiguous, and refresh the estimate total. Reversible (re-add the line),
+/// so it runs immediately — a routine line edit, NOT a record deletion.
+export async function removeEstimateLine(
+  me: { id: string; tenantId: string },
+  args: Record<string, unknown>,
+): Promise<
+  | { ok: true; estimateId: string; number: string; removedLine: number; removed: string; finalPriceCents: number; total: string }
+  | { error: string }
+> {
+  const ref = String(args.estimate ?? args.estimateId ?? args.number ?? '').trim();
+  if (!ref) return { error: 'Which estimate? Give an estimate number like EST-000021.' };
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
+    select: { id: true, number: true, status: true },
+  });
+  if (!estimate) return { error: `No estimate found matching "${ref}".` };
+  if (estimate.status === EstimateStatus.FINALIZED) return { error: `${estimate.number} is finalized — its lines are locked.` };
+
+  const lines = await prisma.estimateLineItem.findMany({
+    where: { estimateId: estimate.id, tenantId: me.tenantId },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, description: true },
+  });
+  if (lines.length === 0) return { error: `${estimate.number} has no lines to remove.` };
+
+  const located = locateLine(lines, args);
+  if ('error' in located) return located;
+  const target = located.line;
+  const removedLine = located.index + 1;
+
+  const totals = await prisma.$transaction(async (tx) => {
+    await tx.estimateLineItem.delete({ where: { id: target.id } });
+    // Compact sortOrder so positions stay 0..n-1 (add_estimate_line uses the
+    // line count as the next sortOrder, so gaps would collide).
+    const remaining = lines.filter((l) => l.id !== target.id);
+    for (let i = 0; i < remaining.length; i++) {
+      const r = remaining[i];
+      if (r) await tx.estimateLineItem.update({ where: { id: r.id }, data: { sortOrder: i } });
+    }
+    return recomputeEstimateTotals(tx, me.tenantId, estimate.id);
+  });
+
+  await writeAuditLog({
+    action: 'estimate_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    metadata: { via: 'ai_assistant', number: estimate.number, removedLine, removedDescription: target.description },
+  });
+
+  return {
+    ok: true,
+    estimateId: estimate.id,
+    number: estimate.number,
+    removedLine,
+    removed: target.description,
+    finalPriceCents: totals.finalPriceCents,
+    total: `$${(totals.finalPriceCents / 100).toFixed(2)}`,
+  };
 }
 
 /// Create a DRAFT purchase order to order materials from a vendor. This is
@@ -505,7 +722,7 @@ export async function getEstimate(
       finalPriceCents: number;
       total: string;
       lineCount: number;
-      lines: Array<{ description: string; qty: number; unitCost: string; total: string; kind: string }>;
+      lines: Array<{ line: number; description: string; qty: number; unitCost: string; total: string; kind: string; markupExempt: boolean }>;
       updatedAt: string;
     }
   | { error: string; candidates?: Array<{ number: string; title: string; status: string; total: string }> }
@@ -524,7 +741,7 @@ export async function getEstimate(
     client: { select: { companyName: true } },
     lines: {
       orderBy: [{ sortOrder: 'asc' as const }],
-      select: { description: true, qtyMilli: true, unitCostCents: true, computedCostCents: true, kind: true },
+      select: { description: true, qtyMilli: true, unitCostCents: true, computedCostCents: true, kind: true, markupExempt: true },
     },
   };
 
@@ -593,12 +810,14 @@ export async function getEstimate(
     finalPriceCents: est.finalPriceCents,
     total: `$${(est.finalPriceCents / 100).toFixed(2)}`,
     lineCount: est.lines.length,
-    lines: est.lines.map((l) => ({
+    lines: est.lines.map((l, i) => ({
+      line: i + 1,
       description: l.description,
       qty: l.qtyMilli / 1000,
       unitCost: `$${(l.unitCostCents / 100).toFixed(2)}`,
       total: `$${(l.computedCostCents / 100).toFixed(2)}`,
       kind: l.kind,
+      markupExempt: l.markupExempt,
     })),
     updatedAt: est.updatedAt.toISOString(),
   };

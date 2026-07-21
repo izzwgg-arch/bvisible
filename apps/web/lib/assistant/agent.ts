@@ -28,9 +28,11 @@ import {
   prepareDelete,
   preparePoStatusChange,
   prepareStatusChange,
+  removeEstimateLine,
   updateCatalogItem,
   updateCustomer,
   updateEstimate,
+  updateEstimateLine,
   updatePurchaseOrder,
   updateVendor,
   type PendingAction,
@@ -128,6 +130,7 @@ WHAT YOU CAN DO — you are a full operator assistant. You can carry out any nor
 - Create: estimates (create_estimate_draft), estimate lines (add_estimate_line), catalog items (create_catalog_item), customers (create_customer), vendors (create_vendor), purchase orders (create_purchase_order), purchase-order lines (add_purchase_order_line). Run immediately.
 - ORDERING MATERIALS / PURCHASE ORDERS: when the operator says "make me a PO", "order …", "buy …", first search_materials for each item (exact name, unit cost, vendor), then call create_purchase_order with those lines. It creates a DRAFT PO only — NOTHING is emailed to any vendor; the operator sends it themselves with "Send PO" on the PO page. End with "Draft <PO number> created — review it in Purchase Orders."
 - Edit: update_customer, update_vendor, update_catalog_item, update_estimate (title / markup % / customer), update_purchase_order (notes / vendor / QuickBooks PO number). Run immediately.
+- Edit or remove ONE estimate line: update_estimate_line (change a line's quantity, rate/unitCostCents, description, kind, or markup-exempt flag) and remove_estimate_line (delete a single line). Target the line by its number as shown on the estimate (first line = 1) or by matching text; the estimate total recalculates automatically. Use these to fix a line — NEVER add a $0 or "correction" line to offset a mistake. To make an installation (or any line) a flat FINAL price that is not marked up again, set markupExempt=true with the final per-unit price in unitCostCents (R-EST-05). If you need to see line numbers first, call get_estimate.
 - Delete records (delete_record) for estimate / customer / vendor / purchase_order / catalog_item, and change status — set_estimate_status (APPROVED/SENT/REJECTED/DRAFT) or set_purchase_order_status (ORDERED/PARTIALLY_RECEIVED/RECEIVED/CANCELED/DRAFT). These do NOT happen instantly — the operator gets a one-tap Approve card. Deletes are soft: the record goes to the Recycle Bin, recoverable for 30 days. set_purchase_order_status can NEVER mark a PO "SENT" — real sending only happens when the operator presses "Send PO" themselves, which emails the vendor. Just call the tool; approval + recovery are handled for you.
 - When the operator asks you to do something (add, change, delete, approve), DO IT with the tools — don't just describe it.
 - SPEED: for a create/edit tool, pass a short "reply" argument (your one-line confirmation, e.g. "Added Blue Tape to the catalog."). The turn ends immediately with that reply — no extra round. Only skip "reply" if you still need another tool call afterward.
@@ -634,6 +637,47 @@ const TOOL_DEFS = [
   {
     type: 'function',
     function: {
+      name: 'update_estimate_line',
+      description:
+        'Edit ONE existing line on an estimate — its quantity, rate (unitCostCents), description, kind, or markup-exempt flag — then the estimate total recalculates automatically. Runs immediately. Target the line by its number as shown on the estimate (1-based, first line = 1) or by "match" text from its description. Set markupExempt=true for a line whose price is a FINAL price that must NOT be marked up again (sq-ft, vehicle wraps, or an install quoted at a flat final price) and put the final PER-UNIT price in unitCostCents. Use this — not a $0 "correction" line — to fix a line.',
+      parameters: {
+        type: 'object',
+        properties: {
+          estimate: { type: 'string', description: 'Estimate number or id (e.g. EST-000037).' },
+          lineNumber: { type: 'number', description: 'Which line, 1-based as shown on the estimate (first line = 1).' },
+          match: { type: 'string', description: 'Alternative to lineNumber: text from the line description to find it (must match exactly one line).' },
+          description: { type: 'string', description: 'New description for the line.' },
+          kind: { type: 'string', enum: ['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC'] },
+          qty: { type: 'number', description: 'New quantity.' },
+          unitCostCents: { type: 'number', description: 'New unit cost/rate in cents. For a markup-exempt line this is the FINAL per-unit price.' },
+          markupExempt: { type: 'boolean', description: 'True = final price, never marked up again (R-EST-05).' },
+          reply: { type: 'string', description: 'Your one-line confirmation to the operator. The turn ends with it.' },
+        },
+        required: ['estimate'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remove_estimate_line',
+      description:
+        'Remove ONE line from an estimate (by lineNumber as shown, or by "match" text from its description); the remaining lines renumber and the estimate total recalculates automatically. Runs immediately and is reversible (re-add the line). This is a line edit, NOT a record deletion — do not use delete_record to remove a single line.',
+      parameters: {
+        type: 'object',
+        properties: {
+          estimate: { type: 'string', description: 'Estimate number or id (e.g. EST-000037).' },
+          lineNumber: { type: 'number', description: 'Which line to remove, 1-based as shown (first line = 1).' },
+          match: { type: 'string', description: 'Alternative to lineNumber: text from the line description (must match exactly one line).' },
+          reply: { type: 'string', description: 'Your one-line confirmation to the operator. The turn ends with it.' },
+        },
+        required: ['estimate'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_estimate_status',
       description: 'Change an estimate\'s status (APPROVED, SENT, REJECTED, DRAFT). This is a meaningful action, so it does NOT run immediately — the operator approves it with one tap.',
       parameters: {
@@ -917,6 +961,8 @@ async function runTool(
   if (name === 'add_estimate_line') {
     return addEstimateLine(me, args);
   }
+  if (name === 'update_estimate_line') return updateEstimateLine(me, args);
+  if (name === 'remove_estimate_line') return removeEstimateLine(me, args);
 
   if (name === 'create_customer') return createCustomer(me, args);
   if (name === 'create_vendor') return createVendor(me, args);
@@ -1130,7 +1176,7 @@ export async function runAssistant(
         // When present and the action succeeded, end the turn in this same
         // round — no wrap-up call — so simple actions finish in ~2s.
         const IMMEDIATE_ACTION_TOOLS = new Set([
-          'create_catalog_item', 'add_estimate_line', 'create_customer', 'create_vendor',
+          'create_catalog_item', 'add_estimate_line', 'update_estimate_line', 'remove_estimate_line', 'create_customer', 'create_vendor',
           'create_purchase_order', 'add_purchase_order_line',
           'update_customer', 'update_vendor', 'update_catalog_item', 'update_estimate', 'update_purchase_order',
         ]);
@@ -1177,6 +1223,17 @@ export async function runAssistant(
         }
         if (
           call.function.name === 'get_estimate' &&
+          result &&
+          typeof result === 'object' &&
+          'estimateId' in result
+        ) {
+          const r = result as { estimateId: string; number: string };
+          openedEstimate = { id: r.estimateId, number: r.number };
+        }
+        // Line edits/removes return the estimate id/number — open it on the
+        // operator's screen so they see the recalculated total right away.
+        if (
+          (call.function.name === 'update_estimate_line' || call.function.name === 'remove_estimate_line') &&
           result &&
           typeof result === 'object' &&
           'estimateId' in result
