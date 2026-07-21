@@ -13,6 +13,30 @@ function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/// Bare brand-logo files that were (incorrectly) set as some models'
+/// primary photo — never show these as the hero image; the card shows
+/// the logo in its own badge and the silhouette placeholder instead.
+const LOGO_FILES = new Set([
+  'chevrolet.jpg', 'chrysler.png', 'dodge.png', 'ford.png', 'gmc.png',
+  'honda.png', 'kenworth.png', 'kia.jpg', 'mercedes.png', 'nissan.jpg',
+  'tesla.png', 'toyota.png',
+]);
+
+function heroPhoto(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const base = url.split('/').pop()?.toLowerCase() ?? '';
+  return LOGO_FILES.has(base) ? null : url;
+}
+
+/// Rows without a real vehicle photo fall back to the shipped roof-wrap
+/// illustration for their variant (same pictures the owner's reference
+/// app uses), then to the generic silhouette.
+const ROOF_WRAP_ILLUSTRATION: Record<string, string> = {
+  full: '/vehicle-library/roof_wrap_full.jpg',
+  no: '/vehicle-library/roof_wrap_none.jpg',
+  'top front': '/vehicle-library/roof_wrap_top_front.jpg',
+};
+
 export default async function VehicleWrapPricingPage() {
   const me = await requireTenantId();
 
@@ -85,7 +109,11 @@ export default async function VehicleWrapPricingPage() {
       chargeCents: chargeCents != null && chargeCents > 0 ? chargeCents : null,
       pricingRule: sheet?.rule || (r.pricingRule ?? ''),
       exportNote: r.exportNote ?? '',
-      photoUrl: r.trim?.photos[0]?.url ?? r.model.photos[0]?.url ?? null,
+      photoUrl:
+        heroPhoto(r.trim?.photos[0]?.url) ??
+        heroPhoto(r.model.photos[0]?.url) ??
+        ROOF_WRAP_ILLUSTRATION[(r.roofWrapOption ?? '').toLowerCase()] ??
+        null,
     };
   });
 

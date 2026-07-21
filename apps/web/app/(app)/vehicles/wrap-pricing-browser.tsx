@@ -32,36 +32,28 @@ export interface WrapRow {
   photoUrl: string | null;
 }
 
-const MAKE_LOGO_DOMAIN: Record<string, string> = {
-  Chevrolet: 'chevrolet.com',
-  Ford: 'ford.com',
-  GMC: 'gmc.com',
-  RAM: 'ramtrucks.com',
-  Ram: 'ramtrucks.com',
-  Dodge: 'dodge.com',
-  'Mercedes-Benz': 'mercedes-benz.com',
-  'Mercedes / Dodge': 'mercedes-benz.com',
-  Nissan: 'nissanusa.com',
-  Toyota: 'toyota.com',
-  Honda: 'honda.com',
-  Isuzu: 'isuzu.com',
-  Freightliner: 'freightliner.com',
-  Tesla: 'tesla.com',
-  Jeep: 'jeep.com',
-  Kia: 'kia.com',
-  Hyundai: 'hyundaiusa.com',
-  Subaru: 'subaru.com',
-  Volkswagen: 'vw.com',
-  Kenworth: 'kenworth.com',
-  Crysler: 'chrysler.com',
-  Chrysler: 'chrysler.com',
+/// Brand logos are LOCAL files shipped with the app (public/vehicle-library)
+/// — instant, offline-safe, never a broken image. Makes without a local
+/// logo get a clean initials tile.
+const LOCAL_MAKE_LOGO: Record<string, string> = {
+  Chevrolet: '/vehicle-library/chevrolet.jpg',
+  Chrysler: '/vehicle-library/chrysler.png',
+  Crysler: '/vehicle-library/chrysler.png',
+  Dodge: '/vehicle-library/dodge.png',
+  Ford: '/vehicle-library/ford.png',
+  GMC: '/vehicle-library/gmc.png',
+  Honda: '/vehicle-library/honda.png',
+  Kenworth: '/vehicle-library/kenworth.png',
+  Kia: '/vehicle-library/kia.jpg',
+  'Mercedes / Dodge': '/vehicle-library/mercedes.png',
+  'Mercedes-Benz': '/vehicle-library/mercedes.png',
+  Nissan: '/vehicle-library/nissan.jpg',
+  Tesla: '/vehicle-library/tesla.png',
+  Toyota: '/vehicle-library/toyota.png',
 };
 
-/// Make badge: initials tile is ALWAYS rendered (clean look with zero
-/// network dependency); the brand logo image sits on top and simply
-/// disappears if it fails to load — no broken-image icon, ever.
 function MakeLogo({ make, size = 40 }: { make: string; size?: number }) {
-  const domain = MAKE_LOGO_DOMAIN[make];
+  const src = LOCAL_MAKE_LOGO[make];
   return (
     <span
       className="relative grid shrink-0 place-items-center overflow-hidden rounded-[10px] bg-[var(--color-bv-bg)]"
@@ -70,13 +62,13 @@ function MakeLogo({ make, size = 40 }: { make: string; size?: number }) {
       <span className="text-[12px] font-black tracking-wide text-[var(--color-bv-muted)]">
         {make.slice(0, 2).toUpperCase()}
       </span>
-      {domain ? (
+      {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`https://logo.clearbit.com/${domain}?size=${size * 2}`}
+          src={src}
           alt=""
           loading="lazy"
-          className="absolute inset-0 h-full w-full bg-white object-contain p-1.5"
+          className="absolute inset-0 h-full w-full bg-white object-contain p-1"
           onError={(e) => {
             (e.target as HTMLImageElement).remove();
           }}
