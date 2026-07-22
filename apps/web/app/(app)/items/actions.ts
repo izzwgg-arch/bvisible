@@ -12,6 +12,7 @@ import {
 import { revalidatePath } from 'next/cache';
 import { parseQty } from '@bvisible/pricing';
 import { writeAuditLog } from '@/lib/auth/audit';
+import { writebackMaterialPrice, writebackMaterialRename } from '@/lib/sheet-sync/writeback';
 import { requireRoleWithEffectiveCompany } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
@@ -454,7 +455,7 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
 
   const existing = await prisma.shopMaterialItem.findFirst({
     where: { id, tenantId: me.tenantId },
-    select: { id: true },
+    select: { id: true, name: true, internalCostCents: true },
   });
   if (!existing || !kind || !catalogUnit || categories.length === 0 || nameNormalized.length < 2) return;
 
@@ -552,6 +553,17 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
       pricingCalculatedById: pricingOutputJson ? me.id : null,
     },
   });
+
+  // Sheet write-back (fire-and-forget): mirror rename / price change into
+  // the pricing Sheet so both sides stay identical. The Sheet remains the
+  // source of truth — the regular pull re-imports it afterwards.
+  const newName = name.slice(0, 400);
+  if (newName !== existing.name) {
+    void writebackMaterialRename(existing.name, newName);
+  }
+  if (internalCostCents !== existing.internalCostCents) {
+    void writebackMaterialPrice(newName, internalCostCents);
+  }
 
   const draftPreferredVendorId = await appendVendorDraftRows({
     tenantId: me.tenantId,

@@ -43,6 +43,9 @@ const PUBLIC_PATHS = new Set<string>([
   // request carrying X-Forwarded-For (i.e. anything through nginx); only a
   // direct 127.0.0.1 call from the systemd timer is accepted.
   '/api/internal/recycle-purge',
+  // Instant Sheet→DB sync, called by the pricing Sheet's Apps Script
+  // onEdit trigger. Shared-secret header is the auth boundary.
+  '/api/internal/sheet-webhook',
 ]);
 
 const PUBLIC_PREFIXES = ['/reset/', '/invite/'];
