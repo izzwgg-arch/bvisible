@@ -17,6 +17,12 @@ import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { nextPoNumber } from '@/lib/po/number';
 import { sheetItemKey } from '@/lib/sheet-sync/types';
+import {
+  writebackMaterialCreate,
+  writebackMaterialPrice,
+  writebackMaterialRename,
+  writebackVendor,
+} from '@/lib/sheet-sync/writeback';
 
 export const RECYCLE_RETENTION_DAYS = 30;
 
@@ -132,6 +138,11 @@ export async function createCatalogItem(
     targetId: created.id,
     metadata: { via: 'ai_assistant', name: created.name },
   });
+
+  // Push the new item to the pricing Sheet (fire-and-forget; the write-back
+  // module updates an existing Sheet row instead of appending when one
+  // matches). Preserved from the parallel two-way-sync work (5b2e079).
+  void writebackMaterialCreate(created.name, category, internalCostCents);
 
   return { ok: true, id: created.id, name: created.name };
 }
@@ -1038,6 +1049,7 @@ export async function createVendor(
     select: { id: true, name: true },
   });
   await writeAuditLog({ action: 'vendor_created', userId: me.id, tenantId: me.tenantId, targetType: 'vendor', targetId: created.id, metadata: { via: 'ai_assistant', name: created.name } });
+  void writebackVendor(created.name, { email: String(args.email ?? '') || undefined, phone: String(args.phone ?? '') || undefined });
   return { ok: true, id: created.id, name: created.name };
 }
 
@@ -1066,7 +1078,7 @@ export async function updateVendor(
 ): Promise<{ ok: true; name: string } | { error: string }> {
   const ref = String(args.reference ?? args.id ?? '').trim();
   if (!ref) return { error: 'Which vendor? Give their name.' };
-  const rec = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
+  const rec = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true, name: true } });
   if (!rec) return { error: `No vendor found matching "${ref}".` };
   const data: Record<string, string> = {};
   if (args.newName != null && String(args.newName).trim()) data.name = String(args.newName).trim().slice(0, 200);
@@ -1075,6 +1087,7 @@ export async function updateVendor(
   if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, email, phone).' };
   const updated = await prisma.vendor.update({ where: { id: rec.id }, data, select: { name: true } });
   await writeAuditLog({ action: 'vendor_updated', userId: me.id, tenantId: me.tenantId, targetType: 'vendor', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+  void writebackVendor(rec.name, { newName: data.name, email: data.email, phone: data.phone });
   return { ok: true, name: updated.name };
 }
 
@@ -1084,7 +1097,7 @@ export async function updateCatalogItem(
 ): Promise<{ ok: true; name: string } | { error: string }> {
   const ref = String(args.reference ?? args.id ?? '').trim();
   if (!ref) return { error: 'Which catalog item? Give its name.' };
-  const rec = await prisma.shopMaterialItem.findFirst({ where: { tenantId: me.tenantId, isActive: true, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
+  const rec = await prisma.shopMaterialItem.findFirst({ where: { tenantId: me.tenantId, isActive: true, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true, name: true } });
   if (!rec) return { error: `No catalog item found matching "${ref}".` };
   const data: Record<string, unknown> = {};
   if (args.newName != null && String(args.newName).trim()) {
@@ -1097,6 +1110,15 @@ export async function updateCatalogItem(
   if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, cost, markup, category).' };
   const updated = await prisma.shopMaterialItem.update({ where: { id: rec.id }, data, select: { name: true } });
   await writeAuditLog({ action: 'shop_material_item_saved', userId: me.id, tenantId: me.tenantId, targetType: 'shop_material_item', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
+
+  // Mirror the edit into the pricing Sheet (fire-and-forget, no dupes).
+  if (typeof data.name === 'string' && data.name !== rec.name) {
+    void writebackMaterialRename(rec.name, data.name);
+  }
+  if (typeof data.internalCostCents === 'number') {
+    void writebackMaterialPrice(typeof data.name === 'string' ? data.name : rec.name, data.internalCostCents);
+  }
+
   return { ok: true, name: updated.name };
 }
 
