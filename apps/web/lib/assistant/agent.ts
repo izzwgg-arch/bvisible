@@ -692,6 +692,18 @@ const TOOL_DEFS = [
   },
 ] as const;
 
+/// Turn a thrown tool error into a short, operator-safe message. Prisma
+/// known-request codes get specific text; anything else gets a generic line
+/// with a trimmed message. Never leaks stack traces or SQL to the operator.
+function friendlyToolError(e: unknown): string {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === 'P2002') return 'That already exists — something with the same unique value is already there. Update it instead of creating a duplicate.';
+  if (code === 'P2003') return 'That links to a record that no longer exists. Check the reference and try again.';
+  if (code === 'P2025') return 'That record was not found — it may have been deleted or renamed. Refresh and try again.';
+  const msg = e instanceof Error ? e.message : String(e ?? 'unknown error');
+  return `Sorry — that action did not complete. ${msg.slice(0, 200)}`;
+}
+
 async function runTool(
   name: string,
   args: Record<string, unknown>,
@@ -1162,7 +1174,11 @@ export async function runAssistant(
         try {
           result = await runTool(call.function.name, parsed, me);
         } catch (e) {
-          result = { error: e instanceof Error ? e.message : 'tool failed' };
+          // Log server-side so a failure is never silent or undiagnosable
+          // (these used to be swallowed), and hand the model a clean,
+          // human message instead of a raw Prisma dump.
+          console.error(`[assistant] tool ${call.function.name} failed:`, e);
+          result = { error: friendlyToolError(e) };
         }
         // Delete requests come back as a PendingAction — collect it for the
         // operator's approval and let the model tell them what it wants to

@@ -17,12 +17,6 @@ import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { nextPoNumber } from '@/lib/po/number';
 import { sheetItemKey } from '@/lib/sheet-sync/types';
-import {
-  writebackMaterialCreate,
-  writebackMaterialPrice,
-  writebackMaterialRename,
-  writebackVendor,
-} from '@/lib/sheet-sync/writeback';
 
 export const RECYCLE_RETENTION_DAYS = 30;
 
@@ -91,30 +85,44 @@ export async function createCatalogItem(
   const markupPercent = Math.max(0, Number(args.markupPercent ?? 200) || 200);
   const category = String(args.category ?? '').trim().slice(0, 120) || 'Uncategorized';
 
-  // Anti-duplicate guardrail: never create a second copy of an item that
-  // already exists (the Sheet is the master list — one row per item).
-  const dupe = await prisma.shopMaterialItem.findFirst({
-    where: { tenantId: me.tenantId, isActive: true, nameNormalized: normalizeVendorItemName(name) },
-    select: { name: true },
-  });
-  if (dupe) {
-    return { error: `"${dupe.name}" already exists in the catalog — edit it instead of creating a duplicate.` };
-  }
-
-  const created = await prisma.shopMaterialItem.create({
-    data: {
-      tenantId: me.tenantId,
-      name,
-      nameNormalized: normalizeVendorItemName(name),
-      kind,
-      catalogUnit: unit,
-      categories: [category],
-      internalCostCents,
-      markupPercentMilli: Math.round(markupPercent * 1000),
-      isActive: true,
-    },
+  // Catalog names are unique per tenant (@@unique([tenantId, nameNormalized]),
+  // and the Google Sheet already seeds hundreds of items). Check first and
+  // return a clear message instead of letting the unique constraint throw a
+  // raw error that the operator sees as "it didn't work".
+  const nameNormalized = normalizeVendorItemName(name);
+  const existing = await prisma.shopMaterialItem.findFirst({
+    where: { tenantId: me.tenantId, nameNormalized },
     select: { id: true, name: true },
   });
+  if (existing) {
+    return {
+      error: `"${existing.name}" is already in the catalog. Use update_catalog_item to change its cost, markup, unit, or category — no need to add a duplicate.`,
+    };
+  }
+
+  let created: { id: string; name: string };
+  try {
+    created = await prisma.shopMaterialItem.create({
+      data: {
+        tenantId: me.tenantId,
+        name,
+        nameNormalized,
+        kind,
+        catalogUnit: unit,
+        categories: [category],
+        internalCostCents,
+        markupPercentMilli: Math.round(markupPercent * 1000),
+        isActive: true,
+      },
+      select: { id: true, name: true },
+    });
+  } catch (e) {
+    // Backstop for a race between the check above and the insert.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      return { error: `"${name}" is already in the catalog. Use update_catalog_item to change it instead.` };
+    }
+    throw e;
+  }
 
   await writeAuditLog({
     action: 'shop_material_item_created',
@@ -124,10 +132,6 @@ export async function createCatalogItem(
     targetId: created.id,
     metadata: { via: 'ai_assistant', name: created.name },
   });
-
-  // Push the new item to the Sheet (fire-and-forget; the write-back module
-  // updates an existing Sheet row instead of appending when one matches).
-  void writebackMaterialCreate(created.name, category, internalCostCents);
 
   return { ok: true, id: created.id, name: created.name };
 }
@@ -139,20 +143,12 @@ export async function addEstimateLine(
   args: Record<string, unknown>,
 ): Promise<{ ok: true; estimateId: string; number: string } | { error: string }> {
   const ref = String(args.estimate ?? args.estimateId ?? args.number ?? '').trim();
-  if (!ref) return { error: 'Which estimate? Give an estimate number like EST-000021.' };
-
-  const estimate = await prisma.estimate.findFirst({
-    where: {
-      tenantId: me.tenantId,
-      deletedAt: null,
-      OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }],
-    },
-    select: { id: true, number: true, status: true, _count: { select: { lines: true } } },
-  });
-  if (!estimate) return { error: `No estimate found matching "${ref}".` };
+  const estimate = await resolveEstimateRef(me.tenantId, ref);
+  if ('error' in estimate) return estimate;
   if (estimate.status === EstimateStatus.FINALIZED) {
     return { error: `${estimate.number} is finalized — its lines are locked.` };
   }
+  const lineCount = await prisma.estimateLineItem.count({ where: { estimateId: estimate.id, tenantId: me.tenantId } });
 
   const description = String(args.description ?? '').trim().slice(0, 400);
   if (!description) return { error: 'The line needs a description.' };
@@ -167,7 +163,7 @@ export async function addEstimateLine(
     data: {
       tenantId: me.tenantId,
       estimateId: estimate.id,
-      sortOrder: estimate._count.lines,
+      sortOrder: lineCount,
       kind,
       description,
       qtyMilli,
@@ -278,13 +274,8 @@ export async function updateEstimateLine(
   | { error: string }
 > {
   const ref = String(args.estimate ?? args.estimateId ?? args.number ?? '').trim();
-  if (!ref) return { error: 'Which estimate? Give an estimate number like EST-000021.' };
-
-  const estimate = await prisma.estimate.findFirst({
-    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
-    select: { id: true, number: true, status: true },
-  });
-  if (!estimate) return { error: `No estimate found matching "${ref}".` };
+  const estimate = await resolveEstimateRef(me.tenantId, ref);
+  if ('error' in estimate) return estimate;
   if (estimate.status === EstimateStatus.FINALIZED) return { error: `${estimate.number} is finalized — its lines are locked.` };
 
   const lines = await prisma.estimateLineItem.findMany({
@@ -353,13 +344,8 @@ export async function removeEstimateLine(
   | { error: string }
 > {
   const ref = String(args.estimate ?? args.estimateId ?? args.number ?? '').trim();
-  if (!ref) return { error: 'Which estimate? Give an estimate number like EST-000021.' };
-
-  const estimate = await prisma.estimate.findFirst({
-    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
-    select: { id: true, number: true, status: true },
-  });
-  if (!estimate) return { error: `No estimate found matching "${ref}".` };
+  const estimate = await resolveEstimateRef(me.tenantId, ref);
+  if ('error' in estimate) return estimate;
   if (estimate.status === EstimateStatus.FINALIZED) return { error: `${estimate.number} is finalized — its lines are locked.` };
 
   const lines = await prisma.estimateLineItem.findMany({
@@ -602,6 +588,114 @@ export async function createPurchaseOrder(
 function padNumberDigits(ref: string): string | null {
   const digits = ref.replace(/\D/g, '');
   return digits.length >= 1 && digits.length <= 6 ? digits.padStart(6, '0') : null;
+}
+
+/// Resolve a purchase-order reference the same lenient way lookups do, so
+/// EVERY write tool accepts "PO-000022", "22", "po 22", or "#22" — not just
+/// an exact match. Number-based only (never fuzzy vendor/title) so a write
+/// never lands on the wrong record. Returns the PO's key fields, or a
+/// friendly error (with a short list when a partial number matches several).
+async function resolvePurchaseOrderRef(
+  tenantId: string,
+  ref: string,
+): Promise<
+  | { id: string; number: string; status: string; vendorId: string | null; subtotalCents: number; lineCount: number }
+  | { error: string }
+> {
+  const trimmed = String(ref ?? '').trim();
+  if (!trimmed) return { error: 'Which purchase order? Give a PO number like PO-000022.' };
+  const select = {
+    id: true,
+    number: true,
+    status: true,
+    vendorId: true,
+    subtotalCents: true,
+    _count: { select: { lines: true } },
+  } as const;
+  type Row = { id: string; number: string; status: string; vendorId: string | null; subtotalCents: number; _count: { lines: number } };
+  const shape = (po: Row) => ({
+    id: po.id,
+    number: po.number,
+    status: po.status,
+    vendorId: po.vendorId,
+    subtotalCents: po.subtotalCents,
+    lineCount: po._count.lines,
+  });
+
+  let po: Row | null = await prisma.purchaseOrder.findFirst({
+    where: { tenantId, deletedAt: null, OR: [{ id: trimmed }, { number: { equals: trimmed, mode: 'insensitive' } }] },
+    select,
+  });
+  if (!po) {
+    const padded = padNumberDigits(trimmed);
+    if (padded) {
+      po = await prisma.purchaseOrder.findFirst({
+        where: { tenantId, deletedAt: null, number: { equals: `PO-${padded}`, mode: 'insensitive' } },
+        select,
+      });
+    }
+  }
+  if (!po) {
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length >= 2) {
+      const candidates = await prisma.purchaseOrder.findMany({
+        where: { tenantId, deletedAt: null, number: { endsWith: digits, mode: 'insensitive' } },
+        orderBy: { updatedAt: 'desc' },
+        take: 6,
+        select,
+      });
+      const only = candidates.length === 1 ? candidates[0] : undefined;
+      if (only) po = only;
+      else if (candidates.length > 1) {
+        return { error: `Several purchase orders match "${ref}" (${candidates.map((c) => c.number).join(', ')}) — tell me the full PO number.` };
+      }
+    }
+  }
+  if (!po) return { error: `No purchase order found matching "${ref}". Give a PO number like PO-000022.` };
+  return shape(po);
+}
+
+/// Estimate counterpart to resolvePurchaseOrderRef. Number-based only.
+async function resolveEstimateRef(
+  tenantId: string,
+  ref: string,
+): Promise<{ id: string; number: string; status: string } | { error: string }> {
+  const trimmed = String(ref ?? '').trim();
+  if (!trimmed) return { error: 'Which estimate? Give a number like EST-000021.' };
+  const select = { id: true, number: true, status: true } as const;
+  type Row = { id: string; number: string; status: string };
+
+  let est: Row | null = await prisma.estimate.findFirst({
+    where: { tenantId, deletedAt: null, OR: [{ id: trimmed }, { number: { equals: trimmed, mode: 'insensitive' } }] },
+    select,
+  });
+  if (!est) {
+    const padded = padNumberDigits(trimmed);
+    if (padded) {
+      est = await prisma.estimate.findFirst({
+        where: { tenantId, deletedAt: null, number: { equals: `EST-${padded}`, mode: 'insensitive' } },
+        select,
+      });
+    }
+  }
+  if (!est) {
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length >= 2) {
+      const candidates = await prisma.estimate.findMany({
+        where: { tenantId, deletedAt: null, number: { endsWith: digits, mode: 'insensitive' } },
+        orderBy: { updatedAt: 'desc' },
+        take: 6,
+        select,
+      });
+      const only = candidates.length === 1 ? candidates[0] : undefined;
+      if (only) est = only;
+      else if (candidates.length > 1) {
+        return { error: `Several estimates match "${ref}" (${candidates.map((c) => c.number).join(', ')}) — tell me the full estimate number.` };
+      }
+    }
+  }
+  if (!est) return { error: `No estimate found matching "${ref}". Give a number like EST-000021.` };
+  return est;
 }
 
 /// Find a purchase order by number (exact, or lenient — "22" / "po-22"
@@ -944,7 +1038,6 @@ export async function createVendor(
     select: { id: true, name: true },
   });
   await writeAuditLog({ action: 'vendor_created', userId: me.id, tenantId: me.tenantId, targetType: 'vendor', targetId: created.id, metadata: { via: 'ai_assistant', name: created.name } });
-  void writebackVendor(created.name, { email: String(args.email ?? '') || undefined, phone: String(args.phone ?? '') || undefined });
   return { ok: true, id: created.id, name: created.name };
 }
 
@@ -973,7 +1066,7 @@ export async function updateVendor(
 ): Promise<{ ok: true; name: string } | { error: string }> {
   const ref = String(args.reference ?? args.id ?? '').trim();
   if (!ref) return { error: 'Which vendor? Give their name.' };
-  const rec = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true, name: true } });
+  const rec = await prisma.vendor.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
   if (!rec) return { error: `No vendor found matching "${ref}".` };
   const data: Record<string, string> = {};
   if (args.newName != null && String(args.newName).trim()) data.name = String(args.newName).trim().slice(0, 200);
@@ -982,7 +1075,6 @@ export async function updateVendor(
   if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, email, phone).' };
   const updated = await prisma.vendor.update({ where: { id: rec.id }, data, select: { name: true } });
   await writeAuditLog({ action: 'vendor_updated', userId: me.id, tenantId: me.tenantId, targetType: 'vendor', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
-  void writebackVendor(rec.name, { newName: data.name, email: data.email, phone: data.phone });
   return { ok: true, name: updated.name };
 }
 
@@ -992,7 +1084,7 @@ export async function updateCatalogItem(
 ): Promise<{ ok: true; name: string } | { error: string }> {
   const ref = String(args.reference ?? args.id ?? '').trim();
   if (!ref) return { error: 'Which catalog item? Give its name.' };
-  const rec = await prisma.shopMaterialItem.findFirst({ where: { tenantId: me.tenantId, isActive: true, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true, name: true } });
+  const rec = await prisma.shopMaterialItem.findFirst({ where: { tenantId: me.tenantId, isActive: true, OR: [{ id: ref }, { name: { equals: ref, mode: 'insensitive' } }] }, select: { id: true } });
   if (!rec) return { error: `No catalog item found matching "${ref}".` };
   const data: Record<string, unknown> = {};
   if (args.newName != null && String(args.newName).trim()) {
@@ -1005,15 +1097,6 @@ export async function updateCatalogItem(
   if (Object.keys(data).length === 0) return { error: 'Nothing to change — tell me what to update (name, cost, markup, category).' };
   const updated = await prisma.shopMaterialItem.update({ where: { id: rec.id }, data, select: { name: true } });
   await writeAuditLog({ action: 'shop_material_item_saved', userId: me.id, tenantId: me.tenantId, targetType: 'shop_material_item', targetId: rec.id, metadata: { via: 'ai_assistant', fields: Object.keys(data) } });
-
-  // Mirror the edit into the pricing Sheet (fire-and-forget, no dupes).
-  if (typeof data.name === 'string' && data.name !== rec.name) {
-    void writebackMaterialRename(rec.name, data.name);
-  }
-  if (typeof data.internalCostCents === 'number') {
-    void writebackMaterialPrice(typeof data.name === 'string' ? data.name : rec.name, data.internalCostCents);
-  }
-
   return { ok: true, name: updated.name };
 }
 
@@ -1022,9 +1105,8 @@ export async function updateEstimate(
   args: Record<string, unknown>,
 ): Promise<{ ok: true; number: string } | { error: string }> {
   const ref = String(args.estimate ?? args.reference ?? args.id ?? '').trim();
-  if (!ref) return { error: 'Which estimate? Give its number (e.g. EST-000021).' };
-  const rec = await prisma.estimate.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] }, select: { id: true, number: true, status: true } });
-  if (!rec) return { error: `No estimate found matching "${ref}".` };
+  const rec = await resolveEstimateRef(me.tenantId, ref);
+  if ('error' in rec) return rec;
   if (rec.status === EstimateStatus.FINALIZED) return { error: `${rec.number} is finalized and locked.` };
   const data: Record<string, unknown> = {};
   if (args.title != null && String(args.title).trim()) data.title = String(args.title).trim().slice(0, 200);
@@ -1049,12 +1131,8 @@ export async function updatePurchaseOrder(
   args: Record<string, unknown>,
 ): Promise<{ ok: true; number: string } | { error: string }> {
   const ref = String(args.reference ?? args.purchaseOrder ?? args.id ?? '').trim();
-  if (!ref) return { error: 'Which purchase order? Give its number (e.g. PO-000022).' };
-  const rec = await prisma.purchaseOrder.findFirst({
-    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
-    select: { id: true, number: true },
-  });
-  if (!rec) return { error: `No purchase order found matching "${ref}".` };
+  const rec = await resolvePurchaseOrderRef(me.tenantId, ref);
+  if ('error' in rec) return rec;
 
   const data: Record<string, unknown> = {};
   if (args.notes != null) data.notes = String(args.notes).trim().slice(0, 2000) || null;
@@ -1082,13 +1160,8 @@ export async function addPurchaseOrderLine(
   args: Record<string, unknown>,
 ): Promise<{ ok: true; purchaseOrderId: string; number: string } | { error: string }> {
   const ref = String(args.purchaseOrder ?? args.reference ?? args.number ?? '').trim();
-  if (!ref) return { error: 'Which purchase order? Give a PO number like PO-000022.' };
-
-  const po = await prisma.purchaseOrder.findFirst({
-    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: ref }, { number: { equals: ref, mode: 'insensitive' } }] },
-    select: { id: true, number: true, vendorId: true, subtotalCents: true, _count: { select: { lines: true } } },
-  });
-  if (!po) return { error: `No purchase order found matching "${ref}".` };
+  const po = await resolvePurchaseOrderRef(me.tenantId, ref);
+  if ('error' in po) return po;
 
   const description = String(args.description ?? '').trim().slice(0, 400);
   if (!description) return { error: 'The line needs a description.' };
@@ -1130,7 +1203,7 @@ export async function addPurchaseOrderLine(
       data: {
         tenantId: me.tenantId,
         purchaseOrderId: po.id,
-        sortOrder: po._count.lines,
+        sortOrder: po.lineCount,
         kind,
         description,
         qtyMilli,
@@ -1181,17 +1254,16 @@ export async function prepareStatusChange(
   ref: string,
   targetStatus: 'DRAFT' | 'SENT' | 'APPROVED' | 'REJECTED',
 ): Promise<PendingAction | { error: string }> {
-  const trimmed = ref.trim();
-  if (!trimmed) return { error: 'Which estimate? Give its number.' };
-  const rec = await prisma.estimate.findFirst({ where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: trimmed }, { number: { equals: trimmed, mode: 'insensitive' } }] }, select: { id: true, number: true, title: true, status: true } });
-  if (!rec) return { error: `No estimate found matching "${trimmed}".` };
+  const rec = await resolveEstimateRef(me.tenantId, ref);
+  if ('error' in rec) return rec;
   if (rec.status === EstimateStatus.FINALIZED) return { error: `${rec.number} is finalized and locked.` };
+  const meta = await prisma.estimate.findUnique({ where: { id: rec.id }, select: { title: true } });
   return {
     token: newToken(),
     kind: 'set_estimate_status',
     recordId: rec.id,
     targetStatus,
-    label: `${rec.number} — ${rec.title}`,
+    label: meta?.title ? `${rec.number} — ${meta.title}` : rec.number,
     detail: `Status will change to ${targetStatus}.`,
     question: STATUS_QUESTION[targetStatus] ?? 'Approve this change?',
     confirmLabel: 'Approve',
@@ -1221,11 +1293,8 @@ export async function preparePoStatusChange(
   if (!Object.prototype.hasOwnProperty.call(PO_STATUS_QUESTION, targetStatus)) {
     return { error: 'That status change has to go through the PO page — e.g. "Send PO" (emails the vendor) on the Purchase Orders page.' };
   }
-  const rec = await prisma.purchaseOrder.findFirst({
-    where: { tenantId: me.tenantId, deletedAt: null, OR: [{ id: trimmed }, { number: { equals: trimmed, mode: 'insensitive' } }] },
-    select: { id: true, number: true, status: true },
-  });
-  if (!rec) return { error: `No purchase order found matching "${trimmed}".` };
+  const rec = await resolvePurchaseOrderRef(me.tenantId, ref);
+  if ('error' in rec) return rec;
   if (rec.status === targetStatus) return { error: `${rec.number} is already ${targetStatus}.` };
   return {
     token: newToken(),
