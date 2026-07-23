@@ -17,7 +17,7 @@ import {
 } from '@/lib/shop-material/pricing-engine';
 import {
   createShopMaterialItemAction,
-  updateShopMaterialItemAttributesAction,
+  updateShopMaterialItemEditorAction,
   type ShopMaterialActionState,
 } from './actions';
 import {
@@ -117,6 +117,7 @@ export function CatalogItemEditor({
   const router = useRouter();
   const initialActionState: ShopMaterialActionState = { error: null };
   const [createState, createAction] = useActionState(createShopMaterialItemAction, initialActionState);
+  const [updateState, updateAction] = useActionState(updateShopMaterialItemEditorAction, initialActionState);
 
   const [name, setName] = useState(item?.name ?? '');
   const [itemCode, setItemCode] = useState(item?.itemCode ?? '');
@@ -242,7 +243,8 @@ export function CatalogItemEditor({
     marginPct,
   });
 
-  const formAction = mode === 'create' ? createAction : updateShopMaterialItemAttributesAction;
+  const formAction = mode === 'create' ? createAction : updateAction;
+  const actionError = mode === 'create' ? createState.error : updateState.error;
 
   return (
     <form action={formAction} className="w-full min-w-0 text-[#111827]">
@@ -279,7 +281,7 @@ export function CatalogItemEditor({
         </div>
       </div>
 
-      <FormError message={createState.error} />
+      <FormError message={actionError} />
 
       <div className="grid min-w-0 items-start gap-4 min-[1500px]:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 space-y-4">

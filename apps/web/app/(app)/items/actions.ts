@@ -56,9 +56,15 @@ function cleanCategory(raw: string): string | null {
   return value;
 }
 
-function categoryPrimaryKind(categories: string[]): EstimateLineKind {
+// A custom category ("PVC", "Acrylic", "A-Frame Signs", …) says nothing about
+// the item's kind, so it must never override one. Only a built-in kind name
+// used as the category ("Material", "Labor", …) sets the kind; otherwise the
+// caller-supplied fallback wins — the existing kind on update, MATERIAL on
+// create (this is a materials catalog). The old MISC fallback silently
+// demoted items and blocked vendor pricing, which is MATERIAL-only.
+function categoryPrimaryKind(categories: string[], fallback: EstimateLineKind): EstimateLineKind {
   const builtIn = categories.map((c) => parseKind(c)).find((k): k is EstimateLineKind => Boolean(k));
-  return builtIn ?? EstimateLineKind.MISC;
+  return builtIn ?? fallback;
 }
 
 function parseCategoriesFromForm(formData: FormData): string[] {
@@ -199,24 +205,34 @@ async function resolveVendorIdForDraft(args: {
   return created.id;
 }
 
+// Every rejected row must come back as a failure message the operator sees —
+// a silently dropped vendor row looks exactly like a successful save.
 async function appendVendorDraftRows(args: {
   tenantId: string;
   shopMaterialItemId: string;
   rows: VendorDraftRow[];
-}): Promise<string | null> {
+}): Promise<{ preferredVendorId: string | null; failures: string[] }> {
   let preferredVendorId: string | null = null;
+  const failures: string[] = [];
 
   for (const row of args.rows) {
     if (row.active === false) continue;
+    const rowLabel = String(row.newVendorName ?? '').trim() || 'Vendor row';
     const vendorId = await resolveVendorIdForDraft({
       tenantId: args.tenantId,
       vendorId: row.vendorId,
       newVendorName: row.newVendorName,
     });
-    if (!vendorId) continue;
+    if (!vendorId) {
+      failures.push(`${rowLabel}: pick a vendor from the list or type a new vendor name.`);
+      continue;
+    }
 
     const priceCents = parseUsdToCents(String(row.unitCostUsd ?? ''));
-    if (priceCents === null || priceCents < 0) continue;
+    if (priceCents === null || priceCents < 0) {
+      failures.push(`${rowLabel}: enter a valid unit cost (USD).`);
+      continue;
+    }
 
     const inserted = await appendManualVendorPriceForShopItem(prisma, {
       tenantId: args.tenantId,
@@ -229,10 +245,14 @@ async function appendVendorDraftRows(args: {
       vendorSku: String(row.vendorSku ?? '').trim() || null,
       leadTimeDays: parseOptionalLeadTimeDays(row.leadTimeDays),
     });
-    if (inserted.ok && row.preferred) preferredVendorId = vendorId;
+    if (!inserted.ok) {
+      failures.push(`${rowLabel}: ${inserted.message}`);
+      continue;
+    }
+    if (row.preferred) preferredVendorId = vendorId;
   }
 
-  return preferredVendorId;
+  return { preferredVendorId, failures };
 }
 
 export type ShopMaterialActionState = { error: string | null; redirectTo?: string };
@@ -247,7 +267,7 @@ export async function createShopMaterialItemAction(
   const name = String(formData.get('name') ?? '').trim();
   const itemCode = String(formData.get('itemCode') ?? '').trim() || null;
   const categories = parseCategoriesFromForm(formData);
-  const kind = categoryPrimaryKind(categories);
+  const kind = categoryPrimaryKind(categories, EstimateLineKind.MATERIAL);
   const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
   const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
   const notes = String(formData.get('notes') ?? '').trim() || null;
@@ -381,7 +401,10 @@ export async function createShopMaterialItemAction(
       select: { id: true },
     });
 
-    const preferredVendorId = await appendVendorDraftRows({
+    // (Create redirects to the new item page, where any skipped vendor row is
+    // immediately visible — and new items are MATERIAL by default now, so the
+    // kind-based refusal can no longer happen here.)
+    const { preferredVendorId } = await appendVendorDraftRows({
       tenantId: me.tenantId,
       shopMaterialItemId: row.id,
       rows: vendorDraftRows,
@@ -413,7 +436,21 @@ export async function createShopMaterialItemAction(
   }
 }
 
+// Plain-form wrapper (item-detail pricing form posts here directly; it has no
+// error display, so the result is ignored — same save logic either way).
 export async function updateShopMaterialItemAttributesAction(formData: FormData): Promise<void> {
+  await updateShopMaterialItemCore(formData);
+}
+
+// useActionState wrapper for the full catalog editor — surfaces save errors.
+export async function updateShopMaterialItemEditorAction(
+  _prev: ShopMaterialActionState,
+  formData: FormData,
+): Promise<ShopMaterialActionState> {
+  return updateShopMaterialItemCore(formData);
+}
+
+async function updateShopMaterialItemCore(formData: FormData): Promise<ShopMaterialActionState> {
   const me = await requireAdminScoped();
   const ctx = await readRequestContext();
 
@@ -423,7 +460,6 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
   const itemCode = String(formData.get('itemCode') ?? '').trim() || null;
 
   const categories = parseCategoriesFromForm(formData);
-  const kind = categories.length > 0 ? categoryPrimaryKind(categories) : null;
 
   const catalogUnit = parseCatalogUnit(String(formData.get('catalogUnit') ?? ''));
   const customUnitLabel = String(formData.get('customUnitLabel') ?? '').trim() || null;
@@ -455,28 +491,41 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
 
   const existing = await prisma.shopMaterialItem.findFirst({
     where: { id, tenantId: me.tenantId },
-    select: { id: true, name: true, internalCostCents: true },
+    select: { id: true, name: true, internalCostCents: true, kind: true },
   });
-  if (!existing || !kind || !catalogUnit || categories.length === 0 || nameNormalized.length < 2) return;
+  if (!existing) return { error: 'Item not found.' };
+  if (nameNormalized.length < 2) {
+    return { error: 'Enter an item name (at least two meaningful characters).' };
+  }
+  if (categories.length === 0) return { error: 'Choose or save a category.' };
+  if (!catalogUnit) return { error: 'Choose a unit.' };
+
+  // A built-in category ("Material", "Labor", …) still sets the kind; a
+  // custom category ("PVC", "Acrylic", …) keeps the kind the item already has.
+  const kind = categoryPrimaryKind(categories, existing.kind);
 
   const storedCustomUnitLabel =
     catalogUnit === ShopCatalogUnit.CUSTOM ? (customUnitLabel ?? 'custom') : null;
 
   const internalCostCents = parseUsdToCents(internalUsd);
-  if (internalCostCents === null || internalCostCents < 0) return;
+  if (internalCostCents === null || internalCostCents < 0) {
+    return { error: 'Enter a valid internal cost (USD).' };
+  }
 
   const markupPercentMilli = parseMarkupPercentToMilli(markupRaw);
-  if (markupPercentMilli === null) return;
+  if (markupPercentMilli === null) return { error: 'Enter a valid markup percent.' };
 
   let defaultSellPriceCents: number | null = null;
   if (sellUsdRaw !== '') {
     const sc = parseUsdToCents(sellUsdRaw);
-    if (sc === null || sc < 0) return;
+    if (sc === null || sc < 0) return { error: 'Enter a valid default sell price or leave blank.' };
     defaultSellPriceCents = sc;
   }
 
   const defaultQtyMilli = parseQty(defaultQtyRaw === '' ? '1' : defaultQtyRaw);
-  if (defaultQtyMilli === null || defaultQtyMilli <= 0) return;
+  if (defaultQtyMilli === null || defaultQtyMilli <= 0) {
+    return { error: 'Enter a positive default quantity.' };
+  }
 
   let machineId: string | null = null;
   if (machineIdRaw) {
@@ -565,11 +614,12 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
     void writebackMaterialPrice(newName, internalCostCents);
   }
 
-  const draftPreferredVendorId = await appendVendorDraftRows({
-    tenantId: me.tenantId,
-    shopMaterialItemId: id,
-    rows: vendorDraftRows,
-  });
+  const { preferredVendorId: draftPreferredVendorId, failures: vendorRowFailures } =
+    await appendVendorDraftRows({
+      tenantId: me.tenantId,
+      shopMaterialItemId: id,
+      rows: vendorDraftRows,
+    });
   if (draftPreferredVendorId) {
     await prisma.shopMaterialItem.update({
       where: { id },
@@ -617,6 +667,11 @@ export async function updateShopMaterialItemAttributesAction(formData: FormData)
 
   revalidatePath(`/items/${id}`);
   revalidatePath('/items');
+
+  if (vendorRowFailures.length > 0) {
+    return { error: `The item saved, but vendor pricing did not — ${vendorRowFailures.join(' ')}` };
+  }
+  return { error: null };
 }
 
 export interface AddMachineState {
