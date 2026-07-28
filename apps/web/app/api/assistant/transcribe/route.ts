@@ -8,8 +8,8 @@ import { loadYiddishLabsKey, ylTranscribe } from '@/lib/assistant/yiddishlabs';
 // stored key and then discarded — nothing is stored on the server.
 //
 // Two engines, picked by the dock's Y/E toggle (form field "lang"):
-//   - "yi" → Yiddish Labs (language=auto so English spoken in Y mode
-//     still comes out right; rapid mode for speed)
+//   - "yi" → Yiddish Labs (language forced to yi — the toggle already
+//     said so, and skipping auto-detect is ~3s faster; rapid mode on)
 //   - anything else → OpenAI Whisper (the original English path)
 
 export const dynamic = 'force-dynamic';
@@ -49,7 +49,10 @@ export async function POST(req: Request) {
         { status: 200 }
       );
     }
-    const result = await ylTranscribe(ylKey, file, `voice-note.${ext}`, 'auto');
+    // Force 'yi': the operator explicitly chose Yiddish with the Y/E
+    // toggle, and skipping YL's language auto-detection measures ~3s
+    // faster on short clips.
+    const result = await ylTranscribe(ylKey, file, `voice-note.${ext}`, 'yi');
     if ('error' in result) return NextResponse.json({ error: result.error }, { status: 200 });
     return NextResponse.json({ text: result.text });
   }

@@ -10,6 +10,7 @@ import {
   hasHebrewScript,
   loadYiddishLabsKey,
   ylProcessText,
+  ylTranslateFast,
 } from '@/lib/assistant/yiddishlabs';
 
 // The assistant can work for minutes (multi-round Sheet + DB research).
@@ -24,12 +25,11 @@ export const maxDuration = 600;
 
 /// Yiddish mode (dock Y/E toggle): the operator's Yiddish message is
 /// translated to English by Yiddish Labs before it reaches OpenAI
-/// (~2s, and it keeps tool lookups precise), and the model is told to
-/// WRITE its answer in Yiddish directly — Yiddish Labs' English→Yiddish
-/// translation measures 8–14s per message, so it runs only as a fallback
-/// when the model answered in English anyway. Messages typed in English
-/// while the toggle is on Y skip the inbound translation (Yiddish is
-/// written in Hebrew script, so detection is exact).
+/// (~2s), and the final answer is translated back to Yiddish by Yiddish
+/// Labs — long replies are chunked and translated in parallel so YL's
+/// fixed per-call cost is paid once, not per paragraph. Messages typed
+/// in English while the toggle is on Y skip the inbound translation
+/// (Yiddish is written in Hebrew script, so detection is exact).
 async function runAssistantInLanguage(
   lang: string | null,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
@@ -59,11 +59,11 @@ async function runAssistantInLanguage(
     // model handles it well enough that failing the whole turn is worse.
   }
 
-  const turn = await runAssistant(translated, me, context, onEvent, { answerInYiddish: true });
+  const turn = await runAssistant(translated, me, context, onEvent);
 
   if (turn.reply && turn.reply.trim() && !hasHebrewScript(turn.reply)) {
     onEvent?.({ type: 'tool', tool: 'translate_to_yiddish', summary: '' });
-    const yi = await ylProcessText(ylKey, turn.reply, 'translate-yiddish');
+    const yi = await ylTranslateFast(ylKey, turn.reply, 'translate-yiddish');
     if ('text' in yi) turn.reply = yi.text;
   }
   return turn;

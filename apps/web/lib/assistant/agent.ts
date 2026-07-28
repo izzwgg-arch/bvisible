@@ -1072,17 +1072,11 @@ export interface AssistantTurn {
   pendingActions?: PendingAction[] | null;
 }
 
-/// Written-Yiddish instruction for Y mode. The model writes the answer in
-/// Yiddish directly — measured 8–14s faster per message than round-tripping
-/// the finished English reply through Yiddish Labs translation.
-const YIDDISH_REPLY_PROMPT = `LANGUAGE: The operator speaks Yiddish. Write EVERYTHING the operator will read in Yiddish (Hebrew script) — your replies and every "reply" / "summaryForOperator" argument you pass to tools. Keep prices in digits ($450), keep record numbers (EST-000021, PO-000022) as-is, and keep exact material/machine names from the Sheet in their original English so lookups stay unambiguous. Tool arguments that are data (search queries, descriptions, names) stay in English.`;
-
 export async function runAssistant(
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
   me: { id: string; tenantId: string },
   pageContext?: string | null,
-  onEvent?: (e: AssistantProgressEvent) => void,
-  opts?: { answerInYiddish?: boolean }
+  onEvent?: (e: AssistantProgressEvent) => void
 ): Promise<AssistantTurn> {
   const { apiKey, model } = await loadAssistantConfig(me.tenantId);
   if (!apiKey) {
@@ -1099,7 +1093,6 @@ export async function runAssistant(
 
   const messages: Array<Record<string, unknown>> = [
     { role: 'system', content: SYSTEM_PROMPT },
-    ...(opts?.answerInYiddish ? [{ role: 'system', content: YIDDISH_REPLY_PROMPT }] : []),
     ...(memories.length > 0
       ? [{
           role: 'system',
