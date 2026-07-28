@@ -23,11 +23,13 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 600;
 
 /// Yiddish mode (dock Y/E toggle): the operator's Yiddish message is
-/// translated to English by Yiddish Labs before it reaches OpenAI, and
-/// the final answer is translated back to Yiddish for the operator.
-/// Messages typed in English while the toggle is on Y skip the inbound
-/// translation (Yiddish is written in Hebrew script, so detection is
-/// exact) but still get a Yiddish answer.
+/// translated to English by Yiddish Labs before it reaches OpenAI
+/// (~2s, and it keeps tool lookups precise), and the model is told to
+/// WRITE its answer in Yiddish directly — Yiddish Labs' English→Yiddish
+/// translation measures 8–14s per message, so it runs only as a fallback
+/// when the model answered in English anyway. Messages typed in English
+/// while the toggle is on Y skip the inbound translation (Yiddish is
+/// written in Hebrew script, so detection is exact).
 async function runAssistantInLanguage(
   lang: string | null,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
@@ -57,7 +59,7 @@ async function runAssistantInLanguage(
     // model handles it well enough that failing the whole turn is worse.
   }
 
-  const turn = await runAssistant(translated, me, context, onEvent);
+  const turn = await runAssistant(translated, me, context, onEvent, { answerInYiddish: true });
 
   if (turn.reply && turn.reply.trim() && !hasHebrewScript(turn.reply)) {
     onEvent?.({ type: 'tool', tool: 'translate_to_yiddish', summary: '' });
