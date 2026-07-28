@@ -1,0 +1,14 @@
+[Unit]
+Description=Every morning, remind admins about POs still in DRAFT
+
+[Timer]
+# 07:00 US Eastern regardless of the host timezone. Persistent=true fires
+# a missed run on boot (e.g. server was down at 07:00). The route's
+# per-tenant 20h guard keeps a catch-up fire from double-sending.
+OnCalendar=*-*-* 07:00:00 America/New_York
+Persistent=true
+AccuracySec=5min
+Unit=bvisible-po-draft-reminder.service
+
+[Install]
+WantedBy=timers.target

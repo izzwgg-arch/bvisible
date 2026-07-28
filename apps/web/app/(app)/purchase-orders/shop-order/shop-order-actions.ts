@@ -21,6 +21,8 @@ import {
   normalizeExternalUrl,
 } from '@/lib/po/retail-cart';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
+import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
+import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
 
 const shopOrderLineSchema = z.object({
   name: z.string().trim().min(1).max(400),
@@ -168,10 +170,26 @@ export async function createShopOrderAction(
       },
     });
 
-    // Nothing is emailed at creation time. Every PO is saved as a DRAFT
-    // for review; the operator sends each one explicitly with Send PO —
-    // and retail vendors (Amazon/Home Depot/…) get a cart + office draft
-    // email instead of a vendor email.
+    // New items add themselves to the catalog + Sheet, then admins get
+    // the "draft PO awaiting placement" email (with cart links for retail
+    // vendors). Both are non-blocking; the vendor is still only emailed
+    // via the explicit Send PO path below.
+    await autoAddPoLinesToCatalog({
+      tenantId: me.tenantId,
+      purchaseOrderId: po.id,
+      actorId: me.id,
+    });
+    void notifyAdminsOfDraftPo({
+      tenantId: me.tenantId,
+      purchaseOrderId: po.id,
+      reason: 'created',
+      actorId: me.id,
+    });
+
+    // Nothing is emailed to the VENDOR at creation time. Every PO is
+    // saved as a DRAFT for review; the operator sends each one explicitly
+    // with Send PO — and retail vendors (Amazon/Home Depot/…) get a cart
+    // + office draft email instead of a vendor email.
     let retail: NonNullable<ShopOrderResult['created']>[number]['retail'];
     if (isRetailVendor(vendorName)) {
       const items: RetailCartItem[] = lines.map((l) => ({

@@ -12,6 +12,8 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { nextPoNumber } from '@/lib/po/number';
 import { createPoFromInternalMaterials } from '@/lib/purchase-orders/create-po-from-internal-materials';
+import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
+import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
 
 export interface CreatePoState {
   error: string | null;
@@ -86,6 +88,15 @@ export async function createBlankPoAction(
     metadata: { number: po.number, estimateId, vendorId },
   });
 
+  // Admins place every order — tell them a draft exists. Fire-and-forget
+  // so a mailer hiccup never blocks PO creation.
+  void notifyAdminsOfDraftPo({
+    tenantId: me.tenantId,
+    purchaseOrderId: po.id,
+    reason: 'created',
+    actorId: me.id,
+  });
+
   redirect(`/purchase-orders/${po.id}`);
 }
 
@@ -149,6 +160,20 @@ export async function createPoFromEstimateAction(
       vendorCount: poResult.vendorCount,
       subtotalCents: poResult.subtotalCents,
     },
+  });
+
+  // Catalog auto-add for any estimate line that wasn't catalog-linked,
+  // then the admin "draft awaiting placement" email.
+  await autoAddPoLinesToCatalog({
+    tenantId: me.tenantId,
+    purchaseOrderId: poResult.purchaseOrderId,
+    actorId: me.id,
+  });
+  void notifyAdminsOfDraftPo({
+    tenantId: me.tenantId,
+    purchaseOrderId: poResult.purchaseOrderId,
+    reason: 'created',
+    actorId: me.id,
   });
 
   return { error: null, purchaseOrderId: poResult.purchaseOrderId };

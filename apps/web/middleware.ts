@@ -39,6 +39,11 @@ const PUBLIC_PATHS = new Set<string>([
   // route — it goes through a server action — so no browser path needs
   // a session cookie here.
   '/api/internal/email-ingest/test',
+  // Morning draft-PO reminder tick. Authenticated by the route handler via
+  // constant-time compare against PO_REMINDER_TICK_SECRET (or
+  // INGEST_TICK_SECRET fallback); same service-to-service posture as the
+  // ingest tick.
+  '/api/internal/po-draft-reminder/tick',
   // Recycle-bin nightly purge. Guarded in the route by rejecting any
   // request carrying X-Forwarded-For (i.e. anything through nginx); only a
   // direct 127.0.0.1 call from the systemd timer is accepted.

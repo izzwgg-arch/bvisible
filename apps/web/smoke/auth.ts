@@ -32,5 +32,5 @@ export async function loginAsAdmin(page: Page): Promise<void> {
   await page.locator('#email').fill(email);
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 45_000 });
+  await page.waitForURL(/\/(dashboard|home)/, { timeout: 45_000 });
 }

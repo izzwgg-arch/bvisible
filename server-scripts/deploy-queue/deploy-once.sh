@@ -215,11 +215,30 @@ if [ -d "$INGEST_SRC" ]; then
   sudo install -o root -g root -m 644 \
     "$INGEST_SRC/bvisible-ingest-tick.timer" \
     /etc/systemd/system/bvisible-ingest-tick.timer 2>&1 | tee -a "$LOG_FILE" || true
+  # Morning draft-PO reminder (same layout as the ingest tick).
+  if [ -f "$INGEST_SRC/bvisible-po-draft-reminder.sh" ]; then
+    sudo install -o deploy -g deploy -m 750 \
+      "$INGEST_SRC/bvisible-po-draft-reminder.sh" \
+      /opt/bvisible/cron/bvisible-po-draft-reminder.sh 2>&1 | tee -a "$LOG_FILE" || true
+    sudo install -o root -g root -m 644 \
+      "$INGEST_SRC/bvisible-po-draft-reminder.service" \
+      /etc/systemd/system/bvisible-po-draft-reminder.service 2>&1 | tee -a "$LOG_FILE" || true
+    sudo install -o root -g root -m 644 \
+      "$INGEST_SRC/bvisible-po-draft-reminder.timer" \
+      /etc/systemd/system/bvisible-po-draft-reminder.timer 2>&1 | tee -a "$LOG_FILE" || true
+  fi
   if sudo systemctl daemon-reload 2>&1 | tee -a "$LOG_FILE" \
      && sudo systemctl enable --now bvisible-ingest-tick.timer 2>&1 | tee -a "$LOG_FILE"; then
     log "bvisible-ingest-tick.timer enabled"
   else
     log "WARN: could not enable bvisible-ingest-tick.timer (non-fatal — runtime will work, polling won't until enabled by hand)"
+  fi
+  if [ -f /etc/systemd/system/bvisible-po-draft-reminder.timer ]; then
+    if sudo systemctl enable --now bvisible-po-draft-reminder.timer 2>&1 | tee -a "$LOG_FILE"; then
+      log "bvisible-po-draft-reminder.timer enabled"
+    else
+      log "WARN: could not enable bvisible-po-draft-reminder.timer (non-fatal — morning draft reminders won't fire until enabled by hand)"
+    fi
   fi
 else
   log "No server-scripts/cron — skipping ingest timer install"

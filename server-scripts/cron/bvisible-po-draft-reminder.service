@@ -1,0 +1,9 @@
+[Unit]
+Description=B Visible morning draft-PO reminder (one shot)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bvisible/cron/bvisible-po-draft-reminder.sh
+User=deploy
+Group=deploy

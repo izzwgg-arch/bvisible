@@ -3,6 +3,7 @@ import {
   buildAmazonCartUrl,
   buildOfficeDraftEmail,
   buildRetailCartUrl,
+  buildRetailItemLink,
   extractAsin,
   isRetailVendor,
   normalizeExternalUrl,
@@ -79,6 +80,39 @@ describe('isRetailVendor', () => {
       expect(isRetailVendor(v)).toBe(true);
     }
     expect(isRetailVendor('Grimco')).toBe(false);
+  });
+});
+
+describe('buildRetailItemLink', () => {
+  it('prefers a stored product url', () => {
+    expect(buildRetailItemLink('Home Depot', 'SKU1', 'Tape', 'www.homedepot.com/p/123')).toBe(
+      'https://www.homedepot.com/p/123'
+    );
+  });
+  it('links straight to /dp/ when the amazon sku is an ASIN', () => {
+    expect(buildRetailItemLink('Amazon', 'B0ABCDEFGH', 'Tape')).toBe(
+      'https://www.amazon.com/dp/B0ABCDEFGH'
+    );
+  });
+  it('falls back to amazon search for non-ASIN skus', () => {
+    expect(buildRetailItemLink('Amazon', '', 'Blue painters tape')).toBe(
+      'https://www.amazon.com/s?k=Blue%20painters%20tape'
+    );
+  });
+  it('builds store search links for home depot / lowes / walmart', () => {
+    expect(buildRetailItemLink('Home Depot', '1001234567', 'Tape')).toBe(
+      'https://www.homedepot.com/s/1001234567'
+    );
+    expect(buildRetailItemLink("Lowe's", '', '2x4 stud')).toBe(
+      'https://www.lowes.com/search?searchTerm=2x4%20stud'
+    );
+    expect(buildRetailItemLink('Walmart', '', 'zip ties')).toBe(
+      'https://www.walmart.com/search?q=zip%20ties'
+    );
+  });
+  it('returns empty for unknown stores and empty queries', () => {
+    expect(buildRetailItemLink('Grimco', 'SKU', 'vinyl')).toBe('');
+    expect(buildRetailItemLink('Amazon', '', '  ')).toBe('');
   });
 });
 

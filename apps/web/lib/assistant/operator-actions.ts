@@ -23,6 +23,8 @@ import {
   writebackMaterialRename,
   writebackVendor,
 } from '@/lib/sheet-sync/writeback';
+import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
+import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
 
 export const RECYCLE_RETENTION_DAYS = 30;
 
@@ -575,6 +577,20 @@ export async function createPurchaseOrder(
     targetType: 'purchase_order',
     targetId: po.id,
     metadata: { via: 'ai_assistant', number: po.number, lineCount: resolved.length, vendorCount: vendorIds.length },
+  });
+
+  // Same post-create hooks as the human flows: unknown items add
+  // themselves to the catalog + Sheet, then admins get the draft-PO email.
+  await autoAddPoLinesToCatalog({
+    tenantId: me.tenantId,
+    purchaseOrderId: po.id,
+    actorId: me.id,
+  });
+  void notifyAdminsOfDraftPo({
+    tenantId: me.tenantId,
+    purchaseOrderId: po.id,
+    reason: 'created',
+    actorId: me.id,
   });
 
   return {

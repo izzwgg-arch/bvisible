@@ -40,6 +40,7 @@ import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import { renderPurchaseOrderEmail } from '@/lib/emails/purchase-order';
 import { sendMail } from '@/lib/mailer';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
+import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
 import { unlink } from 'node:fs/promises';
 
 export interface SavePoState {
@@ -146,6 +147,15 @@ export async function savePurchaseOrderAction(
         actorId: me.id,
       },
     });
+  });
+
+  // Any material line whose item isn't in the catalog adds itself to the
+  // catalog (and the pricing Sheet) and gets linked. Awaited so the
+  // revalidated page shows the links, but failures never block the save.
+  await autoAddPoLinesToCatalog({
+    tenantId: me.tenantId,
+    purchaseOrderId: data.purchaseOrderId,
+    actorId: me.id,
   });
 
   await writeAuditLog({

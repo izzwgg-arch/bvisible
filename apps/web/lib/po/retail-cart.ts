@@ -78,6 +78,36 @@ export function isRetailVendor(vendorName: string): boolean {
   return RETAIL_VENDOR_RE.test(vendorName);
 }
 
+/// Best per-item link for a retail store when no product URL is stored:
+/// Amazon gets a direct /dp/ page when the SKU is an ASIN; every other
+/// store gets its site search prefilled with the SKU (or the item name).
+/// Used by the admin draft-PO email so the office can jump straight to
+/// each product even for POs created outside the shop-order flow.
+export function buildRetailItemLink(
+  vendorName: string,
+  sku: string | null | undefined,
+  name: string,
+  url?: string | null
+): string {
+  const direct = normalizeExternalUrl(url);
+  if (direct) return direct;
+  const q = encodeURIComponent((sku ?? '').trim() || name.trim());
+  if (!q) return '';
+  if (/amazon/i.test(vendorName)) {
+    const asin = extractAsin(sku, url);
+    return asin ? `https://www.amazon.com/dp/${asin}` : `https://www.amazon.com/s?k=${q}`;
+  }
+  if (/home\s*depot/i.test(vendorName)) return `https://www.homedepot.com/s/${q}`;
+  if (/lowe'?s/i.test(vendorName)) return `https://www.lowes.com/search?searchTerm=${q}`;
+  if (/walmart/i.test(vendorName)) return `https://www.walmart.com/search?q=${q}`;
+  if (/target/i.test(vendorName)) return `https://www.target.com/s?searchTerm=${q}`;
+  if (/best\s*buy/i.test(vendorName)) return `https://www.bestbuy.com/site/searchpage.jsp?st=${q}`;
+  if (/staples/i.test(vendorName)) return `https://www.staples.com/${q}/directory_${q}`;
+  if (/office\s*depot/i.test(vendorName)) return `https://www.officedepot.com/catalog/search.do?Ntt=${q}`;
+  if (/ebay/i.test(vendorName)) return `https://www.ebay.com/sch/i.html?_nkw=${q}`;
+  return '';
+}
+
 /// Office review draft email — vendor, items, quantities, prices, links,
 /// and total. The office still reviews and places the order manually.
 export function buildOfficeDraftEmail(

@@ -65,6 +65,12 @@ INGEST_TICK_SECRET=
 # Constant-time compared; 503 if neither secret is configured.
 OCR_TICK_SECRET=
 
+# Shared secret for POST /api/internal/po-draft-reminder/tick (header
+# x-bvisible-po-reminder-secret) — the 07:00 America/New_York systemd timer
+# that emails admins about POs still in DRAFT. Optional when
+# INGEST_TICK_SECRET is set — the route falls back to it.
+PO_REMINDER_TICK_SECRET=
+
 # Outbound mailer (Phase 5) — used by invite, password reset, and
 # the SUPER_ADMIN /settings/email-test page. Read at runtime by
 # apps/web/lib/mailer.ts via Nodemailer (provider-agnostic SMTP).
