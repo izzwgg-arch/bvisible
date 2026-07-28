@@ -451,10 +451,13 @@ model TenantOperatingRates {
 /// AI assistant settings — OpenAI key sealed with AES-256-GCM
 /// (lib/email-ingest/crypto.ts); never returned to the browser.
 model AssistantSetting {
-  id           String   @id @default(cuid())
-  tenantId     String   @unique
-  apiKeyCipher String?  @db.VarChar(2000)
-  model        String   @default("gpt-5.6-sol") @db.VarChar(80)
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  apiKeyCipher   String?  @db.VarChar(2000)
+  /// Yiddish Labs API key (one key covers both the Transcription and
+  /// Text Processing APIs), sealed like apiKeyCipher.
+  ylApiKeyCipher String?  @db.VarChar(2000)
+  model          String   @default("gpt-5.6-sol") @db.VarChar(80)
   updatedAt    DateTime @updatedAt
   createdAt    DateTime @default(now())
 

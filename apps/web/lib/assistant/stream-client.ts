@@ -67,6 +67,8 @@ const TOOL_LABELS_EXTRA: Record<string, string> = {
   update_purchase_order: 'Updating the purchase order…',
   add_purchase_order_line: 'Adding the line to the purchase order…',
   set_purchase_order_status: 'Preparing the status change for your approval…',
+  translate_to_english: 'Translating your Yiddish for the assistant…',
+  translate_to_yiddish: 'Translating the answer to Yiddish…',
 };
 
 /// Friendly labels for the live progress line under the chat.
@@ -84,7 +86,7 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export async function sendAssistantMessage(
-  body: { messages: Array<{ role: string; content: string }>; context?: string },
+  body: { messages: Array<{ role: string; content: string }>; context?: string; lang?: string },
   onProgress?: (label: string) => void,
   timeoutMs = 480_000
 ): Promise<AssistantTurnPayload> {

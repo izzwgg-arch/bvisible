@@ -4,7 +4,13 @@ import {
   assistantConfigured,
   runAssistant,
   type AssistantProgressEvent,
+  type AssistantTurn,
 } from '@/lib/assistant/agent';
+import {
+  hasHebrewScript,
+  loadYiddishLabsKey,
+  ylProcessText,
+} from '@/lib/assistant/yiddishlabs';
 
 // The assistant can work for minutes (multi-round Sheet + DB research).
 // A buffered response dies in the proxy's 300s read timeout (this caused
@@ -16,6 +22,51 @@ import {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 600;
 
+/// Yiddish mode (dock Y/E toggle): the operator's Yiddish message is
+/// translated to English by Yiddish Labs before it reaches OpenAI, and
+/// the final answer is translated back to Yiddish for the operator.
+/// Messages typed in English while the toggle is on Y skip the inbound
+/// translation (Yiddish is written in Hebrew script, so detection is
+/// exact) but still get a Yiddish answer.
+async function runAssistantInLanguage(
+  lang: string | null,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  me: { id: string; tenantId: string },
+  context: string | null,
+  onEvent?: (e: AssistantProgressEvent) => void
+): Promise<AssistantTurn> {
+  if (lang !== 'yi') return runAssistant(history, me, context, onEvent);
+
+  const ylKey = await loadYiddishLabsKey(me.tenantId);
+  if (!ylKey) {
+    return {
+      reply: 'Yiddish mode needs a Yiddish Labs API key — add it in Assistant settings (or switch the toggle back to E).',
+      toolEvents: [],
+    };
+  }
+
+  const translated = [...history];
+  const last = translated[translated.length - 1];
+  if (last && hasHebrewScript(last.content)) {
+    onEvent?.({ type: 'tool', tool: 'translate_to_english', summary: '' });
+    const en = await ylProcessText(ylKey, last.content, 'translate-english');
+    if ('text' in en) {
+      translated[translated.length - 1] = { ...last, content: en.text };
+    }
+    // On translation failure the original Yiddish goes through — the
+    // model handles it well enough that failing the whole turn is worse.
+  }
+
+  const turn = await runAssistant(translated, me, context, onEvent);
+
+  if (turn.reply && turn.reply.trim() && !hasHebrewScript(turn.reply)) {
+    onEvent?.({ type: 'tool', tool: 'translate_to_yiddish', summary: '' });
+    const yi = await ylProcessText(ylKey, turn.reply, 'translate-yiddish');
+    if ('text' in yi) turn.reply = yi.text;
+  }
+  return turn;
+}
+
 export async function POST(req: Request) {
   const me = await requireTenantId();
   if (!(await assistantConfigured(me.tenantId))) {
@@ -24,7 +75,7 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   }
-  let body: { messages?: Array<{ role: string; content: string }>; context?: string };
+  let body: { messages?: Array<{ role: string; content: string }>; context?: string; lang?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -38,12 +89,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Last message must be from the user.' }, { status: 400 });
   }
   const context = typeof body.context === 'string' ? body.context.slice(0, 4000) : null;
+  const lang = typeof body.lang === 'string' ? body.lang : null;
 
   const wantsStream = (req.headers.get('accept') ?? '').includes('application/x-ndjson');
   if (!wantsStream) {
     // Legacy buffered path (kept for tabs opened before this deploy).
     try {
-      const turn = await runAssistant(history, { id: me.id, tenantId: me.tenantId }, context);
+      const turn = await runAssistantInLanguage(lang, history, { id: me.id, tenantId: me.tenantId }, context);
       return NextResponse.json(turn);
     } catch (e) {
       console.error('[assistant] request failed:', e);
@@ -72,7 +124,8 @@ export async function POST(req: Request) {
       const heartbeat = setInterval(() => write({ type: 'hb' }), 10_000);
       void (async () => {
         try {
-          const turn = await runAssistant(
+          const turn = await runAssistantInLanguage(
+            lang,
             history,
             { id: me.id, tenantId: me.tenantId },
             context,

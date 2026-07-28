@@ -24,6 +24,7 @@ import {
   confirmAssistantAction,
   type AssistantPendingAction,
 } from '@/lib/assistant/stream-client';
+import { blobToWav16k } from '@/lib/assistant/wav-client';
 
 interface DockMsg {
   role: 'user' | 'assistant';
@@ -44,6 +45,8 @@ interface DockMsg {
 }
 
 const STORAGE_KEY = 'bv-assistant-dock-v1';
+/// Y/E voice-language toggle — remembered across sessions.
+const LANG_KEY = 'bv-assistant-lang';
 
 /// Friendly page label when the page didn't publish its own context.
 function pageLabelFor(pathname: string): string {
@@ -97,17 +100,29 @@ export function AssistantDock() {
   const [progress, setProgress] = useState<string | null>(null);
   const [recState, setRecState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
+  // 'yi' = Yiddish mode: Yiddish Labs transcribes, the message is
+  // translated to English for the model, and the answer comes back in
+  // Yiddish. 'en' = the original English/Whisper path.
+  const [voiceLang, setVoiceLang] = useState<'en' | 'yi'>('en');
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const cancelledRef = useRef(false);
+  const transcribeAbortRef = useRef<AbortController | null>(null);
 
   // Restore the conversation once on the client (avoids SSR mismatch).
   useEffect(() => {
     const stored = loadStored();
     setMessages(stored.messages);
     setOpen(stored.open);
+    try {
+      const lang = localStorage.getItem(LANG_KEY);
+      if (lang === 'yi' || lang === 'en') setVoiceLang(lang);
+    } catch {
+      /* default stays 'en' */
+    }
     setHydrated(true);
   }, []);
 
@@ -159,6 +174,7 @@ export function AssistantDock() {
         {
           messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })),
           context: contextText,
+          lang: voiceLang,
         },
         (label) => setProgress(label)
       );
@@ -303,21 +319,45 @@ export function AssistantDock() {
           : '';
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
+      cancelledRef.current = false;
+      const lang = voiceLang; // mode at the moment recording starts
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (cancelledRef.current) {
+          chunksRef.current = [];
+          setRecState('idle');
+          return;
+        }
         setRecState('transcribing');
         try {
-          const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' });
+          let blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' });
           if (blob.size < 1000) {
             setMicError('Too short — hold the mic and talk, tap again to stop.');
             return;
           }
+          if (lang === 'yi') {
+            // Yiddish Labs doesn't take WebM — convert to a small 16 kHz
+            // WAV in the browser. If conversion fails, send the original
+            // and let the server try anyway.
+            try {
+              blob = await blobToWav16k(blob);
+            } catch {
+              /* keep the original blob */
+            }
+          }
           const form = new FormData();
           form.append('audio', blob, 'voice-note');
-          const res = await fetch('/api/assistant/transcribe', { method: 'POST', body: form });
+          form.append('lang', lang);
+          const controller = new AbortController();
+          transcribeAbortRef.current = controller;
+          const res = await fetch('/api/assistant/transcribe', {
+            method: 'POST',
+            body: form,
+            signal: controller.signal,
+          });
           const data = (await res.json()) as { text?: string; error?: string };
           if (data.error) {
             setMicError(data.error);
@@ -327,14 +367,19 @@ export function AssistantDock() {
           } else {
             setMicError('Heard nothing — try again a little closer to the mic.');
           }
-        } catch {
-          setMicError('Transcription failed — try again.');
+        } catch (e) {
+          // A cancel aborts the upload — that's not an error to show.
+          if (!(e instanceof DOMException && e.name === 'AbortError')) {
+            setMicError('Transcription failed — try again.');
+          }
         } finally {
+          transcribeAbortRef.current = null;
           setRecState('idle');
         }
       };
       recorderRef.current = rec;
-      rec.start();
+      // Collect data continuously so stop → upload has zero flush delay.
+      rec.start(1000);
       setRecState('recording');
     } catch (e) {
       const denied =
@@ -345,6 +390,30 @@ export function AssistantDock() {
           : 'Could not start the microphone — check that a mic is connected and not used by another app, then try again.'
       );
     }
+  }
+
+  /// Cancel button: while recording, throw the audio away; while
+  /// transcribing, abort the upload. Either way nothing is sent.
+  function cancelVoice() {
+    setMicError(null);
+    if (recState === 'recording') {
+      cancelledRef.current = true;
+      recorderRef.current?.stop();
+    } else if (recState === 'transcribing') {
+      transcribeAbortRef.current?.abort();
+    }
+  }
+
+  function switchVoiceLang() {
+    setVoiceLang((prev) => {
+      const next = prev === 'yi' ? 'en' : 'yi';
+      try {
+        localStorage.setItem(LANG_KEY, next);
+      } catch {
+        /* fine — just not remembered */
+      }
+      return next;
+    });
   }
 
   /* ------------------------------ collapsed ------------------------------ */
@@ -422,6 +491,7 @@ export function AssistantDock() {
               </div>
             ) : null}
             <div
+              dir="auto"
               className={
                 m.role === 'user'
                   ? 'max-w-[88%] rounded-[12px] rounded-br-[4px] bg-[var(--color-bv-text)] px-3 py-2 text-[12.5px] leading-relaxed text-white'
@@ -617,18 +687,46 @@ export function AssistantDock() {
         >
           <input
             ref={inputRef}
+            dir="auto"
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--color-bv-text)] outline-none"
             placeholder={
               recState === 'recording'
                 ? 'Listening… tap the mic to stop'
                 : recState === 'transcribing'
                   ? 'Transcribing your voice note…'
-                  : 'Ask about this screen — or tap the mic and talk…'
+                  : voiceLang === 'yi'
+                    ? 'Yiddish mode — tap the mic and talk…'
+                    : 'Ask about this screen — or tap the mic and talk…'
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy || recState === 'recording'}
           />
+          <button
+            type="button"
+            onClick={switchVoiceLang}
+            disabled={recState !== 'idle'}
+            aria-label={voiceLang === 'yi' ? 'Yiddish mode — switch to English' : 'English mode — switch to Yiddish'}
+            title={voiceLang === 'yi' ? 'Yiddish mode (answers in Yiddish) — tap for English' : 'English mode — tap for Yiddish'}
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-[9px] text-[13px] font-bold ${
+              voiceLang === 'yi'
+                ? 'bg-[var(--color-bv-accent)] text-white'
+                : 'bg-[var(--color-bv-bg)] text-[var(--color-bv-text)] hover:bg-[#fdeee1]'
+            } disabled:opacity-50`}
+          >
+            {voiceLang === 'yi' ? 'Y' : 'E'}
+          </button>
+          {recState !== 'idle' ? (
+            <button
+              type="button"
+              onClick={cancelVoice}
+              aria-label="Cancel — discard the recording"
+              title="Cancel — nothing is sent"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-[var(--color-bv-bg)] text-[13px] font-bold text-[var(--color-bv-muted)] hover:bg-rose-50 hover:text-rose-600"
+            >
+              ✕
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void toggleRecording()}

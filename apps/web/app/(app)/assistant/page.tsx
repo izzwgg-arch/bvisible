@@ -14,7 +14,7 @@ export default async function AssistantPage() {
     assistantConfigured(me.tenantId),
     prisma.assistantSetting.findUnique({
       where: { tenantId: me.tenantId },
-      select: { apiKeyCipher: true, model: true },
+      select: { apiKeyCipher: true, ylApiKeyCipher: true, model: true },
     }),
   ]);
   const isAdmin = me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN;
@@ -31,6 +31,7 @@ export default async function AssistantPage() {
       {isAdmin ? (
         <AssistantSettingsPanel
           keyConfigured={Boolean(setting?.apiKeyCipher) || configured}
+          ylKeyConfigured={Boolean(setting?.ylApiKeyCipher) || Boolean(process.env.YIDDISHLABS_API_KEY?.trim())}
           model={setting?.model ?? 'gpt-5.6-sol'}
         />
       ) : null}

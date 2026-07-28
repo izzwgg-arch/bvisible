@@ -22,16 +22,25 @@ export async function saveAssistantSettingsAction(
   if (!me.tenantId) return { error: 'No workspace selected.' };
 
   const apiKey = String(formData.get('apiKey') ?? '').trim();
+  const ylApiKey = String(formData.get('ylApiKey') ?? '').trim();
   const model = String(formData.get('model') ?? '').trim().slice(0, 80) || 'gpt-5.6-sol';
   const clear = formData.get('clear') === '1';
 
   if (!clear && apiKey && (apiKey.length < 20 || !/^sk-/.test(apiKey))) {
     return { error: 'That does not look like an OpenAI API key (should start with "sk-").' };
   }
+  if (!clear && ylApiKey && (ylApiKey.length < 10 || !/^yl_/.test(ylApiKey))) {
+    return { error: 'That does not look like a Yiddish Labs API key (should start with "yl_").' };
+  }
 
-  const data: { model: string; apiKeyCipher?: string | null } = { model };
-  if (clear) data.apiKeyCipher = null;
-  else if (apiKey) data.apiKeyCipher = sealSecret(apiKey).cipherText;
+  const data: { model: string; apiKeyCipher?: string | null; ylApiKeyCipher?: string | null } = { model };
+  if (clear) {
+    data.apiKeyCipher = null;
+    data.ylApiKeyCipher = null;
+  } else {
+    if (apiKey) data.apiKeyCipher = sealSecret(apiKey).cipherText;
+    if (ylApiKey) data.ylApiKeyCipher = sealSecret(ylApiKey).cipherText;
+  }
 
   await prisma.assistantSetting.upsert({
     where: { tenantId: me.tenantId },
@@ -45,7 +54,7 @@ export async function saveAssistantSettingsAction(
     tenantId: me.tenantId,
     targetType: 'assistant_settings',
     targetId: me.tenantId,
-    metadata: { model, keyChanged: clear || Boolean(apiKey), cleared: clear },
+    metadata: { model, keyChanged: clear || Boolean(apiKey), ylKeyChanged: clear || Boolean(ylApiKey), cleared: clear },
   });
 
   revalidatePath('/assistant');
