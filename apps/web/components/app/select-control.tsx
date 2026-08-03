@@ -26,6 +26,14 @@ type SelectOption = {
 type SelectControlProps = SelectHTMLAttributes<HTMLSelectElement> & {
   searchable?: boolean;
   searchPlaceholder?: string;
+  // Async ("server-filtered") mode. When onSearchChange is supplied the
+  // caller owns filtering — it re-renders <option> children in response to
+  // the typed query — so the local substring filter is switched off and the
+  // query box is reset each time the popup opens. Leave it undefined for the
+  // default behaviour: filter the given options client-side.
+  onSearchChange?: (query: string) => void;
+  loading?: boolean;
+  emptyLabel?: string;
 };
 
 type OptionElementProps = {
@@ -62,6 +70,9 @@ export function SelectControl({
   children,
   searchable = true,
   searchPlaceholder = 'Search options...',
+  onSearchChange,
+  loading = false,
+  emptyLabel = 'No matches',
   value,
   defaultValue,
   onChange,
@@ -71,6 +82,7 @@ export function SelectControl({
   required,
   ...props
 }: SelectControlProps) {
+  const asyncSearch = typeof onSearchChange === 'function';
   const reactId = useId();
   const buttonId = id ?? `select-${reactId}`;
   const listboxId = `${buttonId}-listbox`;
@@ -99,9 +111,13 @@ export function SelectControl({
     options[0];
 
   useEffect(() => {
+    // In async mode the option list churns with every keystroke, so a value
+    // that is momentarily absent from it must NOT be reset — that would
+    // silently reassign the user's pick mid-search.
+    if (asyncSearch) return;
     if (value != null || options.some((option) => option.value === internalValue)) return;
     setInternalValue(options[0]?.value ?? '');
-  }, [internalValue, options, value]);
+  }, [asyncSearch, internalValue, options, value]);
 
   useEffect(() => {
     if (!open) return;
@@ -145,6 +161,10 @@ export function SelectControl({
         ? { bottom: window.innerHeight - rect.top + 6, left, width }
         : { top: rect.bottom + 6, left, width },
     );
+    if (asyncSearch) {
+      setQuery('');
+      onSearchChange?.('');
+    }
     setOpen(true);
   }
 
@@ -185,7 +205,7 @@ export function SelectControl({
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleOptions =
-    searchable && normalizedQuery
+    searchable && normalizedQuery && !asyncSearch
       ? options.filter((option) => option.label.toLowerCase().includes(normalizedQuery))
       : options;
 
@@ -263,7 +283,10 @@ export function SelectControl({
               <input
                 autoFocus
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  onSearchChange?.(event.target.value);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
                     event.preventDefault();
@@ -303,7 +326,7 @@ export function SelectControl({
             })}
             {visibleOptions.length === 0 ? (
               <div className="px-3 py-5 text-center text-[12.5px] font-medium text-slate-400">
-                No matches
+                {loading ? 'Searching…' : emptyLabel}
               </div>
             ) : null}
           </div>

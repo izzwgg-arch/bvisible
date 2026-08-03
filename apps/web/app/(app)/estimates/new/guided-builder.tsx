@@ -26,6 +26,7 @@ import {
   type EstimatePrefill,
   type ProposedLine,
 } from '@/lib/assistant/context-store';
+import { CustomerPicker } from '@/components/app/customer-picker';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
 import { CustomBuildPanel } from './custom-build-panel';
 import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
@@ -82,8 +83,11 @@ export interface BuilderRates {
   installPerPersonHourCents: number;
 }
 export interface BuilderProps {
+  /** First page of customers only — the picker searches the rest server-side. */
   clients: Array<{ id: string; companyName: string }>;
   defaultClientId: string | null;
+  /** Name for defaultClientId when it falls outside the first page. */
+  defaultClientName?: string | null;
   defaultMarkupPercent: number;
   rates: BuilderRates;
   materials: BuilderMaterial[];
@@ -226,6 +230,30 @@ function cardSellCents(card: GuidedCard, multiplierMilli: number): number {
   return total;
 }
 
+// The builder only holds the first page of customers, so a name coming from
+// the assistant or a JSON import has to be resolved server-side before we can
+// decide between "pick the existing customer" and "create a new one".
+// Falling through to the new-customer path is safe either way — the save
+// action reuses an existing customer with the same name rather than
+// duplicating it — this just keeps the dropdown honest about which it is.
+async function findClientIdByName(
+  name: string,
+  local: Array<{ id: string; companyName: string }>,
+): Promise<string | null> {
+  const wanted = name.trim().toLowerCase();
+  if (!wanted) return null;
+  const localHit = local.find((c) => c.companyName.toLowerCase() === wanted);
+  if (localHit) return localHit.id;
+  try {
+    const res = await fetch(`/api/clients/search?q=${encodeURIComponent(name.trim())}`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { clients?: Array<{ id: string; companyName: string }> };
+    return body.clients?.find((c) => c.companyName.toLowerCase() === wanted)?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function GuidedEstimateBuilder(props: BuilderProps) {
   const [title, setTitle] = useState('');
   const [clientId, setClientId] = useState<string>(props.defaultClientId ?? '');
@@ -331,15 +359,15 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
       if (p.title) setTitle(p.title);
       if (p.markupPercent != null) setMarkupPercent(p.markupPercent);
       if (p.customerName) {
-        const existing = props.clients.find(
-          (c) => c.companyName.toLowerCase() === p.customerName!.toLowerCase()
-        );
-        if (existing) {
-          setClientId(existing.id);
-        } else {
-          setClientId('__new__');
-          setNewClientName(p.customerName);
-        }
+        const name = p.customerName;
+        setClientId('__new__');
+        setNewClientName(name);
+        void findClientIdByName(name, props.clients).then((id) => {
+          if (id) {
+            setClientId(id);
+            setNewClientName('');
+          }
+        });
       }
       if (p.lines.length > 0) setCards((prev) => [...prev, ...cardsFromProposedLines(p.lines)]);
     }
@@ -669,15 +697,15 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     if (result.title && !title.trim()) setTitle(result.title);
     if (result.markupPercent != null) setMarkupPercent(result.markupPercent);
     if (result.customerName && clientId === '') {
-      const existing = props.clients.find(
-        (c) => c.companyName.toLowerCase() === result.customerName!.toLowerCase()
-      );
-      if (existing) {
-        setClientId(existing.id);
-      } else {
-        setClientId('__new__');
-        setNewClientName(result.customerName);
-      }
+      const name = result.customerName;
+      setClientId('__new__');
+      setNewClientName(name);
+      void findClientIdByName(name, props.clients).then((id) => {
+        if (id) {
+          setClientId(id);
+          setNewClientName('');
+        }
+      });
     }
     setToolPanel(null);
   }
@@ -725,15 +753,12 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
             Customer
           </span>
           <div className="flex gap-2">
-            <select className={inputCls} value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              <option value="">Choose customer…</option>
-              {props.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName}
-                </option>
-              ))}
-              <option value="__new__">+ New customer…</option>
-            </select>
+            <CustomerPicker
+              value={clientId}
+              onChange={setClientId}
+              initialClients={props.clients}
+              initialSelectedName={props.defaultClientName ?? null}
+            />
             {clientId === '__new__' ? (
               <input
                 className={inputCls}

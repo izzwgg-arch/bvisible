@@ -22,10 +22,13 @@ export default async function NewEstimatePage({
   const sp = await searchParams;
 
   const [clients, snapshot, overrides, rates, machines, users] = await Promise.all([
+    // First page only. The customer picker searches the full book through
+    // /api/clients/search, so shipping all ~1,800 to the browser is waste.
     prisma.client.findMany({
       where: { tenantId: me.tenantId, deletedAt: null },
       orderBy: [{ companyName: 'asc' }],
       select: { id: true, companyName: true },
+      take: 50,
     }),
     getSheetSnapshot(me.tenantId),
     loadOverrides(me.tenantId),
@@ -40,6 +43,16 @@ export default async function NewEstimatePage({
       select: { id: true, name: true, email: true },
     }),
   ]);
+
+  // ?clientId= may point outside the first page — fetch its name so the picker
+  // can label it without a client-side round trip.
+  const defaultClient =
+    sp.clientId && !clients.some((c) => c.id === sp.clientId)
+      ? await prisma.client.findFirst({
+          where: { id: sp.clientId, tenantId: me.tenantId, deletedAt: null },
+          select: { companyName: true },
+        })
+      : null;
 
   const data = snapshot.data;
 
@@ -111,6 +124,7 @@ export default async function NewEstimatePage({
       <GuidedEstimateBuilder
         clients={clients}
         defaultClientId={sp.clientId ?? null}
+        defaultClientName={defaultClient?.companyName ?? null}
         defaultMarkupPercent={defaultMarkupPercent}
         rates={{
           shopLaborCentsPerHour: rates?.shopLaborCentsPerHour ?? 5000,
