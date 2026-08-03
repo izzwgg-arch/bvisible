@@ -635,8 +635,9 @@ function SalesRepSelect({
   return (
     <section className="mt-5">
       <h3 className="text-[13px] font-black text-[#1C4972]">Sales rep</h3>
-      <select
-        className="mt-2 w-full rounded-[9px] border border-[#eadfd3] bg-white px-2.5 py-2 text-[12.5px] font-semibold text-[#1C4972] outline-none focus:border-[#F28744] disabled:opacity-60"
+      <SelectControl
+        className="mt-2 text-[12.5px] font-semibold"
+        searchPlaceholder="Search sales reps..."
         value={value}
         disabled={disabled || pending}
         onChange={(e) => {
@@ -658,7 +659,7 @@ function SalesRepSelect({
             {u.name}
           </option>
         ))}
-      </select>
+      </SelectControl>
       {error ? <p className="mt-1 text-[11px] font-medium text-rose-600">{error}</p> : null}
     </section>
   );

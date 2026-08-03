@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { SelectControl } from '@/components/app/select-control';
 import { VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 
 export interface WrapRow {
@@ -208,9 +209,6 @@ export function WrapPricingBrowser({ rows }: { rows: WrapRow[] }) {
     URL.revokeObjectURL(a.href);
   }
 
-  const selectCls =
-    'h-11 w-full rounded-[10px] border border-[var(--color-bv-border)] bg-white px-3 text-[13px] font-medium text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]';
-
   return (
     <div>
       {/* search + actions */}
@@ -249,8 +247,8 @@ export function WrapPricingBrowser({ rows }: { rows: WrapRow[] }) {
           {FILTERS.map((f) => (
             <label key={f.key} className="flex flex-col gap-1.5">
               <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">{f.label}</span>
-              <select
-                className={selectCls}
+              <SelectControl
+                searchPlaceholder={`Search ${f.label.toLowerCase()}...`}
                 value={filters[f.key] ?? ''}
                 onChange={(e) => setFilters((prev) => ({ ...prev, [f.key]: e.target.value }))}
               >
@@ -258,7 +256,7 @@ export function WrapPricingBrowser({ rows }: { rows: WrapRow[] }) {
                 {optionsFor(f.key).map((o) => (
                   <option key={o} value={o}>{o}</option>
                 ))}
-              </select>
+              </SelectControl>
             </label>
           ))}
         </div>

@@ -27,6 +27,7 @@ import {
   type ProposedLine,
 } from '@/lib/assistant/context-store';
 import { CustomerPicker } from '@/components/app/customer-picker';
+import { SelectControl } from '@/components/app/select-control';
 import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-actions';
 import { CustomBuildPanel } from './custom-build-panel';
 import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
@@ -786,8 +787,8 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
           <span className="mb-1.5 block text-[10.5px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-text)] opacity-75">
             Sales rep
           </span>
-          <select
-            className={inputCls}
+          <SelectControl
+            searchPlaceholder="Search sales reps..."
             value={salesRepId}
             onChange={(e) => setSalesRepId(e.target.value)}
           >
@@ -796,7 +797,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                 {u.name}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
       </section>
 
@@ -931,19 +932,22 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
               {readyTab === 'wraps' ? (
                 <div className="ml-auto flex items-center gap-2">
                   {wrapMake ? <MakeLogo make={wrapMake} size={22} /> : null}
-                  <select
-                    className={`${inputCls} w-44`}
-                    value={wrapMake}
-                    onChange={(e) => setWrapMake(e.target.value)}
-                    aria-label="Filter by manufacturer"
-                  >
-                    <option value="">All makes</option>
-                    {wrapMakes.map(([make, count]) => (
-                      <option key={make} value={make}>
-                        {make} · {count}
-                      </option>
-                    ))}
-                  </select>
+                  {/* SelectControl's root is w-full — box it so it can't stretch the flex row. */}
+                  <div className="w-44 shrink-0">
+                    <SelectControl
+                      searchPlaceholder="Search makes..."
+                      value={wrapMake}
+                      onChange={(e) => setWrapMake(e.target.value)}
+                      aria-label="Filter by manufacturer"
+                    >
+                      <option value="">All makes</option>
+                      {wrapMakes.map(([make, count]) => (
+                        <option key={make} value={make}>
+                          {make} · {count}
+                        </option>
+                      ))}
+                    </SelectControl>
+                  </div>
                   <input
                     className={`${inputCls} max-w-xs`}
                     placeholder="Search — misspellings okay…"
@@ -1107,8 +1111,8 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-text)] opacity-75">
                   Item
                 </span>
-                <select
-                  className={inputCls}
+                <SelectControl
+                  searchPlaceholder="Search sq-ft items..."
                   value={sqftId}
                   onChange={(e) => {
                     setSqftId(e.target.value);
@@ -1121,7 +1125,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
                       {r.name} — {formatMoney(r.pricePerSqFtCents)}/sq ft
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-text)] opacity-75">

@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from 'react';
 import { formatMoney } from '@bvisible/pricing';
+import { SelectControl } from '@/components/app/select-control';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import type { MeasurementResult } from '@/lib/estimate/measurement';
 import {
@@ -117,18 +118,21 @@ export function RecommendationsPanel({
             What this job normally needs — add or remove anything.
           </div>
         </div>
-        <select
-          className="rounded-[10px] border border-[var(--color-bv-border)] bg-white px-3 py-2 text-[13px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
-          value={signType}
-          onChange={(e) => setSignType(e.target.value)}
-        >
-          <option value="">Choose a sign type…</option>
-          {signTypes.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        {/* SelectControl's root is w-full — box it so it can't stretch the flex row. */}
+        <div className="w-56 shrink-0">
+          <SelectControl
+            searchPlaceholder="Search sign types..."
+            value={signType}
+            onChange={(e) => setSignType(e.target.value)}
+          >
+            <option value="">Choose a sign type…</option>
+            {signTypes.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </SelectControl>
+        </div>
       </div>
 
       {signType ? (

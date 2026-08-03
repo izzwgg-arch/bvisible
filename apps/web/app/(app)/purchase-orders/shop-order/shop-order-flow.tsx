@@ -8,6 +8,7 @@
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { formatMoney } from '@bvisible/pricing';
+import { SelectControl } from '@/components/app/select-control';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import { setAssistantContext } from '@/lib/assistant/context-store';
 import {
@@ -357,24 +358,28 @@ export function ShopOrderFlow(props: FlowProps) {
                           {l.detail}
                         </div>
                       </div>
-                      <select
-                        className={inputCls}
-                        value={l.vendor}
-                        onChange={(e) => {
-                          const nextVendor = e.target.value;
-                          const opt = l.vendorOptions.find((o) => o.vendor === nextVendor);
-                          updateLine(l.uid, {
-                            vendor: nextVendor,
-                            unitPriceCents: opt?.priceCents ?? l.unitPriceCents,
-                          });
-                        }}
-                      >
-                        {l.vendorOptions.map((o) => (
-                          <option key={o.vendor} value={o.vendor}>
-                            {o.vendor} — {formatMoney(o.priceCents)}
-                          </option>
-                        ))}
-                      </select>
+                      {/* SelectControl's root is w-full — box it so it can't stretch the flex row. */}
+                      <div className="w-64 shrink-0">
+                        <SelectControl
+                          searchPlaceholder="Search vendors..."
+                          value={l.vendor}
+                          aria-label={`Vendor for ${l.name}`}
+                          onChange={(e) => {
+                            const nextVendor = e.target.value;
+                            const opt = l.vendorOptions.find((o) => o.vendor === nextVendor);
+                            updateLine(l.uid, {
+                              vendor: nextVendor,
+                              unitPriceCents: opt?.priceCents ?? l.unitPriceCents,
+                            });
+                          }}
+                        >
+                          {l.vendorOptions.map((o) => (
+                            <option key={o.vendor} value={o.vendor}>
+                              {o.vendor} — {formatMoney(o.priceCents)}
+                            </option>
+                          ))}
+                        </SelectControl>
+                      </div>
                       <input
                         className={`${inputCls} w-20 text-right`}
                         type="number"

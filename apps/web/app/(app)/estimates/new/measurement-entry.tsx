@@ -7,6 +7,7 @@
 // panel and the Custom Build workspace in the guided estimate flow.
 
 import { formatMoney } from '@bvisible/pricing';
+import { SelectControl } from '@/components/app/select-control';
 import {
   computeMeasurement,
   guessMaterialSize,
@@ -62,8 +63,6 @@ export function measurementDescription(
   return `${materialName} — ${result.detail}`;
 }
 
-const selectCls =
-  'rounded-[9px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-[12px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]';
 const numCls =
   'w-20 rounded-[9px] border border-[var(--color-bv-border)] bg-white px-2 py-1.5 text-right text-[12px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]';
 
@@ -92,18 +91,22 @@ export function MeasurementControls({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className={selectCls}
-          value={state.mode}
-          aria-label="Measurement type"
-          onChange={(e) => onChange({ ...state, mode: e.target.value as MeasurementMode })}
-        >
-          {(Object.keys(MEASUREMENT_MODE_LABELS) as MeasurementMode[]).map((m) => (
-            <option key={m} value={m}>
-              {MEASUREMENT_MODE_LABELS[m]}
-            </option>
-          ))}
-        </select>
+        {/* SelectControl's root is w-full — box it so it can't stretch the flex row. */}
+        <div className="w-40 shrink-0">
+          <SelectControl
+            className="min-h-9 px-2.5 text-[12px]"
+            searchable={false}
+            value={state.mode}
+            aria-label="Measurement type"
+            onChange={(e) => onChange({ ...state, mode: e.target.value as MeasurementMode })}
+          >
+            {(Object.keys(MEASUREMENT_MODE_LABELS) as MeasurementMode[]).map((m) => (
+              <option key={m} value={m}>
+                {MEASUREMENT_MODE_LABELS[m]}
+              </option>
+            ))}
+          </SelectControl>
+        </div>
         <span className="flex items-center gap-1">
           <input
             className={numCls}
