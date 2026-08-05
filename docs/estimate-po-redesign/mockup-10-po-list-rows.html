@@ -1,0 +1,726 @@
+<title>PO list rows — design options</title>
+
+<style>
+  :root {
+    /* B Visible tokens — lifted verbatim from apps/web/app/globals.css */
+    --bv-bg: #f8f4ef;
+    --bv-surface: #fffdfa;
+    --bv-border: #eadfd3;
+    --bv-text: #1C4972;
+    --bv-muted: #6d7480;
+    --bv-accent: #F28744;
+
+    /* Semantic state — deliberately separate from the accent hue */
+    --st-draft: #8a93a3;
+    --st-draft-bg: #eef0f4;
+    --st-sent: #2f6fb0;
+    --st-sent-bg: #e4eef8;
+    --st-received: #2f8f5b;
+    --st-received-bg: #e2f2e8;
+    --st-attn: #b0761e;
+    --st-attn-bg: #fbf0dc;
+
+    /* Page chrome — neutrals biased warm toward the B Visible ground */
+    --page-bg: #fbf9f6;
+    --page-fg: #23303d;
+    --page-muted: #6b7684;
+    --page-line: #e6ded4;
+    --page-card: #ffffff;
+    --page-accent: #c2601f;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page-bg: #16191d;
+      --page-fg: #e8e4de;
+      --page-muted: #9aa3ae;
+      --page-line: #2c3138;
+      --page-card: #1d2126;
+      --page-accent: #f0975a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #16191d;
+    --page-fg: #e8e4de;
+    --page-muted: #9aa3ae;
+    --page-line: #2c3138;
+    --page-card: #1d2126;
+    --page-accent: #f0975a;
+  }
+  :root[data-theme="light"] {
+    --page-bg: #fbf9f6;
+    --page-fg: #23303d;
+    --page-muted: #6b7684;
+    --page-line: #e6ded4;
+    --page-card: #ffffff;
+    --page-accent: #c2601f;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  header.page { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--page-accent);
+  }
+  h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin: 0; text-wrap: balance; letter-spacing: -0.02em; }
+  .lede { max-width: 66ch; color: var(--page-muted); margin: 0; font-size: 16px; }
+
+  /* The one finding that drives every layout decision below */
+  .finding {
+    display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: start;
+    border: 1px solid var(--page-line); border-left: 3px solid var(--page-accent);
+    background: var(--page-card); border-radius: 4px;
+    padding: 18px 20px; margin: 32px 0 8px;
+  }
+  .finding .num {
+    font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--page-accent);
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .finding p { margin: 0; font-size: 14.5px; }
+  .finding p + p { margin-top: 6px; color: var(--page-muted); }
+
+  h2 {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--page-muted); margin: 0 0 4px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--page-line);
+  }
+  section.block { margin-top: 60px; }
+  .opt-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 22px 0 6px; }
+  .opt-name { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; margin: 0; }
+  .opt-verdict {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 3px; white-space: nowrap;
+  }
+  .v-rec { background: var(--st-received-bg); color: var(--st-received); }
+  .v-no  { background: var(--st-draft-bg); color: var(--st-draft); }
+  .opt-why { max-width: 70ch; color: var(--page-muted); font-size: 14.5px; margin: 0 0 18px; }
+
+  /* ---- The app canvas. Deliberately locked to the real light UI in both themes:
+         these are mockups of a light-only product, so inverting them would misrepresent it. ---- */
+  .canvas {
+    background: var(--bv-bg);
+    border: 1px solid var(--page-line);
+    border-radius: 6px;
+    padding: 18px;
+    overflow-x: auto;
+    color-scheme: light;
+  }
+  .canvas-note {
+    font-size: 11.5px; color: var(--page-muted); margin: 8px 2px 0;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .canvas-note::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--page-accent); flex: none;
+  }
+
+  .list { min-width: 940px; display: flex; flex-direction: column; gap: 8px; }
+  .colhead {
+    min-width: 940px;
+    display: grid; align-items: end; gap: 16px;
+    padding: 0 16px 8px; margin-bottom: 2px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase;
+    color: #9aa2ad;
+  }
+
+  .row {
+    background: var(--bv-surface);
+    border: 1px solid var(--bv-border);
+    border-radius: 14px;
+    color: var(--bv-text);
+    transition: border-color .14s ease, box-shadow .14s ease;
+  }
+  .row:hover { border-color: #d9c7b4; box-shadow: 0 0 0 1px rgba(28,73,114,.05); }
+
+  .po-id { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .money { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .meta { font-size: 12px; color: var(--bv-muted); }
+  .meta strong { color: var(--bv-text); font-weight: 650; }
+  .lbl {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #a6adb7; display: block; margin-bottom: 2px;
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 5px; white-space: nowrap;
+  }
+  .c-draft { background: var(--st-draft-bg); color: var(--st-draft); }
+  .c-sent { background: var(--st-sent-bg); color: var(--st-sent); }
+  .c-received { background: var(--st-received-bg); color: var(--st-received); }
+
+  .who {
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .avatar {
+    width: 20px; height: 20px; border-radius: 50%; flex: none;
+    background: #1C4972; color: #fff;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.02em;
+    display: grid; place-items: center;
+  }
+  .avatar.b { background: #7a5230; }
+
+  /* Estimate / company pairing — the two fields that are usually absent */
+  .link-live { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .link-live .est {
+    font-size: 12.5px; font-weight: 700; color: var(--bv-text);
+    text-decoration: none; border-bottom: 1px solid rgba(28,73,114,.25);
+    align-self: flex-start;
+  }
+  .link-live .est:hover { border-bottom-color: var(--bv-accent); color: #14395a; }
+  .link-live .co { font-size: 12px; color: var(--bv-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .link-none { display: flex; align-items: center; gap: 8px; }
+  .link-none .txt { font-size: 12px; color: #a6adb7; font-style: italic; }
+  .attach {
+    font-size: 11px; font-weight: 700; color: var(--bv-accent);
+    background: none; border: 1px dashed rgba(242,135,68,.5); border-radius: 6px;
+    padding: 3px 9px; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .attach:hover { background: #fff4eb; border-style: solid; }
+  .attach:focus-visible { outline: 2px solid var(--bv-accent); outline-offset: 2px; }
+
+  /* ---------- Option A: ledger ---------- */
+  .a-grid { grid-template-columns: 150px 128px 176px 1fr 132px 100px; }
+  .row.a { display: grid; grid-template-columns: 150px 128px 176px 1fr 132px 100px; gap: 16px; align-items: center; padding: 13px 16px; }
+  .stamp { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stamp .t { color: #98a1ac; }
+
+  .peek { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+  .peek-trigger {
+    font-size: 12px; color: var(--bv-text); font-weight: 600;
+    border-bottom: 1px dotted #b9c2cd; padding-bottom: 1px;
+  }
+  .peek-pop {
+    position: absolute; bottom: calc(100% + 9px); left: 0; z-index: 40;
+    width: 310px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(15,23,41,.18); padding: 11px 12px;
+    opacity: 0; visibility: hidden; transform: translateY(4px);
+    transition: opacity .13s ease, transform .13s ease, visibility .13s;
+  }
+  .peek:hover .peek-pop, .peek:focus-within .peek-pop { opacity: 1; visibility: visible; transform: translateY(0); }
+  .peek-pop::after {
+    content: ""; position: absolute; top: 100%; left: 22px;
+    border: 7px solid transparent; border-top-color: #fff;
+  }
+  .peek-pop h4 {
+    margin: 0 0 8px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.11em;
+    text-transform: uppercase; color: #a6adb7;
+  }
+  .peek-line {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline;
+    padding: 5px 0; border-top: 1px solid #f1f5f9; font-size: 12px;
+  }
+  .peek-line:first-of-type { border-top: none; }
+  .peek-line .d { color: var(--bv-text); font-weight: 600; }
+  .peek-line .q { color: var(--bv-muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .peek-line .c { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  /* ---------- Option B: docket ---------- */
+  .row.b { padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; }
+  .b-top { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: start; }
+  .b-idline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .b-vendor { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .b-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 5px; }
+  .b-sep { color: #cdd4dd; }
+  .b-items { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 10px; border-top: 1px dashed var(--bv-border); }
+  .item-chip {
+    font-size: 11.5px; font-weight: 600; color: #46586b;
+    background: #f4f1ec; border-radius: 6px; padding: 3px 8px;
+    max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .item-more {
+    font-size: 11.5px; font-weight: 700; color: var(--bv-accent);
+    background: none; border: none; padding: 3px 4px; cursor: pointer; font-family: inherit;
+  }
+  .item-more:hover { text-decoration: underline; }
+
+  /* ---------- Option C: expandable ---------- */
+  .c-grid { grid-template-columns: 34px 148px 126px 148px 1fr 128px; }
+  .row.c > .c-summary { display: grid; grid-template-columns: 34px 148px 126px 148px 1fr 128px; gap: 16px; align-items: center; padding: 13px 16px; }
+  .disc {
+    width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--bv-border);
+    background: #fff; cursor: pointer; display: grid; place-items: center; padding: 0;
+    color: var(--bv-muted); transition: transform .16s ease, background .16s ease, color .16s ease;
+  }
+  .disc:hover { background: #fff4eb; color: var(--bv-accent); border-color: #f5c9a5; }
+  .disc:focus-visible { outline: 2px solid var(--bv-accent); outline-offset: 2px; }
+  .row.c.open .disc { transform: rotate(90deg); background: #1C4972; color: #fff; border-color: #1C4972; }
+  .c-body { display: none; padding: 0 16px 14px 66px; }
+  .row.c.open .c-body { display: block; }
+  .c-table { width: 100%; border-collapse: collapse; }
+  .c-table th {
+    text-align: left; font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #a6adb7; padding: 7px 10px; border-bottom: 1px solid var(--bv-border);
+  }
+  .c-table th.r, .c-table td.r { text-align: right; }
+  .c-table td { padding: 8px 10px; font-size: 12.5px; border-bottom: 1px solid #f4f1ec; }
+  .c-table tr:last-child td { border-bottom: none; }
+  .c-table .d { font-weight: 600; }
+  .c-table .n { font-variant-numeric: tabular-nums; color: var(--bv-muted); }
+  .c-table .m { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  /* ---------- reveal-approach comparison ---------- */
+  .approaches { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); margin-top: 20px; }
+  .appr {
+    border: 1px solid var(--page-line); border-radius: 6px; padding: 16px 17px; background: var(--page-card);
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .appr.win { border-color: var(--st-received); border-width: 1.5px; }
+  .appr h4 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .appr .tag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--st-received); }
+  .appr ul { margin: 0; padding-left: 15px; font-size: 13px; color: var(--page-muted); display: flex; flex-direction: column; gap: 5px; }
+  .appr li.good::marker { content: "+  "; color: var(--st-received); font-weight: 700; }
+  .appr li.bad::marker { content: "\2212  "; color: #c05a5a; font-weight: 700; }
+
+  .rec {
+    margin-top: 26px; border: 1px solid var(--page-line); border-radius: 6px;
+    background: var(--page-card); padding: 22px 24px;
+  }
+  .rec h3 { margin: 0 0 10px; font-size: 17px; letter-spacing: -0.015em; }
+  .rec ol { margin: 0; padding-left: 19px; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; }
+  .rec ol strong { font-weight: 700; }
+  .rec .aside { margin: 14px 0 0; font-size: 13.5px; color: var(--page-muted); }
+
+  .qa { margin-top: 18px; border-top: 1px solid var(--page-line); padding-top: 16px; font-size: 14.5px; }
+  .qa p { margin: 0 0 8px; }
+  .qa p:last-child { margin-bottom: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 720px) {
+    .wrap { padding: 36px 16px 72px; }
+    .finding { grid-template-columns: 1fr; gap: 8px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="page">
+    <span class="eyebrow">B Visible · Procurement queue</span>
+    <h1>Purchase order rows, redesigned</h1>
+    <p class="lede">
+      Three ways to put the orderer, the order date, the linked estimate, the company, the items
+      and the total on one line — built with real rows from your database.
+    </p>
+  </header>
+
+  <div class="finding">
+    <div class="num">33<span style="font-size:17px; color:var(--page-muted); font-weight:600;">/34</span></div>
+    <div>
+      <p><strong>Almost none of your POs are linked to an estimate.</strong> Only PO-000012 has one — which means
+        &ldquo;what estimate it&rsquo;s attached to&rdquo; and &ldquo;the company it was ordered for&rdquo; are both blank on 33 of 34 rows today.</p>
+      <p>The company name isn&rsquo;t stored on a PO at all; it&rsquo;s reached through the estimate. So a design that
+        just adds two columns leaves most of your list looking empty. Every option below treats the unlinked
+        state as the common case and turns that gap into a one-click <em>Attach estimate</em> action instead of dead space.</p>
+    </div>
+  </div>
+
+  <!-- ============ OPTION A ============ -->
+  <section class="block">
+    <h2>Option A</h2>
+    <div class="opt-head">
+      <p class="opt-name">Ledger</p>
+      <span class="opt-verdict v-rec">Selected &mdash; building this</span>
+    </div>
+    <p class="opt-why">
+      One line per PO, columns locked so your eye can run straight down any field. Items live behind a hover
+      peek — the &ldquo;floating list&rdquo; you described. It fits the most rows on screen. Known trade-off: the item
+      list needs a mouse, so it isn&rsquo;t reachable on a tablet — the item count stays visible either way, and the
+      peek is also keyboard-focusable.
+    </p>
+
+    <div class="canvas">
+      <div class="colhead a-grid">
+        <span>PO / Status</span><span>Vendor</span><span>Ordered by &amp; when</span><span>Estimate &amp; company</span><span>Items</span><span style="text-align:right">Total</span>
+      </div>
+      <div class="list">
+
+        <div class="row a">
+          <div>
+            <div class="po-id">PO-000034</div>
+            <span class="chip c-sent" style="margin-top:4px">Sent</span>
+          </div>
+          <div class="meta"><strong>Letra lit</strong></div>
+          <div>
+            <span class="who"><span class="avatar">SR</span><span class="meta"><strong>Shmiel R.</strong></span></span>
+            <div class="meta stamp" style="margin-top:3px">Aug 3, 2026 <span class="t">· 7:36 PM</span></div>
+          </div>
+          <div class="link-none">
+            <span class="txt">No estimate</span>
+            <button class="attach" type="button">Attach</button>
+          </div>
+          <div class="peek" tabindex="0">
+            <span class="peek-trigger">3 items</span>
+            <div class="peek-pop">
+              <h4>Ordered items</h4>
+              <div class="peek-line"><span class="d">Epson Magenta Ink</span><span class="q">1 ea</span><span class="c">$178.00</span></div>
+              <div class="peek-line"><span class="d">Epson Light Magenta Ink</span><span class="q">1 ea</span><span class="c">$178.00</span></div>
+              <div class="peek-line"><span class="d">Epson Cyan Ink</span><span class="q">1 ea</span><span class="c">$178.00</span></div>
+            </div>
+          </div>
+          <div class="money" style="text-align:right">$534.00</div>
+        </div>
+
+        <div class="row a">
+          <div>
+            <div class="po-id">PO-000030</div>
+            <span class="chip c-sent" style="margin-top:4px">Sent</span>
+          </div>
+          <div class="meta"><strong>S&amp;F</strong></div>
+          <div>
+            <span class="who"><span class="avatar b">DH</span><span class="meta"><strong>David H.</strong></span></span>
+            <div class="meta stamp" style="margin-top:3px">Jul 28, 2026 <span class="t">· 10:19 PM</span></div>
+          </div>
+          <div class="link-live">
+            <a class="est" href="#">EST-000012</a>
+            <span class="co">Northline Retail</span>
+          </div>
+          <div class="peek" tabindex="0">
+            <span class="peek-trigger">1 item</span>
+            <div class="peek-pop">
+              <h4>Ordered items</h4>
+              <div class="peek-line"><span class="d">Black Acrylic Sheet &mdash; 1/8 &middot; 4&prime;&times;8&prime;</span><span class="q">3 ea</span><span class="c">$171.24</span></div>
+            </div>
+          </div>
+          <div class="money" style="text-align:right">$171.24</div>
+        </div>
+
+        <div class="row a">
+          <div>
+            <div class="po-id">PO-000032</div>
+            <span class="chip c-draft" style="margin-top:4px">Draft</span>
+          </div>
+          <div class="meta"><strong>S&amp;F</strong></div>
+          <div>
+            <span class="who"><span class="avatar">SR</span><span class="meta"><strong>Shmiel R.</strong></span></span>
+            <div class="meta stamp" style="margin-top:3px">Jul 28, 2026 <span class="t">· 10:32 PM</span></div>
+          </div>
+          <div class="link-none">
+            <span class="txt">No estimate</span>
+            <button class="attach" type="button">Attach</button>
+          </div>
+          <div class="peek" tabindex="0">
+            <span class="peek-trigger">3 items</span>
+            <div class="peek-pop">
+              <h4>Ordered items</h4>
+              <div class="peek-line"><span class="d">Coroplast 4mm &mdash; 4&prime;&times;8&prime;</span><span class="q">2 ea</span><span class="c">$44.00</span></div>
+              <div class="peek-line"><span class="d">Gloss Lamination &mdash; Cast</span><span class="q">1 roll</span><span class="c">$26.91</span></div>
+              <div class="peek-line"><span class="d">3M #94 Tape Primer</span><span class="q">1 ea</span><span class="c">$19.00</span></div>
+            </div>
+          </div>
+          <div class="money" style="text-align:right">$89.91</div>
+        </div>
+
+      </div>
+    </div>
+    <p class="canvas-note">Hover (or tab to) &ldquo;3 items&rdquo; to see the floating list.</p>
+  </section>
+
+  <!-- ============ OPTION B ============ -->
+  <section class="block">
+    <h2>Option B</h2>
+    <div class="opt-head">
+      <p class="opt-name">Docket</p>
+      <span class="opt-verdict v-no">Items always visible · tallest</span>
+    </div>
+    <p class="opt-why">
+      Each PO becomes a small card. Items sit on their own strip as chips, so they&rsquo;re readable without any
+      interaction at all — nothing to discover, nothing to hover. The cost is height: roughly half as many rows
+      fit on screen, and long material names still truncate.
+    </p>
+
+    <div class="canvas">
+      <div class="list">
+
+        <div class="row b">
+          <div class="b-top">
+            <div>
+              <div class="b-idline">
+                <span class="po-id">PO-000034</span>
+                <span class="chip c-sent">Sent</span>
+                <span class="b-vendor">Letra lit</span>
+              </div>
+              <div class="b-meta">
+                <span class="who"><span class="avatar">SR</span><span class="meta">Ordered by <strong>Shmiel Rosenberg</strong></span></span>
+                <span class="b-sep">·</span>
+                <span class="meta"><strong>Aug 3, 2026</strong></span>
+                <span class="b-sep">·</span>
+                <span class="link-none"><span class="txt">not attached to an estimate</span><button class="attach" type="button">Attach estimate</button></span>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <span class="lbl">Total</span>
+              <span class="money">$534.00</span>
+            </div>
+          </div>
+          <div class="b-items">
+            <span class="lbl" style="margin:0 4px 0 0">Items</span>
+            <span class="item-chip">Epson Magenta Ink &times;1</span>
+            <span class="item-chip">Epson Light Magenta Ink &times;1</span>
+            <span class="item-chip">Epson Cyan Ink &times;1</span>
+          </div>
+        </div>
+
+        <div class="row b">
+          <div class="b-top">
+            <div>
+              <div class="b-idline">
+                <span class="po-id">PO-000030</span>
+                <span class="chip c-sent">Sent</span>
+                <span class="b-vendor">S&amp;F</span>
+              </div>
+              <div class="b-meta">
+                <span class="who"><span class="avatar b">DH</span><span class="meta">Ordered by <strong>David Halpert</strong></span></span>
+                <span class="b-sep">·</span>
+                <span class="meta"><strong>Jul 28, 2026</strong></span>
+                <span class="b-sep">·</span>
+                <span class="meta">for <a class="est" href="#" style="text-decoration:none;border-bottom:1px solid rgba(28,73,114,.25)">EST-000012</a> &mdash; <strong>Northline Retail</strong></span>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <span class="lbl">Total</span>
+              <span class="money">$171.24</span>
+            </div>
+          </div>
+          <div class="b-items">
+            <span class="lbl" style="margin:0 4px 0 0">Items</span>
+            <span class="item-chip">Black Acrylic Sheet &mdash; 1/8 &middot; 4&prime;&times;8&prime; &times;3</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <p class="canvas-note">Nothing to hover — the items are simply there.</p>
+  </section>
+
+  <!-- ============ OPTION C ============ -->
+  <section class="block">
+    <h2>Option C</h2>
+    <div class="opt-head">
+      <p class="opt-name">Ledger + drawer</p>
+      <span class="opt-verdict v-no">Not selected</span>
+    </div>
+    <p class="opt-why">
+      Option A&rsquo;s density, but the item count is a real control: click it and the full item table opens inside
+      the row — every description, quantity and cost, nothing truncated, no second page. Works with a mouse,
+      a keyboard and a finger. On desktop the same trigger still shows the hover peek, so a quick glance
+      costs nothing and a proper look costs one click.
+    </p>
+
+    <div class="canvas">
+      <div class="colhead c-grid">
+        <span></span><span>PO / Status</span><span>Vendor</span><span>Ordered by</span><span>Estimate &amp; company</span><span style="text-align:right">Total</span>
+      </div>
+      <div class="list">
+
+        <div class="row c open" id="r1">
+          <div class="c-summary">
+            <button class="disc" type="button" aria-expanded="true" aria-controls="b1" onclick="tog('r1',this)">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div>
+              <div class="po-id">PO-000034</div>
+              <span class="chip c-sent" style="margin-top:4px">Sent</span>
+            </div>
+            <div class="meta"><strong>Letra lit</strong></div>
+            <div>
+              <span class="who"><span class="avatar">SR</span><span class="meta"><strong>Shmiel R.</strong></span></span>
+              <div class="meta" style="margin-top:3px">Aug 3, 2026</div>
+            </div>
+            <div class="link-none">
+              <span class="txt">No estimate</span>
+              <button class="attach" type="button">Attach</button>
+            </div>
+            <div style="text-align:right">
+              <div class="money">$534.00</div>
+              <div class="meta" style="margin-top:2px">3 items</div>
+            </div>
+          </div>
+          <div class="c-body" id="b1">
+            <table class="c-table">
+              <thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Cost</th></tr></thead>
+              <tbody>
+                <tr><td class="d">Epson Magenta Ink &mdash; Each / set</td><td class="r n">1 ea</td><td class="r m">$178.00</td></tr>
+                <tr><td class="d">Epson Light Magenta Ink &mdash; Each / set</td><td class="r n">1 ea</td><td class="r m">$178.00</td></tr>
+                <tr><td class="d">Epson Cyan Ink &mdash; Each / set</td><td class="r n">1 ea</td><td class="r m">$178.00</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="row c" id="r2">
+          <div class="c-summary">
+            <button class="disc" type="button" aria-expanded="false" aria-controls="b2" onclick="tog('r2',this)">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div>
+              <div class="po-id">PO-000030</div>
+              <span class="chip c-sent" style="margin-top:4px">Sent</span>
+            </div>
+            <div class="meta"><strong>S&amp;F</strong></div>
+            <div>
+              <span class="who"><span class="avatar b">DH</span><span class="meta"><strong>David H.</strong></span></span>
+              <div class="meta" style="margin-top:3px">Jul 28, 2026</div>
+            </div>
+            <div class="link-live">
+              <a class="est" href="#">EST-000012</a>
+              <span class="co">Northline Retail</span>
+            </div>
+            <div style="text-align:right">
+              <div class="money">$171.24</div>
+              <div class="meta" style="margin-top:2px">1 item</div>
+            </div>
+          </div>
+          <div class="c-body" id="b2">
+            <table class="c-table">
+              <thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Cost</th></tr></thead>
+              <tbody>
+                <tr><td class="d">Black Acrylic Sheet &mdash; 1/8 &middot; 4&prime; x 8&prime; sheet</td><td class="r n">3 ea</td><td class="r m">$171.24</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="row c" id="r3">
+          <div class="c-summary">
+            <button class="disc" type="button" aria-expanded="false" aria-controls="b3" onclick="tog('r3',this)">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div>
+              <div class="po-id">PO-000032</div>
+              <span class="chip c-draft" style="margin-top:4px">Draft</span>
+            </div>
+            <div class="meta"><strong>S&amp;F</strong></div>
+            <div>
+              <span class="who"><span class="avatar">SR</span><span class="meta"><strong>Shmiel R.</strong></span></span>
+              <div class="meta" style="margin-top:3px">Jul 28, 2026</div>
+            </div>
+            <div class="link-none">
+              <span class="txt">No estimate</span>
+              <button class="attach" type="button">Attach</button>
+            </div>
+            <div style="text-align:right">
+              <div class="money">$89.91</div>
+              <div class="meta" style="margin-top:2px">3 items</div>
+            </div>
+          </div>
+          <div class="c-body" id="b3">
+            <table class="c-table">
+              <thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Cost</th></tr></thead>
+              <tbody>
+                <tr><td class="d">Coroplast 4mm &mdash; 4&prime; x 8&prime; sheet</td><td class="r n">2 ea</td><td class="r m">$44.00</td></tr>
+                <tr><td class="d">Gloss Lamination &mdash; Cast</td><td class="r n">1 roll</td><td class="r m">$26.91</td></tr>
+                <tr><td class="d">3M #94 Tape Primer &mdash; 8 oz</td><td class="r n">1 ea</td><td class="r m">$19.00</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <p class="canvas-note">Click any chevron to open or close a row. PO-000034 starts open.</p>
+  </section>
+
+  <!-- ============ ITEMS QUESTION ============ -->
+  <section class="block">
+    <h2>Your open question — how to show items without opening the PO</h2>
+    <div class="approaches">
+      <div class="appr">
+        <h4>Hover popover</h4>
+        <ul>
+          <li class="good">Costs zero row height</li>
+          <li class="good">Fastest for a quick glance</li>
+          <li class="bad">Invisible until discovered</li>
+          <li class="bad">Nothing happens on a tablet</li>
+        </ul>
+      </div>
+      <div class="appr">
+        <h4>Always-on chips</h4>
+        <ul>
+          <li class="good">Zero interaction needed</li>
+          <li class="good">Works everywhere</li>
+          <li class="bad">Doubles row height</li>
+          <li class="bad">Long names still cut off</li>
+        </ul>
+      </div>
+      <div class="appr">
+        <h4>Expand in place</h4>
+        <ul>
+          <li class="good">Full table, no truncation</li>
+          <li class="good">Touch and keyboard safe</li>
+          <li class="good">Compare two POs side by side</li>
+          <li class="bad">One click to see anything</li>
+        </ul>
+      </div>
+      <div class="appr" style="border-color: var(--st-received); border-width:1.5px">
+        <span class="tag" style="color: var(--st-sent)">Your pick</span>
+        <h4>Hover popover &mdash; Option A</h4>
+        <ul>
+          <li class="good">Zero row height</li>
+          <li class="good">Fastest glance on desktop</li>
+          <li class="bad">Needs a mouse</li>
+        </ul>
+      </div>
+      <div class="appr win" style="display:none">
+        <span class="tag">Recommended</span>
+        <h4>Expand + hover peek</h4>
+        <ul>
+          <li class="good">Glance free on desktop</li>
+          <li class="good">Full detail on click, anywhere</li>
+          <li class="good">Row stays one line by default</li>
+          <li class="bad">Two behaviors to build</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rec">
+      <h3>What I'm building</h3>
+      <ol>
+        <li><strong>Option A rows.</strong> One dense line per PO carrying all five new fields plus a real total.</li>
+        <li><strong>Items in a hover peek</strong> off the item count, as you asked. Keyboard-focusable too, so it isn&rsquo;t mouse-only for anyone tabbing through.</li>
+        <li><strong>Ordered-by as initials + name, with the exact date and time</strong> — and the stamp switched from <em>Updated</em> to <em>Ordered</em>. That&rsquo;s a different field from the one on screen today.</li>
+        <li><strong>Unlinked POs get an Attach estimate button</strong> where the estimate and company would be. That fills 33 rows of empty space with the one action that makes the column useful — and every PO you attach starts showing a company name.</li>
+        <li><strong>&ldquo;Subtotal&rdquo; relabelled &ldquo;Total.&rdquo;</strong> POs carry no tax in your data, so the subtotal already is the total — the current label just undersells it.</li>
+      </ol>
+      <p class="aside">
+        Roughly a half-day. The query needs three additions — who created it, when, and the item lines —
+        all of which already exist in the database.
+      </p>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>One thing to confirm</h2>
+    <div class="qa">
+      <p>You finished by saying <em>&ldquo;we can redo the rows of the estimate list completely.&rdquo;</em> Everything above is the
+        <strong>purchase order</strong> list, since that&rsquo;s where the six fields you listed live.</p>
+      <p>The estimates list uses the same row styling, so it can inherit whichever option you pick — different
+        columns, identical typography, spacing and chips. Tell me if you meant the estimates list as well and
+        I&rsquo;ll mock its rows the same way before building anything.</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  function tog(rowId, btn) {
+    var row = document.getElementById(rowId);
+    var open = row.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+</script>

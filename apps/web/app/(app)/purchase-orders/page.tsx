@@ -7,6 +7,10 @@ import { AutoSubmitInput, AutoSubmitSelect } from '@/components/app/auto-submit-
 import { EmptyState } from '@/components/app/empty-state';
 import { DEFAULT_PAGE_SIZE, PaginationControls, pageSkip, parsePageParam } from '@/components/app/pagination-controls';
 import { formatMoney } from '@/lib/estimate/format';
+import { PoItemsPeek, type PeekLine } from './po-items-peek';
+import { PoOrderedStamp } from './po-ordered-stamp';
+
+const PEEK_LINE_LIMIT = 12;
 import { labelPoStatus } from '@/lib/ui/status-labels';
 
 export const metadata = { title: 'Purchase orders' };
@@ -104,6 +108,8 @@ export default async function PurchaseOrdersPage({
         qboPoNumber: true,
         subtotalCents: true,
         updatedAt: true,
+        createdAt: true,
+        createdBy: { select: { name: true, email: true } },
         vendor: { select: { id: true, name: true } },
         estimate: {
           select: {
@@ -112,6 +118,13 @@ export default async function PurchaseOrdersPage({
             title: true,
             client: { select: { companyName: true } },
           },
+        },
+        // Enough lines to fill the hover peek; the count below reports the truth
+        // when a PO has more than this.
+        lines: {
+          select: { id: true, description: true, qtyMilli: true, unit: true, computedCostCents: true },
+          orderBy: { sortOrder: 'asc' },
+          take: PEEK_LINE_LIMIT,
         },
         _count: { select: { lines: true, attachments: true } },
       },
@@ -255,13 +268,13 @@ export default async function PurchaseOrdersPage({
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <div className="grid gap-3 p-4">
-                <div className="hidden px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 xl:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_110px_150px_110px_110px]">
-                  <span>PO</span>
+                <div className="hidden px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 xl:grid xl:grid-cols-[150px_minmax(0,1fr)_176px_minmax(0,1.1fr)_120px_112px_96px]">
+                  <span>PO / Status</span>
                   <span>Vendor</span>
-                  <span>Source</span>
-                  <span>QBO</span>
-                  <span>Status</span>
-                  <span>Subtotal</span>
+                  <span>Ordered by &amp; when</span>
+                  <span>Estimate &amp; company</span>
+                  <span>Items</span>
+                  <span className="text-right">Total</span>
                   <span className="text-right">Quick</span>
                 </div>
 
@@ -280,50 +293,78 @@ export default async function PurchaseOrdersPage({
                   pos.map((p) => (
                     <div
                       key={p.id}
-                      className="group grid gap-4 rounded-[18px] border border-slate-100 bg-white px-4 py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-100 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_110px_150px_110px_110px]"
+                      className="group grid items-center gap-4 rounded-[14px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-3.5 transition-colors hover:border-[#d9c7b4] xl:grid-cols-[150px_minmax(0,1fr)_176px_minmax(0,1.1fr)_120px_112px_96px]"
                     >
                       <div className="min-w-0">
-                        <div className="flex items-center gap-3">
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100 transition group-hover:bg-blue-100">
-                            {initials(p.number)}
-                          </div>
-                          <Link href={`/purchase-orders/${p.id}` as never} className="min-w-0 hover:text-blue-600">
-                            <span className="font-mono text-[12px] font-bold text-slate-950 group-hover:text-blue-600">{p.number}</span>
-                            <span className="mt-1 block text-[11.5px] font-medium text-slate-400">
-                              Updated {formatDate(p.updatedAt)} · {p._count.lines} line{p._count.lines === 1 ? '' : 's'}
-                            </span>
-                          </Link>
-                        </div>
+                        <Link href={`/purchase-orders/${p.id}` as never} className="min-w-0">
+                          <span className="block text-[14px] font-extrabold tabular-nums tracking-[-0.01em] text-[var(--color-bv-text)] group-hover:text-[#14395a]">
+                            {p.number}
+                          </span>
+                        </Link>
+                        <span className="mt-1 inline-flex">
+                          <StatusPill status={p.status} />
+                        </span>
                       </div>
 
                       <PoRowValue label="Vendor" value={p.vendor?.name ?? 'Vendor unassigned'} strong={Boolean(p.vendor)} muted={!p.vendor} />
 
                       <div className="min-w-0">
-                        <MobileLabel>Source</MobileLabel>
+                        <MobileLabel>Ordered by</MobileLabel>
+                        <span className="flex items-center gap-1.5">
+                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#1C4972] text-[9px] font-bold text-white">
+                            {personInitials(p.createdBy.name ?? p.createdBy.email)}
+                          </span>
+                          <span className="truncate text-[12px] font-semibold text-[var(--color-bv-text)]">
+                            {shortName(p.createdBy.name ?? p.createdBy.email)}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block">
+                          <PoOrderedStamp
+                            iso={p.createdAt.toISOString()}
+                            fallback={`${formatDate(p.createdAt)} · ${formatTime(p.createdAt)}`}
+                          />
+                        </span>
+                      </div>
+
+                      <div className="min-w-0">
+                        <MobileLabel>Estimate &amp; company</MobileLabel>
                         {p.estimate ? (
-                          <Link
-                            href={`/estimates/${p.estimate.id}` as never}
-                            className="inline-flex max-w-full rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 font-mono text-[11.5px] font-semibold text-blue-700 transition hover:bg-blue-100"
-                            title={p.estimate.title}
-                          >
-                            <span className="truncate">{p.estimate.number}</span>
-                          </Link>
+                          <span className="flex min-w-0 flex-col gap-px">
+                            <Link
+                              href={`/estimates/${p.estimate.id}` as never}
+                              className="self-start border-b border-[rgba(28,73,114,0.25)] text-[12.5px] font-bold text-[var(--color-bv-text)] transition-colors hover:border-[var(--color-bv-accent)] hover:text-[#14395a]"
+                              title={p.estimate.title}
+                            >
+                              {p.estimate.number}
+                            </Link>
+                            <span className="truncate text-[12px] text-[var(--color-bv-muted)]">
+                              {p.estimate.client?.companyName ?? 'No company on estimate'}
+                            </span>
+                          </span>
                         ) : (
-                          <span className="text-[12.5px] font-medium text-slate-400">Manual PO</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-[12px] italic text-slate-400">No estimate</span>
+                            <Link
+                              href={`/purchase-orders/${p.id}` as never}
+                              className="whitespace-nowrap rounded-[6px] border border-dashed border-[rgba(242,135,68,0.5)] px-2 py-0.5 text-[11px] font-bold text-[var(--color-bv-accent)] transition-colors hover:border-solid hover:bg-[#fff4eb]"
+                            >
+                              Attach
+                            </Link>
+                          </span>
                         )}
-                        {p.estimate?.client ? (
-                          <p className="mt-1 truncate text-[11.5px] text-slate-400">{p.estimate.client.companyName}</p>
-                        ) : null}
                       </div>
 
-                      <PoRowValue label="QBO" value={p.qboPoNumber ?? 'Pending'} muted={!p.qboPoNumber} mono />
-
-                      <div>
-                        <MobileLabel>Status</MobileLabel>
-                        <StatusPill status={p.status} />
+                      <div className="min-w-0">
+                        <MobileLabel>Items</MobileLabel>
+                        <PoItemsPeek lines={peekLines(p.lines)} totalLines={p._count.lines} />
                       </div>
 
-                      <PoRowValue label="Subtotal" value={formatMoney(p.subtotalCents)} strong />
+                      <div className="xl:text-right">
+                        <MobileLabel>Total</MobileLabel>
+                        <span className="text-[16px] font-extrabold tabular-nums tracking-[-0.02em] text-[var(--color-bv-text)]">
+                          {formatMoney(p.subtotalCents)}
+                        </span>
+                      </div>
 
                       <div>
                         <MobileLabel>Quick</MobileLabel>
@@ -509,13 +550,44 @@ function orderByForSort(sort: (typeof SORT_OPTIONS)[number]['value']): Prisma.Pu
   }
 }
 
-function initials(value: string) {
-  return value
-    .split(/[-\s]+/)
-    .filter(Boolean)
-    .slice(-2)
+/** "Shmiel Rosenberg" → "SR". Falls back to the first two characters of an
+ *  email local part when a user has no name set. */
+function personInitials(value: string): string {
+  const name = value.includes('@') ? (value.split('@')[0] ?? value) : value;
+  const parts = name.split(/[-._\s]+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return (parts[0] ?? '').slice(0, 2).toUpperCase();
+  return parts
+    .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+/** "Shmiel Rosenberg" → "Shmiel R." so the column holds one line. */
+function shortName(value: string): string {
+  if (value.includes('@')) return value.split('@')[0] ?? value;
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return value;
+  return `${parts[0]} ${parts[parts.length - 1]?.[0] ?? ''}.`;
+}
+
+function peekLines(
+  lines: ReadonlyArray<{
+    id: string;
+    description: string;
+    qtyMilli: number;
+    unit: string;
+    computedCostCents: number;
+  }>,
+): PeekLine[] {
+  return lines.map((line) => ({
+    id: line.id,
+    description: line.description,
+    // qtyMilli is thousandths — show 3 as "3", 2.5 as "2.5".
+    qty: String(Number((line.qtyMilli / 1000).toFixed(3))),
+    unit: line.unit.toLowerCase() === 'each' ? 'ea' : line.unit.toLowerCase(),
+    costCents: line.computedCostCents,
+  }));
 }
 
 function formatDate(value: Date): string {
@@ -523,6 +595,13 @@ function formatDate(value: Date): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  }).format(value);
+}
+
+function formatTime(value: Date): string {
+  return new Intl.DateTimeFormat('en', {
+    hour: 'numeric',
+    minute: '2-digit',
   }).format(value);
 }
 
