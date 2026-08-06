@@ -102,12 +102,21 @@ export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
     if (seenNorms.has(nameNormalized)) continue;
     seenNorms.add(nameNormalized);
     const existing = byKey.get(material.key) ?? byNorm.get(nameNormalized);
+    // Items the Sheet has not priced yet come in deactivated: visible in the
+    // Catalog as "Price not set", but out of the estimate picker. The moment a
+    // price lands in the Sheet the next sync flips this back to active on its
+    // own — no manual step.
+    const shouldBeActive = !material.unpriced;
+    const sheetNote = material.vendor
+      ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000)
+      : undefined;
+    const unpricedNote = 'Price not set in the Sheet — add one to use this in estimates.';
     if (existing) {
       const changed =
         existing.sheetKey !== material.key ||
         existing.name !== material.name.slice(0, 400) ||
         existing.internalCostCents !== material.priceCents ||
-        !existing.isActive ||
+        existing.isActive !== shouldBeActive ||
         existing.categories[0] !== material.category;
       if (changed) {
         updates.push({
@@ -118,10 +127,8 @@ export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
             sheetKey: material.key,
             categories: [material.category],
             internalCostCents: material.priceCents,
-            isActive: true,
-            notes: material.vendor
-              ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000)
-              : undefined,
+            isActive: shouldBeActive,
+            notes: material.unpriced ? unpricedNote : sheetNote,
           },
         });
       }
@@ -134,8 +141,10 @@ export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
         categories: [material.category],
         catalogUnit: 'EACH',
         internalCostCents: material.priceCents,
-        isActive: true,
-        notes: material.vendor
+        isActive: shouldBeActive,
+        notes: material.unpriced
+          ? unpricedNote
+          : material.vendor
           ? `Cheapest vendor (Sheet): ${material.vendor}`.slice(0, 2000)
           : null,
       });

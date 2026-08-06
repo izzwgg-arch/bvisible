@@ -56,17 +56,24 @@ export default async function NewEstimatePage({
 
   const data = snapshot.data;
 
-  const materials: BuilderMaterial[] = data.materials.map((m) => {
-    const active = activeMaterialPrice(overrides, m.key, m.priceCents);
-    return {
-      key: m.key,
-      name: m.name,
-      category: m.category,
-      priceCents: active.priceCents,
-      vendor: m.vendor,
-      source: active.source,
-    };
-  });
+  // Materials the Sheet has not priced are carried through the sync so they
+  // show in the Catalog, but they must never reach this picker — a $0.00 line
+  // would go out on a quote with nothing flagging it. Filtering on the
+  // *effective* price keeps an item that a local override has priced, even
+  // when the Sheet itself still has none.
+  const materials: BuilderMaterial[] = data.materials
+    .map((m) => {
+      const active = activeMaterialPrice(overrides, m.key, m.priceCents);
+      return {
+        key: m.key,
+        name: m.name,
+        category: m.category,
+        priceCents: active.priceCents,
+        vendor: m.vendor,
+        source: active.source,
+      };
+    })
+    .filter((m) => m.priceCents > 0);
 
   const bundles: BuilderBundle[] = data.bundles.map((b) => ({
     id: b.id,

@@ -61,7 +61,9 @@ function parseMaterials(table: GvizTable): SheetMaterial[] {
         : null;
     const priceCents =
       cheapest?.priceCents ?? (cheapestListed > 0 ? dollarsToCents(cheapestListed) : 0);
-    if (priceCents <= 0) continue;
+    // A row with no price used to be dropped here, which silently hid every
+    // item added to the Sheet before its price was known. Carry it through
+    // flagged instead; consumers that produce money filter on `unpriced`.
     out.push({
       key: sheetItemKey(name),
       name,
@@ -69,6 +71,7 @@ function parseMaterials(table: GvizTable): SheetMaterial[] {
       priceCents,
       vendor: cheapest?.vendor || gvizString(row, 11),
       vendorPrices,
+      unpriced: priceCents <= 0,
     });
   }
   // De-dupe by key, first occurrence wins (matches the owner's reader).
@@ -244,7 +247,11 @@ function parseInternalMaterials(table: GvizTable): SheetInternalMaterial[] {
     const name = gvizString(row, 3);
     const priceCents = dollarsToCents(gvizNumber(row, 6));
     const active = gvizBool(row, 12);
-    if (!id || !name || name.toLowerCase() === 'material name' || !active || priceCents <= 0) {
+    // Unpriced rows are kept (flagged) rather than dropped — same reasoning as
+    // parseMaterials above. Inactive rows are still skipped: those are the
+    // owner's explicit "not in use" marker, which is a different thing from
+    // "priced later".
+    if (!id || !name || name.toLowerCase() === 'material name' || !active) {
       continue;
     }
     let vendor = gvizString(row, 7);
@@ -263,6 +270,7 @@ function parseInternalMaterials(table: GvizTable): SheetInternalMaterial[] {
       vendor,
       unitAreaSqFt: gvizNumber(row, 10),
       unitLinearFt: gvizNumber(row, 11),
+      unpriced: priceCents <= 0,
     });
   }
   // De-dupe by catalog id, first occurrence wins.

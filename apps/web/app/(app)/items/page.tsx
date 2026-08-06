@@ -124,6 +124,7 @@ export default async function ItemsPage({
         kind: true,
         categories: true,
         isActive: true,
+        sheetKey: true,
         internalCostCents: true,
         markupPercentMilli: true,
         defaultSellPriceCents: true,
@@ -389,15 +390,27 @@ export default async function ItemsPage({
 
                     <div>
                       <MobileLabel>Status</MobileLabel>
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                          it.isActive
-                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
-                            : 'border border-slate-200 bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        {it.isActive ? 'Active' : 'Inactive'}
-                      </span>
+                      {/* An item the Sheet hasn't priced is deactivated on
+                          import, but saying only "Inactive" hides the reason
+                          and the fix. Name it, and say what to do about it. */}
+                      {!it.isActive && it.sheetKey && it.internalCostCents <= 0 ? (
+                        <span
+                          className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900"
+                          title="This item is in the pricing Sheet but has no price yet. Add one in the Sheet and it becomes available in estimates automatically."
+                        >
+                          Price not set
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                            it.isActive
+                              ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
+                              : 'border border-slate-200 bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          {it.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      )}
                     </div>
 
                     <CatalogRowValue

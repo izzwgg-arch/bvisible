@@ -11,11 +11,18 @@ export interface SheetMaterial {
   key: string;
   name: string;
   category: string;
-  /// Cheapest entered vendor price, dollars as cents.
+  /// Cheapest entered vendor price, dollars as cents. 0 when unpriced.
   priceCents: number;
   vendor: string;
   /// Every entered vendor price (for purchasing / vendor pick).
   vendorPrices: Array<{ vendor: string; priceCents: number }>;
+  /// True when the Sheet row carries no price yet. These rows used to be
+  /// dropped on import, which made items added ahead of their price simply
+  /// invisible. They are now carried through so they show up in the Catalog
+  /// as "Price not set", but every surface that produces money — the estimate
+  /// material picker, the shop-order cart — must exclude them so nothing can
+  /// be quoted or ordered at $0.00 by accident.
+  unpriced: boolean;
 }
 
 export interface SheetMachine {
@@ -104,12 +111,16 @@ export interface SheetInternalMaterial {
   spec: string;
   /// Unit label, e.g. "Roll", "Each", "8 oz".
   size: string;
+  /// 0 when the Sheet row has no price yet — see `unpriced`.
   priceCents: number;
   /// Preferred vendor if entered; otherwise a retail vendor detected from
   /// the price-source/notes text (e.g. "Amazon reference: …").
   vendor: string;
   unitAreaSqFt: number;
   unitLinearFt: number;
+  /// True when the Sheet row carries no price yet. Kept out of the
+  /// shop-order cart so nothing is ordered at $0.00.
+  unpriced: boolean;
 }
 
 export interface SheetVendorDirectoryEntry {

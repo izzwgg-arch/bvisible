@@ -44,8 +44,11 @@ export default async function ShopOrderPage() {
   // Sheet's "Meterial price" tab (Amazon / Home Depot / Walmart shop
   // supplies like blue tape). Merge those in so the whole Sheet catalog
   // is orderable — de-duplicated by normalized name so nothing shows twice.
+  // Unpriced rows are skipped: they reach the snapshot so the Catalog can show
+  // them as "Price not set", but a PO line at $0.00 would be sent to a vendor.
   const seenNames = new Set(catalog.map((c) => normalizeCatalogName(c.name)));
   for (const material of data.materials) {
+    if (material.unpriced) continue;
     const norm = normalizeCatalogName(material.name);
     if (!norm || seenNames.has(norm)) continue;
     seenNames.add(norm);
@@ -69,6 +72,7 @@ export default async function ShopOrderPage() {
   // Walmart). Variants differ by spec/size ("3M #94 Tape Primer" 8 oz vs
   // Quart), so de-dupe on name+spec+size — name-only would drop variants.
   for (const item of data.internalMaterials ?? []) {
+    if (item.unpriced) continue; // same reason as above — no $0.00 PO lines
     const fullKey = normalizeCatalogName(`${item.name} ${item.spec} ${item.size}`);
     const nameKey = normalizeCatalogName(item.name);
     if (!fullKey || seenNames.has(fullKey)) continue;
