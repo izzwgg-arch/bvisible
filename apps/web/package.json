@@ -36,7 +36,8 @@
     "vehicles:import:dry-run": "tsx scripts/import-vehicles.ts --dry-run",
     "vehicles:import:recent": "tsx scripts/import-vehicles.ts --recent-years=10",
     "vehicles:import-wrap": "tsx scripts/import-wrap-pricing.ts",
-    "vehicles:import-wrap:dry-run": "tsx scripts/import-wrap-pricing.ts --dry-run"
+    "vehicles:import-wrap:dry-run": "tsx scripts/import-wrap-pricing.ts --dry-run",
+    "sheet:app-sync-header": "tsx scripts/seed-app-sync-header.ts"
   },
   "dependencies": {
     "@bvisible/db": "workspace:*",

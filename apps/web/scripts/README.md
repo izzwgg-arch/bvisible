@@ -91,3 +91,36 @@ cd /opt/bvisible/app/apps/web
 | `6` | Email filter did not match. |
 | `7` | Target has no `passwordHash`. |
 | `8` | Target disabled and `CLEAR_SUPER_ADMIN_DISABLED` not set. |
+
+## seed-app-sync-header.ts
+
+Writes (or repairs) the header row on the Sheet's `APP SYNC` tab, the audit
+log every app→Sheet write lands in. Each entry records the value that was in
+the cell *before* the app touched it plus the exact cell reference, so any
+write can be reversed by hand; this header names those columns.
+
+Idempotent. If the header is already in row 1 it does nothing. If it is
+missing, a blank row is **inserted** above existing entries rather than
+overwriting one, then row 1 is bolded and frozen.
+
+Column order comes from `SYNC_HEADER` in `lib/sheet-sync/writeback.ts` — the
+same constant the logger writes against, so the two cannot drift.
+
+### Required env vars
+
+| Var | Required | Notes |
+|---|---|---|
+| `SHEETS_WRITEBACK_SA_EMAIL` | yes | Service account address. |
+| `SHEETS_WRITEBACK_SA_KEY` | yes | PEM, one line, literal `\n` escapes. |
+| `BVISIBLE_PRICING_SHEET_ID` | no | Defaults to the production Sheet. |
+
+The Sheet must already be shared **Editor** with the service account and the
+`APP SYNC` tab must exist — the app never creates it.
+
+### One-shot command
+
+```bash
+cd /opt/bvisible/app
+( set -a; . /opt/bvisible/shared/env/.env; set +a; \
+  pnpm --filter @bvisible/web run sheet:app-sync-header )
+```
