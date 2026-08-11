@@ -23,6 +23,7 @@ import { EstimateEditor, type EditorBootstrap } from './editor';
 import { EstimateSupportTabs } from './estimate-support-tabs';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 import { EstimateHeaderActions } from './estimate-header-actions';
+import { EstimateSaveButton, EstimateSaveStatus } from './estimate-save-button';
 
 export const metadata = { title: 'Estimate' };
 export const dynamic = 'force-dynamic';
@@ -671,11 +672,13 @@ function EstimateCommandHeader({
           </div>
 
           <div className="flex shrink-0 items-center gap-4">
-            <span className="inline-flex items-start gap-1.5 text-[11px] font-semibold leading-tight text-slate-500">
-              <span className="mt-0.5 h-2 w-2 rounded-full bg-emerald-500" />
-              <span>Auto-saved<br />just now</span>
-            </span>
-              <EstimateHeaderActions estimateId={estimateId} status={status} />
+            {/* Reports the editor's real save state. The old caption
+                here claimed "Auto-saved just now" — there is no
+                autosave, so it told the operator the opposite of the
+                truth whenever changes were pending. */}
+            <EstimateSaveStatus />
+            <EstimateSaveButton />
+            <EstimateHeaderActions estimateId={estimateId} status={status} />
           </div>
       </div>
     </section>

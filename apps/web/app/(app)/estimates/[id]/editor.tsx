@@ -26,6 +26,7 @@ import type { PricingEngine, VendorCostSourceMode } from '@/lib/shop-material/pr
 import type { SaveEstimateInput } from '@/lib/validators';
 import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
 import { moveGroup, moveLinePreservingGroups } from '@/lib/estimate/line-groups';
+import { publishEstimateSaveState } from '@/lib/estimate/estimate-save-bridge';
 import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/estimate-surface';
 import { SelectControl } from '@/components/app/select-control';
 import { registerLineApplier, setAssistantContext } from '@/lib/assistant/context-store';
@@ -663,6 +664,25 @@ export function EstimateEditor({
       setSaving(false);
     }
   }
+
+  // Publish save state to the page header, which renders the Save
+  // button next to Approve / Send / Finalize. The header is a sibling
+  // client component, so a module-level bridge is the only channel.
+  useEffect(() => {
+    publishEstimateSaveState({
+      dirty,
+      saving,
+      readOnly,
+      savedAt: saveState.savedAt ?? null,
+      error: saveState.error,
+      save: () => void handleSave(),
+    });
+    // handleSave is recreated every render but only reads refs, so the
+    // published closure is always safe to call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, saving, readOnly, saveState.savedAt, saveState.error]);
+
+  useEffect(() => () => publishEstimateSaveState(null), []);
 
   // Cmd/Ctrl+S anywhere inside the editor saves. Listening at the
   // editor root (not window) means it only fires when an editor input
