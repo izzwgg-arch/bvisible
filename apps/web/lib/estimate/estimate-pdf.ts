@@ -105,6 +105,8 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
           qtyMilli: true,
           kind: true,
           computedCostCents: true,
+          lineGroupId: true,
+          lineGroupLabel: true,
         },
       },
     },

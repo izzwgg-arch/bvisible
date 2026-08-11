@@ -96,6 +96,8 @@ export async function resolvePublicQuoteByRawToken(
               qtyMilli: true,
               kind: true,
               computedCostCents: true,
+              lineGroupId: true,
+              lineGroupLabel: true,
             },
           },
         },

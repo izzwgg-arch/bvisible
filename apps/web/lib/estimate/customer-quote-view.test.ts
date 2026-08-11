@@ -80,4 +80,47 @@ describe('buildCustomerQuoteLines', () => {
     expect(rows[0]!.description).toBe('Customer bundle package');
     expect(JSON.stringify(rows)).not.toContain('Do not show component');
   });
+
+  it('collapses a grouped bundle into one line named after the bundle', () => {
+    const rows = buildCustomerQuoteLines(
+      [
+        {
+          id: 'm1',
+          description: 'Aluminum composite 1/8" gray',
+          qtyMilli: 4000,
+          kind: EstimateLineKind.MATERIAL,
+          computedCostCents: 600,
+          lineGroupId: 'g1',
+          lineGroupLabel: 'Gray 1/8',
+        },
+        {
+          id: 'mach1',
+          description: 'CNC router',
+          qtyMilli: 2000,
+          kind: EstimateLineKind.MACHINE,
+          computedCostCents: 300,
+          lineGroupId: 'g1',
+          lineGroupLabel: 'Gray 1/8',
+        },
+        {
+          id: 'standalone',
+          description: 'Installation',
+          qtyMilli: 1000,
+          kind: EstimateLineKind.INSTALL,
+          computedCostCents: 100,
+        },
+      ],
+      1000,
+      3000,
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.description).toBe('Gray 1/8');
+    expect(rows[0]!.kindLabel).toBe('Bundle');
+    // The customer never sees the components, only their rolled-up price.
+    expect(JSON.stringify(rows)).not.toContain('CNC router');
+    expect(rows[1]!.description).toBe('Installation');
+    // Collapsing must not lose or invent money.
+    expect(rows.reduce((sum, r) => sum + r.lineSellCents, 0)).toBe(3000);
+  });
 });

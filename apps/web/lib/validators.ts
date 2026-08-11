@@ -336,6 +336,11 @@ export const estimateLineSchema = z.object({
   internalNotes: optionalShort(10000),
   hiddenFromCustomer: z.boolean().optional().default(false),
   customerDescription: optionalShort(240),
+  // Bundle grouping — lines sharing a lineGroupId are components of one
+  // bundle. Round-trips through the editor so the group survives the
+  // replace-all save below.
+  lineGroupId: optionalShort(40),
+  lineGroupLabel: optionalShort(240),
 });
 
 // Bulk save — replaces all lines + meta in one transaction.

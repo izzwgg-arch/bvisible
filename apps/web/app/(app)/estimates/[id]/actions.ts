@@ -204,6 +204,11 @@ export async function saveEstimateAction(
           // R-EST-05 flags survive the replace-all save via the old row id.
           markupExempt: l.id ? exemptIds.has(l.id) : false,
           sourceKind: l.id ? (sourceKindById.get(l.id) ?? null) : null,
+          // Bundle grouping is edited in the grid, so unlike the flags
+          // above it comes straight from the payload rather than the
+          // old row. Members are already contiguous in `data.lines`.
+          lineGroupId: l.lineGroupId ?? null,
+          lineGroupLabel: l.lineGroupId ? (l.lineGroupLabel ?? null) : null,
         })),
       });
     }

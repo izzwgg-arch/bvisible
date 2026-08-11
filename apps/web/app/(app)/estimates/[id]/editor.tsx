@@ -25,6 +25,7 @@ import {
 import type { PricingEngine, VendorCostSourceMode } from '@/lib/shop-material/pricing-engine';
 import type { SaveEstimateInput } from '@/lib/validators';
 import { isEstimateEditorReadOnly } from '@/lib/estimate/estimate-read-only-ui';
+import { moveGroup, moveLinePreservingGroups } from '@/lib/estimate/line-groups';
 import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/estimate-surface';
 import { SelectControl } from '@/components/app/select-control';
 import { registerLineApplier, setAssistantContext } from '@/lib/assistant/context-store';
@@ -151,6 +152,8 @@ export interface EditorBootstrap {
     hiddenFromCustomer: boolean;
     customerDescription: string | null;
     markupExempt: boolean;
+    lineGroupId: string | null;
+    lineGroupLabel: string | null;
   }>;
   machines: ReadonlyArray<{ id: string; name: string; ratePerHourCents: number }>;
   clients: ReadonlyArray<{
@@ -209,6 +212,11 @@ export interface DraftLine {
   // R-EST-05: price already includes markup (Sheet sq-ft / vehicle wrap
   // lines from the guided flow) — excluded from the estimate multiplier.
   markupExempt: boolean;
+  // Bundle grouping. Lines sharing a lineGroupId are components of one
+  // bundle and render as a single collapsible row in the grid. The
+  // label is denormalized onto every member so it survives a save.
+  lineGroupId: string | null;
+  lineGroupLabel: string | null;
 }
 
 interface EditorState {
@@ -228,10 +236,13 @@ export type Action =
   | { type: 'set-estimate-type'; value: EstimateTypeValue }
   | { type: 'set-multiplier'; value: number }
   | { type: 'set-design-flat'; value: number }
-  | { type: 'add-line'; kind: EstimateLineKind; patch?: Partial<DraftLine> }
+  | { type: 'add-line'; kind: EstimateLineKind; patch?: Partial<DraftLine>; afterId?: string }
   | { type: 'remove-line'; id: string }
   | { type: 'move-line'; id: string; dir: -1 | 1 }
   | { type: 'set-line'; id: string; patch: Partial<DraftLine> }
+  | { type: 'set-line-group'; groupId: string; patch: Partial<DraftLine> }
+  | { type: 'remove-line-group'; groupId: string }
+  | { type: 'move-line-group'; groupId: string; dir: -1 | 1 }
   | { type: 'pick-machine'; id: string; machineId: string | null; ratePerHourCents: number | null }
   | { type: 'reset-baseline'; hash: string };
 
@@ -284,6 +295,8 @@ function makeDraftLine(kind: EstimateLineKind): DraftLine {
     hiddenFromCustomer: false,
     customerDescription: null,
     markupExempt: false,
+    lineGroupId: null,
+    lineGroupLabel: null,
   };
 }
 
@@ -337,6 +350,8 @@ function snapshot(s: EditorState): string {
       l.hiddenFromCustomer,
       l.customerDescription,
       l.markupExempt,
+      l.lineGroupId,
+      l.lineGroupLabel,
     ]),
   });
 }
@@ -353,21 +368,39 @@ function reducer(state: EditorState, action: Action): EditorState {
       return { ...state, designFlatCents: action.value };
     case 'add-line': {
       const newLine = { ...makeDraftLine(action.kind), ...action.patch };
+      // `afterId` is how a component gets added *into* a bundle: it
+      // lands right behind the group's last member instead of at the
+      // bottom of the estimate.
+      if (action.afterId) {
+        const at = state.lines.findIndex((l) => l.id === action.afterId);
+        if (at >= 0) {
+          const next = state.lines.slice();
+          next.splice(at + 1, 0, newLine);
+          return { ...state, lines: withTrailingBlank(next) };
+        }
+      }
       return { ...state, lines: withTrailingBlank([...state.lines, newLine]) };
     }
     case 'remove-line':
       return { ...state, lines: withTrailingBlank(state.lines.filter((l) => l.id !== action.id)) };
-    case 'move-line': {
-      const idx = state.lines.findIndex((l) => l.id === action.id);
-      if (idx < 0) return state;
-      const newIdx = idx + action.dir;
-      if (newIdx < 0 || newIdx >= state.lines.length) return state;
-      const next = state.lines.slice();
-      const [item] = next.splice(idx, 1);
-      if (!item) return state;
-      next.splice(newIdx, 0, item);
-      return { ...state, lines: next };
-    }
+    case 'move-line':
+      return { ...state, lines: moveLinePreservingGroups(state.lines, action.id, action.dir) };
+    case 'set-line-group':
+      return {
+        ...state,
+        lines: withTrailingBlank(
+          state.lines.map((l) =>
+            l.lineGroupId === action.groupId ? { ...l, ...action.patch } : l
+          )
+        ),
+      };
+    case 'remove-line-group':
+      return {
+        ...state,
+        lines: withTrailingBlank(state.lines.filter((l) => l.lineGroupId !== action.groupId)),
+      };
+    case 'move-line-group':
+      return { ...state, lines: moveGroup(state.lines, action.groupId, action.dir) };
     case 'set-line':
       return {
         ...state,
@@ -430,6 +463,8 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
     hiddenFromCustomer: l.hiddenFromCustomer,
     customerDescription: l.customerDescription,
     markupExempt: l.markupExempt,
+    lineGroupId: l.lineGroupId,
+    lineGroupLabel: l.lineGroupLabel,
   }));
   const editable = !isEstimateEditorReadOnly(b.estimate.status);
   const withBlank = editable ? withTrailingBlank(lines) : lines;
@@ -606,6 +641,8 @@ export function EstimateEditor({
         internalNotes: l.internalNotes ?? null,
         hiddenFromCustomer: l.hiddenFromCustomer,
         customerDescription: l.customerDescription ?? null,
+        lineGroupId: l.lineGroupId ?? null,
+        lineGroupLabel: l.lineGroupLabel ?? null,
       })),
     };
     try {

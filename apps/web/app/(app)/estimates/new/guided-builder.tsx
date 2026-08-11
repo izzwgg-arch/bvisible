@@ -719,7 +719,16 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
       markupPercent: Number(markupPercent) || 0,
       salesRepId: salesRepId || null,
       intent,
-      lines: cards.flatMap((c) => c.rows),
+      // A card holding more than one row is a bundle. Its rows stay
+      // real estimate lines — they keep their kind, Sheet key and
+      // machine link — but they travel with a shared group key so the
+      // server can tie them back together instead of scattering them
+      // across the estimate as loose items.
+      lines: cards.flatMap((c) =>
+        c.rows.length > 1
+          ? c.rows.map((r) => ({ ...r, groupKey: `card-${c.uid}`, groupLabel: c.label }))
+          : c.rows
+      ),
     });
   }
 

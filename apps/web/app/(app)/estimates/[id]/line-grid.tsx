@@ -15,6 +15,7 @@ import { NumericCell } from '@/components/grid/cell-input';
 import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/estimate/format';
+import { buildLineLayout, type BundleRun } from '@/lib/estimate/line-groups';
 import { SectionCard } from '@/components/estimate/estimate-surface';
 import { VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
 import type { DraftLine, EditorBootstrap } from './editor';
@@ -114,8 +115,10 @@ export function LineGrid({
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [highlight, setHighlight] = useState(0);
   const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set<string>());
   const itemRefs = useRef(new Map<string, HTMLInputElement>());
   const focusLastAfterAdd = useRef(false);
+  const focusAfterAddId = useRef<string | null>(null);
 
   useEffect(() => {
     setMaterialsOpen(window.localStorage.getItem(MATERIALS_SECTION_STORAGE_KEY) === 'true');
@@ -130,6 +133,21 @@ export function LineGrid({
     setTab('catalog');
     setQueries((prev) => ({ ...prev, [last.id]: '' }));
     window.requestAnimationFrame(() => itemRefs.current.get(last.id)?.focus());
+  }, [lines]);
+
+  // Focus the component that was just added into a bundle — it lands
+  // mid-list, so the trailing-blank effect above can't find it.
+  useEffect(() => {
+    const afterId = focusAfterAddId.current;
+    if (!afterId) return;
+    focusAfterAddId.current = null;
+    const at = lines.findIndex((l) => l.id === afterId);
+    const added = at >= 0 ? lines[at + 1] : undefined;
+    if (!added) return;
+    setOpenLineId(added.id);
+    setTab('catalog');
+    setQueries((prev) => ({ ...prev, [added.id]: '' }));
+    window.requestAnimationFrame(() => itemRefs.current.get(added.id)?.focus());
   }, [lines]);
 
   useEffect(() => {
@@ -373,6 +391,50 @@ export function LineGrid({
     [catalogById, lines],
   );
 
+  const layout = useMemo(() => buildLineLayout(lines), [lines]);
+
+  function toggleGroup(groupId: string) {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }
+
+  // Roll-up shown on the bundle header row. Markup-exempt members carry
+  // a final price (R-EST-05), so they pass through untouched instead of
+  // being multiplied a second time.
+  function runTotals(run: BundleRun): { cost: number; sell: number } {
+    let cost = 0;
+    let sell = 0;
+    for (const id of run.memberIds) {
+      const memberCost = lineCosts[id] ?? 0;
+      const member = lines.find((l) => l.id === id);
+      cost += memberCost;
+      sell += member?.markupExempt ? memberCost : Math.round((memberCost * multiplierMilli) / 1000);
+    }
+    return { cost, sell };
+  }
+
+  function addIntoBundle(run: BundleRun) {
+    const lastId = run.memberIds[run.memberIds.length - 1];
+    if (!lastId) return;
+    focusAfterAddId.current = lastId;
+    dispatch({
+      type: 'add-line',
+      kind: EstimateLineKind.MATERIAL,
+      afterId: lastId,
+      patch: {
+        description: '',
+        qtyMilli: 1000,
+        unitCostCents: 0,
+        lineGroupId: run.groupId,
+        lineGroupLabel: run.label,
+      },
+    });
+  }
+
   const content = (
     <div>
       <div className="flex items-start justify-between gap-3 border-b border-[#eadfd3] bg-[#fff4e8] px-4 py-3">
@@ -433,11 +495,34 @@ export function LineGrid({
                 });
               };
 
+              // Bundle plumbing: `run` is the bundle this line belongs
+              // to (if any), `runStart` is set on the line that opens
+              // one — that's where the collapsible header goes.
+              const run = layout.runByLineId.get(line.id) ?? null;
+              const runStart = layout.runByStartIdx.get(idx) ?? null;
+              const groupOpen = run ? openGroups.has(run.groupId) : false;
+              const rowNumber = layout.displayNumber.get(line.id) ?? String(idx + 1);
+
               return (
                 <Fragment key={line.id}>
-                  <tr className="group border-b border-[#f0e4d8] bg-white/90 transition-colors hover:bg-[#fff0e5]/80">
-                    <td className="px-2 py-2 align-middle text-[11px] font-bold tabular-nums text-[#F28744]">
-                      {idx + 1}
+                  {runStart ? (
+                    <BundleGroupRow
+                      run={runStart}
+                      costCents={runTotals(runStart).cost}
+                      sellCents={runTotals(runStart).sell}
+                      open={groupOpen}
+                      readOnly={readOnly}
+                      canMoveUp={runStart.startIdx > 0}
+                      canMoveDown={runStart.endIdx < lines.length - 1}
+                      onToggle={() => toggleGroup(runStart.groupId)}
+                      dispatch={dispatch}
+                    />
+                  ) : null}
+                  {run && !groupOpen ? null : (
+                  <>
+                  <tr className={`group border-b border-[#f0e4d8] transition-colors hover:bg-[#fff0e5]/80 ${run ? 'bg-[#fffdfa]' : 'bg-white/90'}`}>
+                    <td className={`py-2 align-middle text-[11px] font-bold tabular-nums ${run ? 'pl-6 pr-2 text-[#b4b2a9]' : 'px-2 text-[#F28744]'}`}>
+                      {rowNumber}
                     </td>
                     <td className="relative overflow-visible px-2 py-2 align-middle">
                       {readOnly ? (
@@ -445,6 +530,16 @@ export function LineGrid({
                       ) : (
                         <>
                           <div className="flex items-center gap-2">
+                            {run ? (
+                              <button
+                                type="button"
+                                onClick={() => dispatch({ type: 'remove-line', id: line.id })}
+                                aria-label={`Remove ${line.description || 'component'} from bundle ${run.label}`}
+                                className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-rose-100 text-[11px] font-black leading-none text-rose-600 transition hover:bg-rose-200"
+                              >
+                                ×
+                              </button>
+                            ) : null}
                             <input
                               ref={(node) => {
                                 if (node) itemRefs.current.set(line.id, node);
@@ -645,13 +740,15 @@ export function LineGrid({
                     <td className="px-2 py-2 text-right font-black tabular-nums text-[#1C4972]">{formatMoney(sell)}</td>
                     {!readOnly ? (
                       <td className="px-2 py-2 text-right">
-                        <RowMenu
-                          canMoveUp={idx > 0}
-                          canMoveDown={idx < lines.length - 1}
-                          onMoveUp={() => dispatch({ type: 'move-line', id: line.id, dir: -1 })}
-                          onMoveDown={() => dispatch({ type: 'move-line', id: line.id, dir: 1 })}
-                          onRemove={() => dispatch({ type: 'remove-line', id: line.id })}
-                        />
+                        {run ? null : (
+                          <RowMenu
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < lines.length - 1}
+                            onMoveUp={() => dispatch({ type: 'move-line', id: line.id, dir: -1 })}
+                            onMoveDown={() => dispatch({ type: 'move-line', id: line.id, dir: 1 })}
+                            onRemove={() => dispatch({ type: 'remove-line', id: line.id })}
+                          />
+                        )}
                       </td>
                     ) : null}
                   </tr>
@@ -667,6 +764,27 @@ export function LineGrid({
                           readOnly={readOnly}
                           dispatch={dispatch}
                         />
+                      </td>
+                    </tr>
+                  ) : null}
+                  </>
+                  )}
+                  {run && groupOpen && run.endIdx === idx && !readOnly ? (
+                    <tr className="border-b border-[#f0e4d8] bg-[#fffdfa]">
+                      <td />
+                      <td colSpan={10} className="py-2 pl-6 pr-2">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => addIntoBundle(run)}
+                            className="rounded-[6px] border border-dashed border-[#F28744]/50 px-2.5 py-1 text-[11px] font-bold text-[#F28744] transition hover:bg-[#fff0e5]"
+                          >
+                            + Add item into this bundle
+                          </button>
+                          <span className="text-[10px] font-semibold text-[#888780]">
+                            True cost {formatMoney(runTotals(run).cost)} · rolls up to the bundle row above
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ) : null}
@@ -1017,6 +1135,102 @@ function WrapVehiclePicker({
         })
       )}
     </>
+  );
+}
+
+// The single collapsed row a bundle presents to the estimator: name,
+// component count, and the roll-up of every member's cost and sell.
+function BundleGroupRow({
+  run,
+  costCents,
+  sellCents,
+  open,
+  readOnly,
+  canMoveUp,
+  canMoveDown,
+  onToggle,
+  dispatch,
+}: {
+  run: BundleRun;
+  costCents: number;
+  sellCents: number;
+  open: boolean;
+  readOnly: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onToggle: () => void;
+  dispatch: React.Dispatch<Action>;
+}) {
+  const markup = costCents > 0 ? Math.round(((sellCents - costCents) / costCents) * 1000) / 10 : null;
+  const count = run.memberIds.length;
+
+  return (
+    <tr className={`border-b border-[#f0e4d8] transition-colors ${open ? 'bg-[#fff8f1]' : 'bg-white'}`}>
+      <td className="px-2 py-2 align-middle text-[11px] font-bold tabular-nums text-[#F28744]">
+        {run.blockNumber}
+      </td>
+      <td className="px-2 py-2 align-middle">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-label={`${open ? 'Collapse' : 'Expand'} bundle ${run.label}`}
+            className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] text-[13px] font-black leading-none text-[#F28744] transition hover:bg-[#fff0e5]"
+          >
+            {open ? '▾' : '▸'}
+          </button>
+          {readOnly ? (
+            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#1C4972]">{run.label}</span>
+          ) : (
+            <input
+              value={run.label}
+              onChange={(event) =>
+                dispatch({
+                  type: 'set-line-group',
+                  groupId: run.groupId,
+                  patch: { lineGroupLabel: event.currentTarget.value },
+                })
+              }
+              aria-label={`Bundle ${run.blockNumber} name`}
+              className="min-w-0 flex-1 rounded-[6px] border border-transparent bg-transparent px-2 py-1.5 text-[13px] font-semibold text-[#1C4972] outline-none transition focus:border-[#F28744] focus:bg-white focus:ring-2 focus:ring-[#F28744]/15"
+            />
+          )}
+          <span className="shrink-0 rounded-full border border-[#F28744]/25 bg-[#fff0e5] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#F28744]">
+            Bundle
+          </span>
+        </div>
+      </td>
+      <td className="px-2 py-2 align-middle text-[10px] font-bold text-[#6d7480]">
+        {count} item{count === 1 ? '' : 's'}
+      </td>
+      <td className="px-2 py-2 text-right text-[11px] font-semibold tabular-nums text-[#1C4972]/60">1</td>
+      <td className="px-2 py-2" />
+      <td className="px-2 py-2 text-right text-[12px] font-semibold tabular-nums text-[#1C4972]">
+        {formatMoney(costCents)}
+      </td>
+      <td className="px-2 py-2 text-right text-[12px] font-semibold tabular-nums text-[#1C4972]">
+        {formatMoney(sellCents)}
+      </td>
+      <td className="px-2 py-2 text-right text-[12px] font-semibold tabular-nums text-[#159b63]">
+        {markup == null ? '-' : `${markup.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}
+      </td>
+      <td className="px-2 py-2" />
+      <td className="px-2 py-2 text-right text-[12px] font-black tabular-nums text-[#1C4972]">
+        {formatMoney(sellCents)}
+      </td>
+      {!readOnly ? (
+        <td className="px-2 py-2 text-right">
+          <RowMenu
+            canMoveUp={canMoveUp}
+            canMoveDown={canMoveDown}
+            onMoveUp={() => dispatch({ type: 'move-line-group', groupId: run.groupId, dir: -1 })}
+            onMoveDown={() => dispatch({ type: 'move-line-group', groupId: run.groupId, dir: 1 })}
+            onRemove={() => dispatch({ type: 'remove-line-group', groupId: run.groupId })}
+          />
+        </td>
+      ) : null}
+    </tr>
   );
 }
 

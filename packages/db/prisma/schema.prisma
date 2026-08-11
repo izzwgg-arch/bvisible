@@ -872,6 +872,15 @@ model EstimateLineItem {
   /// Guided-flow provenance: READY_ITEM | BUNDLE | VEHICLE_WRAP |
   /// SQFT_ITEM | CUSTOM (null for grid-authored lines).
   sourceKind                String?               @db.VarChar(30)
+  /// Bundle grouping. Lines sharing a lineGroupId are the components of
+  /// one bundle: they stay real lines (own kind, catalog link, markup
+  /// rule, PO expansion) but render as a single collapsible row in the
+  /// editor and as a single line on the customer quote. Null for
+  /// standalone lines. Members are kept contiguous by sortOrder.
+  lineGroupId               String?               @db.VarChar(40)
+  /// Display name of the bundle, denormalized onto every member so the
+  /// group survives the editor's replace-all save.
+  lineGroupLabel            String?
   createdAt                 DateTime              @default(now())
   updatedAt                 DateTime              @updatedAt
 
@@ -886,6 +895,7 @@ model EstimateLineItem {
   @@index([estimateId, sortOrder])
   @@index([tenantId, catalogItemId])
   @@index([tenantId, selectedVendorId])
+  @@index([estimateId, lineGroupId])
   @@map("estimate_line_items")
 }
 

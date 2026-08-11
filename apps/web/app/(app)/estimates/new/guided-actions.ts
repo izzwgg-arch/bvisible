@@ -6,7 +6,13 @@
 // client on the fly when needed, and persists a completely standard
 // Estimate + EstimateLineItem set — quotes, approval, PO creation, and
 // finalize gates all behave exactly as before.
+//
+// Rows the builder showed under one card (a bundle or a custom build)
+// arrive tagged with a shared groupKey and stay tied together as a
+// lineGroupId. They remain ordinary lines — the grouping only changes
+// how the editor and the customer quote present them.
 
+import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { prisma } from '@bvisible/db';
@@ -15,6 +21,7 @@ import { writeAuditLog } from '@/lib/auth/audit';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { nextEstimateNumber } from '@/lib/estimate/number';
+import { assignBundleGroupIds } from '@/lib/estimate/line-groups';
 
 const guidedLineSchema = z.object({
   kind: z.enum(['MATERIAL', 'MACHINE', 'LABOR', 'DESIGN', 'INSTALL', 'MISC']),
@@ -27,6 +34,10 @@ const guidedLineSchema = z.object({
   sheetKey: z.string().trim().max(400).nullish(),
   machineName: z.string().trim().max(200).nullish(),
   notes: z.string().trim().max(2000).nullish(),
+  /// Client-side bundle key — every row the builder showed under one
+  /// card carries the same value. Swapped for a real lineGroupId below.
+  groupKey: z.string().trim().max(60).nullish(),
+  groupLabel: z.string().trim().max(240).nullish(),
 });
 
 const guidedEstimateSchema = z.object({
@@ -141,6 +152,13 @@ export async function createGuidedEstimateAction(
     for (const m of machines) machineByName.set(m.name, m.id);
   }
 
+  // Bundles: turn each client-side card key into a real lineGroupId so
+  // the components stay one bundle in the editor.
+  const groupIdByKey = assignBundleGroupIds(
+    data.lines.map((l) => l.groupKey),
+    randomUUID
+  );
+
   // 200% markup → ×3.000 multiplier. Guided estimates carry no automatic
   // design flat fee — bundles/custom builds add design lines explicitly.
   const multiplierMilli = Math.round((1 + data.markupPercent / 100) * 1000);
@@ -192,6 +210,9 @@ export async function createGuidedEstimateAction(
           machineId: l.machineName ? (machineByName.get(l.machineName) ?? null) : null,
           catalogItemId: l.sheetKey ? (catalogByKey.get(l.sheetKey) ?? null) : null,
           notes: l.notes ?? null,
+          lineGroupId: l.groupKey ? (groupIdByKey.get(l.groupKey) ?? null) : null,
+          lineGroupLabel:
+            l.groupKey && groupIdByKey.has(l.groupKey) ? (l.groupLabel ?? null) : null,
         })),
       });
     }
@@ -213,6 +234,7 @@ export async function createGuidedEstimateAction(
       via: 'guided_flow',
       markupPercent: data.markupPercent,
       lineCount: data.lines.length,
+      bundleCount: groupIdByKey.size,
       intent: data.intent,
     },
   });
