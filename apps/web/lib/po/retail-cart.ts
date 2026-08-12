@@ -7,7 +7,16 @@
 export const RETAIL_VENDOR_RE =
   /amazon|home\s*depot|walmart|lowe'?s|staples|office\s*depot|target|best\s*buy|ebay/i;
 
+/// A bare SKU is only trusted as an ASIN in the modern B0 form — the SKU
+/// column holds arbitrary vendor part numbers, and a loose 10-char rule
+/// would turn "ABC1234567" into a bogus cart entry.
 export const ASIN_RE = /^B0[A-Z0-9]{8}$/i;
+
+/// Inside a /dp/ or /gp/product/ path the value is positionally unambiguous,
+/// so any 10-char alphanumeric counts (older non-B0 ASINs included). The
+/// strict rule above used to be applied here too, which silently discarded
+/// perfectly good ASINs pulled from a product URL.
+const ASIN_IN_URL_RE = /^[A-Z0-9]{10}$/i;
 
 export interface RetailCartLine {
   name: string;
@@ -39,7 +48,7 @@ export function extractAsin(sku: string | null | undefined, url: string | null |
   if (ASIN_RE.test(s)) return s.toUpperCase();
   const u = normalizeExternalUrl(url);
   const m = /\/(?:dp|gp\/product|product)\/([A-Z0-9]{10})(?:[/?#]|$)/i.exec(u);
-  if (m && ASIN_RE.test(m[1]!)) return m[1]!.toUpperCase();
+  if (m && ASIN_IN_URL_RE.test(m[1]!)) return m[1]!.toUpperCase();
   return null;
 }
 
@@ -106,6 +115,25 @@ export function buildRetailItemLink(
   if (/office\s*depot/i.test(vendorName)) return `https://www.officedepot.com/catalog/search.do?Ntt=${q}`;
   if (/ebay/i.test(vendorName)) return `https://www.ebay.com/sch/i.html?_nkw=${q}`;
   return '';
+}
+
+/// Every line of a retail order paired with the best link available for it.
+///
+/// The point is that `href` is never empty for a known store: stored product
+/// URL → /dp/ from an ASIN → store search on the SKU or item name. A cart URL
+/// needs an ASIN for EVERY line and is therefore null far more often than not
+/// (the Sheet's shop-supply rows carried no SKU or URL at all until the
+/// Internal Materials tab gained cols 13/14). When that happens the office
+/// still gets a one-click path to each product instead of a dead panel.
+export function buildRetailItemLinks(
+  vendorName: string,
+  items: RetailCartLine[]
+): Array<{ name: string; qty: number; href: string }> {
+  return items.map((i) => ({
+    name: i.name,
+    qty: Math.max(1, Math.ceil(i.qty)),
+    href: buildRetailItemLink(vendorName, i.sku, i.name, i.url),
+  }));
 }
 
 /// Office review draft email — vendor, items, quantities, prices, links,

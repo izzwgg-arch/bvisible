@@ -46,6 +46,10 @@ export type AuditAction =
   | 'po_attachment_deleted'
   | 'po_note_added'
   | 'po_sent'
+  | 'po_send_failed'
+  | 'po_receiving_updated'
+  | 'po_receiving_mark_all'
+  | 'po_receiving_undo'
   | 'po_office_draft_emailed'
   | 'po_deleted'
   | 'po_draft_admin_notified'
@@ -106,7 +110,9 @@ export type AuditAction =
   | 'sheet_price_override_set'
   | 'sheet_price_override_reset'
   | 'assistant_settings_saved'
-  | 'assistant_record_restored';
+  | 'assistant_record_restored'
+  | 'assistant_memory_saved'
+  | 'assistant_memory_forgotten';
 
 export interface AuditEntry {
   action: AuditAction;

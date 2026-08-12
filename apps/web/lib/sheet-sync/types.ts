@@ -116,8 +116,19 @@ export interface SheetInternalMaterial {
   /// Preferred vendor if entered; otherwise a retail vendor detected from
   /// the price-source/notes text (e.g. "Amazon reference: …").
   vendor: string;
+  /// The Sheet's explicit preferred-vendor entry (col 7) only — '' when the
+  /// row has none and `vendor` came from a retail hint. Optional because
+  /// snapshots cached before this field existed won't carry it.
+  preferredVendor?: string;
   unitAreaSqFt: number;
   unitLinearFt: number;
+  /// Product page URL for retail items ("www.amazon.com/dp/B0…"). Empty when
+  /// the Sheet row has none. Without this (or an ASIN in `vendorSku`) the
+  /// shop-order flow cannot build an Amazon cart and falls back to per-item
+  /// store searches.
+  productUrl: string;
+  /// Vendor SKU / Amazon ASIN. Empty when the Sheet row has none.
+  vendorSku: string;
   /// True when the Sheet row carries no price yet. Kept out of the
   /// shop-order cart so nothing is ordered at $0.00.
   unpriced: boolean;
@@ -160,6 +171,18 @@ export interface SheetSyncSnapshot {
   lastError: string | null;
   syncedAt: Date | null;
 }
+
+/// The "Internal Materials" tab's retail columns — the only place a shop
+/// supply's Amazon ASIN or product page can be recorded. Kept here so the
+/// parser and the header-seeding script cannot drift apart: if these move,
+/// both follow.
+///
+/// The tab shipped with 13 columns (A–M, ending in "Active"); N and O were
+/// appended afterwards and are optional — rows without them read as ''.
+export const INTERNAL_MATERIALS_TAB = 'Internal Materials';
+export const INTERNAL_MATERIALS_PRODUCT_URL_COL = 13; // N
+export const INTERNAL_MATERIALS_SKU_COL = 14; // O
+export const INTERNAL_MATERIALS_RETAIL_HEADER = ['Product URL', 'SKU / ASIN'] as const;
 
 export function sheetItemKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');

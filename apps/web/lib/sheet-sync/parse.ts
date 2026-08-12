@@ -13,6 +13,8 @@ import {
   type GvizTable,
 } from './gviz';
 import {
+  INTERNAL_MATERIALS_PRODUCT_URL_COL,
+  INTERNAL_MATERIALS_SKU_COL,
   sheetItemKey,
   type SheetAlias,
   type SheetBundle,
@@ -230,7 +232,15 @@ function parseVendorCatalog(table: GvizTable): SheetVendorCatalogItem[] {
 /// primers, retail items). Cols: 0 catalog id · 1 category · 2 subcategory ·
 /// 3 material name · 4 spec · 5 size/unit · 6 price · 7 preferred vendor ·
 /// 8 price source · 9 notes · 10 unit area sq ft · 11 unit linear ft ·
-/// 12 active. When no preferred vendor is entered, a known retail vendor
+/// 12 active · 13 product URL · 14 vendor SKU / ASIN.
+///
+/// 13 and 14 are optional and were added after the tab shipped — rows
+/// predating them simply read as ''. They are what makes the shop-order
+/// retail cart work: an Amazon PO can only build a real add-to-cart URL when
+/// every line resolves to an ASIN, and this tab is where the Amazon shop
+/// supplies live. With both blank, the flow degrades to store searches.
+///
+/// When no preferred vendor is entered, a known retail vendor
 /// mentioned in the price-source/notes text is used (e.g. "Amazon
 /// reference: blue painter tape…") so the shop-order retail-cart flow works.
 const RETAIL_VENDOR_HINTS: Array<[RegExp, string]> = [
@@ -254,7 +264,8 @@ function parseInternalMaterials(table: GvizTable): SheetInternalMaterial[] {
     if (!id || !name || name.toLowerCase() === 'material name' || !active) {
       continue;
     }
-    let vendor = gvizString(row, 7);
+    const preferredVendor = gvizString(row, 7);
+    let vendor = preferredVendor;
     if (!vendor) {
       const hintText = `${gvizString(row, 8)} ${gvizString(row, 9)}`;
       vendor = RETAIL_VENDOR_HINTS.find(([re]) => re.test(hintText))?.[1] ?? '';
@@ -268,8 +279,11 @@ function parseInternalMaterials(table: GvizTable): SheetInternalMaterial[] {
       size: gvizString(row, 5),
       priceCents,
       vendor,
+      preferredVendor,
       unitAreaSqFt: gvizNumber(row, 10),
       unitLinearFt: gvizNumber(row, 11),
+      productUrl: gvizString(row, INTERNAL_MATERIALS_PRODUCT_URL_COL),
+      vendorSku: gvizString(row, INTERNAL_MATERIALS_SKU_COL),
       unpriced: priceCents <= 0,
     });
   }

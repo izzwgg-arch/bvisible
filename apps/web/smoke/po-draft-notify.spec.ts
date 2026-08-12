@@ -1,12 +1,14 @@
 /**
- * Draft-PO admin notification + catalog auto-add + morning reminder smoke.
+ * Shop-order office notification + catalog auto-add + morning reminder smoke.
  *
  * Proves, against a running app + real DB + real SMTP transport:
- *  1. Creating a shop order (Amazon + Home Depot custom items) creates
- *     draft POs and emails every admin account.
+ *  1. Placing a shop order with retail items (Amazon + Home Depot custom
+ *     items) creates one PO per vendor, marks them SENT, and emails every
+ *     admin the office reminder with store links.
  *  2. Items not in the catalog auto-add themselves (visible in /items).
  *  3. The PO timeline records the admin notification.
- *  4. The morning reminder tick re-emails admins about POs still in DRAFT.
+ *  4. Saving another order as a draft leaves it in DRAFT, and the morning
+ *     reminder tick re-emails admins about POs still in DRAFT.
  *  5. (When SMOKE_SINK_DIR is set — local runs with the scratchpad SMTP
  *     sink) the captured emails contain the store links.
  *
@@ -17,12 +19,13 @@
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { loginAsAdmin, requireSmokeCredentials } from './auth';
 
 const RUN_ID = `${Date.now()}`.slice(-6);
 const AMAZON_ITEM = `SMOKE-E2E Amazon cam strap ${RUN_ID}`;
 const HD_ITEM = `SMOKE-E2E HD hex bolt ${RUN_ID}`;
+const DRAFT_ITEM = `SMOKE-E2E draft blade ${RUN_ID}`;
 
 function readSinkEmails(dir: string): string[] {
   return readdirSync(dir)
@@ -39,41 +42,49 @@ function decodeQp(raw: string): string {
     .replace(/=([0-9A-F]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
 }
 
-test.describe.serial('Draft PO admin notification + catalog auto-add + reminder', () => {
+async function addCustomMaterial(
+  page: Page,
+  name: string,
+  vendor: string,
+  price: string
+): Promise<void> {
+  await page.getByRole('button', { name: /add a material not listed/i }).click();
+  await page.getByPlaceholder('What does the shop need?').fill(name);
+  await page.getByPlaceholder('Vendor name').fill(vendor);
+  await page.locator('input[type="number"][step="0.01"]').first().fill(price);
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+}
+
+test.describe.serial('Shop order office notification + catalog auto-add + reminder', () => {
   test.beforeAll(() => {
     requireSmokeCredentials();
   });
 
   let poNumbers: string[] = [];
 
-  test('shop order → draft POs + admin email + catalog auto-add', async ({ page }) => {
+  test('shop order → SENT POs + office reminder email + catalog auto-add', async ({ page }) => {
     await test.step('Login', async () => {
       await loginAsAdmin(page);
     });
 
     await test.step('Create shop order with two custom retail items', async () => {
       await page.goto('/purchase-orders/shop-order');
-      await expect(page.getByRole('heading', { name: /what materials do you need/i })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /order materials/i })).toBeVisible();
 
-      for (const [name, vendor, price] of [
-        [AMAZON_ITEM, 'Amazon', '19.99'],
-        [HD_ITEM, 'Home Depot', '4.50'],
-      ] as const) {
-        await page.getByRole('button', { name: /order a custom material/i }).click();
-        await page.getByPlaceholder('What does the shop need?').fill(name);
-        await page.getByPlaceholder('Vendor name').fill(vendor);
-        await page.locator('input[type="number"][step="0.01"]').first().fill(price);
-        await page.getByRole('button', { name: 'Add', exact: true }).click();
-      }
+      await addCustomMaterial(page, AMAZON_ITEM, 'Amazon', '19.99');
+      await addCustomMaterial(page, HD_ITEM, 'Home Depot', '4.50');
+
+      await page.getByRole('button', { name: 'Review order' }).click();
+      await expect(page.getByRole('heading', { name: /^Review order$/ })).toBeVisible();
 
       // Popup carts may open from the same click (retail auto-open) — ignore.
-      await page.getByRole('button', { name: /create pos? — review before sending/i }).click();
-      await expect(page.getByRole('heading', { name: /draft POs? created/i })).toBeVisible({
-        timeout: 45_000,
-      });
+      await page.getByRole('button', { name: /add items to amazon cart/i }).click();
+      await expect(
+        page.getByRole('heading', { name: /order placed|order created/i })
+      ).toBeVisible({ timeout: 45_000 });
     });
 
-    await test.step('Review screen lists one PO per vendor', async () => {
+    await test.step('Results screen lists one PO per vendor', async () => {
       const body = await page.locator('main').innerText();
       const matches = body.match(/PO-\d{6}/g) ?? [];
       poNumbers = [...new Set(matches)];
@@ -92,7 +103,7 @@ test.describe.serial('Draft PO admin notification + catalog auto-add + reminder'
       const link = page.getByRole('link', { name: poNumbers[0] }).first();
       await link.click();
       await page.waitForURL(/\/purchase-orders\//);
-      // The notification is fire-and-forget after PO creation — reload
+      // The notification lands just before the PO flips to SENT — reload
       // until the timeline event appears (up to ~20s).
       let found = false;
       for (let i = 0; i < 10 && !found; i++) {
@@ -104,6 +115,22 @@ test.describe.serial('Draft PO admin notification + catalog auto-add + reminder'
       }
       expect(found).toBe(true);
     });
+  });
+
+  test('saving as draft keeps the PO in DRAFT for the reminder tick', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/purchase-orders/shop-order');
+    await expect(page.getByRole('heading', { name: /order materials/i })).toBeVisible();
+
+    await addCustomMaterial(page, DRAFT_ITEM, 'Home Depot', '2.25');
+    await page.getByRole('button', { name: /save as draft/i }).click();
+    await expect(page.getByRole('heading', { name: /draft(s)? saved/i })).toBeVisible({
+      timeout: 45_000,
+    });
+
+    // The draft shows under the Ordered Materials DRAFTS section.
+    await page.goto('/purchase-orders');
+    await expect(page.getByText(/drafts/i).first()).toBeVisible({ timeout: 20_000 });
   });
 
   test('morning reminder tick re-notifies admins about drafts', async ({ page }) => {

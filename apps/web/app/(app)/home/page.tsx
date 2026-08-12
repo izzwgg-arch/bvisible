@@ -98,7 +98,7 @@ export default async function HomePage() {
           href="/purchase-orders/shop-order"
           kicker="Shop"
           title="Order materials"
-          body="Add what the shop needs. We split it by the lowest-price vendor and create separate purchase orders."
+          body="Add what the shop needs. The preferred vendor is picked automatically (best price otherwise) with one purchase order per vendor."
           cta="Open purchasing"
           tone="dark"
         />

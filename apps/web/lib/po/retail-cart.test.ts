@@ -4,6 +4,7 @@ import {
   buildOfficeDraftEmail,
   buildRetailCartUrl,
   buildRetailItemLink,
+  buildRetailItemLinks,
   extractAsin,
   isRetailVendor,
   normalizeExternalUrl,
@@ -39,6 +40,12 @@ describe('extractAsin', () => {
   it('returns null when nothing resolvable', () => {
     expect(extractAsin('SKU123', 'https://www.homedepot.com/p/123')).toBeNull();
   });
+  it('accepts a non-B0 ASIN inside a /dp/ url (position makes it unambiguous)', () => {
+    expect(extractAsin('', 'https://www.amazon.com/dp/0306406152')).toBe('0306406152');
+  });
+  it('still refuses a bare 10-char sku that is not an ASIN', () => {
+    expect(extractAsin('ABC1234567', '')).toBeNull();
+  });
 });
 
 describe('buildAmazonCartUrl', () => {
@@ -71,6 +78,28 @@ describe('buildRetailCartUrl', () => {
     expect(
       buildRetailCartUrl('Walmart', [{ name: 'x', qty: 1, url: '', sku: '', unitPriceCents: 1 }])
     ).toBeNull();
+  });
+});
+
+describe('buildRetailItemLinks', () => {
+  // The regression: with no cart URL the review panel filtered on the stored
+  // product url — blank for every shop supply — so the office got a banner
+  // claiming a cart had opened and not one actionable link.
+  it('gives every line a link even with no sku and no url', () => {
+    const links = buildRetailItemLinks('Amazon', [
+      { name: 'Blue painters tape', qty: 3, url: '', sku: '', unitPriceCents: 799 },
+      { name: '3M #94 Tape Primer', qty: 0.5, url: '', sku: '', unitPriceCents: 1200 },
+    ]);
+    expect(links.every((l) => l.href.startsWith('https://'))).toBe(true);
+    expect(links[0]!.href).toBe('https://www.amazon.com/s?k=Blue%20painters%20tape');
+    expect(links[0]!.qty).toBe(3);
+    expect(links[1]!.qty).toBe(1); // partial qty rounds UP — carts take whole units
+  });
+  it('prefers the real product page when the sheet has one', () => {
+    const links = buildRetailItemLinks('Amazon', [
+      { name: 'Blue tape', qty: 1, url: 'www.amazon.com/dp/B0ABCDEFGH', sku: '', unitPriceCents: 799 },
+    ]);
+    expect(links[0]!.href).toBe('https://www.amazon.com/dp/B0ABCDEFGH');
   });
 });
 

@@ -363,6 +363,7 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">Auto-saved just now</span>
           <Link href="/purchase-orders" className="rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50">Back</Link>
+          <Link href={`/po-print/${bootstrap.po.id}` as never} target="_blank" className="rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50">Print / PDF</Link>
           <button type="button" onClick={save} disabled={saving || !dirty} className="rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
           <button type="button" onClick={send} disabled={sending || lines.length === 0} className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12px] font-bold text-white shadow-[0_14px_28px_rgba(47,90,243,0.22)] hover:opacity-90 disabled:opacity-50">Send PO</button>
           <button type="button" onClick={markReceived} className="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] font-bold text-emerald-700 hover:bg-emerald-100">Mark Received</button>

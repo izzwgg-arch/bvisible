@@ -14,8 +14,8 @@ async function findPoLink(
   page: Page,
   predicate: (number: string) => boolean,
 ): Promise<{ href: string; number: string } | null> {
-  await page.goto('/purchase-orders');
-  await expect(page.getByRole('heading', { level: 1, name: 'Purchase orders' })).toBeVisible();
+  await page.goto('/purchase-orders/all');
+  await expect(page.getByRole('heading', { level: 1, name: 'All purchase orders' })).toBeVisible();
 
   const rows = page.locator('tbody tr');
   const count = await rows.count();
@@ -51,7 +51,8 @@ test.describe.serial('PO lifecycle smoke', () => {
 
     await test.step('Route smoke — admin surfaces load', async () => {
       const routes: ReadonlyArray<[string, RegExp]> = [
-        ['/purchase-orders', /^Purchase orders$/],
+        ['/purchase-orders', /^Ordered Materials$/],
+        ['/purchase-orders/all', /^All purchase orders$/],
         ['/admin/email-ingestion', /^Email ingestion$/],
         ['/admin/ocr-review', /^Receipt OCR review$/],
         ['/admin/reconciliation', /^PO reconciliation inbox$/],

@@ -32,6 +32,7 @@ const KIND_ICON: Record<POEventKind, string> = {
   OPERATOR_RECEIVED_COMPLETE: '▣',
   VENDOR_PO_SENT: '→',
   VENDOR_PO_SEND_FAILED: '!',
+  RECEIVING: '▤',
 };
 
 const VENDOR_KINDS = new Set<POEventKind>([

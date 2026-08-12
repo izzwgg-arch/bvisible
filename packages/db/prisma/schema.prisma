@@ -198,6 +198,10 @@ enum POEventKind {
   OPERATOR_RECEIVED_COMPLETE
   VENDOR_PO_SENT
   VENDOR_PO_SEND_FAILED
+  /// Shop receiving checklist (Ordered Materials): full/partial receipts,
+  /// corrections, reversals, mark-all-arrived, and undo. Details live in
+  /// metadata (lineId, action, delta, totals, unit, description snapshot).
+  RECEIVING
 }
 
 // Deterministic email/snippet/filename price extraction (Phase 10).
@@ -499,6 +503,24 @@ model SheetSyncState {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("sheet_sync_state")
+}
+
+/// Idempotency ledger for the shop-order flow. The client sends a random
+/// requestId with each submission; a replay (double-click, refresh,
+/// network retry) hits the (tenantId, requestId) unique key and gets the
+/// stored result back instead of creating duplicate POs / emails / carts.
+/// Scalar tenantId on purpose — this is a dedupe ledger, not domain data.
+model ShopOrderSubmission {
+  id          String   @id @default(cuid())
+  tenantId    String
+  requestId   String   @db.VarChar(80)
+  createdById String
+  /// ShopOrderResult.created snapshot, written after the submission finishes.
+  resultJson  Json?
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, requestId])
+  @@map("shop_order_submissions")
 }
 
 model User {

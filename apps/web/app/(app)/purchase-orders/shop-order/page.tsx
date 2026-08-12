@@ -1,11 +1,13 @@
 import Link from 'next/link';
+import { prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/app-shell';
 import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
+import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { loadSmtpConfigFromDb, MailerConfigError } from '@/lib/mailer';
 import { ShopOrderFlow, type CatalogEntry } from './shop-order-flow';
 
-export const metadata = { title: 'Shop order' };
+export const metadata = { title: 'Order materials' };
 export const dynamic = 'force-dynamic';
 
 /// Loose name key for de-duplicating the merged catalog (case,
@@ -20,11 +22,40 @@ function normalizeCatalogName(name: string): string {
 export default async function ShopOrderPage() {
   const me = await requireTenantId();
 
-  const [snapshot, smtp] = await Promise.all([
+  const [snapshot, smtp, preferredRows] = await Promise.all([
     getSheetSnapshot(me.tenantId),
     loadSmtpConfigFromDb(),
+    // Items catalog rows with a configured preferred vendor. The Sheet has
+    // no preferred column for its Vendor Catalog / Meterial price tabs, so
+    // this is where the shop's preferred-vendor choices live for those.
+    prisma.shopMaterialItem.findMany({
+      where: { tenantId: me.tenantId, isActive: true, preferredVendorId: { not: null } },
+      select: {
+        nameNormalized: true,
+        sheetKey: true,
+        preferredVendor: { select: { name: true } },
+      },
+    }),
   ]);
   const data = snapshot.data;
+
+  // Preferred vendor lookup: by sheetKey (exact Sheet identity) and by
+  // normalized name (covers Vendor Catalog rows that sync by name).
+  const preferredBySheetKey = new Map<string, string>();
+  const preferredByName = new Map<string, string>();
+  for (const row of preferredRows) {
+    const vendorName = row.preferredVendor?.name;
+    if (!vendorName) continue;
+    if (row.sheetKey) preferredBySheetKey.set(row.sheetKey, vendorName);
+    if (row.nameNormalized) preferredByName.set(row.nameNormalized, vendorName);
+  }
+  const preferredFor = (name: string, sheetKey?: string): string => {
+    if (sheetKey) {
+      const hit = preferredBySheetKey.get(sheetKey);
+      if (hit) return hit;
+    }
+    return preferredByName.get(normalizeVendorItemName(name)) ?? '';
+  };
 
   const catalog: CatalogEntry[] = data.vendorCatalog.map((item) => ({
     id: item.id,
@@ -38,6 +69,7 @@ export default async function ShopOrderPage() {
     vendorPrices: item.vendorPrices,
     vendorSku: item.vendorSku,
     productUrl: item.productUrl,
+    preferredVendor: preferredFor(item.name),
   }));
 
   // The Vendor Catalog tab alone misses materials that only exist on the
@@ -62,8 +94,14 @@ export default async function ShopOrderPage() {
       priceCents: material.priceCents,
       vendor: material.vendor,
       vendorPrices: material.vendorPrices,
+      // Deliberately blank: the "Meterial price" tab reads its vendor prices
+      // from every column after index 2 by label, so fixed trailing columns
+      // can't be added there without ambiguity. Retail items belong on the
+      // Internal Materials tab, which does carry URL/SKU. Anything landing
+      // here falls back to per-item store searches.
       vendorSku: '',
       productUrl: '',
+      preferredVendor: preferredFor(material.name, material.key),
     });
   }
 
@@ -88,8 +126,14 @@ export default async function ShopOrderPage() {
       priceCents: item.priceCents,
       vendor: item.vendor,
       vendorPrices: item.vendor ? [{ vendor: item.vendor, priceCents: item.priceCents }] : [],
-      vendorSku: '',
-      productUrl: '',
+      // Sheet cols 13/14 on this tab. These are the ONLY source of an Amazon
+      // ASIN for shop supplies — the Vendor Catalog tab covers sign materials
+      // (Grimco/S&F), not the retail items ordered here.
+      vendorSku: item.vendorSku,
+      productUrl: item.productUrl,
+      // Col 7 on this tab is the explicit preferred vendor. Snapshots cached
+      // before the field existed fall back to the Items-catalog lookup.
+      preferredVendor: item.preferredVendor ?? preferredFor(item.name),
     });
   }
 
@@ -103,32 +147,25 @@ export default async function ShopOrderPage() {
   return (
     <>
       <PageHeader
-        title="What materials do you need?"
-        subtitle="Type the material name — misspellings are okay. The lowest-price vendor is selected first, but you can change it on any line."
+        title="Order materials"
+        subtitle="Search, add quantities, and review your order."
         actions={
           <Link
             href="/purchase-orders"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            className="inline-flex items-center justify-center gap-1.5 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
           >
-            All purchase orders
+            <span aria-hidden>↺</span> Past orders
           </Link>
         }
       />
 
-      <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-1.5 text-[12px] text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
-        <span className={`h-2 w-2 rounded-full ${sheetOk ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-        {sheetOk ? (
-          <span>
-            Live Sheet · {catalog.length} orderable materials · lowest vendors selected
-            automatically
-          </span>
-        ) : (
-          <span>
-            Pricing Sheet unavailable{snapshot.lastError ? ` — ${snapshot.lastError}` : ''}. Custom
-            materials still work.
-          </span>
-        )}
-      </div>
+      {sheetOk ? null : (
+        <div className="mb-4 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-900">
+          Material list is temporarily unavailable
+          {snapshot.lastError ? ` — ${snapshot.lastError}` : ''}. You can still add custom
+          materials.
+        </div>
+      )}
 
       <ShopOrderFlow
         catalog={catalog}

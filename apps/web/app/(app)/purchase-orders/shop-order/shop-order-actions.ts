@@ -1,20 +1,31 @@
 'use server';
 
 // Shop-order flow: one search-driven materials request, auto-split into
-// one PurchaseOrder per vendor (lowest-price vendor preselected in the
-// UI, changeable per line). Creates completely standard PO rows —
-// detail pages, QBO numbers, receipt OCR, reconciliation, and lifecycle
-// queues all apply unchanged. Optional vendor email goes through the
-// tenant's existing SMTP with a link-free plain document body.
+// one PurchaseOrder per vendor (preferred vendor preselected when the
+// catalog has one, otherwise the cheapest; changeable per line). Creates
+// completely standard PO rows — detail pages, QBO numbers, receipt OCR,
+// reconciliation, and lifecycle queues all apply unchanged.
+//
+// Two finishing modes:
+//   'send'  — regular vendors are emailed their PO immediately (status →
+//             SENT); retail vendors (Amazon / Home Depot / …) are never
+//             emailed — the office reminder email goes out with cart
+//             links and the PO is marked SENT so receiving can start.
+//   'draft' — POs stay DRAFT, nothing is emailed, no cart is prepared.
+//
+// Every submission carries a client-generated requestId; replays
+// (double-click, refresh, retry) return the stored result instead of
+// creating duplicate POs, emails, or cart additions.
 
 import { z } from 'zod';
-import { POEventKind, POLineKind, prisma } from '@bvisible/db';
+import { POEventKind, POLineKind, POStatus, Prisma, VendorCostSourceMode, prisma } from '@bvisible/db';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { requireTenantId } from '@/lib/auth/current-user';
 import { readRequestContext } from '@/lib/request-context';
 import { nextPoNumber } from '@/lib/po/number';
 import { sendMail } from '@/lib/mailer';
 import { formatMoney } from '@bvisible/pricing';
+import { revalidatePath } from 'next/cache';
 import {
   buildRetailCartUrl,
   isRetailVendor,
@@ -33,6 +44,9 @@ const shopOrderLineSchema = z.object({
   catalogId: z.string().trim().max(200).default(''),
   vendorSku: z.string().trim().max(200).default(''),
   productUrl: z.string().trim().max(1000).default(''),
+  /// How this line's vendor was chosen — preserved on the PO line so
+  /// drafts restore manual overrides and reporting can tell them apart.
+  vendorMode: z.enum(['preferred', 'cheapest', 'manual']).default('cheapest'),
 });
 
 export interface RetailCartItem {
@@ -44,19 +58,31 @@ export interface RetailCartItem {
 }
 
 const shopOrderSchema = z.object({
-  notes: z.string().trim().max(2000).default(''),
-  sendEmails: z.boolean().default(false),
+  mode: z.enum(['send', 'draft']).default('draft'),
+  requestId: z.string().trim().min(8).max(80),
+  /// Per-vendor PO note, keyed by vendor name.
+  vendorNotes: z.record(z.string(), z.string().trim().max(2000)).default({}),
   lines: z.array(shopOrderLineSchema).min(1, 'Add at least one material.').max(200),
 });
 
+const VENDOR_MODE_MAP: Record<string, VendorCostSourceMode> = {
+  preferred: VendorCostSourceMode.PREFERRED,
+  cheapest: VendorCostSourceMode.CHEAPEST,
+  manual: VendorCostSourceMode.MANUAL,
+};
+
 export interface ShopOrderResult {
   error: string | null;
+  /// 'send' or 'draft' — what the finished submission actually did.
+  mode?: 'send' | 'draft';
   created?: Array<{
     id: string;
     number: string;
     vendor: string;
     totalCents: number;
     emailStatus: 'SENT' | 'NOT_SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED';
+    /// Human-readable send outcome ("Sent to orders@…", "Email failed — …").
+    emailDetail?: string;
     /// Present for Amazon / Home Depot / Walmart / Lowe's POs: cart data
     /// for office review. Nothing is ordered automatically.
     retail?: {
@@ -64,6 +90,8 @@ export interface ShopOrderResult {
       /// Amazon add-to-cart URL when every SKU is an ASIN; otherwise null.
       cartUrl: string | null;
       items: RetailCartItem[];
+      /// True when the office reminder email went out for this order.
+      officeReminderSent?: boolean;
     };
   }>;
 }
@@ -86,6 +114,34 @@ export async function createShopOrderAction(
     return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' };
   }
   const data = parsed.data;
+
+  // Idempotency: claim the requestId first. A replay (double-click,
+  // refresh, network retry) lands on the unique key and gets the stored
+  // result back — no duplicate POs, emails, or cart additions.
+  try {
+    await prisma.shopOrderSubmission.create({
+      data: {
+        tenantId: me.tenantId,
+        requestId: data.requestId,
+        createdById: me.id,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const existing = await prisma.shopOrderSubmission.findUnique({
+        where: { tenantId_requestId: { tenantId: me.tenantId, requestId: data.requestId } },
+        select: { resultJson: true },
+      });
+      if (existing?.resultJson) {
+        return existing.resultJson as unknown as ShopOrderResult;
+      }
+      return {
+        error:
+          'This order is already being created. Check Past orders before submitting again.',
+      };
+    }
+    throw err;
+  }
 
   // Group lines by vendor — one PO per vendor.
   const byVendor = new Map<string, typeof data.lines>();
@@ -112,6 +168,7 @@ export async function createShopOrderAction(
       (sum, l) => sum + Math.round(l.qty * l.unitPriceCents),
       0
     );
+    const vendorNote = (data.vendorNotes[vendorName] ?? '').trim();
 
     const po = await prisma.$transaction(async (tx) => {
       const number = await nextPoNumber(tx, me.tenantId);
@@ -120,7 +177,7 @@ export async function createShopOrderAction(
           tenantId: me.tenantId,
           vendorId: vendor.id,
           number,
-          notes: data.notes || null,
+          notes: vendorNote || null,
           subtotalCents: totalCents,
           createdById: me.id,
         },
@@ -137,6 +194,7 @@ export async function createShopOrderAction(
           unitCostCents: l.unitPriceCents,
           computedCostCents: Math.round(l.qty * l.unitPriceCents),
           vendorId: vendor.id,
+          selectedVendorMode: VENDOR_MODE_MAP[l.vendorMode] ?? VendorCostSourceMode.CHEAPEST,
           vendorSku: l.vendorSku || null,
           notes: l.catalogId ? `Sheet catalog: ${l.catalogId}` : null,
         })),
@@ -165,33 +223,23 @@ export async function createShopOrderAction(
         number: po.number,
         vendorId: vendor.id,
         via: 'shop_order',
+        mode: data.mode,
         lineCount: lines.length,
         totalCents,
       },
     });
 
-    // New items add themselves to the catalog + Sheet, then admins get
-    // the "draft PO awaiting placement" email (with cart links for retail
-    // vendors). Both are non-blocking; the vendor is still only emailed
-    // via the explicit Send PO path below.
+    // New items add themselves to the catalog + Sheet. Non-blocking for
+    // the order itself; failures never abort the submission.
     await autoAddPoLinesToCatalog({
       tenantId: me.tenantId,
       purchaseOrderId: po.id,
       actorId: me.id,
     });
-    void notifyAdminsOfDraftPo({
-      tenantId: me.tenantId,
-      purchaseOrderId: po.id,
-      reason: 'created',
-      actorId: me.id,
-    });
 
-    // Nothing is emailed to the VENDOR at creation time. Every PO is
-    // saved as a DRAFT for review; the operator sends each one explicitly
-    // with Send PO — and retail vendors (Amazon/Home Depot/…) get a cart
-    // + office draft email instead of a vendor email.
+    const retailVendor = isRetailVendor(vendorName);
     let retail: NonNullable<ShopOrderResult['created']>[number]['retail'];
-    if (isRetailVendor(vendorName)) {
+    if (retailVendor) {
       const items: RetailCartItem[] = lines.map((l) => ({
         name: l.detail ? `${l.name} — ${l.detail}` : l.name,
         // Online carts take whole units — never round a needed amount down.
@@ -209,30 +257,101 @@ export async function createShopOrderAction(
       retail = { vendor: vendor.name, cartUrl, items };
     }
 
+    let emailStatus: NonNullable<ShopOrderResult['created']>[number]['emailStatus'] =
+      vendor.email || vendor.emails[0] ? 'NOT_SENT' : 'NO_VENDOR_EMAIL';
+    let emailDetail: string | undefined;
+
+    if (data.mode === 'send') {
+      if (retailVendor) {
+        // Amazon workflow: the office reminder email (with cart links)
+        // goes out now — this is the only path that sends it — then the
+        // PO moves to SENT so the shop can start receiving against it.
+        // Nothing is emailed to the retail vendor itself, ever.
+        const notified = await notifyAdminsOfDraftPo({
+          tenantId: me.tenantId,
+          purchaseOrderId: po.id,
+          reason: 'created',
+          actorId: me.id,
+        });
+        if (retail) retail.officeReminderSent = notified.ok;
+        await markShopOrderPoSent(
+          me.tenantId,
+          me.id,
+          po.id,
+          `Order placed via ${vendor.name} cart workflow — office reminder ${notified.ok ? 'emailed' : 'could not be emailed'}`
+        );
+        emailStatus = 'NOT_SENT';
+        emailDetail = notified.ok
+          ? 'Office reminder emailed — the office places the order on the store site.'
+          : 'Office reminder email failed — the office can still order from the cart link.';
+      } else {
+        const sent = await emailPoToVendor(me.tenantId, me.id, po.id);
+        emailStatus = sent.status;
+        emailDetail = sent.message;
+      }
+    }
+
     created.push({
       id: po.id,
       number: po.number,
       vendor: vendor.name,
       totalCents,
-      emailStatus: vendor.email || vendor.emails[0] ? 'NOT_SENT' : 'NO_VENDOR_EMAIL',
+      emailStatus,
+      emailDetail,
       retail,
     });
   }
 
-  return { error: null, created };
+  const result: ShopOrderResult = { error: null, mode: data.mode, created };
+
+  // Store the finished result on the idempotency row so replays return it.
+  await prisma.shopOrderSubmission
+    .update({
+      where: { tenantId_requestId: { tenantId: me.tenantId, requestId: data.requestId } },
+      data: { resultJson: result as unknown as Prisma.InputJsonValue },
+    })
+    .catch(() => undefined);
+
+  revalidatePath('/purchase-orders');
+  return result;
 }
 
-/// Explicit per-PO send (the ONLY path that emails a vendor). Renders the
-/// PO from the saved rows, emails the vendor's order address, records
-/// POEvents + audit, and moves the PO to SENT.
-export async function sendShopOrderPoAction(
-  poId: string
-): Promise<{ ok: boolean; message: string }> {
-  const me = await requireTenantId();
-  const ctx = await readRequestContext();
+/// Marks a shop-order PO SENT with a timeline event. Used for retail
+/// vendors (cart workflow) where no vendor email exists.
+async function markShopOrderPoSent(
+  tenantId: string,
+  actorId: string,
+  poId: string,
+  message: string
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.purchaseOrder.findFirst({
+      where: { id: poId, tenantId, deletedAt: null },
+      select: { status: true },
+    });
+    if (!row || row.status !== POStatus.DRAFT) return;
+    await tx.purchaseOrder.update({ where: { id: poId }, data: { status: POStatus.SENT } });
+    await tx.pOEvent.create({
+      data: {
+        tenantId,
+        purchaseOrderId: poId,
+        kind: POEventKind.STATUS_CHANGED,
+        message,
+        actorId,
+      },
+    });
+  });
+}
 
+/// Emails a shop-order PO to its vendor and moves it to SENT. The PO is
+/// preserved on failure — the operator retries just the email.
+async function emailPoToVendor(
+  tenantId: string,
+  actorId: string,
+  poId: string
+): Promise<{ status: 'SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED'; message: string }> {
   const po = await prisma.purchaseOrder.findFirst({
-    where: { id: poId, tenantId: me.tenantId, deletedAt: null },
+    where: { id: poId, tenantId, deletedAt: null },
     select: {
       id: true,
       number: true,
@@ -246,11 +365,16 @@ export async function sendShopOrderPoAction(
       },
     },
   });
-  if (!po) return { ok: false, message: 'Purchase order not found.' };
+  if (!po) return { status: 'SEND_FAILED', message: 'Purchase order not found.' };
+
   // Send to EVERY email on file for the vendor, not just the first.
   const to = po.vendor ? vendorRecipientLine(po.vendor) || null : null;
   if (!to) {
-    return { ok: false, message: 'No vendor email on file — add one in the Sheet Vendor Directory or on the vendor record.' };
+    return {
+      status: 'NO_VENDOR_EMAIL',
+      message:
+        'No vendor email on file — add one in the Sheet Vendor Directory or on the vendor record.',
+    };
   }
 
   const rowsHtml = po.lines
@@ -300,43 +424,84 @@ export async function sendShopOrderPoAction(
 
   await prisma.pOEvent.create({
     data: {
-      tenantId: me.tenantId,
+      tenantId,
       purchaseOrderId: po.id,
-      kind: POEventKind.NOTE_ADDED,
+      kind: sent.ok ? POEventKind.VENDOR_PO_SENT : POEventKind.VENDOR_PO_SEND_FAILED,
       message: sent.ok
-        ? `PO emailed to ${to} (Send PO)`
+        ? `PO emailed to ${to}`
         : `PO email to ${to} failed — retry or send manually`,
-      actorId: me.id,
+      actorId,
     },
   });
   if (!sent.ok) {
-    return { ok: false, message: `Email to ${to} failed — check SMTP settings and retry.` };
+    return {
+      status: 'SEND_FAILED',
+      message: `Email to ${to} failed — check SMTP settings and retry.`,
+    };
   }
 
-  if (po.status === 'DRAFT') {
-    await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: 'SENT' } });
+  // Per-vendor send state — the PO detail page and Ordered Materials
+  // read sentAt from here for the "sent" date.
+  if (po.vendor) {
+    await prisma.purchaseOrderVendor.upsert({
+      where: { purchaseOrderId_vendorId: { purchaseOrderId: po.id, vendorId: po.vendor.id } },
+      create: {
+        tenantId,
+        purchaseOrderId: po.id,
+        vendorId: po.vendor.id,
+        status: 'SENT',
+        sentAt: new Date(),
+      },
+      update: { status: 'SENT', sentAt: new Date(), lastError: null },
+    });
+  }
+
+  if (po.status === POStatus.DRAFT) {
+    await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: POStatus.SENT } });
     await prisma.pOEvent.create({
       data: {
-        tenantId: me.tenantId,
+        tenantId,
         purchaseOrderId: po.id,
         kind: POEventKind.STATUS_CHANGED,
-        message: 'Status changed to SENT (explicit Send PO)',
-        actorId: me.id,
+        message: 'Status changed to SENT (vendor emailed)',
+        actorId,
       },
     });
   }
+
+  return { status: 'SENT', message: `Sent to ${to}` };
+}
+
+/// Explicit per-PO send / retry (also used by the results screen when the
+/// initial send failed). Emails the vendor, records POEvents + audit, and
+/// moves the PO to SENT.
+export async function sendShopOrderPoAction(
+  poId: string
+): Promise<{ ok: boolean; message: string }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+
+  const po = await prisma.purchaseOrder.findFirst({
+    where: { id: poId, tenantId: me.tenantId, deletedAt: null },
+    select: { id: true, number: true },
+  });
+  if (!po) return { ok: false, message: 'Purchase order not found.' };
+
+  const sent = await emailPoToVendor(me.tenantId, me.id, poId);
+
   await writeAuditLog({
-    action: 'po_sent',
+    action: sent.status === 'SENT' ? 'po_sent' : 'po_send_failed',
     userId: me.id,
     tenantId: me.tenantId,
     targetType: 'purchase_order',
     targetId: po.id,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
-    metadata: { number: po.number, to, via: 'shop_order_send' },
+    metadata: { number: po.number, via: 'shop_order_send', detail: sent.message },
   });
 
-  return { ok: true, message: `Sent to ${to}` };
+  revalidatePath('/purchase-orders');
+  return { ok: sent.status === 'SENT', message: sent.message };
 }
 
 /// Emails the office-review draft through the tenant's SMTP. Retail
