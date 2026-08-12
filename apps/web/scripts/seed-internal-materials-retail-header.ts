@@ -102,11 +102,65 @@ async function main(): Promise<void> {
   const metaRes = await fetch(`${api}?fields=sheets.properties`, { headers: auth });
   if (!metaRes.ok) throw new Error(`Cannot read spreadsheet: ${metaRes.status}`);
   const meta = (await metaRes.json()) as {
-    sheets: Array<{ properties: { sheetId: number; title: string } }>;
+    sheets: Array<{
+      properties: {
+        sheetId: number;
+        title: string;
+        gridProperties?: { columnCount?: number };
+      };
+    }>;
   };
   const tab = meta.sheets.find((s) => s.properties.title === INTERNAL_MATERIALS_TAB);
   if (!tab) throw new Error(`No "${INTERNAL_MATERIALS_TAB}" tab in the Sheet.`);
   const tabId = tab.properties.sheetId;
+
+  // The tab shipped exactly 13 columns wide (A–M). N and O are outside the
+  // grid, and the Sheets API answers a read of a range beyond the grid with
+  // 400 — so the sheet has to be WIDENED before either column can be read or
+  // written. Columns created this way are empty by construction, which is
+  // also why widening cannot clobber anything.
+  const neededColumns = INTERNAL_MATERIALS_SKU_COL + 1;
+  const columnCount = tab.properties.gridProperties?.columnCount ?? 0;
+  if (columnCount < neededColumns) {
+    const newColumnRange = {
+      sheetId: tabId,
+      startRowIndex: 0,
+      startColumnIndex: columnCount,
+      endColumnIndex: neededColumns,
+    };
+    const growRes = await fetch(`${api}:batchUpdate`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        requests: [
+          {
+            appendDimension: {
+              sheetId: tabId,
+              dimension: 'COLUMNS',
+              length: neededColumns - columnCount,
+            },
+          },
+          // Appended columns inherit the LAST column's formatting, and column M
+          // on this tab is "Active" — a CHECKBOX. Without this cleanup every new
+          // cell becomes an unchecked box reading FALSE, which is 999 rows of
+          // phantom content that then trips the occupied-columns guard below.
+          // Safe unconditionally: these columns did not exist a moment ago.
+          { setDataValidation: { range: newColumnRange } },
+          {
+            repeatCell: {
+              range: newColumnRange,
+              cell: {},
+              fields: 'userEnteredValue,userEnteredFormat,dataValidation',
+            },
+          },
+        ],
+      }),
+    });
+    if (!growRes.ok) {
+      throw new Error(`Could not widen the tab to ${neededColumns} columns: ${growRes.status} ${await growRes.text()}`);
+    }
+    console.log(`Widened "${INTERNAL_MATERIALS_TAB}" from ${columnCount} to ${neededColumns} columns.`);
+  }
 
   // Read both columns whole. Two guards come out of this: the no-op check
   // (header already correct) and the refusal (anything else living there).
