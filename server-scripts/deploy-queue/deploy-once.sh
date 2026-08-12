@@ -104,6 +104,27 @@ if [ -f "$APP_DIR/package.json" ]; then
     INSTALL_OK=false
   fi
 
+  # Playwright browsers for the estimate PDF renderer
+  # (lib/estimate/estimate-pdf.ts launches headless chromium).
+  #
+  # The root package.json sets pnpm.onlyBuiltDependencies=["sharp"], so
+  # Playwright's postinstall — the step that downloads the browser —
+  # never runs here. Without this, /estimates/<id>/preview/pdf answers
+  # 500 with "Executable doesn't exist at .../chromium_headless_shell-<rev>".
+  # Re-running per deploy is cheap (it no-ops when the revision is
+  # already cached) and is what keeps a Playwright version bump, which
+  # moves to a new revision directory, from silently breaking PDFs.
+  if [ "$INSTALL_OK" = "true" ] && [ -d "$APP_DIR/apps/web" ]; then
+    log "Ensuring Playwright chromium is installed (PDF rendering)"
+    if ! ( cd "$APP_DIR" && pnpm --filter @bvisible/web exec playwright install chromium chromium-headless-shell ) 2>&1 | tee -a "$LOG_FILE"; then
+      # Not fatal: everything except PDF export still works, and a
+      # failed download should not roll back an otherwise good deploy.
+      log "WARN: Playwright browser install failed — estimate PDF export will 500 until fixed"
+    else
+      log "Playwright chromium OK"
+    fi
+  fi
+
   if [ "$INSTALL_OK" = "true" ] && jq -e '.scripts.build' "$APP_DIR/package.json" >/dev/null 2>&1; then
     log "Building (NEXT_BUILD_STANDALONE=1 so apps/web emits .next/standalone)..."
     # Standalone output is gated on this env var so local Windows dev builds

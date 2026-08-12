@@ -15,6 +15,18 @@ apt-get install -y --no-install-recommends \
   jq htop fail2ban nginx certbot python3-certbot-nginx software-properties-common \
   apt-transport-https acl rsync ufw
 
+# Shared libraries headless chromium needs, for the estimate PDF
+# renderer (apps/web/lib/estimate/estimate-pdf.ts). The browser itself
+# is downloaded per deploy by deploy-once.sh, which runs unprivileged
+# as `deploy` and so cannot apt-install these. Without them the browser
+# is present but fails to launch, and PDF export answers 500.
+log "Installing headless chromium libraries (estimate PDF export)"
+apt-get install -y --no-install-recommends \
+  libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 libnss3 libnspr4 \
+  libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxkbcommon0 \
+  libpango-1.0-0 libcairo2 libasound2t64 || \
+apt-get install -y --no-install-recommends libasound2 || true
+
 log "UFW: ADD rules ONLY (do NOT enable yet)"
 # WARNING: ufw enable would otherwise drop SSH if rules are missing.
 # We add the allow rules first; enabling happens only at the end and only
