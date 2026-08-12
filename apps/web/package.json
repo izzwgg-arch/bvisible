@@ -28,6 +28,8 @@
     "smoke:core": "playwright test smoke/core-workflow.spec.ts --config=playwright.config.ts",
     "smoke:vendor-normalization": "playwright test smoke/vendor-normalization.spec.ts --config=playwright.config.ts",
     "smoke:po-lifecycle": "playwright test smoke/po-lifecycle.spec.ts --config=playwright.config.ts",
+    "smoke:excel-import": "playwright test smoke/estimate-excel-import.spec.ts --config=playwright.config.ts",
+    "verify:estimate-import": "vitest run lib/estimate-import",
     "smoke:all": "playwright test smoke/ --config=playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",
@@ -56,6 +58,7 @@
     "react-dom": "^19.1.0",
     "sharp": "^0.34.5",
     "tailwind-merge": "^3.3.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.76"
   },
   "devDependencies": {

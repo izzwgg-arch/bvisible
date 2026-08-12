@@ -52,6 +52,7 @@ export interface ImportedCard {
     sourceKind: 'READY_ITEM' | 'BUNDLE' | 'VEHICLE_WRAP' | 'SQFT_ITEM' | 'CUSTOM';
     sheetKey?: string | null;
     machineName?: string | null;
+    notes?: string | null;
   }>;
 }
 

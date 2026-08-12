@@ -32,6 +32,7 @@ import { createGuidedEstimateAction, type GuidedEstimateState } from './guided-a
 import { CustomBuildPanel } from './custom-build-panel';
 import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
 import { JsonImportPanel, type ImportResult } from './json-import-panel';
+import { ExcelImportPanel } from './excel-import-panel';
 
 /* ---------- data shapes provided by the server page ---------- */
 
@@ -276,7 +277,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
   );
 
   // Extra tool panels (suggestions by sign type, JSON import).
-  const [toolPanel, setToolPanel] = useState<'recommend' | 'json' | null>(null);
+  const [toolPanel, setToolPanel] = useState<'recommend' | 'json' | 'excel' | null>(null);
   const [autoRecommendDismissed, setAutoRecommendDismissed] = useState(false);
 
   // Sales representative (defaults to the signed-in user).
@@ -693,7 +694,8 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
     setCards((prev) => prev.filter((c) => !c.rows.some((r) => r.sheetKey === key)));
   }
 
-  function handleJsonImport(result: ImportResult) {
+  // Shared by the JSON and Excel import panels — both produce ImportResult.
+  function handleImport(result: ImportResult) {
     setCards((prev) => [...prev, ...result.cards.map((c) => ({ ...c, uid: nextUid++ }))]);
     if (result.title && !title.trim()) setTitle(result.title);
     if (result.markupPercent != null) setMarkupPercent(result.markupPercent);
@@ -1186,7 +1188,7 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
           </div>
         ) : null}
 
-        {/* extra tools: suggestions by sign type · JSON import */}
+        {/* extra tools: suggestions by sign type · JSON import · Excel import */}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -1220,6 +1222,17 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
           >
             {'{ }'} Import estimate from JSON
           </button>
+          <button
+            type="button"
+            onClick={() => setToolPanel(toolPanel === 'excel' ? null : 'excel')}
+            className={`rounded-full px-4 py-1.5 text-[11.5px] font-bold ${
+              toolPanel === 'excel'
+                ? 'bg-[var(--color-bv-accent)] text-white'
+                : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
+            }`}
+          >
+            ⇪ Import from Excel
+          </button>
         </div>
 
         {recommendOpen ? (
@@ -1243,9 +1256,13 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
             vehicleWraps={props.vehicleWraps}
             rates={props.rates}
             aliases={props.aliases}
-            onImport={handleJsonImport}
+            onImport={handleImport}
             onClose={() => setToolPanel(null)}
           />
+        ) : null}
+
+        {toolPanel === 'excel' ? (
+          <ExcelImportPanel onImport={handleImport} onClose={() => setToolPanel(null)} />
         ) : null}
       </section>
 
