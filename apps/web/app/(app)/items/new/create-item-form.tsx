@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState, useEffect } from 'react';
+import { startTransition, useActionState, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EstimateLineKind, ShopCatalogUnit } from '@bvisible/db';
 import { SelectControl } from '@/components/app/select-control';
@@ -214,7 +214,7 @@ export function CreateShopMaterialItemForm({
                     onClick={() => {
                       const fd = new FormData();
                       fd.set('categoryName', newCategoryName.trim());
-                      categoryFormAction(fd);
+                      startTransition(() => categoryFormAction(fd));
                     }}
                     className="h-10 rounded-[10px] bg-violet-600 px-4 text-[13px] font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
                   >
@@ -340,7 +340,7 @@ export function CreateShopMaterialItemForm({
                     const fd = new FormData();
                     fd.set('machineName', newMachineName.trim());
                     fd.set('machineRateUsd', newMachineRateUsd.trim() || '0.00');
-                    machineFormAction(fd);
+                    startTransition(() => machineFormAction(fd));
                   }}
                   className="h-10 rounded-[10px] bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                 >

@@ -2,7 +2,7 @@
 
 // Connects the estimate editor's save state to the page header.
 //
-// The header action bar (Approve / Send / Finalize / Invoice) is a
+// The header action bar (Approve / Send / Finalize) is a
 // sibling client component of the editor, rendered by the server page,
 // so it cannot reach the editor's reducer through React. The editor
 // publishes its save state here and the header subscribes, which puts

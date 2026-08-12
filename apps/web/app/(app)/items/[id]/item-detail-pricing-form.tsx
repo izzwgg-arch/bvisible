@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { startTransition, useActionState, useEffect, useState } from 'react';
 import { EstimateLineKind, ShopCatalogUnit } from '@bvisible/db';
 import { SelectControl } from '@/components/app/select-control';
 import { formatQty } from '@/lib/estimate/format';
@@ -250,7 +250,7 @@ export function ItemDetailPricingForm({
                   onClick={() => {
                     const fd = new FormData();
                     fd.set('categoryName', newCategoryName.trim());
-                    categoryFormAction(fd);
+                    startTransition(() => categoryFormAction(fd));
                   }}
                   className="rounded-[8px] bg-violet-600 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-violet-700 disabled:opacity-60"
                 >
@@ -376,7 +376,7 @@ export function ItemDetailPricingForm({
                     const fd = new FormData();
                     fd.set('machineName', newMachineName.trim());
                     fd.set('machineRateUsd', newMachineRateUsd.trim() || '0.00');
-                    machineFormAction(fd);
+                    startTransition(() => machineFormAction(fd));
                   }}
                   className="rounded-[8px] bg-blue-600 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
                 >

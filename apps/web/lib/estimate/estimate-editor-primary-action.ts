@@ -5,7 +5,6 @@ export function getEstimateEditorPrimaryAction(input: {
   status: EstimateStatus;
   lineCount: number;
   hasLinkedPo: boolean;
-  hasLinkedInvoice: boolean;
   quoteLinkActive: boolean;
 }): { label: string; href: string; hint: string } {
   const base = `/estimates/${input.estimateId}`;
@@ -42,17 +41,10 @@ export function getEstimateEditorPrimaryAction(input: {
         hint: 'Buy materials from an approved quote — PO links back here.',
       };
     }
-    if (!input.hasLinkedInvoice) {
-      return {
-        label: 'Create invoice',
-        href: `${base}#estimate-linked-invoice`,
-        hint: 'Bill the customer from approved sell lines.',
-      };
-    }
     return {
       label: 'Preview quote',
       href: preview,
-      hint: 'PO and invoice are linked — finalize when QBO numbers are recorded.',
+      hint: 'PO is linked — finalize when QBO numbers are recorded.',
     };
   }
 

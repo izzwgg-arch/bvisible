@@ -138,6 +138,15 @@ enum POVendorSendStatus {
   FAILED
 }
 
+/// Delivery state of ONE office-reminder attempt. Order creation and
+/// reminder delivery are tracked separately on purpose: a failed reminder
+/// must never roll back or duplicate a PO that was created successfully.
+enum POReminderStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 // Mirrors EstimateLineKind so estimate→PO conversion preserves the
 // kind label without lossy mapping. Estimators see the same vocabulary
 // on both sides of the handoff.
@@ -365,6 +374,7 @@ model Tenant {
   vendors                  Vendor[]
   purchaseOrders           PurchaseOrder[]
   purchaseOrderVendors     PurchaseOrderVendor[]
+  poOfficeReminders        PoOfficeReminder[]
   poLineItems              POLineItem[]
   poAttachments            POAttachment[]
   poEvents                 POEvent[]
@@ -510,6 +520,41 @@ model SheetSyncState {
 /// network retry) hits the (tenantId, requestId) unique key and gets the
 /// stored result back instead of creating duplicate POs / emails / carts.
 /// Scalar tenantId on purpose — this is a dedupe ledger, not domain data.
+/// One office-reminder send ATTEMPT for a retail (Amazon / Home Depot / …)
+/// purchase order. One row per attempt rather than one per PO, so the resend
+/// history is the table itself — the newest row is the current state and the
+/// older rows are the audit trail.
+///
+/// `recipient` is the address used for THAT attempt: changing it on a resend
+/// is per-order and never touches the tenant-wide default, which lives in
+/// AMAZON_OFFICE_REMINDER_EMAIL (server-side only).
+///
+/// `failureCategory` is a short safe label ('smtp_not_configured',
+/// 'invalid_recipient', 'send_failed') — never a provider message, stack
+/// trace, or credential, because it is rendered to the user.
+model PoOfficeReminder {
+  id              String           @id @default(cuid())
+  tenantId        String
+  purchaseOrderId String
+  recipient       String           @db.VarChar(320)
+  status          POReminderStatus @default(PENDING)
+  /// 1 = the automatic send at order creation; 2+ = manual resends.
+  attempt         Int              @default(1)
+  messageId       String?
+  failureCategory String?          @db.VarChar(60)
+  sentAt          DateTime?
+  createdById     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  createdBy     User?         @relation("PoOfficeReminderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@map("po_office_reminders")
+}
+
 model ShopOrderSubmission {
   id          String   @id @default(cuid())
   tenantId    String
@@ -555,6 +600,7 @@ model User {
   ocrDocumentsConfirmed           OcrDocument[]          @relation("OcrDocumentConfirmedBy")
   ocrDocumentsRejected            OcrDocument[]          @relation("OcrDocumentRejectedBy")
   purchaseOrdersMarkedReconciled  PurchaseOrder[]        @relation("PoMarkedReconciledBy")
+  poOfficeRemindersCreated        PoOfficeReminder[]     @relation("PoOfficeReminderCreator")
   poReconciliationsResolved       POReconciliation[]     @relation("POReconciliationResolvedBy")
   poReconciliationLinesResolved   POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
   spendAlertsDismissed            SpendAlert[]           @relation("SpendAlertDismissedBy")
@@ -1292,6 +1338,7 @@ model PurchaseOrder {
   matchedEmails              IngestedEmail[]       @relation("MatchedPO")
   mobilePendingUploads       MobilePendingUpload[]
   reconciliations            POReconciliation[]
+  officeReminders            PoOfficeReminder[]
   spendAlerts                SpendAlert[]
   operatorMarkedReconciledBy User?                 @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
 
@@ -1318,6 +1365,11 @@ model POLineItem {
   vendorId           String?
   selectedVendorMode VendorCostSourceMode?
   vendorSku          String?
+  /// Vendor product page for retail lines (Amazon / Home Depot / …), captured
+  /// at order time so "View on Amazon" keeps working even if the Sheet row
+  /// later changes. Null when the source row had no link — the UI hides the
+  /// button rather than inventing one.
+  productUrl         String?               @db.VarChar(1000)
   unit               ShopCatalogUnit       @default(EACH)
   sortOrder          Int
   kind               POLineKind

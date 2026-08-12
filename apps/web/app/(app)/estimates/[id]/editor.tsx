@@ -57,8 +57,6 @@ export interface EditorBootstrap {
       phone?: string | null;
     };
     quoteSent: boolean;
-    hasInvoice: boolean;
-    invoicePaid: boolean;
     salesRepId: string | null;
   };
   /// Active tenant users selectable as the sales representative.

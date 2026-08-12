@@ -11,7 +11,6 @@ export function getEstimateListNextAction(input: {
   status: EstimateStatus;
   lineCount?: number;
   hasLinkedPo?: boolean;
-  hasLinkedInvoice?: boolean;
 }): EstimateListNextAction {
   const base = `/estimates/${input.id}`;
   switch (input.status) {
@@ -26,10 +25,7 @@ export function getEstimateListNextAction(input: {
       if (!input.hasLinkedPo) {
         return { label: 'Create PO', href: `${base}#estimate-create-po`, tone: 'primary' };
       }
-      if (!input.hasLinkedInvoice) {
-        return { label: 'Create invoice', href: `${base}#estimate-linked-invoice`, tone: 'primary' };
-      }
-      return { label: 'Open estimate', href: base, tone: 'muted' };
+      return { label: 'Finalize estimate', href: base, tone: 'primary' };
     case EstimateStatus.FINALIZED:
       return { label: 'View finalized', href: base, tone: 'muted' };
     case EstimateStatus.REJECTED:

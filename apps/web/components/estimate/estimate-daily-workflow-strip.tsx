@@ -6,16 +6,15 @@ const STEPS = [
   { key: 'quote', label: 'Quote sent' },
   { key: 'approved', label: 'Approved' },
   { key: 'po', label: 'PO' },
-  { key: 'invoice', label: 'Invoice' },
+  { key: 'finalized', label: 'Finalized' },
 ] as const;
 
 function stepState(input: {
   status: EstimateStatus;
   quoteSent: boolean;
   hasPo: boolean;
-  hasInvoice: boolean;
 }): Record<(typeof STEPS)[number]['key'], 'done' | 'current' | 'upcoming'> {
-  const { status, quoteSent, hasPo, hasInvoice } = input;
+  const { status, quoteSent, hasPo } = input;
   const isRejected = status === EstimateStatus.REJECTED;
   const isFinalized = status === EstimateStatus.FINALIZED;
 
@@ -25,7 +24,7 @@ function stepState(input: {
       quote: quoteSent ? 'done' : 'upcoming',
       approved: 'upcoming',
       po: 'upcoming',
-      invoice: 'upcoming',
+      finalized: 'upcoming',
     };
   }
 
@@ -34,15 +33,14 @@ function stepState(input: {
   const approvedDone =
     status === EstimateStatus.APPROVED || isFinalized;
   const poDone = hasPo;
-  const invoiceDone = hasInvoice;
 
   let current: (typeof STEPS)[number]['key'] = 'draft';
   if (status === EstimateStatus.DRAFT && !quoteSent) current = 'draft';
   else if (status === EstimateStatus.SENT || (status === EstimateStatus.DRAFT && quoteSent))
     current = 'quote';
   else if (status === EstimateStatus.APPROVED && !hasPo) current = 'po';
-  else if (status === EstimateStatus.APPROVED && hasPo && !hasInvoice) current = 'invoice';
-  else if (isFinalized) current = 'invoice';
+  else if (status === EstimateStatus.APPROVED && hasPo) current = 'finalized';
+  else if (isFinalized) current = 'finalized';
   else if (status === EstimateStatus.APPROVED) current = 'approved';
 
   const map = (key: (typeof STEPS)[number]['key'], done: boolean): 'done' | 'current' | 'upcoming' => {
@@ -55,7 +53,7 @@ function stepState(input: {
     quote: map('quote', quoteDone),
     approved: map('approved', approvedDone),
     po: map('po', poDone),
-    invoice: map('invoice', invoiceDone),
+    finalized: map('finalized', isFinalized),
   };
 }
 
@@ -63,17 +61,15 @@ export function EstimateDailyWorkflowStrip({
   status,
   quoteSent,
   hasPo,
-  hasInvoice,
 }: {
   status: EstimateStatus;
   quoteSent: boolean;
   hasPo: boolean;
-  hasInvoice: boolean;
   primaryHref: string;
   primaryLabel: string;
   hint: string;
 }) {
-  const states = stepState({ status, quoteSent, hasPo, hasInvoice });
+  const states = stepState({ status, quoteSent, hasPo });
   const doneCount = STEPS.filter((s) => states[s.key] === 'done').length;
 
   return (

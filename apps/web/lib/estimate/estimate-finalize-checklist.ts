@@ -1,5 +1,5 @@
-import type { InvoiceStatus, POReconciliationStatus } from '@bvisible/db';
-import { EstimateStatus, InvoiceStatus as InvS } from '@bvisible/db';
+import type { POReconciliationStatus } from '@bvisible/db';
+import { EstimateStatus } from '@bvisible/db';
 import { reconciliationNeedsAttention } from '@/lib/estimate/estimate-fulfillment';
 import { evaluateEstimateFinalizeGates } from '@/lib/estimate/estimate-finalization';
 
@@ -28,11 +28,6 @@ export function buildEstimateFinalizeChecklist(input: {
     qboPoNumber: string | null;
     latestReconciliationStatus: POReconciliationStatus | null;
   }>;
-  linkedInvoice: null | {
-    id: string;
-    status: InvoiceStatus;
-    paidAt: Date | null;
-  };
 }): EstimateFinalizeChecklist {
   const base = `/estimates/${input.estimateId}`;
   const isFinalized = input.estimateStatus === EstimateStatus.FINALIZED;
@@ -52,11 +47,6 @@ export function buildEstimateFinalizeChecklist(input: {
     input.linkedPos.every(
       (p) => !reconciliationNeedsAttention(p.latestReconciliationStatus),
     );
-
-  const hasInvoice = input.linkedInvoice != null;
-  const invoicePaid =
-    input.linkedInvoice?.status === InvS.PAID &&
-    input.linkedInvoice.paidAt != null;
 
   const missingQbo = input.linkedPos.filter((p) => !p.qboPoNumber?.trim());
   const reconAttention = input.linkedPos.filter((p) =>
@@ -117,19 +107,6 @@ export function buildEstimateFinalizeChecklist(input: {
         : hasPo
           ? `/purchase-orders/${input.linkedPos[0]!.id}/reconciliation`
           : null,
-    },
-    {
-      key: 'invoice',
-      label: 'Customer invoice paid',
-      done: invoicePaid,
-      detail: invoicePaid
-        ? 'Payment recorded on the linked invoice.'
-        : hasInvoice
-          ? 'Invoice exists but is not marked paid — optional before finalize.'
-          : 'No invoice yet — billing is optional before finalize.',
-      href: input.linkedInvoice
-        ? `/invoices/${input.linkedInvoice.id}`
-        : `${base}#estimate-linked-invoice`,
     },
   ];
 

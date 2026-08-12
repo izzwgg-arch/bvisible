@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeEstimate, computeLineCostCents } from '@bvisible/pricing';
 
-import { allocateEstimateSellToInvoiceLines } from '@/lib/invoices/allocate-estimate-sell-to-invoice-lines';
 
 /** Default sell multiplier R-EST-01 (3.000×). */
 const DEFAULT_MULT = 3000;
@@ -137,27 +136,5 @@ describe('@bvisible/pricing computeEstimate', () => {
     });
     expect(out.subtotalCostCents).toBe(10000);
     expect(out.finalPriceCents).toBe(35000);
-  });
-
-  it('invoice allocation sums to finalPriceCents when line weights match cached costs', () => {
-    const lines = [
-      line('a', 'MATERIAL', 1000, 3000),
-      line('b', 'LABOR', 2000, 2500),
-    ];
-    const est = computeEstimate({
-      multiplierMilli: DEFAULT_MULT,
-      designFlatCents: 0,
-      lines,
-    });
-    const weights = lines.map((l) => ({
-      computedCostCents: est.lineCosts[l.id] ?? 0,
-    }));
-    expect(weights.reduce((s, x) => s + x.computedCostCents, 0)).toBe(est.subtotalCostCents);
-
-    const alloc = allocateEstimateSellToInvoiceLines({
-      finalPriceCents: est.finalPriceCents,
-      lines: weights,
-    });
-    expect(alloc.reduce((a, b) => a + b, 0)).toBe(est.finalPriceCents);
   });
 });

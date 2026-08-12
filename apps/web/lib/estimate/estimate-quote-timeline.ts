@@ -25,13 +25,6 @@ export interface AuditTimelineInput {
   metadata: unknown | null;
 }
 
-function invoiceCreatedSubtitle(metadata: unknown): string | null {
-  if (!metadata || typeof metadata !== 'object') return null;
-  const m = metadata as Record<string, unknown>;
-  const num = typeof m.invoiceNumber === 'string' && m.invoiceNumber.trim() ? m.invoiceNumber.trim() : null;
-  return num ? `Invoice ${num}` : null;
-}
-
 function quoteTimelineSubtitle(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') return null;
   const m = metadata as Record<string, unknown>;
@@ -77,9 +70,6 @@ export function mergeEstimateStaffTimeline(
       case 'QUOTE_DECLINED':
         title = 'Quote declined (public link)';
         break;
-      case 'INVOICE_CREATED_FROM_ESTIMATE':
-        title = 'Invoice created from estimate';
-        break;
       default:
         title = `Estimate timeline (${String(ev.kind)})`;
     }
@@ -91,9 +81,7 @@ export function mergeEstimateStaffTimeline(
       subtitle:
         ev.kind === 'QUOTE_ACCEPTED' || ev.kind === 'QUOTE_DECLINED'
           ? quoteTimelineSubtitle(ev.metadata)
-          : ev.kind === 'INVOICE_CREATED_FROM_ESTIMATE'
-            ? invoiceCreatedSubtitle(ev.metadata)
-            : null,
+          : null,
     });
   }
 

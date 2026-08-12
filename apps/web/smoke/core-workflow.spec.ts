@@ -114,7 +114,6 @@ test.describe.serial('core workflow smoke', () => {
         ['/estimates/new', /^New estimate$/],
         ['/purchase-orders', /^Ordered Materials$/],
         ['/purchase-orders/all', /^All purchase orders$/],
-        ['/invoices', /^Invoices$/],
         ['/admin/email-ingestion', /^Email ingestion$/],
         ['/admin/ocr-review', /^Receipt OCR review$/],
         ['/admin/reconciliation', /^PO reconciliation inbox$/],
@@ -281,20 +280,6 @@ test.describe.serial('core workflow smoke', () => {
       }
       await expect(page.getByText('Linked estimate').first()).toBeVisible();
       await expect(page.getByRole('link', { name: estimateNumber })).toBeVisible();
-    });
-
-    await test.step('Invoice from estimate + link back', async () => {
-      await page.goto(estimateUrl);
-      const invoiceChip = page.locator('h3').filter({ hasText: 'Linked invoice' }).locator('..').getByRole('link').first();
-      if (await invoiceChip.isVisible()) {
-        await invoiceChip.click();
-      } else {
-        await page.getByRole('button', { name: 'Create invoice' }).click();
-        await page.waitForURL(/\/invoices\/[^/]+$/, { timeout: 45_000 });
-      }
-      await expect(page.getByRole('link', { name: `Source estimate ${estimateNumber} →` })).toBeVisible({
-        timeout: 45_000,
-      });
     });
 
     await context.close();

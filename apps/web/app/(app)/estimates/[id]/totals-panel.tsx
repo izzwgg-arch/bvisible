@@ -245,8 +245,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
               <WorkflowDot label="Sent" done={bootstrap.estimate.quoteSent} />
               <WorkflowDot label="Approved" done={bootstrap.estimate.status === EstimateStatus.APPROVED || bootstrap.estimate.status === EstimateStatus.FINALIZED} />
               <WorkflowDot label="PO Created" done={linkedPos.length > 0} />
-              <WorkflowDot label="Invoiced" done={bootstrap.estimate.hasInvoice} />
-              <WorkflowDot label="Paid" done={bootstrap.estimate.invoicePaid} last />
+              <WorkflowDot label="Finalized" done={bootstrap.estimate.status === EstimateStatus.FINALIZED} last />
             </ol>
           </section>
 
@@ -466,7 +465,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
           icon={<IconFlag />}
           tone="emerald"
           title="Workflow"
-          subtitle="Keep the quote moving from draft through paid."
+          subtitle="Keep the quote moving from draft through finalized."
         />
         <ol className="relative mt-5 flex w-full items-start justify-between px-1 before:absolute before:left-7 before:right-7 before:top-[18px] before:h-px before:bg-slate-200">
           <WorkflowStep label="Quote sent" done={bootstrap.estimate.quoteSent} first />
@@ -478,8 +477,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
             }
           />
           <WorkflowStep label="PO created" done={linkedPos.length > 0} />
-          <WorkflowStep label="Invoiced" done={bootstrap.estimate.hasInvoice} />
-          <WorkflowStep label="Paid" done={bootstrap.estimate.invoicePaid} last />
+          <WorkflowStep label="Finalized" done={bootstrap.estimate.status === EstimateStatus.FINALIZED} last />
         </ol>
       </SectionCard>
 

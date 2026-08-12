@@ -11,9 +11,8 @@
  * | recon_snapshot_needed     | OCR CONFIRMED on PO, zero POReconciliation        | No compare snapshot             | Open reconciliation / recompute       | /purchase-orders/[id]/reconciliation |
  * | variance_detected         | Latest POReconciliation needs attention           | Variances / open spend alerts   | Resolve lines / dismiss alerts        | /purchase-orders/[id]/reconciliation |
  * | ready_to_finalize         | Estimate APPROVED, POs exist, all have QBO #      | Not finalized yet               | Finalize estimate                     | /estimates/[id]                        |
- * | invoice_attention         | Approved estimate: no invoice or UNPAID invoice   | Billing step incomplete         | Create invoice / record payment       | /estimates/[id] or /invoices/[id]      |
  * | unmatched_email           | IngestedEmail UNMATCHED or PENDING                | PO link unknown                 | Match email to PO                     | /admin/email-ingestion                 |
- * | completed                 | FINALIZED estimate / stamped PO / paid invoice    | None (informational)            | Review record                         | entity detail                          |
+ * | completed                 | FINALIZED estimate / stamped PO                   | None (informational)            | Review record                         | entity detail                          |
  */
 
 export type OperationalWorkflowState =
@@ -24,7 +23,6 @@ export type OperationalWorkflowState =
   | 'recon_snapshot_needed'
   | 'variance_detected'
   | 'ready_to_finalize'
-  | 'invoice_attention'
   | 'unmatched_email'
   | 'completed';
 
@@ -36,7 +34,6 @@ export type OperationalQueueBucket =
   | 'reconciliation_variance'
   | 'ready_to_finalize'
   | 'unmatched_email'
-  | 'invoice_attention'
   | 'recently_completed';
 
 export const OPERATIONAL_QUEUE_BUCKET_ORDER: OperationalQueueBucket[] = [
@@ -47,7 +44,6 @@ export const OPERATIONAL_QUEUE_BUCKET_ORDER: OperationalQueueBucket[] = [
   'reconciliation_variance',
   'ready_to_finalize',
   'unmatched_email',
-  'invoice_attention',
   'recently_completed',
 ];
 
@@ -59,7 +55,6 @@ export const OPERATIONAL_QUEUE_BUCKET_LABELS: Record<OperationalQueueBucket, str
   reconciliation_variance: 'Reconciliation variance',
   ready_to_finalize: 'Ready to finalize',
   unmatched_email: 'Unmatched inbound mail',
-  invoice_attention: 'Invoice follow-up',
   recently_completed: 'Recently completed',
 };
 
@@ -78,8 +73,6 @@ export function bucketForWorkflowState(state: OperationalWorkflowState): Operati
       return 'reconciliation_variance';
     case 'ready_to_finalize':
       return 'ready_to_finalize';
-    case 'invoice_attention':
-      return 'invoice_attention';
     case 'unmatched_email':
       return 'unmatched_email';
     case 'completed':

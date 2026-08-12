@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-import type { EstimateStatus, InvoiceStatus } from '@bvisible/db';
-import { EstimateStatus as ES, InvoiceStatus as InvS } from '@bvisible/db';
+import type { EstimateStatus } from '@bvisible/db';
+import { EstimateStatus as ES } from '@bvisible/db';
 
 import { formatMoney } from '@/lib/estimate/format';
 import type {
@@ -13,9 +13,8 @@ import {
   receiptOcrOperationalHint,
   reconciliationGuidanceLabel,
 } from '@/lib/estimate/estimate-fulfillment';
-import { labelInvoiceStatus, labelPoStatus } from '@/lib/ui/status-labels';
+import { labelPoStatus } from '@/lib/ui/status-labels';
 
-import { CreateInvoiceFromEstimateButton } from '@/components/estimate/create-invoice-from-estimate-button';
 import { EstimateFinalizeChecklistPanel } from '@/components/estimate/estimate-finalize-checklist';
 import type { EstimateFinalizeChecklist } from '@/lib/estimate/estimate-finalize-checklist';
 import type { EstimateOperationalStepRailRow } from '@/components/estimate/estimate-operational-step-rail';
@@ -24,7 +23,6 @@ import {
   SectionCard,
   SectionHeading,
   IconTruck,
-  IconReceipt,
   IconArrowRight,
 } from '@/components/estimate/estimate-surface';
 
@@ -40,12 +38,6 @@ const PO_CHIP_PALETTE: Record<string, string> = {
   CANCELED: 'border-rose-200 bg-rose-50 text-rose-950',
 };
 
-const INVOICE_CHIP_PALETTE: Record<string, string> = {
-  UNPAID: 'border-amber-200 bg-amber-50 text-amber-950',
-  PAID: 'border-emerald-200 bg-emerald-50 text-emerald-950',
-  VOIDED: 'border-slate-200 bg-slate-50 text-slate-800',
-};
-
 export function EstimateFulfillmentPanel(props: {
   estimateId: string;
   estimateStatus: EstimateStatus;
@@ -53,14 +45,6 @@ export function EstimateFulfillmentPanel(props: {
   hints: string[];
   operationalSteps: ReadonlyArray<EstimateOperationalStepRailRow>;
   relationshipStrip: ReactNode;
-  linkedInvoice: null | {
-    id: string;
-    number: string;
-    status: InvoiceStatus;
-    paidAtIso: string | null;
-    createdAtIso: string;
-    subtotalCents: number;
-  };
   linkedPos: ReadonlyArray<EstimateLinkedPoBootstrap>;
   finalizeChecklist?: EstimateFinalizeChecklist | null;
 }) {
@@ -71,14 +55,11 @@ export function EstimateFulfillmentPanel(props: {
     hints,
     operationalSteps,
     relationshipStrip,
-    linkedInvoice,
     linkedPos,
     finalizeChecklist,
   } = props;
   const showApprovedPrimary =
     estimateStatus === ES.APPROVED && linkedPos.length === 0;
-
-  const showInvoiceCta = estimateStatus === ES.APPROVED && linkedInvoice == null;
 
   return (
     <SectionCard className={`p-5 ${headline.muted ? 'opacity-90' : ''}`}>
@@ -115,21 +96,6 @@ export function EstimateFulfillmentPanel(props: {
         </ul>
       ) : null}
 
-      {showInvoiceCta ? (
-        <div className="mt-4 overflow-hidden rounded-[14px] border border-indigo-200/70 bg-indigo-50 px-4 py-3.5">
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-indigo-900">
-            <IconReceipt width={16} height={16} />
-            Bill the customer
-          </p>
-          <p className="mt-1 text-[12px] leading-snug text-indigo-900/80">
-            Creates an unpaid invoice from this estimate (same customer, lines, and sell total). Nothing posts automatically — record payment when funds arrive.
-          </p>
-          <div className="mt-3">
-            <CreateInvoiceFromEstimateButton estimateId={estimateId} />
-          </div>
-        </div>
-      ) : null}
-
       {showApprovedPrimary ? (
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Link
@@ -162,63 +128,6 @@ export function EstimateFulfillmentPanel(props: {
           >
             Create another PO from estimate
           </Link>
-        </div>
-      ) : null}
-
-      {linkedInvoice ? (
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-            Linked invoice
-          </h3>
-          <div className="mt-2 rounded-[12px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <Link
-                  href={`/invoices/${linkedInvoice.id}`}
-                  className="font-mono text-[13px] font-semibold text-blue-600 hover:underline"
-                >
-                  {linkedInvoice.number}
-                </Link>
-                <div className="mt-0.5 text-[11.5px] text-slate-400">
-                  Sell total {formatMoney(linkedInvoice.subtotalCents)} · issued{' '}
-                  <time dateTime={linkedInvoice.createdAtIso}>
-                    {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
-                      new Date(linkedInvoice.createdAtIso)
-                    )}
-                  </time>
-                </div>
-              </div>
-              <span
-                className={`${PO_STATUS_CHIP} ${INVOICE_CHIP_PALETTE[linkedInvoice.status] ?? 'border-slate-200 bg-white text-slate-700'}`}
-              >
-                {labelInvoiceStatus(linkedInvoice.status)}
-              </span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {linkedInvoice.status === InvS.PAID && linkedInvoice.paidAtIso ? (
-                <span className="rounded-full border border-emerald-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-950">
-                  Paid{' '}
-                  <time dateTime={linkedInvoice.paidAtIso}>
-                    {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
-                      new Date(linkedInvoice.paidAtIso)
-                    )}
-                  </time>
-                </span>
-              ) : linkedInvoice.status === InvS.UNPAID ? (
-                <span className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
-                  Payment outstanding
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-2">
-              <Link
-                href={`/invoices/${linkedInvoice.id}`}
-                className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-600 hover:underline"
-              >
-                Open invoice <IconArrowRight width={13} height={13} />
-              </Link>
-            </div>
-          </div>
         </div>
       ) : null}
 

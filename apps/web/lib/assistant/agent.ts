@@ -8,7 +8,7 @@
 // approve, finalize) never run from the loop — the agent can only email or
 // send anything through a separate, operator-approved step.
 
-import { prisma } from '@bvisible/db';
+import { prisma, Role } from '@bvisible/db';
 import { computeEstimate, formatMoney, type LineKind } from '@bvisible/pricing';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
@@ -115,6 +115,27 @@ export async function assistantConfigured(tenantId: string): Promise<boolean> {
   return Boolean((await loadAssistantConfig(tenantId)).apiKey);
 }
 
+/* --------------------------- who is asking --------------------------- */
+
+/// The signed-in operator driving this turn. `role` decides whether they
+/// may TRAIN the assistant (write its permanent memory) — everything else
+/// the assistant can do is available to every signed-in user.
+export interface AssistantActor {
+  id: string;
+  tenantId: string;
+  role: Role;
+}
+
+/// Training is an admin privilege: a saved lesson steers every future
+/// conversation for the whole shop, so only ADMIN / SUPER_ADMIN may
+/// teach the assistant or make it forget something.
+export function canTrainAssistant(role: Role): boolean {
+  return role === Role.ADMIN || role === Role.SUPER_ADMIN;
+}
+
+const TRAINING_DENIED =
+  'Only an admin can change what I remember. Ask an admin to teach me that — I will not save it from this account.';
+
 const SYSTEM_PROMPT = `You are the B Visible business assistant for B Visible Signs & Printing (sign shop, Harriman NY). You help the operator with estimating, purchasing insight, and day-to-day business questions.
 
 NON-NEGOTIABLE PRICING RULES (from the owner):
@@ -153,15 +174,34 @@ EFFICIENCY (critical):
 - Batch your lookups: issue MANY tool calls in the SAME response — all search_materials calls at once, alongside get_rates and get_recommendations. NEVER search one material per round.
 - Target 2 rounds total: round 1 = ALL lookups batched in parallel; round 2 = create_estimate_draft with summaryForOperator. Add a round only when a needed price is genuinely missing — never to double-check something you already have.
 
-LEARNING (you have permanent memory):
-- A MEMORY section with lessons from this shop may follow. Apply those lessons — they override generic guesses.
-- Whenever the operator corrects you, states a preference or shop rule, or you learn something reusable (a recipe, a quantity rule, a preferred material, a pricing practice), call save_memory with a short general lesson (e.g. "Lightbox faces: use Dura-Bond Black 4x8 matt"). Don't save one-off job details, customer PII, or anything sensitive.
+{{LEARNING}}
 
 WHAT YOU MUST NEVER DO:
 - Never change code, backend, server, or app configuration, and never touch payments or pension.
 - Never guess prices — if a lookup returns nothing, say so and ask.
 
 STYLE: concise, practical, dollars formatted, show your material picks as a short list. When you create an estimate, end with "Draft <number> created — review it in Estimates."`;
+
+/// Admins train the assistant; everyone else just uses it. The two
+/// variants differ ONLY in the LEARNING block — the model is told plainly
+/// which one applies so it never promises a save it cannot make.
+const LEARNING_ADMIN = `LEARNING (you have permanent memory — this operator is an ADMIN and MAY train you):
+- A MEMORY section with lessons from this shop may follow. Apply those lessons — they override generic guesses.
+- Whenever the operator corrects you, states a preference or shop rule, or you learn something reusable (a recipe, a quantity rule, a preferred material, a pricing practice), call save_memory with a short general lesson (e.g. "Lightbox faces: use Dura-Bond Black 4x8 matt"). Don't save one-off job details, customer PII, or anything sensitive.
+- TRAINING COMMANDS the admin can use — treat them as an explicit order, never as a question:
+  · "remember: …", "rule: …", "correction: …", "always …", "never …", "from now on …" → save_memory with that lesson, generalised to a reusable rule.
+  · "forget: …", "that lesson is wrong — forget …" → forget_memory with enough words to identify the lesson.
+- When a correction lands, say what you saved in one short line ("Saved: install is always billed as a final price."), so the admin can see the training took.`;
+
+const LEARNING_LOCKED = `LEARNING (permanent memory is ADMIN-ONLY for this operator):
+- A MEMORY section with lessons from this shop may follow. Apply those lessons — they override generic guesses.
+- You have NO way to save or change memory in this conversation: this operator is not an admin, and the memory tools are not available to you here.
+- Take any correction they give you and apply it for the REST OF THIS CONVERSATION, then tell them plainly it will not stick: "Fixed for now — but only an admin can teach me that permanently."
+- Never claim you saved, learned, or will remember something. You will not.`;
+
+function systemPromptFor(canTrain: boolean): string {
+  return SYSTEM_PROMPT.replace('{{LEARNING}}', canTrain ? LEARNING_ADMIN : LEARNING_LOCKED);
+}
 
 /* ------------------------------ tools ------------------------------ */
 
@@ -281,22 +321,6 @@ const TOOL_DEFS = [
           },
         },
         required: ['title', 'lines'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'save_memory',
-      description:
-        'Save a short, reusable lesson to your permanent memory for this shop (a correction, preference, recipe, or rule the operator taught you). It will be shown to you in every future conversation.',
-      parameters: {
-        type: 'object',
-        properties: {
-          lesson: { type: 'string', description: 'One or two sentences, general and reusable.' },
-          category: { type: 'string', description: 'e.g. "materials", "pricing", "recipe", "workflow".' },
-        },
-        required: ['lesson'],
       },
     },
   },
@@ -692,6 +716,151 @@ const TOOL_DEFS = [
   },
 ] as const;
 
+/// Training tools. Handed to the model ONLY when the operator is an
+/// admin — a non-admin turn never even sees that memory can be written,
+/// so the model can't try and can't promise it. runTool re-checks anyway.
+const TRAINING_TOOL_DEFS = [
+  {
+    type: 'function',
+    function: {
+      name: 'save_memory',
+      description:
+        'Save a short, reusable lesson to your permanent memory for this shop (a correction, preference, recipe, or rule the admin taught you). It will be shown to you in every future conversation, for every user. Admin-only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lesson: { type: 'string', description: 'One or two sentences, general and reusable.' },
+          category: { type: 'string', description: 'e.g. "materials", "pricing", "recipe", "workflow".' },
+        },
+        required: ['lesson'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'forget_memory',
+      description:
+        'Remove a lesson from your permanent memory — use when the admin says a saved lesson is wrong or out of date ("forget that…", "that rule is wrong"). Admin-only. If several lessons match, you get a candidate list back instead: read them out and ask which one to drop.',
+      parameters: {
+        type: 'object',
+        properties: {
+          match: {
+            type: 'string',
+            description: 'Distinctive words from the lesson to remove (e.g. "install per person rate").',
+          },
+        },
+        required: ['match'],
+      },
+    },
+  },
+] as const;
+
+function toolsForActor(canTrain: boolean): unknown[] {
+  return canTrain ? [...TOOL_DEFS, ...TRAINING_TOOL_DEFS] : [...TOOL_DEFS];
+}
+
+/* ---------------------------- memory bank ---------------------------- */
+
+const MEMORY_CAP = 300;
+
+/// Write one lesson to the tenant's permanent memory (and trim the bank).
+/// Shared by the agent's save_memory tool, the explicit "remember:"
+/// command, and the admin memory panel — so every path is capped and
+/// audited identically. Callers MUST have checked admin rights first.
+export async function saveAssistantLesson(
+  me: { id: string; tenantId: string },
+  lesson: string,
+  category?: string | null,
+  via: 'tool' | 'command' | 'panel' = 'tool'
+): Promise<{ ok: true; saved: string } | { error: string }> {
+  const content = lesson.trim().slice(0, 600);
+  if (content.length < 8) return { error: 'Lesson too short to be useful.' };
+
+  const row = await prisma.assistantMemory.create({
+    data: {
+      tenantId: me.tenantId,
+      content,
+      category: (category ?? '').trim().slice(0, 60) || null,
+    },
+    select: { id: true },
+  });
+  // Cap the memory bank — drop the oldest lessons beyond MEMORY_CAP.
+  const extras = await prisma.assistantMemory.findMany({
+    where: { tenantId: me.tenantId },
+    orderBy: { createdAt: 'desc' },
+    skip: MEMORY_CAP,
+    select: { id: true },
+  });
+  if (extras.length > 0) {
+    await prisma.assistantMemory.deleteMany({ where: { id: { in: extras.map((e) => e.id) } } });
+  }
+
+  await writeAuditLog({
+    action: 'assistant_memory_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'assistant_memory',
+    targetId: row.id,
+    metadata: { lesson: content, via },
+  });
+
+  return { ok: true, saved: content };
+}
+
+/// Drop a lesson the admin says is wrong. Fuzzy-matched against the bank:
+/// one clear hit is removed, several hits come back as candidates so the
+/// assistant can ask which one instead of guessing.
+export async function forgetAssistantLesson(
+  me: { id: string; tenantId: string },
+  match: string,
+  via: 'tool' | 'command' | 'panel' = 'tool'
+): Promise<
+  | { ok: true; forgot: string }
+  | { candidates: string[]; note: string }
+  | { error: string }
+> {
+  const needle = match.trim();
+  if (needle.length < 3) return { error: 'Say which lesson to forget — a few distinctive words.' };
+
+  const rows = await prisma.assistantMemory.findMany({
+    where: { tenantId: me.tenantId },
+    orderBy: { createdAt: 'desc' },
+    take: MEMORY_CAP,
+    select: { id: true, content: true, category: true },
+  });
+  // A literal quote of the lesson (what "forget: <exact wording>" gives)
+  // is unambiguous — take it before falling back to fuzzy scoring, which
+  // would otherwise report near-misses as rival candidates.
+  const literal = rows.filter((r) => r.content.toLowerCase().includes(needle.toLowerCase()));
+  const hits =
+    literal.length === 1
+      ? literal
+      : fuzzySearch(needle, literal.length > 1 ? literal : rows, (r) => `${r.category ?? ''} ${r.content}`, {
+          limit: 5,
+          threshold: 0.4,
+        });
+  if (hits.length === 0) return { error: 'No saved lesson matches that — nothing was removed.' };
+  if (hits.length > 1) {
+    return {
+      candidates: hits.map((h) => h.content),
+      note: 'Several lessons match. Ask the admin which one to forget, then call forget_memory again with wording unique to it.',
+    };
+  }
+
+  const target = hits[0]!;
+  await prisma.assistantMemory.deleteMany({ where: { id: target.id, tenantId: me.tenantId } });
+  await writeAuditLog({
+    action: 'assistant_memory_forgotten',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'assistant_memory',
+    targetId: target.id,
+    metadata: { lesson: target.content, via },
+  });
+  return { ok: true, forgot: target.content };
+}
+
 /// Turn a thrown tool error into a short, operator-safe message. Prisma
 /// known-request codes get specific text; anything else gets a generic line
 /// with a trimmed message. Never leaks stack traces or SQL to the operator.
@@ -707,8 +876,15 @@ function friendlyToolError(e: unknown): string {
 async function runTool(
   name: string,
   args: Record<string, unknown>,
-  me: { id: string; tenantId: string }
+  me: AssistantActor
 ): Promise<unknown> {
+  // Second gate. The training tools are already withheld from non-admin
+  // turns, so this only fires if a model hallucinates the call — but the
+  // permission check lives with the write, not just with the tool list.
+  if ((name === 'save_memory' || name === 'forget_memory') && !canTrainAssistant(me.role)) {
+    return { error: TRAINING_DENIED };
+  }
+
   const snapshot = await getSheetSnapshot(me.tenantId);
   const data = snapshot.data;
 
@@ -828,26 +1004,11 @@ async function runTool(
   }
 
   if (name === 'save_memory') {
-    const lesson = String(args.lesson ?? '').trim().slice(0, 600);
-    if (lesson.length < 8) return { error: 'Lesson too short to be useful.' };
-    await prisma.assistantMemory.create({
-      data: {
-        tenantId: me.tenantId,
-        content: lesson,
-        category: String(args.category ?? '').trim().slice(0, 60) || null,
-      },
-    });
-    // Cap the memory bank — drop the oldest lessons beyond 300.
-    const extras = await prisma.assistantMemory.findMany({
-      where: { tenantId: me.tenantId },
-      orderBy: { createdAt: 'desc' },
-      skip: 300,
-      select: { id: true },
-    });
-    if (extras.length > 0) {
-      await prisma.assistantMemory.deleteMany({ where: { id: { in: extras.map((e) => e.id) } } });
-    }
-    return { ok: true, saved: lesson };
+    return saveAssistantLesson(me, String(args.lesson ?? ''), String(args.category ?? ''));
+  }
+
+  if (name === 'forget_memory') {
+    return forgetAssistantLesson(me, String(args.match ?? ''));
   }
 
   if (name === 'create_estimate_draft') {
@@ -1072,12 +1233,82 @@ export interface AssistantTurn {
   pendingActions?: PendingAction[] | null;
 }
 
+/* ----------------------- explicit training commands ---------------------- */
+
+// Saying it in plain words works (the model calls save_memory), but an
+// admin who wants a guaranteed, instant save has a command: a keyword
+// followed by ':' or a dash. The separator is what makes it a command —
+// "remember to call Joe" is a normal message and still goes to the model.
+const TEACH_COMMAND = /^\s*(?:remember|memorize|memorise|learn|rule|lesson|correction)\s*[:\-–—]\s*([\s\S]+)$/i;
+const FORGET_COMMAND = /^\s*(?:forget|unlearn|drop)\s*[:\-–—]\s*([\s\S]+)$/i;
+
+/// Classify a message as a training command. Pure — the whole point is
+/// that "remember: X" is recognised the same way every time.
+export function parseTrainingCommand(
+  message: string
+): { kind: 'teach' | 'forget'; text: string } | null {
+  const teach = TEACH_COMMAND.exec(message);
+  if (teach) return { kind: 'teach', text: teach[1]!.trim() };
+  const forget = FORGET_COMMAND.exec(message);
+  if (forget) return { kind: 'forget', text: forget[1]!.trim() };
+  return null;
+}
+
+/// Handle "remember: …" / "forget: …" without a model round-trip.
+/// Returns null when the message is not a training command.
+async function runTrainingCommand(
+  message: string,
+  me: AssistantActor
+): Promise<AssistantTurn | null> {
+  const command = parseTrainingCommand(message);
+  if (!command) return null;
+
+  if (!canTrainAssistant(me.role)) {
+    return { reply: TRAINING_DENIED, toolEvents: [] };
+  }
+
+  if (command.kind === 'teach') {
+    const result = await saveAssistantLesson(me, command.text, null, 'command');
+    if ('error' in result) return { reply: result.error, toolEvents: [] };
+    return {
+      reply: `Learned it ✓ — I'll apply this from now on:\n\n“${result.saved}”\n\n(Say "forget: …" if you ever want it dropped.)`,
+      toolEvents: [{ tool: 'save_memory', summary: result.saved.slice(0, 160) }],
+    };
+  }
+
+  const result = await forgetAssistantLesson(me, command.text, 'command');
+  if ('error' in result) return { reply: result.error, toolEvents: [] };
+  if ('candidates' in result) {
+    return {
+      reply:
+        'Several lessons match that — which one should I forget?\n' +
+        result.candidates.map((c) => `• ${c}`).join('\n'),
+      toolEvents: [{ tool: 'forget_memory', summary: 'ambiguous' }],
+    };
+  }
+  return {
+    reply: `Forgotten ✓ — I dropped:\n\n“${result.forgot}”`,
+    toolEvents: [{ tool: 'forget_memory', summary: result.forgot.slice(0, 160) }],
+  };
+}
+
 export async function runAssistant(
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
-  me: { id: string; tenantId: string },
+  me: AssistantActor,
   pageContext?: string | null,
   onEvent?: (e: AssistantProgressEvent) => void
 ): Promise<AssistantTurn> {
+  const canTrain = canTrainAssistant(me.role);
+
+  // Explicit training command: answered here, instantly, with no model
+  // call at all — an admin's "remember: …" can never be dropped because
+  // the model decided not to call the tool.
+  const lastUser = [...history].reverse().find((m) => m.role === 'user');
+  if (lastUser) {
+    const handled = await runTrainingCommand(lastUser.content, me);
+    if (handled) return handled;
+  }
+
   const { apiKey, model } = await loadAssistantConfig(me.tenantId);
   if (!apiKey) {
     return { reply: 'The assistant is not configured yet — add your OpenAI API key in Assistant settings.', toolEvents: [] };
@@ -1092,7 +1323,7 @@ export async function runAssistant(
   });
 
   const messages: Array<Record<string, unknown>> = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPromptFor(canTrain) },
     ...(memories.length > 0
       ? [{
           role: 'system',
@@ -1129,7 +1360,7 @@ export async function runAssistant(
       JSON.stringify({
         model,
         messages,
-        tools: TOOL_DEFS,
+        tools: toolsForActor(canTrain),
         tool_choice: lastRound ? 'none' : 'auto',
         // Reasoning models: keep private chain-of-thought at the floor.
         // Estimate building is structured tool work — long thinking only

@@ -1,13 +1,11 @@
 import type {
   EstimateStatus,
-  InvoiceStatus,
   OcrJobStatus,
   POReconciliationStatus,
   POStatus,
 } from '@bvisible/db';
 import {
   EstimateStatus as ES,
-  InvoiceStatus as InvS,
   OcrJobStatus as OJS,
   POReconciliationStatus as PRS,
 } from '@bvisible/db';
@@ -194,14 +192,14 @@ export function fulfillmentHeadlineForEstimateStatus(status: EstimateStatus): Fu
     case ES.REJECTED:
       return {
         title: 'Fulfillment',
-        subtitle: 'This estimate was declined — PO and invoice workflows do not apply.',
+        subtitle: 'This estimate was declined — the PO workflow does not apply.',
         muted: true,
       };
     case ES.FINALIZED:
       return {
         title: 'Fulfillment complete',
         subtitle:
-          'Estimate finalized — linked POs and invoices remain active operational records.',
+          'Estimate finalized — linked POs remain active operational records.',
         muted: false,
       };
     default:
@@ -214,11 +212,6 @@ export function fulfillmentOperationalHints(input: {
   linkedPoCount: number;
   quoteAcceptedAt: Date | null;
   linkedPos: ReadonlyArray<EstimateLinkedPoBootstrap>;
-  linkedInvoice?: null | {
-    number: string;
-    status: InvoiceStatus;
-    paidAt: Date | null;
-  };
   now: Date;
 }): string[] {
   const hints: string[] = [];
@@ -232,22 +225,6 @@ export function fulfillmentOperationalHints(input: {
 
   if (input.estimateStatus === ES.APPROVED && input.linkedPoCount === 0) {
     hints.push('No purchase order has been created yet.');
-  }
-
-  const inv = input.linkedInvoice;
-  if (inv) {
-    if (inv.status === InvS.UNPAID) {
-      hints.push(`Invoice ${inv.number} is unpaid — record payment when the customer settles.`);
-    } else if (inv.status === InvS.PAID && inv.paidAt) {
-      hints.push(`Invoice ${inv.number} is marked paid.`);
-    } else if (inv.status === InvS.VOIDED) {
-      hints.push(`Invoice ${inv.number} is voided.`);
-    }
-  } else if (
-    input.estimateStatus === ES.APPROVED ||
-    input.estimateStatus === ES.FINALIZED
-  ) {
-    hints.push('No invoice has been created from this estimate yet.');
   }
 
   for (const p of input.linkedPos) {

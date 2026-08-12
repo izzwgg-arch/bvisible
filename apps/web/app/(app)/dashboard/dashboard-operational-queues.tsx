@@ -35,7 +35,6 @@ const PRIORITY_BUCKETS: OperationalQueueBucket[] = [
   'approved_waiting_po',
   'waiting_vendor_reply',
   'awaiting_customer',
-  'invoice_attention',
   'ready_to_finalize',
   'recently_completed',
 ];

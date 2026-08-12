@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   EstimateStatus,
-  InvoiceStatus,
   OcrJobStatus,
   POReconciliationStatus,
   POStatus,
@@ -141,27 +140,5 @@ describe('workflow queue safety (static)', () => {
     expect(src).not.toMatch(/\.create\(/);
     expect(src).not.toMatch(/\.update\(/);
     expect(src).not.toMatch(/\.delete\(/);
-  });
-});
-
-describe('invoice attention does not imply payment mutation', () => {
-  it('invoice_attention next action opens estimate only', () => {
-    const next = getOperationalNextAction({
-      state: 'invoice_attention',
-      estimateId: 'est1',
-      invoiceId: 'inv1',
-    });
-    expect(next.href).toBe('/estimates/est1');
-  });
-
-  it('derive path treats unpaid invoice as invoice_attention when approved', () => {
-    expect(
-      getOperationalWorkflowState({
-        estimateStatus: EstimateStatus.APPROVED,
-        linkedPoCount: 1,
-        hasInvoice: true,
-        invoiceStatus: InvoiceStatus.UNPAID,
-      }),
-    ).toBe('invoice_attention');
   });
 });

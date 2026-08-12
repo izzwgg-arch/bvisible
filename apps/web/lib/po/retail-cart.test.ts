@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAmazonCartUrl,
-  buildOfficeDraftEmail,
   buildRetailCartUrl,
   buildRetailItemLink,
   buildRetailItemLinks,
@@ -142,31 +141,5 @@ describe('buildRetailItemLink', () => {
   it('returns empty for unknown stores and empty queries', () => {
     expect(buildRetailItemLink('Grimco', 'SKU', 'vinyl')).toBe('');
     expect(buildRetailItemLink('Amazon', '', '  ')).toBe('');
-  });
-});
-
-describe('buildOfficeDraftEmail', () => {
-  it('includes vendor, items, quantities, prices, links, and total', () => {
-    const { subject, body } = buildOfficeDraftEmail(
-      'PO-1042',
-      'Amazon',
-      'https://www.amazon.com/gp/aws/cart/add.html?ASIN.1=B0ABCDEFGH&Quantity.1=2',
-      [
-        {
-          name: 'Blue painters tape',
-          qty: 2,
-          url: 'www.amazon.com/dp/B0ABCDEFGH',
-          sku: 'B0ABCDEFGH',
-          unitPriceCents: 799,
-        },
-      ]
-    );
-    expect(subject).toBe('Review & place order: PO-1042 — Amazon');
-    expect(body).toContain('Vendor: Amazon');
-    expect(body).toContain('Blue painters tape (SKU B0ABCDEFGH) x 2 @ $7.99 = $15.98');
-    expect(body).toContain('https://www.amazon.com/dp/B0ABCDEFGH');
-    expect(body).toContain('Order total: $15.98');
-    expect(body).toContain('Prefilled cart:');
-    expect(body).toContain('Nothing has been ordered automatically');
   });
 });

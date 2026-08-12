@@ -23,6 +23,12 @@ import type { SavePurchaseOrderInput } from '@/lib/validators';
 import type { OrderableCatalogEntry } from '@/lib/po/orderable-catalog';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import {
+  buildRetailCartUrl,
+  buildRetailItemLinks,
+  isRetailVendor,
+  type RetailCartLine,
+} from '@/lib/po/retail-cart';
+import {
   savePurchaseOrderAction,
   sendPurchaseOrderAction,
   setPoQboNumberAction,
@@ -202,6 +208,12 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendMessage, setSendMessage] = useState<string | null>(null);
+  /// Shown when a cart could not be prefilled — the per-item links are the
+  /// office's fallback, so failing silently is not an option.
+  const [cartFallback, setCartFallback] = useState<{
+    vendor: string;
+    items: Array<{ name: string; qty: number; href: string }>;
+  } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const [pickerHighlight, setPickerHighlight] = useState(0);
@@ -218,6 +230,20 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   const subtotalCents = useMemo(() => lines.reduce((sum, line) => sum + line.computedCostCents, 0), [lines]);
   const vendorGroups = useMemo(() => buildVendorGroups(lines, bootstrap.vendors, bootstrap.vendorSections), [lines, bootstrap.vendors, bootstrap.vendorSections]);
   const vendorCount = vendorGroups.length;
+  // Online stores (Amazon / Home Depot / Walmart / …) have no order desk to
+  // email — their PO is fulfilled by opening a prefilled cart on the store's
+  // own site. So they are split out of the send path entirely: the server
+  // skips them, and the primary action here becomes "Create cart".
+  const retailGroups = useMemo(
+    () => vendorGroups.filter((g) => g.vendor && isRetailVendor(g.vendor.name)),
+    [vendorGroups],
+  );
+  const emailGroups = useMemo(
+    () => vendorGroups.filter((g) => g.vendor && !isRetailVendor(g.vendor.name)),
+    [vendorGroups],
+  );
+  /// Nothing on this PO can be emailed — the button stops offering to.
+  const cartOnly = retailGroups.length > 0 && emailGroups.length === 0;
   const receivedTotal = lines.reduce((sum, line) => sum + Math.min(line.receivedQtyMilli, line.qtyMilli), 0);
   const qtyTotal = lines.reduce((sum, line) => sum + Math.max(0, line.qtyMilli), 0);
   // Items-catalog rows AND the full Sheet materials catalog, merged and
@@ -321,6 +347,50 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
     setSending(false);
     setSendMessage(result.error ?? `Sent ${result.sentCount ?? 0} vendor email${result.sentCount === 1 ? '' : 's'}.`);
     startTransition(() => router.refresh());
+  }
+
+  /// PO lines carry a vendor SKU but no product URL, so the SKU is the only
+  /// route to an ASIN here (same as the admin draft-PO email).
+  function cartLinesFor(group: VendorGroup): RetailCartLine[] {
+    return group.lines.map((line) => ({
+      name: line.description,
+      // Online carts take whole units — never round a needed amount down.
+      qty: Math.max(1, Math.ceil(line.qtyMilli / 1000)),
+      url: '',
+      sku: line.vendorSku ?? '',
+      unitPriceCents: line.unitCostCents,
+    }));
+  }
+
+  /// Open the store's prefilled cart. Amazon gets a true multi-item cart, but
+  /// only when EVERY line resolves to an ASIN — a partial cart would silently
+  /// drop items. When it can't be built the office gets per-item links instead
+  /// of a dead button.
+  function createCart() {
+    setSendMessage(null);
+    setCartFallback(null);
+    for (const group of retailGroups) {
+      if (!group.vendor) continue;
+      const url = buildRetailCartUrl(group.vendor.name, cartLinesFor(group));
+      if (url) {
+        // One popup per user gesture — anything after the first is blocked,
+        // so the remaining stores stay on their own buttons below.
+        window.open(url, '_blank', 'noopener');
+        if (retailGroups.length > 1) {
+          setSendMessage(`Opened the ${group.vendor.name} cart. Use each vendor's own button for the rest.`);
+        }
+        return;
+      }
+    }
+    const first = retailGroups[0];
+    if (!first?.vendor) return;
+    setCartFallback({
+      vendor: first.vendor.name,
+      items: buildRetailItemLinks(first.vendor.name, cartLinesFor(first)),
+    });
+    setSendMessage(
+      `Can't prefill a ${first.vendor.name} cart — every line needs a SKU/ASIN and some are blank. Add each item below, or fill the SKU column so the cart builds next time.`,
+    );
   }
 
   async function markReceived() {
@@ -462,7 +532,27 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
           <Link href="/purchase-orders" className="rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50">Back</Link>
           <Link href={`/po-print/${bootstrap.po.id}` as never} target="_blank" className="rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50">Print / PDF</Link>
           <button type="button" onClick={save} disabled={saving || !dirty} className="rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
-          <button type="button" onClick={send} disabled={sending || lines.length === 0} className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12px] font-bold text-white shadow-[0_14px_28px_rgba(47,90,243,0.22)] hover:opacity-90 disabled:opacity-50">Send PO</button>
+          {/* An all-retail PO has nothing to email — the only real action is
+              opening the store cart, so "Send PO" is replaced rather than
+              sitting next to it. A mixed PO keeps both. */}
+          {cartOnly ? null : (
+            <button type="button" onClick={send} disabled={sending || lines.length === 0} className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12px] font-bold text-white shadow-[0_14px_28px_rgba(47,90,243,0.22)] hover:opacity-90 disabled:opacity-50">Send PO</button>
+          )}
+          {retailGroups.length > 0 ? (
+            <button
+              type="button"
+              onClick={createCart}
+              disabled={lines.length === 0}
+              title={`Opens a prefilled cart on ${retailGroups.map((g) => g.vendor?.name).filter(Boolean).join(' / ')} — nothing is ordered automatically.`}
+              className={
+                cartOnly
+                  ? 'rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12px] font-bold text-white shadow-[0_14px_28px_rgba(47,90,243,0.22)] hover:opacity-90 disabled:opacity-50'
+                  : 'rounded-[8px] border border-slate-200 bg-white px-4 py-2 text-[12px] font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50'
+              }
+            >
+              Create cart
+            </button>
+          ) : null}
           <button type="button" onClick={markReceived} className="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] font-bold text-emerald-700 hover:bg-emerald-100">Mark Received</button>
         </div>
       </header>
@@ -478,6 +568,31 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
       {sendMessage || saveState.error ? (
         <div className={`mb-4 rounded-[12px] border px-4 py-3 text-[12.5px] font-semibold ${saveState.error || sendMessage?.includes('failed') ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
           {saveState.error ?? sendMessage}
+        </div>
+      ) : null}
+
+      {cartFallback ? (
+        <div className="mb-4 rounded-[12px] border border-slate-200 bg-white px-4 py-3">
+          <p className="text-[11.5px] font-bold text-slate-700">
+            Add each item on {cartFallback.vendor}, then place the order. Nothing is ordered automatically.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {cartFallback.items
+              .filter((item) => item.href)
+              .map((item, idx) => (
+                <a
+                  key={idx}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-[9px] border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  {item.qty > 1 ? `${item.qty}× ` : ''}
+                  {item.name.slice(0, 34)}
+                  {item.name.length > 34 ? '…' : ''} ↗
+                </a>
+              ))}
+          </div>
         </div>
       ) : null}
 

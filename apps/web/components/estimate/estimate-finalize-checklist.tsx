@@ -62,11 +62,6 @@ function ChecklistRow({
         <span className={`font-medium ${item.done ? 'text-slate-500' : 'text-slate-800'}`}>
           {item.label}
         </span>
-        {item.key === 'invoice' && !item.done ? (
-          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-slate-400">
-            Optional
-          </span>
-        ) : null}
         {item.href && !item.done ? (
           <Link
             href={item.href as never}

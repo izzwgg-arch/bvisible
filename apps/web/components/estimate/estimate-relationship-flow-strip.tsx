@@ -13,10 +13,7 @@ export function EstimateRelationshipFlowStrip(props: {
   estimateId: string;
   quoteDone: boolean;
   poDone: boolean;
-  invoiceDone: boolean;
-  paidDone: boolean;
   firstPoId: string | null;
-  invoiceId: string | null;
 }) {
   const nodes: Array<{
     label: string;
@@ -35,18 +32,6 @@ export function EstimateRelationshipFlowStrip(props: {
       done: props.poDone,
       href: props.firstPoId ? `/purchase-orders/${props.firstPoId}` : null,
       hint: props.poDone ? 'Linked purchase order' : 'No PO linked yet',
-    },
-    {
-      label: 'Invoice',
-      done: props.invoiceDone,
-      href: props.invoiceId ? `/invoices/${props.invoiceId}` : null,
-      hint: props.invoiceDone ? 'Sales invoice created' : 'No invoice yet',
-    },
-    {
-      label: 'Paid',
-      done: props.paidDone,
-      href: props.invoiceId ? `/invoices/${props.invoiceId}` : null,
-      hint: props.paidDone ? 'Marked paid in app' : 'Awaiting payment record',
     },
   ];
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { startTransition, useActionState } from 'react';
 import { loginFormAction, type LoginState } from '@/app/(auth)/login/actions';
 import { FormError } from './form-error';
 
@@ -19,7 +19,10 @@ export function LoginForm({
     const formData = new FormData();
     formData.set('intent', 'dev');
     if (next) formData.set('next', next);
-    formAction(formData);
+    // Dispatching a useActionState action manually must happen inside a
+    // transition — outside one, the redirect() from the action corrupts
+    // the app router's hook state ("Rendered more hooks..." crash).
+    startTransition(() => formAction(formData));
   }
 
   return (

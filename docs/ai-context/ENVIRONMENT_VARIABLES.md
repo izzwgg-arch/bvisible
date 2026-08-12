@@ -14,6 +14,15 @@ APP_BASE_URL=https://app.example.com
 # apps/web/lib/auth/session.ts (SESSION_COOKIE_NAME constant). Not env-tunable.
 # We do NOT use NextAuth — sessions are DB-backed via the `Session` table.
 
+# Office reminder for retail (Amazon / Home Depot / …) purchase orders.
+# Read server-side ONLY — it reaches the browser as a prefilled form value,
+# never as configuration, and the server re-resolves it on every send.
+# Optional: apps/web/lib/po/office-reminder.ts falls back to
+# sales@bvisible.us when this is unset or malformed, so a missing value can
+# never send an order reminder nowhere. An employee may override the address
+# for one order; that override never changes this default.
+AMAZON_OFFICE_REMINDER_EMAIL=sales@bvisible.us
+
 # Database — Postgres in docker compose, bound to 127.0.0.1:5432 only.
 # The `bvisible-web` PM2 process runs on the host (NOT in compose), so it
 # reaches Postgres via localhost, not via a docker-network DNS name.

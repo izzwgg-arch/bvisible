@@ -5,7 +5,6 @@ export const STALE_APPROVED_NO_PO_MS = 2 * 24 * 60 * 60 * 1000;
 export const STALE_VENDOR_REPLY_MS = 3 * 24 * 60 * 60 * 1000;
 export const STALE_OCR_REVIEW_MS = 2 * 24 * 60 * 60 * 1000;
 export const STALE_RECON_UNRESOLVED_MS = 5 * 24 * 60 * 60 * 1000;
-export const STALE_INVOICE_UNPAID_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function isPastStaleThreshold(referenceAt: Date, thresholdMs: number, now: Date): boolean {
   return now.getTime() - referenceAt.getTime() >= thresholdMs;

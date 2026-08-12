@@ -80,7 +80,7 @@ describe('evaluateEstimateFinalizeGates', () => {
     expect(r.kind).toBe('already_finalized');
   });
 
-  it('invoice unpaid is not a finalize gate', () => {
+  it('approved with QBO-covered PO can finalize', () => {
     const r = evaluateEstimateFinalizeGates({
       estimateStatus: EstimateStatus.APPROVED,
       linkedPos: [po()],

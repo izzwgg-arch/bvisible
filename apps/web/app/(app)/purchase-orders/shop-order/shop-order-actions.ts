@@ -33,6 +33,11 @@ import {
 } from '@/lib/po/retail-cart';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
 import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
+import {
+  defaultOfficeReminderEmail,
+  isValidEmail,
+  sendOfficeReminder,
+} from '@/lib/po/office-reminder';
 import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
 
 const shopOrderLineSchema = z.object({
@@ -60,6 +65,10 @@ export interface RetailCartItem {
 const shopOrderSchema = z.object({
   mode: z.enum(['send', 'draft']).default('draft'),
   requestId: z.string().trim().min(8).max(80),
+  /// Office-reminder recipient for THIS order only. Empty = use the
+  /// server-side default; a value here never changes that default. Validated
+  /// again server-side because the client field is only a convenience.
+  officeReminderTo: z.string().trim().max(320).default(''),
   /// Per-vendor PO note, keyed by vendor name.
   vendorNotes: z.record(z.string(), z.string().trim().max(2000)).default({}),
   lines: z.array(shopOrderLineSchema).min(1, 'Add at least one material.').max(200),
@@ -92,6 +101,9 @@ export interface ShopOrderResult {
       items: RetailCartItem[];
       /// True when the office reminder email went out for this order.
       officeReminderSent?: boolean;
+      /// Address the reminder actually went to — the per-order override when
+      /// one was entered, otherwise the server-side default.
+      officeReminderTo?: string;
     };
   }>;
 }
@@ -142,6 +154,14 @@ export async function createShopOrderAction(
     }
     throw err;
   }
+
+  // Per-order reminder recipient. The client field is a convenience only —
+  // an invalid or empty value falls back to the server-side default rather
+  // than failing the order or sending nowhere. Resolving it here (not per
+  // vendor) keeps every retail PO in one submission on the same address.
+  const officeReminderTo = isValidEmail(data.officeReminderTo)
+    ? data.officeReminderTo.trim()
+    : defaultOfficeReminderEmail();
 
   // Group lines by vendor — one PO per vendor.
   const byVendor = new Map<string, typeof data.lines>();
@@ -196,6 +216,10 @@ export async function createShopOrderAction(
           vendorId: vendor.id,
           selectedVendorMode: VENDOR_MODE_MAP[l.vendorMode] ?? VendorCostSourceMode.CHEAPEST,
           vendorSku: l.vendorSku || null,
+          // Snapshot the product page at order time so "View on Amazon" on the
+          // order-ready page survives later Sheet edits. Normalized here so a
+          // scheme-less Sheet URL can never render as an app-relative 404.
+          productUrl: normalizeExternalUrl(l.productUrl) || null,
           notes: l.catalogId ? `Sheet catalog: ${l.catalogId}` : null,
         })),
       });
@@ -263,27 +287,33 @@ export async function createShopOrderAction(
 
     if (data.mode === 'send') {
       if (retailVendor) {
-        // Amazon workflow: the office reminder email (with cart links)
-        // goes out now — this is the only path that sends it — then the
-        // PO moves to SENT so the shop can start receiving against it.
-        // Nothing is emailed to the retail vendor itself, ever.
-        const notified = await notifyAdminsOfDraftPo({
+        // Amazon workflow: the office reminder goes out automatically, now
+        // that the PO row and its lines exist — never before. Nothing is
+        // emailed to the retail vendor itself, ever.
+        //
+        // The reminder is a SEPARATE state from the order: if it fails, the
+        // PO still stands and only the email is retried from the order-ready
+        // page. That is why nothing here rolls back on failure.
+        const reminder = await sendOfficeReminder({
           tenantId: me.tenantId,
           purchaseOrderId: po.id,
-          reason: 'created',
+          recipient: officeReminderTo,
           actorId: me.id,
         });
-        if (retail) retail.officeReminderSent = notified.ok;
+        if (retail) {
+          retail.officeReminderSent = reminder.ok;
+          retail.officeReminderTo = reminder.recipient;
+        }
         await markShopOrderPoSent(
           me.tenantId,
           me.id,
           po.id,
-          `Order placed via ${vendor.name} cart workflow — office reminder ${notified.ok ? 'emailed' : 'could not be emailed'}`
+          `Order placed via ${vendor.name} cart workflow — office reminder ${reminder.ok ? `emailed to ${reminder.recipient}` : 'could not be emailed'}`
         );
         emailStatus = 'NOT_SENT';
-        emailDetail = notified.ok
-          ? 'Office reminder emailed — the office places the order on the store site.'
-          : 'Office reminder email failed — the office can still order from the cart link.';
+        emailDetail = reminder.ok
+          ? `Office reminder emailed to ${reminder.recipient} — the office places the order on the store site.`
+          : (reminder.failureMessage ?? 'Office reminder email failed.');
       } else {
         const sent = await emailPoToVendor(me.tenantId, me.id, po.id);
         emailStatus = sent.status;
@@ -507,67 +537,10 @@ export async function sendShopOrderPoAction(
 /// Emails the office-review draft through the tenant's SMTP. Retail
 /// orders stay manual — this only delivers the review email; nothing is
 /// ordered automatically.
-const officeDraftSchema = z.object({
-  poId: z.string().trim().min(1).max(200),
-  to: z.string().trim().email('Enter a valid office email address.'),
-  subject: z.string().trim().min(1).max(300),
-  body: z.string().trim().min(1).max(20000),
-});
-
-export async function sendOfficeDraftEmailAction(payload: {
-  poId: string;
-  to: string;
-  subject: string;
-  body: string;
-}): Promise<{ ok: boolean; message: string }> {
-  const me = await requireTenantId();
-  const ctx = await readRequestContext();
-
-  const parsed = officeDraftSchema.safeParse(payload);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? 'Invalid input.' };
-  }
-  const { poId, to, subject, body } = parsed.data;
-
-  // Tenant gate — the draft must belong to one of this tenant's POs.
-  const po = await prisma.purchaseOrder.findFirst({
-    where: { id: poId, tenantId: me.tenantId, deletedAt: null },
-    select: { id: true, number: true },
-  });
-  if (!po) return { ok: false, message: 'Purchase order not found.' };
-
-  const sent = await sendMail({
-    to,
-    subject,
-    text: body,
-    html: `<pre style="font-family:Arial,sans-serif;font-size:13px;white-space:pre-wrap">${escapeHtml(body)}</pre>`,
-  });
-  if (!sent.ok) {
-    return { ok: false, message: `Email to ${to} failed — check SMTP settings and retry.` };
-  }
-
-  await prisma.pOEvent.create({
-    data: {
-      tenantId: me.tenantId,
-      purchaseOrderId: po.id,
-      kind: POEventKind.NOTE_ADDED,
-      message: `Office review draft emailed to ${to} (retail order — manual placement required)`,
-      actorId: me.id,
-    },
-  });
-  await writeAuditLog({
-    action: 'po_office_draft_emailed',
-    userId: me.id,
-    tenantId: me.tenantId,
-    targetType: 'purchase_order',
-    targetId: po.id,
-    ipAddress: ctx.ipAddress,
-    userAgent: ctx.userAgent,
-    metadata: { number: po.number, to },
-  });
-
-  return { ok: true, message: `Draft sent to ${to}` };
-}
+// The office-review DRAFT email (raw body shown on screen, copy / open-in-
+// mail-app, manual first send) was removed with the order-ready redesign.
+// The office reminder is now sent automatically by sendOfficeReminder when
+// the order is created, and resent from the order-ready page.
 
 function escapeHtml(input: string): string {
   return input

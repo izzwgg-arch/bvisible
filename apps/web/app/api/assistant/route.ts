@@ -3,6 +3,7 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import {
   assistantConfigured,
   runAssistant,
+  type AssistantActor,
   type AssistantProgressEvent,
   type AssistantTurn,
 } from '@/lib/assistant/agent';
@@ -35,7 +36,7 @@ export const maxDuration = 600;
 async function runAssistantInLanguage(
   lang: string | null,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
-  me: { id: string; tenantId: string },
+  me: AssistantActor,
   context: string | null,
   onEvent?: (e: AssistantProgressEvent) => void
 ): Promise<AssistantTurn> {
@@ -100,14 +101,18 @@ export async function POST(req: Request) {
   const context = typeof body.context === 'string' ? body.context.slice(0, 4000) : null;
   const lang = typeof body.lang === 'string' ? body.lang : null;
 
+  // Role comes from the session-backed user, never from the request body:
+  // it decides whether this turn may train the assistant's memory.
+  const actor: AssistantActor = { id: me.id, tenantId: me.tenantId, role: me.role };
+
   // A message carrying a parsed Excel takeoff takes the dedicated path:
   // one planning call, then a deterministic verbatim import — the agent
   // loop (and Yiddish translation) never see the line data.
   const takeoff = sanitizeAttachedTakeoff(body.takeoff);
   const runTurn = (onEvent?: (e: AssistantProgressEvent) => void) =>
     takeoff
-      ? runTakeoffTurn(history, { id: me.id, tenantId: me.tenantId }, takeoff, onEvent)
-      : runAssistantInLanguage(lang, history, { id: me.id, tenantId: me.tenantId }, context, onEvent);
+      ? runTakeoffTurn(history, actor, takeoff, onEvent)
+      : runAssistantInLanguage(lang, history, actor, context, onEvent);
 
   const wantsStream = (req.headers.get('accept') ?? '').includes('application/x-ndjson');
   if (!wantsStream) {

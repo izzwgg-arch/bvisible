@@ -4,20 +4,31 @@ import { PageHeader } from '@/components/app-shell';
 import { assistantConfigured } from '@/lib/assistant/agent';
 import { AssistantChat } from './assistant-chat';
 import { AssistantSettingsPanel } from './settings-panel';
+import { AssistantMemoryPanel } from './memory-panel';
 
 export const metadata = { title: 'Assistant' };
 export const dynamic = 'force-dynamic';
 
 export default async function AssistantPage() {
   const me = await requireTenantId();
-  const [configured, setting] = await Promise.all([
+  const isAdmin = me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN;
+  const [configured, setting, lessons] = await Promise.all([
     assistantConfigured(me.tenantId),
     prisma.assistantSetting.findUnique({
       where: { tenantId: me.tenantId },
       select: { apiKeyCipher: true, ylApiKeyCipher: true, model: true },
     }),
+    // The training bank is only ever shown to admins — they are the only
+    // ones who can change it.
+    isAdmin
+      ? prisma.assistantMemory.findMany({
+          where: { tenantId: me.tenantId },
+          orderBy: { createdAt: 'desc' },
+          take: 300,
+          select: { id: true, content: true, category: true, createdAt: true },
+        })
+      : Promise.resolve([]),
   ]);
-  const isAdmin = me.role === Role.ADMIN || me.role === Role.SUPER_ADMIN;
 
   return (
     // Fill the viewport so the chat pane (and its composer) always fits
@@ -29,11 +40,25 @@ export default async function AssistantPage() {
         subtitle="Estimates, lookups, and business answers — grounded in the live pricing Sheet and your data."
       />
       {isAdmin ? (
-        <AssistantSettingsPanel
-          keyConfigured={Boolean(setting?.apiKeyCipher) || configured}
-          ylKeyConfigured={Boolean(setting?.ylApiKeyCipher) || Boolean(process.env.YIDDISHLABS_API_KEY?.trim())}
-          model={setting?.model ?? 'gpt-5.6-sol'}
-        />
+        <>
+          <AssistantSettingsPanel
+            keyConfigured={Boolean(setting?.apiKeyCipher) || configured}
+            ylKeyConfigured={Boolean(setting?.ylApiKeyCipher) || Boolean(process.env.YIDDISHLABS_API_KEY?.trim())}
+            model={setting?.model ?? 'gpt-5.6-sol'}
+          />
+          <AssistantMemoryPanel
+            lessons={lessons.map((l) => ({
+              id: l.id,
+              content: l.content,
+              category: l.category,
+              createdAt: l.createdAt.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              }),
+            }))}
+          />
+        </>
       ) : null}
       {!configured ? (
         <div className="mb-4 max-w-[1000px] shrink-0 rounded-[var(--radius-bv)] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">

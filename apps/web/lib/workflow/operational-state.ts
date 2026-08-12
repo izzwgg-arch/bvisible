@@ -1,7 +1,6 @@
-import type { EstimateStatus, InvoiceStatus, OcrJobStatus, POReconciliationStatus, POStatus } from '@bvisible/db';
+import type { EstimateStatus, OcrJobStatus, POReconciliationStatus, POStatus } from '@bvisible/db';
 import {
   EstimateStatus as ES,
-  InvoiceStatus as IS,
   OcrJobStatus as OJS,
   POStatus as POS,
 } from '@bvisible/db';
@@ -10,7 +9,6 @@ import type { OperationalWorkflowState } from './operational-matrix';
 import {
   isPastStaleThreshold,
   STALE_APPROVED_NO_PO_MS,
-  STALE_INVOICE_UNPAID_MS,
   STALE_OCR_REVIEW_MS,
   STALE_QUOTE_WAITING_MS,
   STALE_RECON_UNRESOLVED_MS,
@@ -25,7 +23,6 @@ export const WORKFLOW_STATE_LABELS: Record<OperationalWorkflowState, string> = {
   recon_snapshot_needed: 'Reconciliation needed',
   variance_detected: 'Variance detected',
   ready_to_finalize: 'Ready to finalize',
-  invoice_attention: 'Invoice follow-up',
   unmatched_email: 'Unmatched mail',
   completed: 'Completed',
 };
@@ -45,8 +42,6 @@ export function getOperationalWorkflowState(input: {
   hasReconciliationSnapshot?: boolean;
   reconciliationStatus?: POReconciliationStatus | null;
   openSpendAlertCount?: number;
-  invoiceStatus?: InvoiceStatus | null;
-  hasInvoice?: boolean;
   emailUnmatched?: boolean;
   finalized?: boolean;
   operatorMarkedReconciled?: boolean;
@@ -98,13 +93,6 @@ export function getOperationalWorkflowState(input: {
     return 'ready_to_finalize';
   }
 
-  if (
-    input.estimateStatus === ES.APPROVED &&
-    (!input.hasInvoice || input.invoiceStatus === IS.UNPAID)
-  ) {
-    return 'invoice_attention';
-  }
-
   if (input.operatorMarkedReconciled) return 'completed';
 
   return null;
@@ -126,8 +114,6 @@ export function getOperationalAttentionReason(state: OperationalWorkflowState): 
       return 'Latest reconciliation or spend alerts need operator decisions.';
     case 'ready_to_finalize':
       return 'PO coverage and QuickBooks numbers are in place; estimate can finalize.';
-    case 'invoice_attention':
-      return 'Billing step is incomplete for this approved job.';
     case 'unmatched_email':
       return 'Inbound vendor mail is not linked to a purchase order.';
     case 'completed':
@@ -142,23 +128,19 @@ export function getOperationalNextAction(input: {
   estimateId?: string | null;
   poId?: string | null;
   ocrDocumentId?: string | null;
-  invoiceId?: string | null;
   emailId?: string | null;
 }): OperationalNextAction {
   switch (input.state) {
     case 'awaiting_customer':
     case 'approved_waiting_po':
     case 'ready_to_finalize':
-    case 'invoice_attention':
       return {
         label:
           input.state === 'ready_to_finalize'
             ? 'Finalize estimate'
             : input.state === 'approved_waiting_po'
               ? 'Create PO'
-              : input.state === 'invoice_attention'
-                ? 'Open estimate'
-                : 'Open estimate',
+              : 'Open estimate',
         href: `/estimates/${input.estimateId ?? ''}`,
       };
     case 'waiting_vendor_reply':
@@ -189,7 +171,6 @@ export function getOperationalNextAction(input: {
       };
     case 'completed':
       if (input.poId) return { label: 'View PO', href: `/purchase-orders/${input.poId}` };
-      if (input.invoiceId) return { label: 'View invoice', href: `/invoices/${input.invoiceId}` };
       return { label: 'View estimate', href: `/estimates/${input.estimateId ?? ''}` };
     default:
       return { label: 'Open', href: '/dashboard' };
@@ -214,8 +195,6 @@ export function isOperationalStale(input: {
     case 'variance_detected':
     case 'recon_snapshot_needed':
       return isPastStaleThreshold(referenceAt, STALE_RECON_UNRESOLVED_MS, now);
-    case 'invoice_attention':
-      return isPastStaleThreshold(referenceAt, STALE_INVOICE_UNPAID_MS, now);
     default:
       return false;
   }

@@ -13,6 +13,7 @@ export {
   POLineKind,
   POAttachmentKind,
   POEventKind,
+  POReminderStatus,
   EmailIngestStatus,
   EmailMatchReason,
   VendorPriceConfidence,

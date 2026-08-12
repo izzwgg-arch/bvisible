@@ -40,6 +40,7 @@ import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import { renderPurchaseOrderEmail } from '@/lib/emails/purchase-order';
 import { sendMail } from '@/lib/mailer';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
+import { isRetailVendor } from '@/lib/po/retail-cart';
 import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
 import { unlink } from 'node:fs/promises';
 
@@ -642,6 +643,19 @@ export async function sendPurchaseOrderAction(
 
   if (groups.size === 0) {
     return { error: 'Assign vendors to PO lines before sending.' };
+  }
+
+  // Online stores have no order desk — a PO email to Amazon goes nowhere, and
+  // treating a missing address as a send FAILURE buried the real failures in
+  // noise. They are fulfilled with a prefilled cart ("Create cart") instead.
+  const retailGroups = [...groups].filter(([, g]) => isRetailVendor(g.vendor.name));
+  for (const [vendorId] of retailGroups) groups.delete(vendorId);
+
+  if (groups.size === 0) {
+    const names = retailGroups.map(([, g]) => g.vendor.name).join(', ');
+    return {
+      error: `${names} ${retailGroups.length === 1 ? 'is an online store' : 'are online stores'} — nothing to email. Use Create cart instead.`,
+    };
   }
 
   let sentCount = 0;

@@ -11,7 +11,6 @@ export type EstimateListWorkflowChip = {
 export function getEstimateListWorkflowChips(input: {
   status: EstimateStatus;
   hasLinkedPo: boolean;
-  hasLinkedInvoice: boolean;
 }): EstimateListWorkflowChip[] {
   switch (input.status) {
     case EstimateStatus.DRAFT:
@@ -24,14 +23,8 @@ export function getEstimateListWorkflowChips(input: {
           { label: WORKFLOW_STATE_LABELS.approved_waiting_po, tone: 'action' },
         ];
       }
-      if (!input.hasLinkedInvoice) {
-        return [
-          { label: 'PO linked', tone: 'neutral' },
-          { label: 'Bill customer', tone: 'action' },
-        ];
-      }
       return [
-        { label: 'PO + invoice', tone: 'neutral' },
+        { label: 'PO linked', tone: 'neutral' },
         { label: POTENTIALLY_READY_LABEL, tone: 'ready' },
       ];
     case EstimateStatus.FINALIZED:

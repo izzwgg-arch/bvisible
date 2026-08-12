@@ -5,7 +5,6 @@ import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EstimateStatus } from '@bvisible/db';
 import { finalizeEstimateAction, updateEstimateStatusAction } from './actions';
-import { createInvoiceFromEstimateAction } from '@/app/(app)/invoices/actions';
 import {
   sendEstimateEmailAction,
   type SendEstimateEmailState,
@@ -29,8 +28,6 @@ export function EstimateHeaderActions({
   const [approveError, setApproveError] = useState<string | null>(null);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
-  const [invoiceBusy, setInvoiceBusy] = useState(false);
-  const [invoiceError, setInvoiceError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sendState.ok) router.refresh();
@@ -67,21 +64,6 @@ export function EstimateHeaderActions({
     }
   }
 
-  async function createInvoice() {
-    setInvoiceBusy(true);
-    setInvoiceError(null);
-    const result = await createInvoiceFromEstimateAction({ estimateId });
-    setInvoiceBusy(false);
-    if (result.error) {
-      setInvoiceError(result.error);
-      return;
-    }
-    if (result.invoiceId) {
-      router.push(`/invoices/${result.invoiceId}` as never);
-      router.refresh();
-    }
-  }
-
   const approved = status === EstimateStatus.APPROVED || status === EstimateStatus.FINALIZED;
   const finalized = status === EstimateStatus.FINALIZED;
 
@@ -104,11 +86,11 @@ export function EstimateHeaderActions({
         <input type="hidden" name="estimateId" value={estimateId} />
         <button
           type="submit"
-          disabled={sendPending || status === EstimateStatus.FINALIZED}
-          title="Email this estimate to the customer email on file."
+          disabled={sendPending}
+          title="Email this estimate to the customer email on file. Can be sent again at any time, including after finalizing."
           className="inline-flex h-9 items-center justify-center rounded-[7px] border border-slate-200 bg-white px-6 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {sendPending ? 'Sending...' : sendState.ok ? 'Sent' : 'Send'}
+          {sendPending ? 'Sending...' : sendState.ok ? 'Send again' : 'Send'}
         </button>
       </form>
       <button
@@ -120,18 +102,6 @@ export function EstimateHeaderActions({
         {approveBusy ? 'Approving...' : approved ? 'Approved' : 'Approve'}
         <span aria-hidden className="text-white/75">⌄</span>
       </button>
-      {approved ? (
-        <button
-          type="button"
-          onClick={createInvoice}
-          disabled={invoiceBusy}
-          title="Create an unpaid invoice from this approved estimate (lines and totals copied)."
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] border border-emerald-200 bg-white px-5 text-[12px] font-bold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <span aria-hidden>⧉</span>
-          {invoiceBusy ? 'Creating invoice...' : 'Create invoice'}
-        </button>
-      ) : null}
       <button
         type="button"
         onClick={finalize}
@@ -152,10 +122,6 @@ export function EstimateHeaderActions({
       ) : finalizeError ? (
         <span className="basis-full text-right text-[11.5px] font-medium text-rose-600">
           {finalizeError}
-        </span>
-      ) : invoiceError ? (
-        <span className="basis-full text-right text-[11.5px] font-medium text-rose-600">
-          {invoiceError}
         </span>
       ) : null}
     </div>

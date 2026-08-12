@@ -43,7 +43,7 @@ const WORKFLOW_FILTERS = [
   { value: 'all', label: 'All workflows' },
   { value: 'needs-lines', label: 'Needs lines' },
   { value: 'ready-po', label: 'Ready for PO' },
-  { value: 'ready-invoice', label: 'Ready to invoice' },
+  { value: 'ready-finalize', label: 'Ready to finalize' },
   { value: 'complete', label: 'Complete' },
 ] as const;
 
@@ -98,7 +98,6 @@ export default async function EstimatesPage({
           select: {
             lines: true,
             purchaseOrders: { where: { deletedAt: null } },
-            invoices: { where: { deletedAt: null } },
           },
         },
       },
@@ -116,11 +115,10 @@ export default async function EstimatesPage({
   const totalSellCents = filteredEstimates.reduce((sum, estimate) => sum + estimate.finalPriceCents, 0);
   const approvedCount = filteredEstimates.filter((estimate) => estimate.status === EstimateStatus.APPROVED).length;
   const draftCount = filteredEstimates.filter((estimate) => estimate.status === EstimateStatus.DRAFT).length;
-  const readyForInvoiceCount = filteredEstimates.filter(
+  const readyToFinalizeCount = filteredEstimates.filter(
     (estimate) =>
       estimate.status === EstimateStatus.APPROVED &&
-      estimate._count.purchaseOrders > 0 &&
-      estimate._count.invoices === 0
+      estimate._count.purchaseOrders > 0
   ).length;
   const hasActiveFilters = Boolean(query || status || workflow !== 'all' || sort !== 'updated-desc');
 
@@ -152,7 +150,7 @@ export default async function EstimatesPage({
         <MetricCard label="Visible value" value={formatMoney(totalSellCents)} tone="blue" />
         <MetricCard label="Approved" value={approvedCount.toLocaleString()} tone="emerald" />
         <MetricCard label="Drafts" value={draftCount.toLocaleString()} tone="slate" />
-        <MetricCard label="Ready invoice" value={readyForInvoiceCount.toLocaleString()} tone="violet" />
+        <MetricCard label="Ready to finalize" value={readyToFinalizeCount.toLocaleString()} tone="violet" />
       </section>
 
       <section className="mb-5 rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-xl">
@@ -255,18 +253,15 @@ export default async function EstimatesPage({
               </div>
               {pagedEstimates.map((e) => {
                 const hasPo = e._count.purchaseOrders > 0;
-                const hasInvoice = e._count.invoices > 0;
                 const next = getEstimateListNextAction({
                   id: e.id,
                   status: e.status,
                   lineCount: e._count.lines,
                   hasLinkedPo: hasPo,
-                  hasLinkedInvoice: hasInvoice,
                 });
                 const chips = getEstimateListWorkflowChips({
                   status: e.status,
                   hasLinkedPo: hasPo,
-                  hasLinkedInvoice: hasInvoice,
                 });
                 return (
                   <div
@@ -328,7 +323,6 @@ export default async function EstimatesPage({
                         id={e.id}
                         status={e.status}
                         hasPo={hasPo}
-                        hasInvoice={hasInvoice}
                       />
                     </div>
                   </div>
@@ -352,12 +346,10 @@ function QuickActions({
   id,
   status,
   hasPo,
-  hasInvoice,
 }: {
   id: string;
   status: EstimateStatus;
   hasPo: boolean;
-  hasInvoice: boolean;
 }) {
   const base = `/estimates/${id}`;
   const links: { label: string; href: string }[] = [];
@@ -370,9 +362,6 @@ function QuickActions({
   }
   if (status === EstimateStatus.APPROVED && !hasPo) {
     links.push({ label: 'PO', href: `${base}#estimate-create-po` });
-  }
-  if (status === EstimateStatus.APPROVED && hasPo && !hasInvoice) {
-    links.push({ label: 'Invoice', href: `${base}#estimate-linked-invoice` });
   }
 
   return (
@@ -549,22 +538,21 @@ function orderByForSort(sort: (typeof SORT_OPTIONS)[number]['value']): Prisma.Es
 function matchesWorkflowFilter(
   estimate: {
     status: EstimateStatus;
-    _count: { lines: number; purchaseOrders: number; invoices: number };
+    _count: { lines: number; purchaseOrders: number };
   },
   workflow: (typeof WORKFLOW_FILTERS)[number]['value'],
 ): boolean {
   const hasPo = estimate._count.purchaseOrders > 0;
-  const hasInvoice = estimate._count.invoices > 0;
 
   switch (workflow) {
     case 'needs-lines':
       return estimate._count.lines === 0;
     case 'ready-po':
       return estimate.status === EstimateStatus.APPROVED && !hasPo;
-    case 'ready-invoice':
-      return estimate.status === EstimateStatus.APPROVED && hasPo && !hasInvoice;
+    case 'ready-finalize':
+      return estimate.status === EstimateStatus.APPROVED && hasPo;
     case 'complete':
-      return estimate.status === EstimateStatus.FINALIZED || hasInvoice;
+      return estimate.status === EstimateStatus.FINALIZED;
     case 'all':
     default:
       return true;

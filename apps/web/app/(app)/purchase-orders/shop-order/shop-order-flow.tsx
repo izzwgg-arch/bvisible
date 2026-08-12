@@ -25,16 +25,10 @@ import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import { setAssistantContext } from '@/lib/assistant/context-store';
 import {
   createShopOrderAction,
-  sendOfficeDraftEmailAction,
   sendShopOrderPoAction,
   type ShopOrderResult,
 } from './shop-order-actions';
-import {
-  buildOfficeDraftEmail,
-  buildRetailCartUrl,
-  buildRetailItemLinks,
-  isRetailVendor,
-} from '@/lib/po/retail-cart';
+import { buildRetailCartUrl, isRetailVendor } from '@/lib/po/retail-cart';
 
 export interface CatalogEntry {
   id: string;
@@ -58,6 +52,9 @@ export interface FlowProps {
   aliases: Array<{ alias: string; canonical: string }>;
   vendorEmails: Record<string, string>;
   smtpConfigured: boolean;
+  /// Server-resolved default for the office reminder. Display + prefill only;
+  /// the server decides the real recipient on every send.
+  defaultOfficeReminderTo: string;
   /// Non-null when the pricing Sheet could not be loaded.
   sheetWarning?: string | null;
 }
@@ -219,6 +216,14 @@ function groupLines(lines: OrderLine[]): Array<[string, OrderLine[]]> {
   return Array.from(map.entries()).sort(
     (a, b) => Number(isRetailVendor(a[0])) - Number(isRetailVendor(b[0]))
   );
+}
+
+/// Mirrors isValidEmail on the server so the field and the action agree about
+/// what is acceptable. The server still re-validates — this only stops an
+/// obvious typo before the order is created.
+function looksLikeEmail(value: string): boolean {
+  const v = value.trim();
+  return v.length > 0 && v.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 }
 
 function splitRetailCounts(retailVendors: string[]): { amazon: number; other: number } {
@@ -516,6 +521,10 @@ export function ShopOrderFlow(props: FlowProps) {
   const [customName, setCustomName] = useState('');
   const [customVendor, setCustomVendor] = useState('');
   const [customPrice, setCustomPrice] = useState('');
+  // Held in the flow's own state (not the form DOM) so a manual address
+  // survives rerenders and moving between build/review steps. Initialised
+  // once from the server default and never silently reset afterwards.
+  const [officeReminderTo, setOfficeReminderTo] = useState(props.defaultOfficeReminderTo);
   // One idempotency key per composed order — a double-click, refresh, or
   // retry of the same submission can never create duplicates.
   const requestIdRef = useRef<string>('');
@@ -675,6 +684,9 @@ export function ShopOrderFlow(props: FlowProps) {
     return JSON.stringify({
       mode,
       requestId: requestIdRef.current,
+      // Per-order override only. Blank means "use the server default" — the
+      // server re-validates and never trusts this to pick the address.
+      officeReminderTo: officeReminderTo.trim(),
       vendorNotes,
       lines: lines.map((l) => ({
         name: l.name,
@@ -759,6 +771,8 @@ export function ShopOrderFlow(props: FlowProps) {
           setPayload={setPayload}
           openFirstRetailCart={openFirstRetailCart}
           groupCount={groups.length}
+          officeReminderTo={officeReminderTo}
+          setOfficeReminderTo={setOfficeReminderTo}
         />
       ) : (
         <>
@@ -1112,6 +1126,8 @@ function ReviewScreen({
   setPayload,
   openFirstRetailCart,
   groupCount,
+  officeReminderTo,
+  setOfficeReminderTo,
 }: {
   regularGroups: Array<[string, OrderLine[]]>;
   retailGroups: Array<[string, OrderLine[]]>;
@@ -1130,6 +1146,10 @@ function ReviewScreen({
   pending: boolean;
   error: string | null;
   onBack: () => void;
+  /// Lifted to the flow so a manually entered address survives rerenders and
+  /// moving between the build and review steps.
+  officeReminderTo: string;
+  setOfficeReminderTo: (v: string) => void;
   setPayload: (mode: 'send' | 'draft') => void;
   openFirstRetailCart: () => void;
   groupCount: number;
@@ -1370,10 +1390,44 @@ function ReviewScreen({
             </span>
           </div>
 
+          {/* Secondary by design: the standard address is already filled in
+              and the employee normally never touches this. Only shown when
+              the order actually has an online-store PO to remind about. */}
+          {retailGroups.length > 0 ? (
+            <div className="mt-3.5 border-t border-[var(--color-bv-border)] pt-3.5">
+              <label
+                htmlFor="office-reminder-to"
+                className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]"
+              >
+                Office reminder
+              </label>
+              <input
+                id="office-reminder-to"
+                type="email"
+                value={officeReminderTo}
+                onChange={(e) => setOfficeReminderTo(e.currentTarget.value)}
+                className="mt-1.5 w-full rounded-[10px] border border-[var(--color-bv-border)] px-3 py-2 text-[12.5px] text-[var(--color-bv-text)] outline-none focus:border-[var(--color-bv-accent)]"
+              />
+              {officeReminderTo.trim() && !looksLikeEmail(officeReminderTo) ? (
+                <p className="mt-1 text-[10.5px] font-semibold text-rose-600">
+                  Enter a valid email address.
+                </p>
+              ) : (
+                <p className="mt-1 text-[10.5px] text-[var(--color-bv-muted)]">
+                  Emailed automatically when the order is created. Applies to this order only.
+                </p>
+              )}
+            </div>
+          ) : null}
+
           <button
             type="submit"
             className={`${btnAccent} mt-4 w-full`}
-            disabled={pending || lines.length === 0}
+            disabled={
+              pending ||
+              lines.length === 0 ||
+              (retailGroups.length > 0 && !looksLikeEmail(officeReminderTo))
+            }
             onClick={() => {
               setPayload('send');
               openFirstRetailCart();
@@ -1408,135 +1462,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 /* ---------- results: POs created (sent or drafts) ---------- */
-
-/// Office-review draft: the full email is shown on screen (it always
-/// "works" even without a configured mail client), with copy, mail-app,
-/// and in-app SMTP send options. Manual office approval stays required.
-function OfficeDraftPanel({
-  poId,
-  poNumber,
-  retail,
-  smtpConfigured,
-}: {
-  poId: string;
-  poNumber: string;
-  retail: {
-    vendor: string;
-    cartUrl: string | null;
-    items: Array<{ name: string; qty: number; url: string; sku: string; unitPriceCents: number }>;
-  };
-  smtpConfigured: boolean;
-}) {
-  const draft = useMemo(
-    () => buildOfficeDraftEmail(poNumber, retail.vendor, retail.cartUrl, retail.items),
-    [poNumber, retail]
-  );
-  const [open, setOpen] = useState(false);
-  const [to, setTo] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [sendState, setSendState] = useState<{ status: 'idle' | 'sending' | 'sent' | 'error'; message: string }>({
-    status: 'idle',
-    message: '',
-  });
-  const [, startTransition] = useTransition();
-
-  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
-
-  function copyDraft() {
-    const text = `Subject: ${draft.subject}\n\n${draft.body}`;
-    navigator.clipboard
-      ?.writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      })
-      .catch(() => {});
-  }
-
-  function sendViaApp() {
-    setSendState({ status: 'sending', message: '' });
-    startTransition(async () => {
-      const result = await sendOfficeDraftEmailAction({
-        poId,
-        to,
-        subject: draft.subject,
-        body: draft.body,
-      });
-      setSendState({ status: result.ok ? 'sent' : 'error', message: result.message });
-    });
-  }
-
-  return (
-    <div className="mt-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="rounded-[9px] bg-[var(--color-bv-accent)] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95"
-      >
-        {open ? 'Hide office review email' : 'Draft email for office review'}
-      </button>
-      {open ? (
-        <div className="mt-2 rounded-[10px] border border-[var(--color-bv-border)] bg-white p-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
-            Subject
-          </div>
-          <div className="mt-0.5 text-[12.5px] font-semibold text-[var(--color-bv-text)]">
-            {draft.subject}
-          </div>
-          <textarea
-            readOnly
-            value={draft.body}
-            rows={Math.min(14, draft.body.split('\n').length + 1)}
-            className="mt-2 w-full resize-y rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[var(--color-bv-text)] outline-none"
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={copyDraft} className={btnNavy}>
-              {copied ? 'Copied ✓' : 'Copy email text'}
-            </button>
-            <input
-              className={`${inputCls} w-56`}
-              type="email"
-              placeholder="Office email address"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              aria-label="Office email address"
-            />
-            <button
-              type="button"
-              onClick={sendViaApp}
-              disabled={
-                !to.trim() || !smtpConfigured || sendState.status === 'sending' || sendState.status === 'sent'
-              }
-              title={!smtpConfigured ? 'Configure SMTP first (Settings → Email test).' : undefined}
-              className="rounded-[9px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[11.5px] font-bold text-white hover:opacity-95 disabled:opacity-50"
-            >
-              {sendState.status === 'sending'
-                ? 'Sending…'
-                : sendState.status === 'sent'
-                  ? 'Sent ✓'
-                  : 'Send from the app'}
-            </button>
-            <a
-              href={mailto}
-              className="rounded-[9px] border border-[var(--color-bv-border)] bg-white px-3 py-1.5 text-[11.5px] font-bold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-            >
-              Open in mail app
-            </a>
-          </div>
-          {sendState.message ? (
-            <p
-              className={`mt-1.5 text-[11px] font-semibold ${
-                sendState.status === 'error' ? 'text-rose-700' : 'text-emerald-700'
-              }`}
-            >
-              {sendState.message}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function ResultScreen({
   created,
@@ -1664,68 +1589,26 @@ function ResultScreen({
                 ) : null}
               </div>
 
+              {/* The retail result now lives on the order-ready page: one
+                  compact line here, the full picture there. The old panel —
+                  the "Amazon is an online store" explanation, Sheet-column
+                  setup instructions, the raw email textarea, Copy email
+                  text / Open in mail app / Hide office review email — is
+                  gone. The reminder is already sent by the time this renders,
+                  so there is nothing left for the employee to do here. */}
               {po.retail ? (
-                <div className="mt-3 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-3">
-                  <div className="text-[11.5px] font-bold text-[var(--color-bv-text)]">
-                    {po.retail.cartUrl ? (
-                      <>
-                        {po.retail.vendor} is an online store — the prefilled cart opened in a
-                        new tab. Review it, then the office places the order. Nothing is
-                        ordered automatically.
-                      </>
-                    ) : (
-                      <>
-                        {po.retail.vendor} is an online store. There isn&apos;t enough product
-                        info to prefill a cart — use the item links below to add each one,
-                        then the office places the order. Nothing is ordered automatically.
-                      </>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {po.retail.cartUrl ? (
-                      <a
-                        href={po.retail.cartUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-[9px] bg-[#1C4972] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95"
-                      >
-                        Reopen {po.retail.vendor} cart ({po.retail.items.length} item
-                        {po.retail.items.length > 1 ? 's' : ''})
-                      </a>
-                    ) : null}
-                    {/* Always resolves to something for a known store (product
-                        URL → /dp/ → store search), so this row is never empty
-                        — previously it filtered on the stored url, which is
-                        blank for every shop supply, leaving no way to act. */}
-                    {buildRetailItemLinks(po.retail.vendor, po.retail.items)
-                      .filter((i) => i.href && i.href !== po.retail?.cartUrl)
-                      .map((i, idx) => (
-                        <a
-                          key={idx}
-                          href={i.href}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-[9px] border border-[var(--color-bv-border)] bg-white px-3 py-1.5 text-[11px] font-bold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-                        >
-                          {i.qty > 1 ? `${i.qty}× ` : ''}
-                          {i.name.slice(0, 34)}
-                          {i.name.length > 34 ? '…' : ''} ↗
-                        </a>
-                      ))}
-                  </div>
-                  {po.retail.cartUrl ? null : (
-                    <p className="mt-2 text-[10.5px] text-[var(--color-bv-muted)]">
-                      To get a one-click prefilled cart, fill the Product URL (col N) or SKU/ASIN
-                      (col O) column on the Sheet&apos;s Internal Materials tab for these items —
-                      every line needs one before a cart can be built.
-                    </p>
-                  )}
-                  <OfficeDraftPanel
-                    poId={po.id}
-                    poNumber={po.number}
-                    retail={po.retail}
-                    smtpConfigured={smtpConfigured}
-                  />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[var(--color-bv-border)] bg-[var(--color-bv-bg)] px-4 py-3">
+                  <span className="text-[11.5px] font-semibold text-[var(--color-bv-text)]">
+                    {po.retail.officeReminderSent
+                      ? `Office reminder sent to ${po.retail.officeReminderTo ?? 'the office'}.`
+                      : 'Office reminder could not be sent — open the order to retry.'}
+                  </span>
+                  <Link
+                    href={`/purchase-orders/${po.id}/order-ready`}
+                    className="rounded-[9px] bg-[#1C4972] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:opacity-95"
+                  >
+                    View order
+                  </Link>
                 </div>
               ) : null}
             </div>

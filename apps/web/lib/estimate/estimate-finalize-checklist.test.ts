@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EstimateStatus, InvoiceStatus, POReconciliationStatus } from '@bvisible/db';
+import { EstimateStatus, POReconciliationStatus } from '@bvisible/db';
 import { buildEstimateFinalizeChecklist } from './estimate-finalize-checklist';
 
 describe('buildEstimateFinalizeChecklist', () => {
@@ -11,7 +11,6 @@ describe('buildEstimateFinalizeChecklist', () => {
       estimateStatus: EstimateStatus.APPROVED,
       quoteAccepted: true,
       linkedPos: [],
-      linkedInvoice: null,
     });
     expect(c.readyToFinalize).toBe(false);
     expect(c.items.find((i) => i.key === 'po')?.done).toBe(false);
@@ -30,7 +29,6 @@ describe('buildEstimateFinalizeChecklist', () => {
           latestReconciliationStatus: POReconciliationStatus.MATCHED,
         },
       ],
-      linkedInvoice: null,
     });
     expect(c.readyToFinalize).toBe(false);
     expect(c.blockedSummary).toMatch(/QuickBooks/i);
@@ -50,7 +48,6 @@ describe('buildEstimateFinalizeChecklist', () => {
           latestReconciliationStatus: POReconciliationStatus.MATCHED,
         },
       ],
-      linkedInvoice: null,
     });
     expect(c.readyToFinalize).toBe(true);
     expect(c.blockedSummary).toBeNull();
@@ -69,32 +66,8 @@ describe('buildEstimateFinalizeChecklist', () => {
           latestReconciliationStatus: POReconciliationStatus.VARIANCE,
         },
       ],
-      linkedInvoice: null,
     });
     expect(c.readyToFinalize).toBe(false);
     expect(c.items.find((i) => i.key === 'recon')?.done).toBe(false);
-  });
-
-  it('invoice paid is informational only', () => {
-    const c = buildEstimateFinalizeChecklist({
-      estimateId: estId,
-      estimateStatus: EstimateStatus.APPROVED,
-      quoteAccepted: true,
-      linkedPos: [
-        {
-          id: 'po-1',
-          number: 'PO-100',
-          qboPoNumber: 'QBO-1',
-          latestReconciliationStatus: POReconciliationStatus.MATCHED,
-        },
-      ],
-      linkedInvoice: {
-        id: 'inv-1',
-        status: InvoiceStatus.UNPAID,
-        paidAt: null,
-      },
-    });
-    expect(c.readyToFinalize).toBe(true);
-    expect(c.items.find((i) => i.key === 'invoice')?.done).toBe(false);
   });
 });

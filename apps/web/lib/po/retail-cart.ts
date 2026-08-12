@@ -135,37 +135,3 @@ export function buildRetailItemLinks(
     href: buildRetailItemLink(vendorName, i.sku, i.name, i.url),
   }));
 }
-
-/// Office review draft email — vendor, items, quantities, prices, links,
-/// and total. The office still reviews and places the order manually.
-export function buildOfficeDraftEmail(
-  poNumber: string,
-  vendor: string,
-  cartUrl: string | null,
-  items: RetailCartLine[]
-): { subject: string; body: string } {
-  const totalCents = items.reduce((s, i) => s + Math.max(1, Math.ceil(i.qty)) * i.unitPriceCents, 0);
-  const money = (cents: number) =>
-    (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-  const lines = [
-    `Purchase order ${poNumber} (${vendor}) is ready for review.`,
-    '',
-    `Vendor: ${vendor}`,
-    '',
-    'Items:',
-    ...items.map((i) => {
-      const qty = Math.max(1, Math.ceil(i.qty));
-      const link = normalizeExternalUrl(i.url);
-      return `- ${i.name}${i.sku ? ` (SKU ${i.sku})` : ''} x ${qty} @ ${money(i.unitPriceCents)} = ${money(qty * i.unitPriceCents)}${link ? `\n  ${link}` : ''}`;
-    }),
-    '',
-    `Order total: ${money(totalCents)}`,
-    ...(cartUrl ? ['', `Prefilled cart: ${cartUrl}`] : []),
-    '',
-    'Please review and place the order manually. Nothing has been ordered automatically.',
-  ];
-  return {
-    subject: `Review & place order: ${poNumber} — ${vendor}`,
-    body: lines.join('\n'),
-  };
-}

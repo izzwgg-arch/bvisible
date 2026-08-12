@@ -170,15 +170,6 @@ function NavIcon({ label }: { label: string }) {
           <path d="M4 4h16v16H4V4Z" />
         </svg>
       );
-    case 'Invoices':
-      return (
-        <svg {...common}>
-          <path d="M7 3h10v18l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2V3Z" />
-          <path d="M9 8h6" />
-          <path d="M9 12h6" />
-          <path d="M9 16h4" />
-        </svg>
-      );
     case 'Clients':
     case 'Customers':
       return (

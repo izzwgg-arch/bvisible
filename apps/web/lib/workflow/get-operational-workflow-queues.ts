@@ -3,7 +3,6 @@ import {
   EmailIngestStatus,
   EstimateStatus,
   EstimateTimelineKind,
-  InvoiceStatus,
   OcrJobStatus,
   POEventKind,
   POReconciliationStatus,
@@ -36,8 +35,7 @@ export type OperationalQueueEntityType =
   | 'estimate'
   | 'purchase_order'
   | 'ocr_document'
-  | 'ingested_email'
-  | 'invoice';
+  | 'ingested_email';
 
 export interface OperationalQueueItem {
   id: string;
@@ -75,7 +73,6 @@ export type OperationalQueuesDb = Pick<
   | 'purchaseOrder'
   | 'ocrDocument'
   | 'ingestedEmail'
-  | 'invoice'
   | 'spendAlert'
 >;
 
@@ -109,11 +106,8 @@ export async function getOperationalWorkflowQueues(
     reconAttentionPos,
     reconSnapshotPos,
     unmatchedEmails,
-    invoiceAttentionEstimates,
-    unpaidInvoices,
     recentlyFinalized,
     recentlyReconciledPos,
-    recentlyPaidInvoices,
   ] = await Promise.all([
     db.estimate.findMany({
       where: {
@@ -327,49 +321,6 @@ export async function getOperationalWorkflowQueues(
         })
       : Promise.resolve([]),
     db.estimate.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        status: EstimateStatus.APPROVED,
-        invoices: { none: { tenantId, deletedAt: null } },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 8,
-      select: {
-        id: true,
-        number: true,
-        title: true,
-        createdById: true,
-        updatedAt: true,
-        client: { select: { companyName: true } },
-        purchaseOrders: { where: { tenantId, deletedAt: null }, select: { id: true } },
-      },
-    }),
-    db.invoice.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        status: InvoiceStatus.UNPAID,
-        estimateId: { not: null },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 8,
-      select: {
-        id: true,
-        number: true,
-        updatedAt: true,
-        estimate: {
-          select: {
-            id: true,
-            number: true,
-            title: true,
-            createdById: true,
-            client: { select: { companyName: true } },
-          },
-        },
-      },
-    }),
-    db.estimate.findMany({
       where: { tenantId, deletedAt: null, status: EstimateStatus.FINALIZED },
       orderBy: { updatedAt: 'desc' },
       take: 6,
@@ -398,22 +349,6 @@ export async function getOperationalWorkflowQueues(
           },
         })
       : Promise.resolve([]),
-    db.invoice.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        status: InvoiceStatus.PAID,
-        paidAt: { not: null },
-      },
-      orderBy: { paidAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        number: true,
-        paidAt: true,
-        estimate: { select: { client: { select: { companyName: true } } } },
-      },
-    }),
   ]);
 
   const seenKeys = new Set<string>();
@@ -444,7 +379,6 @@ export async function getOperationalWorkflowQueues(
     estimateId?: string | null;
     poId?: string | null;
     ocrDocumentId?: string | null;
-    invoiceId?: string | null;
     blockerReason?: string;
     workflowStateLabel?: string;
   }): OperationalQueueItem => {
@@ -453,7 +387,6 @@ export async function getOperationalWorkflowQueues(
       estimateId: params.estimateId,
       poId: params.poId,
       ocrDocumentId: params.ocrDocumentId,
-      invoiceId: params.invoiceId,
     });
     const stale = isOperationalStale({
       state: params.state,
@@ -673,46 +606,6 @@ export async function getOperationalWorkflowQueues(
     );
   }
 
-  for (const e of invoiceAttentionEstimates) {
-    if (e.purchaseOrders.length === 0) continue;
-    if (seenKeys.has(`est-no-po-${e.id}`)) continue;
-    push(
-      buildItem({
-        id: `est-invoice-${e.id}`,
-        state: 'invoice_attention',
-        entityType: 'estimate',
-        entityId: e.id,
-        title: e.number,
-        subtitle: 'No invoice created yet',
-        customerLabel: e.client.companyName,
-        referenceAt: e.updatedAt,
-        sortAt: e.updatedAt,
-        ownerUserId: e.createdById,
-        estimateId: e.id,
-      }),
-    );
-  }
-
-  for (const inv of unpaidInvoices) {
-    if (!inv.estimate) continue;
-    push(
-      buildItem({
-        id: `inv-unpaid-${inv.id}`,
-        state: 'invoice_attention',
-        entityType: 'invoice',
-        entityId: inv.id,
-        title: inv.number,
-        subtitle: `Estimate ${inv.estimate.number} · unpaid`,
-        customerLabel: inv.estimate.client.companyName,
-        referenceAt: inv.updatedAt,
-        sortAt: inv.updatedAt,
-        ownerUserId: inv.estimate.createdById,
-        estimateId: inv.estimate.id,
-        invoiceId: inv.id,
-      }),
-    );
-  }
-
   for (const e of recentlyFinalized) {
     push(
       buildItem({
@@ -746,25 +639,6 @@ export async function getOperationalWorkflowQueues(
         sortAt: po.operatorMarkedReconciledAt,
         ownerUserId: null,
         poId: po.id,
-      }),
-    );
-  }
-
-  for (const inv of recentlyPaidInvoices) {
-    if (!inv.paidAt) continue;
-    push(
-      buildItem({
-        id: `inv-paid-${inv.id}`,
-        state: 'completed',
-        entityType: 'invoice',
-        entityId: inv.id,
-        title: inv.number,
-        subtitle: 'Invoice paid',
-        customerLabel: inv.estimate?.client.companyName ?? null,
-        referenceAt: inv.paidAt,
-        sortAt: inv.paidAt,
-        ownerUserId: null,
-        invoiceId: inv.id,
       }),
     );
   }

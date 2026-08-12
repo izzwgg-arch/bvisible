@@ -49,7 +49,6 @@ export default async function EstimateDetailPage({
     linkedPosRaw,
     vendors,
     shopCatalog,
-    linkedInvoiceRow,
     quoteSentAudit,
     vehicleLibrary,
     wrapModels,
@@ -177,17 +176,6 @@ export default async function EstimateDetailPage({
       take: 500,
     }),
     loadEstimateCatalogPickerRows(prisma, me.tenantId),
-    prisma.invoice.findFirst({
-      where: { tenantId: me.tenantId, estimateId: id, deletedAt: null },
-      select: {
-        id: true,
-        number: true,
-        status: true,
-        paidAt: true,
-        createdAt: true,
-        subtotalCents: true,
-      },
-    }),
     prisma.auditLog.findFirst({
       where: {
         tenantId: me.tenantId,
@@ -268,7 +256,6 @@ export default async function EstimateDetailPage({
     status: estimate.status,
     lineCount: estimate.lines.length,
     hasLinkedPo: linkedPosRaw.length > 0,
-    hasLinkedInvoice: linkedInvoiceRow != null,
     quoteLinkActive: quoteUi.quotePanelProps.activeLink != null,
   });
 
@@ -309,8 +296,6 @@ export default async function EstimateDetailPage({
       finalPriceCents: estimate.finalPriceCents,
       client: estimate.client,
       quoteSent: quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT,
-      hasInvoice: linkedInvoiceRow != null,
-      invoicePaid: linkedInvoiceRow?.paidAt != null,
       salesRepId: estimate.salesRepId,
     },
     salesReps: tenantUsers.map((u) => ({ id: u.id, name: u.name ?? u.email })),

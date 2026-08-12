@@ -64,21 +64,4 @@ describe('estimate quote timeline merge', () => {
     ]);
     expect(rows[0]?.subtitle).toBe('DRAFT → SENT');
   });
-
-  it('renders invoice conversion timeline rows with invoice number subtitle', () => {
-    const rows = mergeEstimateStaffTimeline(
-      [
-        {
-          id: 'inv1',
-          kind: EstimateTimelineKind.INVOICE_CREATED_FROM_ESTIMATE,
-          createdAt: new Date('2026-05-06T14:00:00Z'),
-          metadata: { invoiceNumber: 'INV-000042' },
-        },
-      ],
-      []
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.title).toContain('Invoice created');
-    expect(rows[0]?.subtitle).toContain('INV-000042');
-  });
 });
