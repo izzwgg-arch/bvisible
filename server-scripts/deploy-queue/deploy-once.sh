@@ -387,18 +387,28 @@ fi
 QUEUE_ROOT="/opt/bvisible/deploy-queue"
 SYNC_SRC="$APP_DIR/server-scripts/deploy-queue"
 if [ -d "$SYNC_SRC" ]; then
+  # Write via a temp file + mv, never cp over the destination: this loop
+  # overwrites deploy-once.sh, the script bash is executing right now.
+  # Bash reads a script lazily by byte offset, so copying different
+  # content in place makes the running shell resume mid-token and die
+  # with a syntax error (rc=2) — which is exactly what happened when the
+  # Playwright step above was first added and shifted the file down 33
+  # lines. mv swaps the directory entry atomically and leaves the
+  # running process on its original inode, so it finishes cleanly.
   for f in deploy-once.sh enqueue-deploy.sh deploy-worker.sh status.sh healthcheck.sh; do
     if [ -f "$SYNC_SRC/$f" ]; then
-      cp "$SYNC_SRC/$f" "$QUEUE_ROOT/$f"
-      chmod 755 "$QUEUE_ROOT/$f"
+      cp "$SYNC_SRC/$f" "$QUEUE_ROOT/.$f.new"
+      chmod 755 "$QUEUE_ROOT/.$f.new"
+      mv -f "$QUEUE_ROOT/.$f.new" "$QUEUE_ROOT/$f"
       log "Refreshed $QUEUE_ROOT/$f from checkout"
     fi
   done
 fi
 DBVERIFY_SRC="$APP_DIR/server-scripts/db/db-verify.sh"
 if [ -f "$DBVERIFY_SRC" ]; then
-  cp "$DBVERIFY_SRC" "$QUEUE_ROOT/db-verify.sh"
-  chmod 755 "$QUEUE_ROOT/db-verify.sh"
+  cp "$DBVERIFY_SRC" "$QUEUE_ROOT/.db-verify.sh.new"
+  chmod 755 "$QUEUE_ROOT/.db-verify.sh.new"
+  mv -f "$QUEUE_ROOT/.db-verify.sh.new" "$QUEUE_ROOT/db-verify.sh"
   log "Refreshed $QUEUE_ROOT/db-verify.sh from checkout"
 fi
 
