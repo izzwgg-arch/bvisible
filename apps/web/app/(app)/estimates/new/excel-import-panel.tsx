@@ -115,7 +115,10 @@ export function ExcelImportPanel({
   const truncated = active ? Math.max(0, active.parse.lines.length - MAX_LINES) : 0;
 
   return (
-    <div className="mt-4 rounded-[14px] border border-[var(--color-bv-border)] bg-white p-4">
+    <div
+      id="excel-import-panel"
+      className="mt-4 rounded-[14px] border border-[var(--color-bv-border)] bg-white p-4"
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[13.5px] font-bold text-[var(--color-bv-text)]">

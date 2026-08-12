@@ -64,6 +64,8 @@ const TOOL_LABELS_EXTRA: Record<string, string> = {
   delete_record: 'Preparing the delete for your approval…',
   get_purchase_order: 'Looking up the purchase order…',
   get_estimate: 'Looking up the estimate…',
+  plan_takeoff_import: 'Reading your Excel takeoff…',
+  create_estimate_from_takeoff: 'Creating the estimate from the takeoff…',
   update_purchase_order: 'Updating the purchase order…',
   add_purchase_order_line: 'Adding the line to the purchase order…',
   set_purchase_order_status: 'Preparing the status change for your approval…',
@@ -86,7 +88,13 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export async function sendAssistantMessage(
-  body: { messages: Array<{ role: string; content: string }>; context?: string; lang?: string },
+  body: {
+    messages: Array<{ role: string; content: string }>;
+    context?: string;
+    lang?: string;
+    /// Parsed Excel takeoff riding along with the message (AttachedTakeoff).
+    takeoff?: unknown;
+  },
   onProgress?: (label: string) => void,
   timeoutMs = 480_000
 ): Promise<AssistantTurnPayload> {

@@ -33,6 +33,7 @@ import { CustomBuildPanel } from './custom-build-panel';
 import { RecommendationsPanel, type BuilderRecommendation } from './recommendations-panel';
 import { JsonImportPanel, type ImportResult } from './json-import-panel';
 import { ExcelImportPanel } from './excel-import-panel';
+import { OPEN_EXCEL_IMPORT_EVENT } from './excel-import-header-button';
 
 /* ---------- data shapes provided by the server page ---------- */
 
@@ -278,6 +279,21 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
 
   // Extra tool panels (suggestions by sign type, JSON import).
   const [toolPanel, setToolPanel] = useState<'recommend' | 'json' | 'excel' | null>(null);
+
+  // The "Import from Excel" button lives in the page header (a server
+  // component) and reaches this state through a DOM event.
+  useEffect(() => {
+    function openExcelPanel() {
+      setToolPanel('excel');
+      requestAnimationFrame(() => {
+        document
+          .getElementById('excel-import-panel')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+    window.addEventListener(OPEN_EXCEL_IMPORT_EVENT, openExcelPanel);
+    return () => window.removeEventListener(OPEN_EXCEL_IMPORT_EVENT, openExcelPanel);
+  }, []);
   const [autoRecommendDismissed, setAutoRecommendDismissed] = useState(false);
 
   // Sales representative (defaults to the signed-in user).
@@ -1221,17 +1237,6 @@ export function GuidedEstimateBuilder(props: BuilderProps) {
             }`}
           >
             {'{ }'} Import estimate from JSON
-          </button>
-          <button
-            type="button"
-            onClick={() => setToolPanel(toolPanel === 'excel' ? null : 'excel')}
-            className={`rounded-full px-4 py-1.5 text-[11.5px] font-bold ${
-              toolPanel === 'excel'
-                ? 'bg-[var(--color-bv-accent)] text-white'
-                : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
-            }`}
-          >
-            ⇪ Import from Excel
           </button>
         </div>
 

@@ -19,6 +19,7 @@ import {
   type EstimatePrefill,
   type ProposedLine,
 } from '@/lib/assistant/context-store';
+import { TakeoffAttachControl, type AttachedTakeoff } from '@/components/assistant/takeoff-attach';
 import {
   sendAssistantMessage,
   confirmAssistantAction,
@@ -104,6 +105,7 @@ export function AssistantDock() {
   // translated to English for the model, and the answer comes back in
   // Yiddish. 'en' = the original English/Whisper path.
   const [voiceLang, setVoiceLang] = useState<'en' | 'yi'>('en');
+  const [takeoff, setTakeoff] = useState<AttachedTakeoff | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -162,11 +164,17 @@ export function AssistantDock() {
     : `Page: ${pageLabelFor(pathname)} (no structured data on this screen).`;
 
   async function send(text: string) {
-    const content = text.trim();
-    if (!content || busy) return;
+    let content = text.trim();
+    if ((!content && !takeoff) || busy) return;
+    const attached = takeoff;
+    if (attached) {
+      content = content || `Create the estimate from ${attached.fileName}.`;
+      content += `\n⇪ ${attached.fileName}`;
+    }
     const next: DockMsg[] = [...messages, { role: 'user', content }];
     setMessages(next);
     setInput('');
+    setTakeoff(null);
     setBusy(true);
     setProgress(null);
     try {
@@ -175,6 +183,7 @@ export function AssistantDock() {
           messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })),
           context: contextText,
           lang: voiceLang,
+          ...(attached ? { takeoff: attached } : {}),
         },
         (label) => setProgress(label)
       );
@@ -742,9 +751,14 @@ export function AssistantDock() {
           >
             {recState === 'recording' ? '■' : recState === 'transcribing' ? '…' : '🎤'}
           </button>
+          <TakeoffAttachControl
+            takeoff={takeoff}
+            onChange={setTakeoff}
+            disabled={busy || recState !== 'idle'}
+          />
           <button
             type="submit"
-            disabled={busy || !input.trim() || recState !== 'idle'}
+            disabled={busy || (!input.trim() && !takeoff) || recState !== 'idle'}
             className="shrink-0 rounded-[9px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[12px] font-bold text-white hover:opacity-95 disabled:opacity-50"
           >
             {busy ? '…' : 'Send ✦'}

@@ -12,6 +12,8 @@ import {
   ylProcessText,
   ylTranslateFast,
 } from '@/lib/assistant/yiddishlabs';
+import { runTakeoffTurn } from '@/lib/assistant/takeoff-turn';
+import { sanitizeAttachedTakeoff } from '@/lib/estimate-import/attached-takeoff';
 
 // The assistant can work for minutes (multi-round Sheet + DB research).
 // A buffered response dies in the proxy's 300s read timeout (this caused
@@ -77,7 +79,12 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   }
-  let body: { messages?: Array<{ role: string; content: string }>; context?: string; lang?: string };
+  let body: {
+    messages?: Array<{ role: string; content: string }>;
+    context?: string;
+    lang?: string;
+    takeoff?: unknown;
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -93,11 +100,20 @@ export async function POST(req: Request) {
   const context = typeof body.context === 'string' ? body.context.slice(0, 4000) : null;
   const lang = typeof body.lang === 'string' ? body.lang : null;
 
+  // A message carrying a parsed Excel takeoff takes the dedicated path:
+  // one planning call, then a deterministic verbatim import — the agent
+  // loop (and Yiddish translation) never see the line data.
+  const takeoff = sanitizeAttachedTakeoff(body.takeoff);
+  const runTurn = (onEvent?: (e: AssistantProgressEvent) => void) =>
+    takeoff
+      ? runTakeoffTurn(history, { id: me.id, tenantId: me.tenantId }, takeoff, onEvent)
+      : runAssistantInLanguage(lang, history, { id: me.id, tenantId: me.tenantId }, context, onEvent);
+
   const wantsStream = (req.headers.get('accept') ?? '').includes('application/x-ndjson');
   if (!wantsStream) {
     // Legacy buffered path (kept for tabs opened before this deploy).
     try {
-      const turn = await runAssistantInLanguage(lang, history, { id: me.id, tenantId: me.tenantId }, context);
+      const turn = await runTurn();
       return NextResponse.json(turn);
     } catch (e) {
       console.error('[assistant] request failed:', e);
@@ -126,13 +142,7 @@ export async function POST(req: Request) {
       const heartbeat = setInterval(() => write({ type: 'hb' }), 10_000);
       void (async () => {
         try {
-          const turn = await runAssistantInLanguage(
-            lang,
-            history,
-            { id: me.id, tenantId: me.tenantId },
-            context,
-            (e: AssistantProgressEvent) => write(e)
-          );
+          const turn = await runTurn((e: AssistantProgressEvent) => write(e));
           write({ type: 'done', ...turn });
         } catch (e) {
           console.error('[assistant] request failed:', e);

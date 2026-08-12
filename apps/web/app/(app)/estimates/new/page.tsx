@@ -9,6 +9,7 @@ import {
   type BuilderBundle,
   type BuilderMaterial,
 } from './guided-builder';
+import { ExcelImportHeaderButton } from './excel-import-header-button';
 
 export const metadata = { title: 'New estimate' };
 export const dynamic = 'force-dynamic';
@@ -104,12 +105,15 @@ export default async function NewEstimatePage({
         title="New estimate"
         subtitle="Enter the job once, then build it one line at a time — materials, bundles, vehicle wraps, square footage, or a full custom build."
         actions={
-          <Link
-            href="/estimates"
-            className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-          >
-            Cancel
-          </Link>
+          <div className="flex items-center gap-2">
+            <ExcelImportHeaderButton />
+            <Link
+              href="/estimates"
+              className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+            >
+              Cancel
+            </Link>
+          </div>
         }
       />
 

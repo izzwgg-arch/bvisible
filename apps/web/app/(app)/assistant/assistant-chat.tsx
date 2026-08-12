@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { parkPendingPrefill, type EstimatePrefill } from '@/lib/assistant/context-store';
 import { sendAssistantMessage } from '@/lib/assistant/stream-client';
+import { TakeoffAttachControl, type AttachedTakeoff } from '@/components/assistant/takeoff-attach';
 
 interface ChatMsg {
   role: 'user' | 'assistant';
@@ -33,19 +34,29 @@ export function AssistantChat({ configured }: { configured: boolean }) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  const [takeoff, setTakeoff] = useState<AttachedTakeoff | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   async function send(text: string) {
-    const content = text.trim();
-    if (!content || busy) return;
+    let content = text.trim();
+    if ((!content && !takeoff) || busy) return;
+    const attached = takeoff;
+    if (attached) {
+      content = content || `Create the estimate from ${attached.fileName}.`;
+      content += `\n⇪ ${attached.fileName}`;
+    }
     const next: ChatMsg[] = [...messages, { role: 'user', content }];
     setMessages(next);
     setInput('');
+    setTakeoff(null);
     setBusy(true);
     setProgress(null);
     try {
       const data = await sendAssistantMessage(
-        { messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })) },
+        {
+          messages: next.slice(-16).map((m) => ({ role: m.role, content: m.content })),
+          ...(attached ? { takeoff: attached } : {}),
+        },
         (label) => setProgress(label)
       );
       // Draft created: open the estimate workspace with it right away.
@@ -242,16 +253,19 @@ export function AssistantChat({ configured }: { configured: boolean }) {
           className="flex-1 bg-transparent text-[14px] text-[var(--color-bv-text)] outline-none"
           placeholder={
             configured
-              ? 'Try: "Make me a 4×8 Dura-Bond sign estimate for HATOV with install"…'
+              ? takeoff
+                ? 'Add details (customer, tab, markup…) and send to create the estimate'
+                : 'Try: "Make me a 4×8 Dura-Bond sign estimate for HATOV with install"… or attach an Excel takeoff'
               : 'Assistant not configured — add OPENAI_API_KEY on the server first.'
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={!configured || busy}
         />
+        <TakeoffAttachControl takeoff={takeoff} onChange={setTakeoff} disabled={!configured || busy} />
         <button
           type="submit"
-          disabled={!configured || busy || !input.trim()}
+          disabled={!configured || busy || (!input.trim() && !takeoff)}
           className="rounded-[10px] bg-[var(--color-bv-accent)] px-5 py-2.5 text-[13px] font-bold text-white hover:opacity-95 disabled:opacity-50"
         >
           {busy ? '…' : 'Send ✦'}
