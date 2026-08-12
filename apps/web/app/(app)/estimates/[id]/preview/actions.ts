@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { prisma, EstimateStatus } from '@bvisible/db';
+import { prisma } from '@bvisible/db';
 import { writeAuditLog } from '@/lib/auth/audit';
 import { buildAppAbsoluteUrl } from '@/lib/auth/app-origin';
 import { requireTenantId } from '@/lib/auth/current-user';
@@ -41,14 +41,6 @@ export async function sendEstimateEmailAction(
     };
   }
   const { estimateId } = parsed.data;
-  const reviewConfirmed = String(formData.get('reviewConfirmed') ?? '') === 'true';
-  if (!reviewConfirmed) {
-    return {
-      ok: false,
-      error: 'Open final review and confirm before sending.',
-      messageId: null,
-    };
-  }
 
   const estimate = await prisma.estimate.findFirst({
     where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
@@ -70,14 +62,6 @@ export async function sendEstimateEmailAction(
 
   if (!estimate) {
     return { ok: false, error: 'Estimate not found.', messageId: null };
-  }
-
-  if (estimate.status === EstimateStatus.FINALIZED) {
-    return {
-      ok: false,
-      error: 'Finalized estimates cannot be emailed from this flow.',
-      messageId: null,
-    };
   }
 
   const to = estimate.client.email?.trim();

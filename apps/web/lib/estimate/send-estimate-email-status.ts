@@ -1,8 +1,8 @@
 import { EstimateStatus } from '@bvisible/db';
 
 /**
- * After a successful SMTP send: DRAFT → SENT; other statuses unchanged.
- * FINALIZED cannot be emailed from this flow (blocked earlier).
+ * After a successful SMTP send: DRAFT → SENT; other statuses unchanged
+ * (resending an APPROVED or FINALIZED estimate never moves it backwards).
  */
 export function statusAfterSuccessfulCustomerSend(
   current: EstimateStatus
