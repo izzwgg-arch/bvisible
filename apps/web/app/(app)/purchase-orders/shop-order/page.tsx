@@ -1,7 +1,5 @@
-import Link from 'next/link';
 import { prisma } from '@bvisible/db';
 import { requireTenantId } from '@/lib/auth/current-user';
-import { PageHeader } from '@/components/app-shell';
 import { getSheetSnapshot } from '@/lib/sheet-sync/sync';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { loadSmtpConfigFromDb, MailerConfigError } from '@/lib/mailer';
@@ -144,35 +142,19 @@ export default async function ShopOrderPage() {
 
   const sheetOk = snapshot.status === 'OK' && catalog.length > 0;
 
+  // The flow renders its own per-screen headers (Order materials /
+  // Review order) so each screen matches its mockup exactly.
   return (
-    <>
-      <PageHeader
-        title="Order materials"
-        subtitle="Search, add quantities, and review your order."
-        actions={
-          <Link
-            href="/purchase-orders"
-            className="inline-flex items-center justify-center gap-1.5 rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
-          >
-            <span aria-hidden>↺</span> Past orders
-          </Link>
-        }
-      />
-
-      {sheetOk ? null : (
-        <div className="mb-4 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-900">
-          Material list is temporarily unavailable
-          {snapshot.lastError ? ` — ${snapshot.lastError}` : ''}. You can still add custom
-          materials.
-        </div>
-      )}
-
-      <ShopOrderFlow
-        catalog={catalog}
-        aliases={data.aliases}
-        vendorEmails={vendorEmails}
-        smtpConfigured={!(smtp instanceof MailerConfigError)}
-      />
-    </>
+    <ShopOrderFlow
+      catalog={catalog}
+      aliases={data.aliases}
+      vendorEmails={vendorEmails}
+      smtpConfigured={!(smtp instanceof MailerConfigError)}
+      sheetWarning={
+        sheetOk
+          ? null
+          : `Material list is temporarily unavailable${snapshot.lastError ? ` — ${snapshot.lastError}` : ''}. You can still add custom materials.`
+      }
+    />
   );
 }
