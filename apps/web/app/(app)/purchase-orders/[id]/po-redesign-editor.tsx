@@ -9,7 +9,7 @@ import {
   POLineKind,
   POStatus,
   ShopCatalogUnit,
-  type VendorCostSourceMode,
+  VendorCostSourceMode,
 } from '@bvisible/db';
 import { formatMoney, formatQty, kindLabel, parseMoney, parseQty } from '@/lib/estimate/format';
 import { SelectControl } from '@/components/app/select-control';
@@ -20,6 +20,8 @@ import {
   type EstimateCatalogPickerRow,
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import type { SavePurchaseOrderInput } from '@/lib/validators';
+import type { OrderableCatalogEntry } from '@/lib/po/orderable-catalog';
+import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
 import {
   savePurchaseOrderAction,
   sendPurchaseOrderAction,
@@ -31,6 +33,20 @@ import { PoAttachmentsPanel } from './attachments-panel';
 import { PoTimelinePanel } from './timeline-panel';
 
 type POVendorSendStatus = 'DRAFT' | 'SENT' | 'FAILED';
+
+/// One picker result — an Items-catalog row (linked via catalogItemId) or
+/// a raw Sheet catalog material (added as a plain described line).
+type PickerEntry =
+  | { source: 'db'; row: EstimateCatalogPickerRow }
+  | { source: 'sheet'; entry: OrderableCatalogEntry };
+
+/// Loose key for de-duplicating picker results across the two sources.
+function looseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 export interface PoRedesignBootstrap {
   po: {
@@ -57,6 +73,11 @@ export interface PoRedesignBootstrap {
     vendor: VendorRef;
   }>;
   catalog: ReadonlyArray<EstimateCatalogPickerRow>;
+  /// Full Sheet materials catalog (Vendor Catalog + Meterial price +
+  /// Internal Materials) — searched alongside `catalog` so every
+  /// orderable material is reachable from the picker.
+  sheetCatalog: ReadonlyArray<OrderableCatalogEntry>;
+  sheetAliases: ReadonlyArray<{ alias: string; canonical: string }>;
   receiptSummary: {
     latestOcrStatus: string | null;
     ocrDocumentsTotal: number;
@@ -199,9 +220,12 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   const vendorCount = vendorGroups.length;
   const receivedTotal = lines.reduce((sum, line) => sum + Math.min(line.receivedQtyMilli, line.qtyMilli), 0);
   const qtyTotal = lines.reduce((sum, line) => sum + Math.max(0, line.qtyMilli), 0);
-  const pickerRows = useMemo(() => {
+  // Items-catalog rows AND the full Sheet materials catalog, merged and
+  // de-duplicated — the picker reaches every orderable material, with the
+  // same misspelling-tolerant search as the Order materials flow.
+  const pickerRows = useMemo<PickerEntry[]>(() => {
     const q = pickerQuery.trim().toLowerCase();
-    return bootstrap.catalog
+    const dbRows = bootstrap.catalog
       .filter((row) => {
         if (row.kind !== 'MATERIAL') return false;
         if (!q) return true;
@@ -210,8 +234,27 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
           .toLowerCase()
           .includes(q);
       })
-      .slice(0, q ? 30 : 24);
-  }, [bootstrap.catalog, pickerQuery]);
+      .slice(0, q ? 20 : 24);
+    const out: PickerEntry[] = dbRows.map((row) => ({ source: 'db', row }));
+    if (q) {
+      const seen = new Set(dbRows.map((row) => looseName(row.name)));
+      const sheetMatches = fuzzySearch(
+        pickerQuery.trim(),
+        bootstrap.sheetCatalog as OrderableCatalogEntry[],
+        (item) => `${item.name} ${item.category} ${item.subcategory} ${item.spec} ${item.size}`,
+        { limit: 20, aliases: bootstrap.sheetAliases as Array<{ alias: string; canonical: string }> }
+      );
+      for (const entry of sheetMatches) {
+        const key = looseName(`${entry.name} ${entry.spec} ${entry.size}`);
+        const nameKey = looseName(entry.name);
+        if (seen.has(nameKey) || seen.has(key)) continue;
+        seen.add(key);
+        out.push({ source: 'sheet', entry });
+        if (out.length >= 30) break;
+      }
+    }
+    return out;
+  }, [bootstrap.catalog, bootstrap.sheetCatalog, bootstrap.sheetAliases, pickerQuery]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -320,6 +363,60 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
     setPickerOpen(false);
   }
 
+  /// Adds a raw Sheet material as a PO line: preferred vendor first,
+  /// otherwise cheapest; the vendor row is matched by name against the
+  /// tenant's vendors (synced from the Sheet's Vendor Directory).
+  function applySheetItem(entry: OrderableCatalogEntry) {
+    const preferred = entry.preferredVendor
+      ? entry.vendorPrices.find(
+          (o) => o.vendor.trim().toLowerCase() === entry.preferredVendor.trim().toLowerCase()
+        )
+      : undefined;
+    const cheapest = [...entry.vendorPrices].sort((a, b) => a.priceCents - b.priceCents)[0];
+    const pick = preferred ?? cheapest ?? { vendor: entry.vendor, priceCents: entry.priceCents };
+    const vendor =
+      bootstrap.vendors.find(
+        (v) => v.name.trim().toLowerCase() === pick.vendor.trim().toLowerCase()
+      ) ?? null;
+    const detail = [entry.spec, entry.size].filter(Boolean).join(' • ');
+    const qtyMilli = 1000;
+    dispatch({
+      type: 'add-line',
+      line: {
+        id: localId(),
+        kind: POLineKind.MATERIAL,
+        description: detail ? `${entry.name} — ${detail}` : entry.name,
+        estimateLineId: null,
+        catalogItemId: null,
+        bundleComponentId: null,
+        vendorId: vendor?.id ?? null,
+        selectedVendorMode: preferred
+          ? VendorCostSourceMode.PREFERRED
+          : VendorCostSourceMode.CHEAPEST,
+        vendorSku: entry.vendorSku || null,
+        unit: ShopCatalogUnit.EACH,
+        qtyMilli,
+        unitCostCents: pick.priceCents,
+        computedCostCents: Math.round((qtyMilli * pick.priceCents) / 1000),
+        receivedQtyMilli: 0,
+        notes: null,
+        vendor,
+        catalogItemName: null,
+        catalogItemCode: null,
+        sourceEstimateLineLabel: null,
+        sourceBundleComponentLabel: null,
+      },
+    });
+    setPickerQuery('');
+    setPickerHighlight(0);
+    setPickerOpen(false);
+  }
+
+  function applyPickerEntry(item: PickerEntry) {
+    if (item.source === 'db') applyCatalogItem(item.row);
+    else applySheetItem(item.entry);
+  }
+
   function handlePickerKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -338,8 +435,8 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      const row = pickerRows[pickerHighlight];
-      if (row) applyCatalogItem(row);
+      const item = pickerRows[pickerHighlight];
+      if (item) applyPickerEntry(item);
     }
   }
 
@@ -416,7 +513,7 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
                   <PoItemPickerDropdown
                     rows={pickerRows}
                     highlight={pickerHighlight}
-                    onPick={applyCatalogItem}
+                    onPick={applyPickerEntry}
                   />
                 </div>
               ) : (
@@ -567,41 +664,74 @@ function PoItemPickerDropdown({
   highlight,
   onPick,
 }: {
-  rows: ReadonlyArray<EstimateCatalogPickerRow>;
+  rows: ReadonlyArray<PickerEntry>;
   highlight: number;
-  onPick: (row: EstimateCatalogPickerRow) => void;
+  onPick: (item: PickerEntry) => void;
 }) {
   return (
     <div className="mt-1 w-[360px] max-w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-2xl">
       <div className="max-h-[360px] overflow-y-auto py-1">
         {rows.length === 0 ? (
-          <EmptyPickerState title="No catalog matches" detail="Try a different item name, category, or bundle." />
+          <EmptyPickerState title="No material matches" detail="Try a different name — the search covers every Sheet material." />
         ) : (
-          rows.map((row, index) => {
-            const cost = catalogPickerCostBasisCents({ row, machinesById: new Map() });
-            const sell = catalogPickerSellHintCents({ row, machinesById: new Map() });
+          rows.map((item, index) => {
+            const rowCls = `grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`;
+            if (item.source === 'db') {
+              const row = item.row;
+              const cost = catalogPickerCostBasisCents({ row, machinesById: new Map() });
+              const sell = catalogPickerSellHintCents({ row, machinesById: new Map() });
+              return (
+                <button
+                  key={`db:${row.id}`}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onPick(item)}
+                  className={rowCls}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[12px] font-black text-slate-900">{row.name}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                      <span>{kindLabel(row.kind)}</span>
+                      {row.itemType === 'BUNDLE' ? (
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-violet-700">
+                          Bundle{row.componentCount > 0 ? ` · ${row.componentCount}` : ''}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                  <span className="text-right text-[11px] font-bold tabular-nums text-slate-700">
+                    <span className="block">{formatMoney(sell)}</span>
+                    <span className="block text-slate-400">cost {formatMoney(cost)}</span>
+                  </span>
+                </button>
+              );
+            }
+            const entry = item.entry;
+            const spec = [entry.spec, entry.size].filter(Boolean).join(' • ');
+            const preferred = entry.preferredVendor
+              ? entry.vendorPrices.find(
+                  (o) => o.vendor.trim().toLowerCase() === entry.preferredVendor.trim().toLowerCase()
+                )
+              : undefined;
+            const cheapest = [...entry.vendorPrices].sort((a, b) => a.priceCents - b.priceCents)[0];
+            const pick = preferred ?? cheapest ?? { vendor: entry.vendor, priceCents: entry.priceCents };
             return (
               <button
-                key={row.id}
+                key={`sheet:${entry.id}`}
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onPick(row)}
-                className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 text-left ${index === highlight ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                onClick={() => onPick(item)}
+                className={rowCls}
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-[12px] font-black text-slate-900">{row.name}</span>
+                  <span className="block truncate text-[12px] font-black text-slate-900">{entry.name}</span>
                   <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-400">
-                    <span>{kindLabel(row.kind)}</span>
-                    {row.itemType === 'BUNDLE' ? (
-                      <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-violet-700">
-                        Bundle{row.componentCount > 0 ? ` · ${row.componentCount}` : ''}
-                      </span>
-                    ) : null}
+                    {spec ? <span>{spec}</span> : <span>{entry.category}</span>}
                   </span>
                 </span>
                 <span className="text-right text-[11px] font-bold tabular-nums text-slate-700">
-                  <span className="block">{formatMoney(sell)}</span>
-                  <span className="block text-slate-400">cost {formatMoney(cost)}</span>
+                  <span className="block">{formatMoney(pick.priceCents)}</span>
+                  <span className="block text-slate-400">{pick.vendor || 'Vendor TBD'}</span>
                 </span>
               </button>
             );

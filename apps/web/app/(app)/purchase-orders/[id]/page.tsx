@@ -7,6 +7,7 @@ import { getPoReceiptWorkflowSummary } from '@/lib/po/get-po-receipt-workflow-su
 import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-section';
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
+import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
 import { PoRedesignEditor, type PoRedesignBootstrap } from './po-redesign-editor';
 
 export const metadata = { title: 'Purchase order' };
@@ -20,7 +21,7 @@ export default async function PurchaseOrderDetailPage({
   const me = await requireTenantId();
   const { id } = await params;
 
-  const [po, vendors, events, catalog] = await Promise.all([
+  const [po, vendors, events, catalog, sheetCatalog] = await Promise.all([
     prisma.purchaseOrder.findFirst({
       where: { id, tenantId: me.tenantId, deletedAt: null },
       select: {
@@ -114,6 +115,9 @@ export default async function PurchaseOrderDetailPage({
       },
     }),
     loadEstimateCatalogPickerRows(prisma, me.tenantId),
+    // Full Sheet materials catalog — the picker searches this alongside
+    // the Items catalog so every orderable material is reachable.
+    buildOrderableCatalog(me.tenantId).catch(() => null),
   ]);
 
   if (!po) {
@@ -184,6 +188,8 @@ export default async function PurchaseOrderDetailPage({
       vendor: section.vendor,
     })),
     catalog,
+    sheetCatalog: sheetCatalog?.entries ?? [],
+    sheetAliases: sheetCatalog?.aliases ?? [],
     receiptSummary: receiptWorkflowSummary
       ? {
           latestOcrStatus: receiptWorkflowSummary.latestOcrStatus,
