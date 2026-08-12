@@ -12,12 +12,27 @@ import {
 
 const INITIAL_SEND_STATE: SendEstimateEmailState = { ok: false, error: null, messageId: null };
 
+function formatShortDateTime(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}
+
 export function EstimateHeaderActions({
   estimateId,
   status,
+  emailInfo,
 }: {
   estimateId: string;
   status: EstimateStatus;
+  emailInfo?: {
+    sentCount: number;
+    lastSentAtIso: string | null;
+    lastOpenedAtIso: string | null;
+  };
 }) {
   const router = useRouter();
   const [sendState, sendAction, sendPending] = useActionState(
@@ -69,6 +84,18 @@ export function EstimateHeaderActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {emailInfo && emailInfo.sentCount > 0 && emailInfo.lastSentAtIso ? (
+        <span
+          className="hidden whitespace-nowrap text-[11px] font-semibold text-slate-400 lg:inline"
+          title={`Emailed to the customer ${emailInfo.sentCount} time${emailInfo.sentCount === 1 ? '' : 's'}.`}
+        >
+          Sent {emailInfo.sentCount > 1 ? `${emailInfo.sentCount}× · ` : ''}
+          {formatShortDateTime(emailInfo.lastSentAtIso)}
+          {emailInfo.lastOpenedAtIso
+            ? ` · Opened ${formatShortDateTime(emailInfo.lastOpenedAtIso)}`
+            : ' · Not opened yet'}
+        </span>
+      ) : null}
       <Link
         href={`/estimates/${estimateId}/preview` as never}
         className="inline-flex h-9 items-center justify-center rounded-[7px] border border-slate-200 bg-white px-5 text-[12px] font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"

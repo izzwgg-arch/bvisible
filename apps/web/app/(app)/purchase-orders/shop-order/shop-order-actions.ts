@@ -32,6 +32,12 @@ import {
   normalizeExternalUrl,
 } from '@/lib/po/retail-cart';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
+import { buildAppAbsoluteUrl } from '@/lib/auth/app-origin';
+import {
+  appendEmailOpenPixel,
+  generateEmailOpenToken,
+} from '@/lib/email-open/email-open';
+import { OUTBOUND_DOCUMENT_CC } from '@/lib/emails/outbound-cc';
 import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
 import {
   defaultOfficeReminderEmail,
@@ -318,6 +324,23 @@ export async function createShopOrderAction(
         const sent = await emailPoToVendor(me.tenantId, me.id, po.id);
         emailStatus = sent.status;
         emailDetail = sent.message;
+        // Audit the send here too (the explicit resend action has its
+        // own) so open-tracking can find the token for this email.
+        await writeAuditLog({
+          action: sent.status === 'SENT' ? 'po_sent' : 'po_send_failed',
+          userId: me.id,
+          tenantId: me.tenantId,
+          targetType: 'purchase_order',
+          targetId: po.id,
+          metadata: {
+            number: po.number,
+            via: 'shop_order_create',
+            detail: sent.message,
+            ...(sent.openToken ? { openToken: sent.openToken } : {}),
+            ...(sent.vendorName ? { vendorName: sent.vendorName } : {}),
+            ccEmails: [...OUTBOUND_DOCUMENT_CC],
+          },
+        });
       }
     }
 
@@ -379,7 +402,12 @@ async function emailPoToVendor(
   tenantId: string,
   actorId: string,
   poId: string
-): Promise<{ status: 'SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED'; message: string }> {
+): Promise<{
+  status: 'SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED';
+  message: string;
+  openToken?: string;
+  vendorName?: string;
+}> {
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: poId, tenantId, deletedAt: null },
     select: {
@@ -445,10 +473,14 @@ async function emailPoToVendor(
     .filter(Boolean)
     .join('\n');
 
+  const openToken = generateEmailOpenToken();
+  const pixelUrl = await buildAppAbsoluteUrl(`/api/email-open/${openToken}.gif`);
+
   const sent = await sendMail({
     to,
+    cc: OUTBOUND_DOCUMENT_CC,
     subject: `Purchase order ${po.number} — B Visible Signs & Printing`,
-    html,
+    html: appendEmailOpenPixel(html, pixelUrl),
     text,
   });
 
@@ -499,7 +531,12 @@ async function emailPoToVendor(
     });
   }
 
-  return { status: 'SENT', message: `Sent to ${to}` };
+  return {
+    status: 'SENT',
+    message: `Sent to ${to}`,
+    openToken,
+    vendorName: po.vendor?.name,
+  };
 }
 
 /// Explicit per-PO send / retry (also used by the results screen when the
@@ -527,7 +564,14 @@ export async function sendShopOrderPoAction(
     targetId: po.id,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
-    metadata: { number: po.number, via: 'shop_order_send', detail: sent.message },
+    metadata: {
+      number: po.number,
+      via: 'shop_order_send',
+      detail: sent.message,
+      ...(sent.openToken ? { openToken: sent.openToken } : {}),
+      ...(sent.vendorName ? { vendorName: sent.vendorName } : {}),
+      ccEmails: [...OUTBOUND_DOCUMENT_CC],
+    },
   });
 
   revalidatePath('/purchase-orders');

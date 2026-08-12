@@ -53,7 +53,9 @@ const PUBLIC_PATHS = new Set<string>([
   '/api/internal/sheet-webhook',
 ]);
 
-const PUBLIC_PREFIXES = ['/reset/', '/invite/'];
+// /api/email-open/* is the outbound-email open-tracking pixel — fetched
+// by mail clients with no session. The route only ever returns a 1x1 gif.
+const PUBLIC_PREFIXES = ['/reset/', '/invite/', '/api/email-open/'];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;

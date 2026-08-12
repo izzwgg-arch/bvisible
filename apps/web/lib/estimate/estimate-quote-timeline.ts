@@ -87,6 +87,7 @@ export function mergeEstimateStaffTimeline(
 
   const auditActions = new Set([
     'estimate_sent_to_client',
+    'estimate_email_opened',
     'estimate_quote_viewed_public',
     'estimate_status_changed',
     'estimate_finalized',
@@ -102,6 +103,9 @@ export function mergeEstimateStaffTimeline(
     switch (a.action) {
       case 'estimate_sent_to_client':
         title = 'Estimate emailed to customer';
+        break;
+      case 'estimate_email_opened':
+        title = 'Estimate email opened by recipient';
         break;
       case 'estimate_quote_viewed_public':
         title = 'Quote viewed (public link)';

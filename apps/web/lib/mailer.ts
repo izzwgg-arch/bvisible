@@ -258,6 +258,7 @@ function logSafe(
 
 export interface SendMailInput {
   to: string;
+  cc?: ReadonlyArray<string>;
   subject: string;
   html: string;
   text: string;
@@ -384,6 +385,7 @@ export async function sendMail(input: SendMailInput): Promise<
     const info = await transport.sendMail({
       from: brandFromAddress(config.from),
       to: input.to,
+      ...(input.cc && input.cc.length > 0 ? { cc: [...input.cc] } : {}),
       subject: input.subject,
       text: input.text,
       html: input.html,

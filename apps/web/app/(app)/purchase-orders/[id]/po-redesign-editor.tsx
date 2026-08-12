@@ -74,6 +74,7 @@ export interface PoRedesignBootstrap {
     vendorId: string;
     status: POVendorSendStatus;
     sentAt: string | null;
+    openedAt: string | null;
     messageId: string | null;
     lastError: string | null;
     vendor: VendorRef;
@@ -714,6 +715,14 @@ function VendorSection({
           <h2 className="text-[14px] font-bold text-[#1C4972]">{group.vendor?.name ?? 'Unassigned vendor'}</h2>
           <StatusBadge label={sendStatusLabel(group.sendStatus)} />
           <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{group.lines.length} item{group.lines.length === 1 ? '' : 's'}</span>
+          {group.sentAt ? (
+            <span className="text-[11px] font-semibold text-slate-400">
+              Sent {formatVendorSendDate(group.sentAt)}
+              {group.openedAt
+                ? ` · Opened ${formatVendorSendDate(group.openedAt)}`
+                : ' · Not opened yet'}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-4 text-[11.5px] text-slate-500">
           <span>{[...(group.vendor?.emails ?? []), group.vendor?.email].filter((e, i, a) => e && a.indexOf(e) === i).join(', ') || 'No vendor email'}</span>
@@ -872,6 +881,8 @@ type VendorGroup = {
   lines: PoDraftLine[];
   subtotalCents: number;
   sendStatus: POVendorSendStatus | 'DRAFT';
+  sentAt: string | null;
+  openedAt: string | null;
 };
 
 function buildVendorGroups(lines: PoDraftLine[], vendors: ReadonlyArray<VendorRef>, sections: PoRedesignBootstrap['vendorSections']): VendorGroup[] {
@@ -880,12 +891,20 @@ function buildVendorGroups(lines: PoDraftLine[], vendors: ReadonlyArray<VendorRe
     const key = line.vendorId ?? 'unassigned';
     const vendor = line.vendor ?? vendors.find((v) => v.id === line.vendorId) ?? null;
     const section = sections.find((s) => s.vendorId === line.vendorId);
-    const group = map.get(key) ?? { key, vendor, lines: [], subtotalCents: 0, sendStatus: section?.status ?? 'DRAFT' };
+    const group = map.get(key) ?? {
+      key,
+      vendor,
+      lines: [],
+      subtotalCents: 0,
+      sendStatus: section?.status ?? 'DRAFT',
+      sentAt: section?.sentAt ?? null,
+      openedAt: section?.openedAt ?? null,
+    };
     group.lines.push(line);
     group.subtotalCents += line.computedCostCents;
     map.set(key, group);
   }
-  if (map.size === 0) map.set('unassigned', { key: 'unassigned', vendor: null, lines: [], subtotalCents: 0, sendStatus: 'DRAFT' });
+  if (map.size === 0) map.set('unassigned', { key: 'unassigned', vendor: null, lines: [], subtotalCents: 0, sendStatus: 'DRAFT', sentAt: null, openedAt: null });
   return [...map.values()].sort((a, b) => (a.vendor?.name ?? 'Unassigned').localeCompare(b.vendor?.name ?? 'Unassigned'));
 }
 
@@ -916,6 +935,15 @@ function statusLabel(status: POStatus): string {
 
 function sendStatusLabel(status: POVendorSendStatus | 'DRAFT'): string {
   return status.toLowerCase().replace(/_/g, ' ');
+}
+
+function formatVendorSendDate(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(iso));
 }
 
 function unitLabel(unit: string): string {

@@ -12,6 +12,11 @@ import {
   renderEstimatePdfBuffer,
 } from '@/lib/estimate/estimate-pdf';
 import { issueEstimateQuoteLink } from '@/lib/estimate/quote-link-issue';
+import {
+  appendEmailOpenPixel,
+  generateEmailOpenToken,
+} from '@/lib/email-open/email-open';
+import { OUTBOUND_DOCUMENT_CC } from '@/lib/emails/outbound-cc';
 import { statusAfterSuccessfulCustomerSend } from '@/lib/estimate/send-estimate-email-status';
 import { verifyTransport, sendMail } from '@/lib/mailer';
 import { readRequestContext } from '@/lib/request-context';
@@ -105,10 +110,14 @@ export async function sendEstimateEmailAction(
   }
   const pdf = await renderEstimatePdfBuffer(pdfData);
 
+  const openToken = generateEmailOpenToken();
+  const pixelUrl = await buildAppAbsoluteUrl(`/api/email-open/${openToken}.gif`);
+
   const send = await sendMail({
     to,
+    cc: OUTBOUND_DOCUMENT_CC,
     subject: mail.subject,
-    html: mail.html,
+    html: appendEmailOpenPixel(mail.html, pixelUrl),
     text: mail.text,
     attachments: [
       {
@@ -147,7 +156,9 @@ export async function sendEstimateEmailAction(
     metadata: {
       number: estimate.number,
       recipientEmail: to,
+      ccEmails: [...OUTBOUND_DOCUMENT_CC],
       messageId: send.result.messageId,
+      openToken,
       statusBefore: estimate.status,
       statusAfter: nextStatus ?? estimate.status,
       customerQuoteUrlIssued: true,

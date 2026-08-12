@@ -405,6 +405,24 @@ export default async function EstimateDetailPage({
     shopCatalog,
   };
 
+  const emailAudits = await prisma.auditLog.findMany({
+    where: {
+      tenantId: me.tenantId,
+      targetType: 'estimate',
+      targetId: id,
+      action: { in: ['estimate_sent_to_client', 'estimate_email_opened'] },
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { action: true, createdAt: true },
+  });
+  const sendRows = emailAudits.filter((a) => a.action === 'estimate_sent_to_client');
+  const openRows = emailAudits.filter((a) => a.action === 'estimate_email_opened');
+  const emailInfo = {
+    sentCount: sendRows.length,
+    lastSentAtIso: sendRows.at(-1)?.createdAt.toISOString() ?? null,
+    lastOpenedAtIso: openRows.at(-1)?.createdAt.toISOString() ?? null,
+  };
+
   return (
     <div id="estimate-workspace-root">
       <style>{`
@@ -429,6 +447,7 @@ export default async function EstimateDetailPage({
         clientId={estimate.client.id}
         clientName={estimate.client.companyName}
         status={estimate.status}
+        emailInfo={emailInfo}
       />
       <EstimateEditor bootstrap={bootstrap} supportTabs={supportTabs} />
     </div>
@@ -627,6 +646,7 @@ function EstimateCommandHeader({
   clientId,
   clientName,
   status,
+  emailInfo,
 }: {
   estimateId: string;
   estimateNumber: string;
@@ -634,6 +654,11 @@ function EstimateCommandHeader({
   clientId: string;
   clientName: string;
   status: EstimateStatus;
+  emailInfo: {
+    sentCount: number;
+    lastSentAtIso: string | null;
+    lastOpenedAtIso: string | null;
+  };
 }) {
   const displayNumber = estimateNumber.match(/(\d+)$/)?.[1] ?? estimateNumber;
   void jobTitle;
@@ -663,7 +688,7 @@ function EstimateCommandHeader({
                 truth whenever changes were pending. */}
             <EstimateSaveStatus />
             <EstimateSaveButton />
-            <EstimateHeaderActions estimateId={estimateId} status={status} />
+            <EstimateHeaderActions estimateId={estimateId} status={status} emailInfo={emailInfo} />
           </div>
       </div>
     </section>

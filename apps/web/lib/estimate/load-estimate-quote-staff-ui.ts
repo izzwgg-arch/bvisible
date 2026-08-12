@@ -54,6 +54,7 @@ export type EstimateQuoteStaffUiBundle = {
 
 const AUDIT_TIMELINE_ACTIONS = [
   'estimate_sent_to_client',
+  'estimate_email_opened',
   'estimate_quote_viewed_public',
   'estimate_status_changed',
   'estimate_finalized',

@@ -38,6 +38,12 @@ import {
 import { insertPoAttachmentAndTimelineEvent } from '@/lib/po/attachment-insert';
 import { enqueueOcrJobForPoAttachment } from '@/lib/ocr/enqueue';
 import { renderPurchaseOrderEmail } from '@/lib/emails/purchase-order';
+import { buildAppAbsoluteUrl } from '@/lib/auth/app-origin';
+import {
+  appendEmailOpenPixel,
+  generateEmailOpenToken,
+} from '@/lib/email-open/email-open';
+import { OUTBOUND_DOCUMENT_CC } from '@/lib/emails/outbound-cc';
 import { sendMail } from '@/lib/mailer';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
 import { isRetailVendor } from '@/lib/po/retail-cart';
@@ -660,6 +666,10 @@ export async function sendPurchaseOrderAction(
 
   let sentCount = 0;
   let failedCount = 0;
+  // One open-tracking token per vendor email; recorded on the po_sent
+  // audit row so the pixel endpoint can attribute opens to this PO.
+  const openTokens: string[] = [];
+  const openTokenVendors: Record<string, string> = {};
 
   for (const [vendorId, group] of groups) {
     // Send to EVERY email on file for the vendor, not just the first.
@@ -695,15 +705,21 @@ export async function sendPurchaseOrderAction(
       })),
     });
 
+    const openToken = generateEmailOpenToken();
+    const pixelUrl = await buildAppAbsoluteUrl(`/api/email-open/${openToken}.gif`);
+
     const sent = await sendMail({
       to: recipient,
+      cc: OUTBOUND_DOCUMENT_CC,
       subject: email.subject,
-      html: email.html,
+      html: appendEmailOpenPixel(email.html, pixelUrl),
       text: email.text,
     });
 
     if (sent.ok) {
       sentCount += 1;
+      openTokens.push(openToken);
+      openTokenVendors[openToken] = group.vendor.name;
       await prisma.$transaction(async (tx) => {
         await tx.purchaseOrderVendor.upsert({
           where: { purchaseOrderId_vendorId: { purchaseOrderId, vendorId } },
@@ -767,7 +783,14 @@ export async function sendPurchaseOrderAction(
     targetId: purchaseOrderId,
     ipAddress: ctx.ipAddress,
     userAgent: ctx.userAgent,
-    metadata: { number: po.number, sentCount, failedCount },
+    metadata: {
+      number: po.number,
+      sentCount,
+      failedCount,
+      ccEmails: [...OUTBOUND_DOCUMENT_CC],
+      openTokens,
+      openTokenVendors,
+    },
   });
 
   revalidatePath(`/purchase-orders/${purchaseOrderId}`);

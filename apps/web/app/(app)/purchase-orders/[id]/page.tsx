@@ -140,6 +140,25 @@ export default async function PurchaseOrderDetailPage({
         )
       : null;
 
+  // First email-open per vendor (from the tracking pixel) for the
+  // "Opened" stamp on each vendor section.
+  const emailOpenAudits = await prisma.auditLog.findMany({
+    where: {
+      tenantId: me.tenantId,
+      targetType: 'purchase_order',
+      targetId: id,
+      action: 'po_email_opened',
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { createdAt: true, metadata: true },
+  });
+  const emailOpensByVendor = new Map<string, Date>();
+  for (const row of emailOpenAudits) {
+    const meta = row.metadata as Record<string, unknown> | null;
+    const name = meta && typeof meta.vendorName === 'string' ? meta.vendorName : null;
+    if (name && !emailOpensByVendor.has(name)) emailOpensByVendor.set(name, row.createdAt);
+  }
+
   const bootstrap: PoRedesignBootstrap = {
     po: {
       id: po.id,
@@ -183,6 +202,7 @@ export default async function PurchaseOrderDetailPage({
       vendorId: section.vendorId,
       status: section.status,
       sentAt: section.sentAt?.toISOString() ?? null,
+      openedAt: emailOpensByVendor.get(section.vendor.name)?.toISOString() ?? null,
       messageId: section.messageId,
       lastError: section.lastError,
       vendor: section.vendor,
