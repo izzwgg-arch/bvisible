@@ -34,6 +34,12 @@ test('SMOKE excel takeoff import end to end', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Signage Schedule · 20/ })).toBeVisible();
   await expect(page.getByText(/costs import as costs/i)).toBeVisible();
   await expect(page.getByText('Sheet total $27,325.00')).toBeVisible();
+
+  // The operator can override the detected pricing basis in both directions.
+  await page.getByRole('button', { name: /final prices — import as-is/i }).click();
+  await expect(page.getByText(/final selling prices/i)).toBeVisible();
+  await page.getByRole('button', { name: /costs — my markup applies/i }).click();
+  await expect(page.getByText(/costs import as costs/i)).toBeVisible();
   await page.screenshot({ path: 'test-results/excel-import-preview.png', fullPage: false });
 
   // Switch to the sell-price tab and check semantics + skipped-tax note.

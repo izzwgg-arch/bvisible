@@ -65,6 +65,12 @@ const PLAN_TOOL = {
           type: 'number',
           description: 'Only if the operator stated a markup. Default is 200.',
         },
+        priceBasis: {
+          type: 'string',
+          enum: ['sell', 'cost'],
+          description:
+            'ONLY if the operator explicitly said what the sheet\'s numbers are: "sell" = final selling prices, import as-is; "cost" = costs, markup applies. Omit otherwise — the detected column semantics are used.',
+        },
       },
       required: [],
     },
@@ -82,6 +88,7 @@ interface PlanArgs {
   customerName?: string;
   title?: string;
   markupPercent?: number;
+  priceBasis?: 'sell' | 'cost';
 }
 
 /// One forced-tool OpenAI call. Returns null args on total failure so
@@ -160,7 +167,13 @@ export async function runTakeoffTurn(
   const tab = selectTakeoffTab(takeoff, plan.tab ?? null);
   const title = (plan.title ?? '').trim().slice(0, 200) || tab.title || takeoff.fileName;
   const markupPercent = Math.max(0, Number(plan.markupPercent ?? 200) || 200);
-  const rows = takeoffTabToEstimateRows(tab);
+  // Operator's explicit word beats the detected column semantics.
+  const basis: 'sell' | 'cost' =
+    plan.priceBasis === 'sell' || plan.priceBasis === 'cost' ? plan.priceBasis : tab.priceBasis;
+  const rows = takeoffTabToEstimateRows(tab).map((r) => ({
+    ...r,
+    markupExempt: basis === 'sell',
+  }));
 
   onEvent?.({ type: 'tool', tool: 'create_estimate_from_takeoff', summary: tab.sheetName });
 
@@ -264,9 +277,9 @@ export async function runTakeoffTurn(
     .map(([name, count]) => `• ${name}: ${count} line${count > 1 ? 's' : ''}`)
     .join('\n');
   const basisNote =
-    tab.priceBasis === 'sell'
-      ? 'Prices imported as final selling prices (never marked up again).'
-      : `Costs imported as costs — the ${markupPercent}% markup applies.`;
+    basis === 'sell'
+      ? 'Prices imported as final selling prices (never marked up again). Say "import it as costs" if they should be marked up instead.'
+      : `Costs imported as costs — the ${markupPercent}% markup applies. Say "those are final prices" if they should import as-is instead.`;
   const truncated = tab.lines.length > MAX_TAKEOFF_LINES
     ? `\n⚠ The tab has ${tab.lines.length} lines — only the first ${MAX_TAKEOFF_LINES} imported (estimate limit).`
     : '';

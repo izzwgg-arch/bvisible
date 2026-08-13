@@ -34,8 +34,14 @@ test('SMOKE assistant dock parses and attaches an Excel takeoff', async ({ page 
     });
   });
 
-  // Open the floating assistant dock and attach the workbook.
-  await page.getByRole('button', { name: /assistant/i }).first().click();
+  // Open the floating assistant dock and attach the workbook. The first
+  // click can land before hydration on a cold dev server — retry until
+  // the composer's file input exists.
+  const dockInput = page.locator('input[type="file"][accept*="xlsx"]');
+  await expect(async () => {
+    await page.getByRole('button', { name: /assistant/i }).first().click();
+    await expect(dockInput).toBeAttached({ timeout: 2000 });
+  }).toPass({ timeout: 30_000 });
   await page.setInputFiles('input[type="file"][accept*="xlsx"]', WORKBOOK);
   await expect(page.getByText(/takeoff-234-clark\.xlsx · 154 lines/)).toBeVisible();
 

@@ -21,7 +21,13 @@ interface TabCandidate {
   parse: TakeoffParse;
 }
 
-function toImportResult(tab: TabCandidate): ImportResult {
+/// What the sheet's unit numbers mean. The parser guesses from the
+/// column captions ("Cost Each" vs a lone "Price Each"), but captions
+/// lie — a "priced summary" often labels final prices as costs — so the
+/// operator gets an explicit choice with the guess as the default.
+export type PriceBasis = 'sell' | 'cost';
+
+function toImportResult(tab: TabCandidate, basis: PriceBasis): ImportResult {
   const { parse, sheetName } = tab;
   const lines = parse.lines.slice(0, MAX_LINES);
   // Group consecutive runs of the same section (not by name globally) so
@@ -44,7 +50,7 @@ function toImportResult(tab: TabCandidate): ImportResult {
         description: l.name,
         qtyMilli: Math.round(l.qty * 1000),
         unitCostCents: l.unitCents,
-        markupExempt: l.markupExempt,
+        markupExempt: basis === 'sell',
         sourceKind: 'CUSTOM',
         notes: l.notes,
       })),
@@ -66,11 +72,14 @@ export function ExcelImportPanel({
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Operator's override of the detected pricing basis; null = detected.
+  const [basisOverride, setBasisOverride] = useState<PriceBasis | null>(null);
 
   async function handleFile(file: File) {
     setBusy(true);
     setError(null);
     setTabs([]);
+    setBasisOverride(null);
     setFileName(file.name);
     try {
       const XLSX = await import('xlsx');
@@ -107,6 +116,7 @@ export function ExcelImportPanel({
   }
 
   const active = tabs[selected] ?? null;
+  const basis: PriceBasis = basisOverride ?? active?.parse.priceBasis ?? 'sell';
   const previewTotalCents = active
     ? active.parse.lines
         .slice(0, MAX_LINES)
@@ -181,7 +191,10 @@ export function ExcelImportPanel({
             <button
               key={t.sheetName}
               type="button"
-              onClick={() => setSelected(i)}
+              onClick={() => {
+                setSelected(i);
+                setBasisOverride(null);
+              }}
               className={`rounded-full px-3 py-1 text-[11px] font-bold ${
                 i === selected
                   ? 'bg-[var(--color-bv-accent)] text-white'
@@ -196,20 +209,56 @@ export function ExcelImportPanel({
 
       {active ? (
         <>
+          {/* The parser's guess is only a default — column captions lie
+              (a "priced summary" often labels final prices "Cost Each"),
+              so the operator decides what the numbers mean. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-[var(--color-bv-muted)]">
+              The sheet&apos;s prices are:
+            </span>
+            <button
+              type="button"
+              onClick={() => setBasisOverride('sell')}
+              className={`rounded-full px-3 py-1 text-[11px] font-bold ${
+                basis === 'sell'
+                  ? 'bg-[var(--color-bv-accent)] text-white'
+                  : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
+              }`}
+            >
+              Final prices — import as-is
+            </button>
+            <button
+              type="button"
+              onClick={() => setBasisOverride('cost')}
+              className={`rounded-full px-3 py-1 text-[11px] font-bold ${
+                basis === 'cost'
+                  ? 'bg-[var(--color-bv-accent)] text-white'
+                  : 'border border-[var(--color-bv-border)] bg-white text-[var(--color-bv-muted)]'
+              }`}
+            >
+              Costs — my markup applies
+            </button>
+            {basisOverride === null ? (
+              <span className="text-[10.5px] text-[var(--color-bv-muted)]">
+                (detected from the column headers — tap to change)
+              </span>
+            ) : null}
+          </div>
+
           <div className="mt-3 flex items-center gap-2">
             <button
               type="button"
               className="rounded-[10px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12.5px] font-bold text-white hover:opacity-95"
-              onClick={() => onImport(toImportResult(active))}
+              onClick={() => onImport(toImportResult(active, basis))}
             >
               Add {Math.min(active.parse.lines.length, MAX_LINES)} line
               {active.parse.lines.length > 1 ? 's' : ''} to estimate →
             </button>
             <span className="text-[11px] text-[var(--color-bv-muted)]">
               Sheet total {formatMoney(previewTotalCents)} ·{' '}
-              {active.parse.priceBasis === 'sell'
+              {basis === 'sell'
                 ? 'prices import as final selling prices (never marked up again)'
-                : 'costs import as costs — your markup applies'}
+                : 'costs import as costs — your markup applies on top'}
             </span>
           </div>
 
@@ -246,7 +295,7 @@ export function ExcelImportPanel({
                   </div>
                 </div>
                 <span className="whitespace-nowrap text-[10px] font-bold text-[var(--color-bv-muted)]">
-                  {l.markupExempt ? 'final price' : 'markup applies'}
+                  {basis === 'sell' ? 'final price' : 'markup applies'}
                 </span>
               </div>
             ))}
