@@ -45,6 +45,7 @@ import {
   sendOfficeReminder,
 } from '@/lib/po/office-reminder';
 import { autoAddPoLinesToCatalog } from '@/lib/po/catalog-autoadd';
+import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
 
 const shopOrderLineSchema = z.object({
   name: z.string().trim().min(1).max(400),
@@ -283,7 +284,7 @@ export async function createShopOrderAction(
       // Amazon: true multi-item cart when every line resolves an ASIN
       // (from the SKU column or the product URL). Other stores: first
       // product page. Null only when no line has any usable link.
-      const cartUrl = buildRetailCartUrl(vendor.name, items);
+      const cartUrl = buildRetailCartUrl(vendor.name, items, amazonAssociateTag());
       retail = { vendor: vendor.name, cartUrl, items };
     }
 

@@ -2,6 +2,7 @@ import { requireTenantId } from '@/lib/auth/current-user';
 import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
 import { loadSmtpConfigFromDb, MailerConfigError } from '@/lib/mailer';
 import { defaultOfficeReminderEmail } from '@/lib/po/office-reminder';
+import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
 import { ShopOrderFlow } from './shop-order-flow';
 
 export const metadata = { title: 'Order materials' };
@@ -28,6 +29,9 @@ export default async function ShopOrderPage() {
       // beyond the address itself, and so the server still decides where a
       // reminder actually goes.
       defaultOfficeReminderTo={defaultOfficeReminderEmail()}
+      // Not a secret — it travels in every affiliate URL — but read on the
+      // server so the client never depends on deployment configuration.
+      amazonAssociateTag={amazonAssociateTag()}
       sheetWarning={
         catalog.sheetOk
           ? null

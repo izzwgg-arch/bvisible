@@ -54,10 +54,19 @@ export function extractAsin(sku: string | null | undefined, url: string | null |
 
 /// Amazon add-to-cart URL for a whole order — only when EVERY line has a
 /// resolvable ASIN (otherwise a partial cart silently drops items).
+///
+/// `associateTag` is REQUIRED BY AMAZON. Without it the endpoint does not
+/// error — it quietly redirects to the first product's detail page, which
+/// looks exactly like "the cart didn't load". A tag comes from an Amazon
+/// Associates account (AMAZON_ASSOCIATE_TAG); until one is configured this
+/// returns null rather than handing back a URL that cannot work.
 export function buildAmazonCartUrl(
-  items: Array<{ sku?: string | null; url?: string | null; qty: number }>
+  items: Array<{ sku?: string | null; url?: string | null; qty: number }>,
+  associateTag?: string | null
 ): string | null {
   if (items.length === 0) return null;
+  const tag = (associateTag ?? '').trim();
+  if (!tag) return null;
   const asins: Array<{ asin: string; qty: number }> = [];
   for (const item of items) {
     const asin = extractAsin(item.sku, item.url);
@@ -67,18 +76,25 @@ export function buildAmazonCartUrl(
   const params = asins
     .map((a, i) => `ASIN.${i + 1}=${encodeURIComponent(a.asin)}&Quantity.${i + 1}=${a.qty}`)
     .join('&');
-  return `https://www.amazon.com/gp/aws/cart/add.html?${params}`;
+  return `https://www.amazon.com/gp/aws/cart/add.html?AssociateTag=${encodeURIComponent(tag)}&${params}`;
 }
 
-/// Best automatic cart/product URL for a retail vendor order:
-/// Amazon gets a true multi-item cart; other stores get the first
-/// product page (no public cart-prefill APIs) — the office adds the rest
-/// from the draft email's per-item links.
-export function buildRetailCartUrl(vendorName: string, items: RetailCartLine[]): string | null {
-  if (/amazon/i.test(vendorName)) {
-    const cart = buildAmazonCartUrl(items);
-    if (cart) return cart;
-  }
+/// Best automatic cart/product URL for a retail vendor order: Amazon gets a
+/// true multi-item cart; other stores get the first product page, because no
+/// other retailer exposes a cart-prefill URL at all.
+///
+/// Amazon deliberately does NOT fall through to a product page. Opening one
+/// item's detail page from a button labelled "Create cart" is precisely what
+/// made a missing ASIN (and later a missing AssociateTag) look like a broken
+/// cart: the office saw a product, assumed the prefill had failed silently,
+/// and had no idea which of the two was wrong. Returning null instead makes
+/// the UI show the per-item links and say why.
+export function buildRetailCartUrl(
+  vendorName: string,
+  items: RetailCartLine[],
+  associateTag?: string | null
+): string | null {
+  if (/amazon/i.test(vendorName)) return buildAmazonCartUrl(items, associateTag);
   const firstWithUrl = items.find((i) => normalizeExternalUrl(i.url));
   return firstWithUrl ? normalizeExternalUrl(firstWithUrl.url) : null;
 }

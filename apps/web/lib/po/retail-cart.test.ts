@@ -48,30 +48,62 @@ describe('extractAsin', () => {
 });
 
 describe('buildAmazonCartUrl', () => {
+  const TAG = 'bvisible-20';
   it('builds a multi-item cart url when every line has an ASIN', () => {
-    const url = buildAmazonCartUrl([
-      { sku: 'B0ABCDEFGH', url: '', qty: 2 },
-      { sku: '', url: 'https://www.amazon.com/dp/B0AAAAAAAA', qty: 0.4 },
-    ]);
+    const url = buildAmazonCartUrl(
+      [
+        { sku: 'B0ABCDEFGH', url: '', qty: 2 },
+        { sku: '', url: 'https://www.amazon.com/dp/B0AAAAAAAA', qty: 0.4 },
+      ],
+      TAG
+    );
     expect(url).toContain('ASIN.1=B0ABCDEFGH&Quantity.1=2');
     expect(url).toContain('ASIN.2=B0AAAAAAAA&Quantity.2=1'); // qty rounds UP
   });
+  it('always carries AssociateTag — without it Amazon redirects to the product page', () => {
+    const url = buildAmazonCartUrl([{ sku: 'B0ABCDEFGH', url: '', qty: 1 }], TAG);
+    expect(url).toContain('AssociateTag=bvisible-20');
+  });
+  it('returns null with no associate tag rather than a url that cannot work', () => {
+    for (const tag of ['', '   ', undefined, null]) {
+      expect(buildAmazonCartUrl([{ sku: 'B0ABCDEFGH', url: '', qty: 1 }], tag)).toBeNull();
+    }
+  });
   it('returns null when any line has no ASIN (no silent partial carts)', () => {
     expect(
-      buildAmazonCartUrl([
-        { sku: 'B0ABCDEFGH', url: '', qty: 1 },
-        { sku: 'NOT-ASIN', url: '', qty: 1 },
-      ])
+      buildAmazonCartUrl(
+        [
+          { sku: 'B0ABCDEFGH', url: '', qty: 1 },
+          { sku: 'NOT-ASIN', url: '', qty: 1 },
+        ],
+        TAG
+      )
     ).toBeNull();
   });
 });
 
 describe('buildRetailCartUrl', () => {
-  it('prefers the amazon cart, falls back to first product page', () => {
+  it('opens the first product page for stores with no cart api', () => {
     const items = [
       { name: 'Tape', qty: 1, url: 'www.homedepot.com/p/123', sku: '', unitPriceCents: 500 },
     ];
     expect(buildRetailCartUrl('Home Depot', items)).toBe('https://www.homedepot.com/p/123');
+  });
+  it('builds a real amazon cart when the tag and every ASIN are present', () => {
+    const url = buildRetailCartUrl(
+      'amazon',
+      [{ name: 'VHB Tape', qty: 1, url: '', sku: 'B00I4E4IUW', unitPriceCents: 3599 }],
+      'bvisible-20'
+    );
+    expect(url).toContain('cart/add.html?AssociateTag=bvisible-20');
+    expect(url).toContain('ASIN.1=B00I4E4IUW');
+  });
+  it('does NOT fall back to a product page for amazon — that looked like a broken cart', () => {
+    const items = [
+      { name: 'VHB Tape', qty: 1, url: 'https://www.amazon.com/dp/B00I4E4IUW', sku: 'B00I4E4IUW', unitPriceCents: 3599 },
+    ];
+    // No tag: a product page would open from a button labelled "Create cart".
+    expect(buildRetailCartUrl('amazon', items)).toBeNull();
   });
   it('returns null with no usable urls', () => {
     expect(

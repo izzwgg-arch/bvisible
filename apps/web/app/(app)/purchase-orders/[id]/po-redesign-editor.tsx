@@ -69,6 +69,10 @@ export interface PoRedesignBootstrap {
   };
   lines: ReadonlyArray<PoDraftLine>;
   vendors: ReadonlyArray<VendorRef>;
+  /// Amazon Associates tag. Amazon's add-to-cart endpoint requires it — with
+  /// an empty value no cart URL can be built and the per-item links show
+  /// instead, rather than opening one product page that looks like a failure.
+  amazonAssociateTag: string;
   vendorSections: ReadonlyArray<{
     id: string;
     vendorId: string;
@@ -372,7 +376,11 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
     setCartFallback(null);
     for (const group of retailGroups) {
       if (!group.vendor) continue;
-      const url = buildRetailCartUrl(group.vendor.name, cartLinesFor(group));
+      const url = buildRetailCartUrl(
+        group.vendor.name,
+        cartLinesFor(group),
+        bootstrap.amazonAssociateTag,
+      );
       if (url) {
         // One popup per user gesture — anything after the first is blocked,
         // so the remaining stores stay on their own buttons below.
@@ -389,8 +397,13 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
       vendor: first.vendor.name,
       items: buildRetailItemLinks(first.vendor.name, cartLinesFor(first)),
     });
+    // Two different causes, and the office cannot tell them apart from a
+    // dead button — so name the one that actually applies.
+    const missingSku = cartLinesFor(first).some((l) => !l.sku.trim());
     setSendMessage(
-      `Can't prefill a ${first.vendor.name} cart — every line needs a SKU/ASIN and some are blank. Add each item below, or fill the SKU column so the cart builds next time.`,
+      missingSku
+        ? `Can't prefill a ${first.vendor.name} cart — every line needs a SKU/ASIN and some are blank. Add each item below, or fill the SKU column so the cart builds next time.`
+        : `Can't prefill a ${first.vendor.name} cart — the Amazon Associates tag is not configured (AMAZON_ASSOCIATE_TAG), and Amazon rejects a cart link without one. Add each item below in the meantime.`,
     );
   }
 

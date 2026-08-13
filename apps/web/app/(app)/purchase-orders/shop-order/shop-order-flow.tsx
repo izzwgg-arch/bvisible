@@ -55,6 +55,9 @@ export interface FlowProps {
   /// Server-resolved default for the office reminder. Display + prefill only;
   /// the server decides the real recipient on every send.
   defaultOfficeReminderTo: string;
+  /// Amazon Associates tag. Amazon's add-to-cart endpoint requires it; with
+  /// an empty value no cart URL is built and the office gets per-item links.
+  amazonAssociateTag: string;
   /// Non-null when the pricing Sheet could not be loaded.
   sheetWarning?: string | null;
 }
@@ -720,7 +723,8 @@ export function ShopOrderFlow(props: FlowProps) {
           url: l.productUrl,
           sku: l.vendorSku,
           unitPriceCents: l.unitPriceCents,
-        }))
+        })),
+        props.amazonAssociateTag
       );
       if (cartUrl) {
         window.open(cartUrl, '_blank', 'noopener');

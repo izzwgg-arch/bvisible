@@ -20,6 +20,7 @@ import { sendMail } from '@/lib/mailer';
 import { wrapBranded } from '@/lib/emails/render';
 import { formatMoney, formatQty } from '@/lib/estimate/format';
 import { writeAuditLog } from '@/lib/auth/audit';
+import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
 import {
   buildAmazonCartUrl,
   buildRetailItemLink,
@@ -82,7 +83,8 @@ export function buildRetailOrderingBlock(
   if (!name || !isRetailVendor(name) || lines.length === 0) return null;
   const cartUrl = /amazon/i.test(name)
     ? buildAmazonCartUrl(
-        lines.map((l) => ({ sku: l.vendorSku, url: null, qty: Math.max(1, Math.ceil(l.qtyMilli / 1000)) }))
+        lines.map((l) => ({ sku: l.vendorSku, url: null, qty: Math.max(1, Math.ceil(l.qtyMilli / 1000)) })),
+        amazonAssociateTag()
       )
     : null;
   const itemLinks = lines

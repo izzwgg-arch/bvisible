@@ -23,6 +23,16 @@ APP_BASE_URL=https://app.example.com
 # for one order; that override never changes this default.
 AMAZON_OFFICE_REMINDER_EMAIL=sales@bvisible.us
 
+# Amazon Associates tag, e.g. "bvisible-20". REQUIRED for the shop-order
+# "Create cart" button to work at all: Amazon's add-to-cart endpoint
+# (/gp/aws/cart/add.html) takes AssociateTag as a mandatory parameter, and
+# without it does NOT error — it silently redirects to the first product's
+# detail page, which looks exactly like a broken cart. Comes from an Amazon
+# Associates account. When unset, no cart URL is built and the office gets
+# per-item product links instead, which is honest rather than misleading.
+# Not a secret: it appears in every affiliate URL.
+AMAZON_ASSOCIATE_TAG=
+
 # Database — Postgres in docker compose, bound to 127.0.0.1:5432 only.
 # The `bvisible-web` PM2 process runs on the host (NOT in compose), so it
 # reaches Postgres via localhost, not via a docker-network DNS name.

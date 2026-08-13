@@ -8,6 +8,7 @@ import { PoEstimateOriginSection } from '@/components/po/po-estimate-origin-sect
 import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-staff-ui';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
+import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
 import { PoRedesignEditor, type PoRedesignBootstrap } from './po-redesign-editor';
 
 export const metadata = { title: 'Purchase order' };
@@ -208,6 +209,9 @@ export default async function PurchaseOrderDetailPage({
       vendor: section.vendor,
     })),
     catalog,
+    // Server-read: Amazon's add-to-cart endpoint requires this tag, and
+    // without it a cart link silently redirects to a product page.
+    amazonAssociateTag: amazonAssociateTag(),
     sheetCatalog: sheetCatalog?.entries ?? [],
     sheetAliases: sheetCatalog?.aliases ?? [],
     receiptSummary: receiptWorkflowSummary

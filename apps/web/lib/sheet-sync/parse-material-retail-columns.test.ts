@@ -70,10 +70,12 @@ describe('"Meterial price" retail columns', () => {
     expect(tape.vendorSku).toBe('B08QDCJKHS');
     expect(tape.productUrl).toBe('https://www.amazon.com/dp/B08QDCJKHS');
     // The real reason this matters: the ASIN has to survive into a cart.
+    // The associate tag is Amazon's other hard requirement — without it the
+    // endpoint redirects to the product page instead of loading the cart.
     const { buildAmazonCartUrl } = await import('@/lib/po/retail-cart');
-    expect(buildAmazonCartUrl([{ sku: tape.vendorSku, url: tape.productUrl, qty: 1 }])).toContain(
-      'ASIN.1=B08QDCJKHS'
-    );
+    expect(
+      buildAmazonCartUrl([{ sku: tape.vendorSku, url: tape.productUrl, qty: 1 }], 'bvisible-20')
+    ).toContain('ASIN.1=B08QDCJKHS');
   });
 
   it('never mistakes a url or ASIN for a vendor price', async () => {
