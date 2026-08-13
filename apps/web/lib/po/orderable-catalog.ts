@@ -114,13 +114,13 @@ export async function buildOrderableCatalog(tenantId: string): Promise<Orderable
       priceCents: material.priceCents,
       vendor: material.vendor,
       vendorPrices: material.vendorPrices,
-      // Deliberately blank: the "Meterial price" tab reads its vendor prices
-      // from every column after index 2 by label, so fixed trailing columns
-      // can't be added there without ambiguity. Retail items belong on the
-      // Internal Materials tab, which does carry URL/SKU. Anything landing
-      // here falls back to per-item store searches.
-      vendorSku: '',
-      productUrl: '',
+      // Cols M/N of the "Meterial price" tab — where the Amazon links and
+      // ASINs are actually maintained. These were previously dropped here on
+      // the assumption retail items lived on the Internal Materials tab, so
+      // every Amazon order arrived without a SKU and no cart could ever be
+      // prefilled, however carefully the Sheet was filled in.
+      vendorSku: material.vendorSku,
+      productUrl: material.productUrl,
       preferredVendor: preferredFor(material.name, material.key),
     });
   }

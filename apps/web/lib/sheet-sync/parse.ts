@@ -39,8 +39,14 @@ function rows(table: GvizTable): Row[] {
 /// "Meterial price" — spelling intentional. Estimate-side material catalog.
 /// Cols: 0 name · 1 category · 2 name(dup) · 5 S&F · 6 Grimco · 8 Letra lit
 /// (visualization col labels carry vendor names) · 10 cheapest price ·
-/// 11 cheapest vendor. We read cheapest price/vendor plus every entered
-/// vendor column by label.
+/// 11 cheapest vendor · 12 product URL · 13 vendor SKU / ASIN. We read
+/// cheapest price/vendor plus every entered vendor column by label.
+///
+/// 12/13 are where the owner actually records Amazon links and ASINs — this
+/// tab, not "Internal Materials". Reading them is what lets the shop-order
+/// flow build a real prefilled cart. They are safe to sit past the vendor
+/// price columns: the by-label loop below skips unlabelled columns, and a URL
+/// or ASIN is NaN as a price anyway, so neither can be mistaken for money.
 function parseMaterials(table: GvizTable): SheetMaterial[] {
   const labels = (table.cols ?? []).map((c) => String(c.label ?? '').trim());
   const out: SheetMaterial[] = [];
@@ -73,6 +79,8 @@ function parseMaterials(table: GvizTable): SheetMaterial[] {
       priceCents,
       vendor: cheapest?.vendor || gvizString(row, 11),
       vendorPrices,
+      productUrl: gvizString(row, 12),
+      vendorSku: gvizString(row, 13),
       unpriced: priceCents <= 0,
     });
   }

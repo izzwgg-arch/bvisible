@@ -16,6 +16,11 @@ export interface SheetMaterial {
   vendor: string;
   /// Every entered vendor price (for purchasing / vendor pick).
   vendorPrices: Array<{ vendor: string; priceCents: number }>;
+  /// Retail product page and SKU/ASIN, from this tab's cols M and N. This is
+  /// where the owner records Amazon links, so these are the values the
+  /// shop-order flow needs to build a prefilled cart. Empty when absent.
+  productUrl: string;
+  vendorSku: string;
   /// True when the Sheet row carries no price yet. These rows used to be
   /// dropped on import, which made items added ahead of their price simply
   /// invisible. They are now carried through so they show up in the Catalog
