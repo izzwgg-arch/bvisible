@@ -102,7 +102,8 @@ build_env_template() {
           echo "# AUTO -- rebuilt by restore.sh from POSTGRES_* values" >> "$out"
           echo "$key=" >> "$out" ;;
         SMTP_PASSWORD)
-          echo "# REISSUE -- change the mailbox password, then paste it here" >> "$out"
+          echo "# NOT USED -- mail settings live in the smtp_config table and" >> "$out"
+          echo "# are entered via Settings > Email. Leave this blank." >> "$out"
           echo "$key=" >> "$out" ;;
         SHEETS_WRITEBACK_SA_KEY)
           echo "# REISSUE -- delete the old Google service-account key, create a" >> "$out"
@@ -118,7 +119,14 @@ build_env_template "$WORK/config/env.template"
 
 # ------------------------------------------------------------------ manifest --
 COMMIT="$(git -C "$ROOT/app" rev-parse HEAD 2>/dev/null || echo unknown)"
-BRANCH="$(git -C "$ROOT/app" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+BRANCH="$(git -C "$ROOT/app" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+if [ "$BRANCH" = HEAD ]; then
+  # A deploy checkout is always detached at a commit, so --abbrev-ref says
+  # "HEAD". Resolve it to the remote branch that actually contains the commit.
+  BRANCH="$(git -C "$ROOT/app" branch -r --contains HEAD 2>/dev/null \
+    | grep -v '\->' | head -1 | sed 's|.*origin/||' | tr -d ' ')"
+  [ -n "$BRANCH" ] || BRANCH=main
+fi
 REPO="$(git -C "$ROOT/app" config --get remote.origin.url 2>/dev/null || echo unknown)"
 
 cat > "$WORK/MANIFEST.txt" <<EOF

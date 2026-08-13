@@ -113,9 +113,12 @@ fi
 [ -f "$ENV_FILE" ] || die "env file not found: $ENV_FILE"
 
 get() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d "\"'"; }
-for required in SMTP_PASSWORD SHEETS_WRITEBACK_SA_KEY; do
-  [ -n "$(get "$required")" ] || die "$required is still blank in $ENV_FILE -- reissue it first"
-done
+# Only the Sheets key is required here. SMTP_* in .env are intentionally empty
+# in production -- mail settings live in the smtp_config table and are entered
+# through Settings > Email, so requiring SMTP_PASSWORD would block a valid
+# restore.
+[ -n "$(get SHEETS_WRITEBACK_SA_KEY)" ] \
+  || die "SHEETS_WRITEBACK_SA_KEY is still blank in $ENV_FILE -- reissue it first"
 
 PG_USER="$(get POSTGRES_USER)"; PG_DB="$(get POSTGRES_DB)"
 [ -n "$PG_USER" ] && [ -n "$PG_DB" ] || die "POSTGRES_USER/POSTGRES_DB missing from $ENV_FILE"
@@ -263,6 +266,30 @@ tar -xzf "$BUNDLE_DIR/uploads/uploads.tar.gz" -C "$ROOT/shared"
 chown -R "$DEPLOY_USER:$DEPLOY_USER" "$ROOT/shared/uploads"
 log "Restored $(find "$ROOT/shared/uploads" -type f | wc -l) upload files"
 
+# Secrets sealed by lib/email-ingest/crypto.ts use a key derived from
+# INGEST_SECRET. A fresh INGEST_SECRET (which is the point, post-incident)
+# means every stored ciphertext is now undecryptable. Surface that here rather
+# than letting mail fail mysteriously days later.
+# length(col) > 0 rather than col <> '': no empty-string literals to quote, and
+# NULL columns fall out naturally since length(NULL) > 0 is NULL, not true.
+# A failing probe must be loud -- reporting 0 would read as "nothing to redo".
+q() {
+  local out
+  if ! out="$(docker exec bvisible-db psql -U "$PG_USER" -d "$PG_DB" -tAc "$1" 2>&1)"; then
+    warn "sealed-secret probe failed, assuming secrets need re-entry: $out"
+    echo "?"
+    return
+  fi
+  echo "$out"
+}
+SEALED_SMTP=$(q 'SELECT count(*) FROM smtp_config WHERE length("passwordCipher") > 0')
+SEALED_IMAP=$(q 'SELECT count(*) FROM tenant_email_inboxes WHERE length("passwordCipher") > 0')
+SEALED_AI=$(q 'SELECT count(*) FROM assistant_settings WHERE length("apiKeyCipher") > 0 OR length("ylApiKeyCipher") > 0')
+case "$SEALED_SMTP$SEALED_IMAP$SEALED_AI" in
+  *\?*) RESEAL_TOTAL="an unknown number of" ;;
+  *)    RESEAL_TOTAL=$(( SEALED_SMTP + SEALED_IMAP + SEALED_AI )) ;;
+esac
+
 # ============================================================ 9. web + build ==
 step "9/10  nginx, TLS, and application build"
 if [ -f "$BUNDLE_DIR/config/nginx-bvisible.conf" ]; then
@@ -374,8 +401,15 @@ cat <<EOF
        /home/$DEPLOY_USER/.ssh/authorized_keys -- password login is OFF, so do
        this from your current session before you log out.
     2. Point $DOMAIN DNS at this host if you have not already.
-    3. Confirm the Google service account still has access to the sheet.
-    4. Send a test estimate to verify SMTP end to end.
+    3. RE-ENTER $RESEAL_TOTAL SEALED SECRET(S). INGEST_SECRET was regenerated,
+       and it is the key for everything sealed by lib/email-ingest/crypto.ts.
+       The restored ciphertexts cannot be decrypted with the new key:
+         - smtp_config           : $SEALED_SMTP row(s)  -> Settings > Email
+         - tenant_email_inboxes  : $SEALED_IMAP row(s)  -> Admin > Tenants > Email inbox
+         - assistant_settings    : $SEALED_AI row(s)   -> Assistant > Settings
+       Until these are re-entered, outbound mail and email ingestion will fail.
+    4. Confirm the Google service account still has access to the sheet.
+    5. Send a test estimate to verify SMTP end to end.
 ================================================================
 EOF
 [ "$HEALTH" = FAILED ] && die "health check failed -- inspect $ROOT/shared/logs/pm2/"
