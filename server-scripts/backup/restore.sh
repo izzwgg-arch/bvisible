@@ -98,13 +98,14 @@ if [ -z "$ENV_FILE" ]; then
 
   Wrote $ENV_FILE
 
-  Fill in the fields marked REISSUE, then run this script again:
+  Fill in ONE field, then run this script again:
 
-    SMTP_PASSWORD             new mailbox password
-    SHEETS_WRITEBACK_SA_KEY   new Google service-account key, one line
-                              with literal \\n escapes
+    SHEETS_WRITEBACK_SA_KEY   new Google service-account key, as ONE line
+                              with literal \\n escapes (not real newlines)
 
-  Leave the AUTO fields blank -- they are generated for you.
+  Leave everything else blank. The AUTO fields are generated for you, and
+  SMTP_* stay empty on purpose -- mail settings live in the smtp_config
+  table and are re-entered through Settings > Email after the restore.
 
 EOF
     exit 2
