@@ -156,6 +156,15 @@ fi
 corepack enable >/dev/null 2>&1 || true
 corepack prepare pnpm@latest --activate >/dev/null 2>&1 || true
 
+# PM2 runs the web app on the host (docker only carries Postgres -- see the
+# note at the top of docker-compose.yml). deploy-once.sh ends with
+# `pm2 startOrReload`, so without this the whole deploy completes and then
+# dies on the very last step with "pm2: command not found".
+if ! command -v pm2 >/dev/null 2>&1; then
+  npm install -g pm2@latest >/dev/null 2>&1 || die "failed to install pm2"
+  log "Installed pm2 $(pm2 -v)"
+fi
+
 # Chromium libs for Playwright-backed PDF export.
 apt-get install -y -qq libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 \
   libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
@@ -314,6 +323,14 @@ systemctl daemon-reload
 for t in /etc/systemd/system/bvisible-*.timer; do
   [ -e "$t" ] && systemctl enable --now "$(basename "$t")" || true
 done
+
+# The pm2 process list must survive a reboot, and pm2 only writes its systemd
+# unit when asked. Do it before the deploy so a crash mid-build still comes back.
+sudo -u "$DEPLOY_USER" bash -lc 'pm2 ping' >/dev/null 2>&1 || true
+env PATH="$PATH:/usr/lib/node_modules/pm2/bin" pm2 startup systemd \
+  -u "$DEPLOY_USER" --hp "/home/$DEPLOY_USER" >/dev/null 2>&1 || \
+  warn "pm2 startup did not register a unit; the app will not restart on reboot"
+systemctl enable "pm2-$DEPLOY_USER" >/dev/null 2>&1 || true
 
 log "Building the application (this takes several minutes)"
 JOB="$ROOT/deploy-queue/jobs/$(date -u +%Y%m%dT%H%M%S)-restore.json"
