@@ -224,30 +224,24 @@ chown "$DEPLOY_USER:$DEPLOY_USER" "$ENV_OUT"
 chmod 640 "$ENV_OUT"
 log "Wrote $ENV_OUT (640 $DEPLOY_USER:$DEPLOY_USER)"
 
-# =============================================================== 7. postgres ==
-step "7/10  PostgreSQL container"
-docker network inspect bvisible_internal >/dev/null 2>&1 || docker network create bvisible_internal
-docker volume  inspect bvisible_pgdata   >/dev/null 2>&1 || docker volume  create bvisible_pgdata
+# docker compose reads the .env sitting next to docker-compose.yml, and step 7
+# runs compose before deploy-once.sh gets a chance to create this symlink.
+# Without it, POSTGRES_* interpolate to empty and the container comes up wrong.
+ln -sfn "$ENV_OUT" "$ROOT/app/.env"
+chown -h "$DEPLOY_USER:$DEPLOY_USER" "$ROOT/app/.env"
 
-if ! docker inspect bvisible-db >/dev/null 2>&1; then
-  docker run -d \
-    --name bvisible-db \
-    --network bvisible_internal \
-    --restart unless-stopped \
-    -e POSTGRES_USER="$PG_USER" \
-    -e POSTGRES_PASSWORD="$PG_PASS" \
-    -e POSTGRES_DB="$PG_DB" \
-    -e POSTGRES_INITDB_ARGS="--data-checksums" \
-    -p 127.0.0.1:5432:5432 \
-    -v bvisible_pgdata:/var/lib/postgresql/data \
-    -v "$ROOT/app/server-scripts/db/init:/docker-entrypoint-initdb.d:ro" \
-    postgres:16-alpine
-  log "Started bvisible-db"
-fi
+# =============================================================== 7. postgres ==
+step "7/10  PostgreSQL"
+# The repo owns this container. docker-compose.yml pins the project name
+# ("bvisible"), the container name, the 127.0.0.1-only port binding and the
+# pgdata volume -- and deploy-once.sh later runs `docker compose up -d db`
+# against it. Creating the container here with `docker run` yields one compose
+# does not own, and the deploy then dies on a name conflict after a full build.
+( cd "$ROOT/app" && docker compose up -d db ) || die "docker compose up -d db failed"
 
 log "Waiting for PostgreSQL to accept connections"
 for i in $(seq 1 60); do
-  docker exec bvisible-db pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1 && break
+  ( cd "$ROOT/app" && docker compose exec -T db pg_isready -U "$PG_USER" -d "$PG_DB" ) >/dev/null 2>&1 && break
   [ "$i" -eq 60 ] && die "postgres did not become ready within 60s"
   sleep 1
 done
@@ -299,13 +293,16 @@ esac
 
 # ============================================================ 9. web + build ==
 step "9/10  nginx, TLS, and application build"
-if [ -f "$BUNDLE_DIR/config/nginx-bvisible.conf" ]; then
-  sed "s/vmi3270817\.contaboserver\.net/$DOMAIN/g; s/server_name .*;/server_name $DOMAIN;/" \
-    "$BUNDLE_DIR/config/nginx-bvisible.conf" > /etc/nginx/sites-available/bvisible
-else
-  cp "$ROOT/app/server-scripts/nginx/bvisible.conf" /etc/nginx/sites-available/bvisible
-  sed -i "s/server_name .*;/server_name $DOMAIN;/" /etc/nginx/sites-available/bvisible
-fi
+# Use the repo's port-80 config, NOT the captured one. The captured file comes
+# off a server where certbot had already run, so it references
+# /etc/letsencrypt/options-ssl-nginx.conf and a live cert -- neither of which
+# exists yet here. nginx -t then fails, and certbot refuses to run because it
+# cannot parse the config it is meant to fix. certbot adds the TLS block itself
+# once it succeeds. The captured file is kept alongside purely as reference.
+cp "$ROOT/app/server-scripts/nginx/bvisible.conf" /etc/nginx/sites-available/bvisible
+sed -i "s/server_name .*;/server_name $DOMAIN;/" /etc/nginx/sites-available/bvisible
+[ -f "$BUNDLE_DIR/config/nginx-bvisible.conf" ] && \
+  cp "$BUNDLE_DIR/config/nginx-bvisible.conf" /etc/nginx/sites-available/bvisible.captured-reference
 ln -sfn /etc/nginx/sites-available/bvisible /etc/nginx/sites-enabled/bvisible
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
