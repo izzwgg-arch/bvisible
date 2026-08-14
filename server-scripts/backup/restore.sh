@@ -180,6 +180,9 @@ install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 700 "/home/$DEPLOY_USER/.ssh"
 # ================================================================ 4. sources ==
 step "4/10  Application source at pinned commit"
 install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 755 "$ROOT" "$ROOT/app"
+# The tree is owned by deploy but root also runs git against it below; without
+# this, git 2.35+ refuses with "detected dubious ownership".
+git config --global --add safe.directory "$ROOT/app"
 if [ ! -d "$ROOT/app/.git" ]; then
   sudo -u "$DEPLOY_USER" git clone "$REPO_URL" "$ROOT/app"
 fi
@@ -192,6 +195,9 @@ step "5/10  Directory layout and deploy queue"
 # 04-layout-and-queue.sh reads its inputs from /root/deploy-queue.
 install -d -m 755 /root/deploy-queue
 cp "$ROOT/app/server-scripts/deploy-queue/"* /root/deploy-queue/
+# 04-layout-and-queue.sh copies six scripts from here, but db-verify.sh is not
+# one of the repo's deploy-queue/ files -- it lives under server-scripts/db/.
+cp "$ROOT/app/server-scripts/db/db-verify.sh" /root/deploy-queue/
 cp "$ROOT/app/server-scripts/cron/"*.service /root/deploy-queue/ 2>/dev/null || true
 cp "$ROOT/app/server-scripts/cron/"*.timer   /root/deploy-queue/ 2>/dev/null || true
 bash "$ROOT/app/server-scripts/04-layout-and-queue.sh"
