@@ -414,6 +414,7 @@ model Tenant {
   assistantMemories        AssistantMemory[]
   operatingRates           TenantOperatingRates?
   sheetSyncState           SheetSyncState?
+  outboundCcSettings       OutboundCcSetting[]
 
   @@map("tenants")
 }
@@ -2059,6 +2060,44 @@ model SpendAlert {
 // off INGEST_SECRET (same scheme as TenantEmailInbox.passwordCipher).
 // Falls back to env vars (SMTP_HOST etc.) when this row is absent.
 // Only one row should ever exist; create/update via upsert on a fixed id.
+/// Which outbound document an admin-managed CC list applies to.
+///
+/// Deliberately one member for now. CC lists are configured per document
+/// type so that changing the purchase-order list can never change what is
+/// copied on any other document. Estimates keep their own standing CC list
+/// in code (lib/emails/outbound-cc.ts) until someone asks for it to be
+/// configurable; adding ESTIMATE here plus one call-site change is all that
+/// would take.
+enum OutboundDocumentType {
+  PURCHASE_ORDER
+}
+
+/// Admin-managed CC list for one document type, per company.
+///
+/// Replaces the hard-coded OUTBOUND_DOCUMENT_CC list for purchase orders so
+/// the owner can edit recipients without a code change. Two states matter and
+/// they are NOT the same:
+///   - row present with `emails: []`  -> deliberately blank, vendor only
+///   - no row at all                  -> nothing configured, also no CC
+/// Existing companies are seeded with the previous hard-coded addresses by
+/// the migration, so behaviour is unchanged until someone edits the list. A
+/// company created later starts empty rather than inheriting another
+/// company's office addresses.
+model OutboundCcSetting {
+  id           String               @id @default(cuid())
+  tenantId     String
+  documentType OutboundDocumentType
+  emails       String[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  // Who last changed it is recorded on the `po_cc_recipients_saved` audit row.
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, documentType])
+  @@map("outbound_cc_settings")
+}
+
 model SmtpConfig {
   id             String   @id @default(cuid())
   host           String

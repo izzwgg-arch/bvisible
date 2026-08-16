@@ -37,6 +37,8 @@ import {
 } from './actions';
 import { PoAttachmentsPanel } from './attachments-panel';
 import { PoTimelinePanel } from './timeline-panel';
+import { SendPoDialog, type SendPoRecipient } from '@/components/po/send-po-dialog';
+import { vendorRecipients } from '@/lib/po/vendor-recipients';
 
 type POVendorSendStatus = 'DRAFT' | 'SENT' | 'FAILED';
 
@@ -73,6 +75,10 @@ export interface PoRedesignBootstrap {
   /// an empty value no cart URL can be built and the per-item links show
   /// instead, rather than opening one product page that looks like a failure.
   amazonAssociateTag: string;
+  /// The company's saved default CC list for purchase-order emails, from
+  /// Admin → PO email CC. Shown in the Send PO panel before anything is sent
+  /// and editable there for that one email. Empty means vendor-only.
+  poCcRecipients: ReadonlyArray<string>;
   vendorSections: ReadonlyArray<{
     id: string;
     vendorId: string;
@@ -213,6 +219,7 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendMessage, setSendMessage] = useState<string | null>(null);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
   /// Shown when a cart could not be prefilled — the per-item links are the
   /// office's fallback, so failing silently is not an option.
   const [cartFallback, setCartFallback] = useState<{
@@ -249,6 +256,16 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
   );
   /// Nothing on this PO can be emailed — the button stops offering to.
   const cartOnly = retailGroups.length > 0 && emailGroups.length === 0;
+  // Exactly who the server will email, shown in the confirm panel. Retail
+  // vendors are excluded here for the same reason the server skips them.
+  const sendRecipients = useMemo<SendPoRecipient[]>(
+    () =>
+      emailGroups.map((g) => ({
+        vendorName: g.vendor?.name ?? 'Unassigned vendor',
+        emails: g.vendor ? vendorRecipients(g.vendor) : [],
+      })),
+    [emailGroups],
+  );
   const receivedTotal = lines.reduce((sum, line) => sum + Math.min(line.receivedQtyMilli, line.qtyMilli), 0);
   const qtyTotal = lines.reduce((sum, line) => sum + Math.max(0, line.qtyMilli), 0);
   // Items-catalog rows AND the full Sheet materials catalog, merged and
@@ -343,13 +360,25 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
     setSaving(false);
   }
 
-  async function send() {
+  /// Opens the confirm panel. Deliberately does NOT email anything — the PO
+  /// leaves only from confirmSend() below, after the operator has seen the
+  /// vendor and CC recipients.
+  function openSendDialog() {
     if (sending) return;
-    if (dirty) await save();
+    setSendMessage(null);
+    setSendDialogOpen(true);
+  }
+
+  async function confirmSend(cc: string[]) {
+    if (sending) return;
     setSending(true);
     setSendMessage(null);
-    const result = await sendPurchaseOrderAction(bootstrap.po.id);
+    // Save first so the vendors and lines just reviewed are what actually
+    // gets emailed.
+    if (dirty) await save();
+    const result = await sendPurchaseOrderAction(bootstrap.po.id, cc);
     setSending(false);
+    setSendDialogOpen(false);
     setSendMessage(result.error ?? `Sent ${result.sentCount ?? 0} vendor email${result.sentCount === 1 ? '' : 's'}.`);
     startTransition(() => router.refresh());
   }
@@ -526,6 +555,14 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
 
   return (
     <div className="min-h-screen text-slate-900">
+      <SendPoDialog
+        open={sendDialogOpen}
+        recipients={sendRecipients}
+        defaultCc={bootstrap.poCcRecipients}
+        sending={sending}
+        onCancel={() => setSendDialogOpen(false)}
+        onConfirm={confirmSend}
+      />
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-[var(--radius-bv)] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] p-5 shadow-[var(--shadow-bv-card)]">
         <div>
           <div className="mb-2 flex items-center gap-2 text-[12px] text-slate-500">
@@ -550,7 +587,7 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
               opening the store cart, so "Send PO" is replaced rather than
               sitting next to it. A mixed PO keeps both. */}
           {cartOnly ? null : (
-            <button type="button" onClick={send} disabled={sending || lines.length === 0} className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12px] font-bold text-white shadow-[0_14px_28px_rgba(47,90,243,0.22)] hover:opacity-90 disabled:opacity-50">Send PO</button>
+            <button type="button" onClick={openSendDialog} disabled={sending || lines.length === 0} title="Review the vendor and CC recipients before anything is emailed." className="rounded-[8px] bg-[var(--color-bv-accent)] px-4 py-2 text-[12px] font-bold text-white shadow-[0_14px_28px_rgba(47,90,243,0.22)] hover:opacity-90 disabled:opacity-50">Send PO</button>
           )}
           {retailGroups.length > 0 ? (
             <button
@@ -700,7 +737,7 @@ export function PoRedesignEditor({ bootstrap }: { bootstrap: PoRedesignBootstrap
           <section className="rounded-[14px] border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-[14px] font-bold text-[#1C4972]">Quick Actions</h2>
             <div className="mt-3 grid gap-2 text-[12px] font-semibold">
-              <button type="button" onClick={send} className="text-left text-slate-600 hover:text-[var(--color-bv-accent)]">Send vendor emails</button>
+              <button type="button" onClick={openSendDialog} className="text-left text-slate-600 hover:text-[var(--color-bv-accent)]">Send vendor emails</button>
               <a href="#po-attachments" className="text-slate-600 hover:text-[var(--color-bv-accent)]">Upload receipt / invoice</a>
               <Link href={`/purchase-orders/${bootstrap.po.id}/reconciliation` as never} className="text-slate-600 hover:text-[var(--color-bv-accent)]">Open OCR reconciliation</Link>
               <button type="button" onClick={markReceived} className="text-left text-emerald-700 hover:text-emerald-800">Mark as received</button>

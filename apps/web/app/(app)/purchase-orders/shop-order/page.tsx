@@ -3,6 +3,7 @@ import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
 import { loadSmtpConfigFromDb, MailerConfigError } from '@/lib/mailer';
 import { defaultOfficeReminderEmail } from '@/lib/po/office-reminder';
 import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
+import { loadPoCcRecipients } from '@/lib/emails/po-cc';
 import { ShopOrderFlow } from './shop-order-flow';
 
 export const metadata = { title: 'Order materials' };
@@ -11,9 +12,10 @@ export const dynamic = 'force-dynamic';
 export default async function ShopOrderPage() {
   const me = await requireTenantId();
 
-  const [catalog, smtp] = await Promise.all([
+  const [catalog, smtp, poCcRecipients] = await Promise.all([
     buildOrderableCatalog(me.tenantId),
     loadSmtpConfigFromDb(),
+    loadPoCcRecipients(me.tenantId),
   ]);
 
   // The flow renders its own per-screen headers (Order materials /
@@ -32,6 +34,10 @@ export default async function ShopOrderPage() {
       // Not a secret — it travels in every affiliate URL — but read on the
       // server so the client never depends on deployment configuration.
       amazonAssociateTag={amazonAssociateTag()}
+      // Shown before the order is placed so the CC list on the vendor POs is
+      // never a surprise. The server re-reads it on every send — this copy is
+      // for display and for the per-PO send panel.
+      poCcRecipients={poCcRecipients}
       sheetWarning={
         catalog.sheetOk
           ? null

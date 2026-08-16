@@ -29,6 +29,7 @@ import {
   type ShopOrderResult,
 } from './shop-order-actions';
 import { buildRetailCartUrl, isRetailVendor } from '@/lib/po/retail-cart';
+import { SendPoDialog } from '@/components/po/send-po-dialog';
 
 export interface CatalogEntry {
   id: string;
@@ -58,6 +59,10 @@ export interface FlowProps {
   /// Amazon Associates tag. Amazon's add-to-cart endpoint requires it; with
   /// an empty value no cart URL is built and the office gets per-item links.
   amazonAssociateTag: string;
+  /// Company default CC list for purchase-order emails (Admin → PO email CC).
+  /// Shown before the order is placed and used to prefill the per-PO send
+  /// panel. Empty means the vendor is the only recipient.
+  poCcRecipients: ReadonlyArray<string>;
   /// Non-null when the pricing Sheet could not be loaded.
   sheetWarning?: string | null;
 }
@@ -740,6 +745,7 @@ export function ShopOrderFlow(props: FlowProps) {
         created={state.created}
         mode={state.mode ?? 'draft'}
         smtpConfigured={props.smtpConfigured}
+        poCcRecipients={props.poCcRecipients}
         onRestart={() => window.location.reload()}
       />
     );
@@ -777,6 +783,7 @@ export function ShopOrderFlow(props: FlowProps) {
           groupCount={groups.length}
           officeReminderTo={officeReminderTo}
           setOfficeReminderTo={setOfficeReminderTo}
+          poCcRecipients={props.poCcRecipients}
         />
       ) : (
         <>
@@ -1132,6 +1139,7 @@ function ReviewScreen({
   groupCount,
   officeReminderTo,
   setOfficeReminderTo,
+  poCcRecipients,
 }: {
   regularGroups: Array<[string, OrderLine[]]>;
   retailGroups: Array<[string, OrderLine[]]>;
@@ -1157,6 +1165,7 @@ function ReviewScreen({
   setPayload: (mode: 'send' | 'draft') => void;
   openFirstRetailCart: () => void;
   groupCount: number;
+  poCcRecipients: ReadonlyArray<string>;
 }) {
   const regularCount = regularGroups.length;
   const retailVendors = retailGroups.map(([v]) => v);
@@ -1424,6 +1433,26 @@ function ReviewScreen({
             </div>
           ) : null}
 
+          {/* Who gets copied on the vendor POs, shown BEFORE the send. The
+              per-email edit lives on each PO's Send PO panel; the default is
+              changed in Admin → PO email CC. */}
+          {regularCount > 0 ? (
+            <div className="mt-3.5 border-t border-[var(--color-bv-border)] pt-3.5">
+              <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[var(--color-bv-muted)]">
+                CC on vendor POs
+              </span>
+              <p className="mt-1.5 break-words text-[12.5px] font-semibold text-[var(--color-bv-text)]">
+                {poCcRecipients.length > 0
+                  ? poCcRecipients.join(', ')
+                  : 'Nobody — the vendor is the only recipient.'}
+              </p>
+              <p className="mt-1 text-[10.5px] text-[var(--color-bv-muted)]">
+                Change the default in Admin → PO email CC, or edit it for one email from that
+                PO&apos;s Send PO button.
+              </p>
+            </div>
+          ) : null}
+
           <button
             type="submit"
             className={`${btnAccent} mt-4 w-full`}
@@ -1471,25 +1500,35 @@ function ResultScreen({
   created,
   mode,
   smtpConfigured,
+  poCcRecipients,
   onRestart,
 }: {
   created: NonNullable<ShopOrderResult['created']>;
   mode: 'send' | 'draft';
   smtpConfigured: boolean;
+  poCcRecipients: ReadonlyArray<string>;
   onRestart: () => void;
 }) {
   const [sendState, setSendState] = useState<
     Record<string, { status: 'idle' | 'sending' | 'sent' | 'error'; message: string }>
   >({});
   const [, startTransition] = useTransition();
+  /// The PO whose Send PO button was pressed, waiting on the confirm panel.
+  /// Nothing is emailed while this is set — only confirmSendPo() sends.
+  const [confirming, setConfirming] = useState<
+    NonNullable<ShopOrderResult['created']>[number] | null
+  >(null);
 
-  function sendPo(poId: string) {
-    setSendState((prev) => ({ ...prev, [poId]: { status: 'sending', message: '' } }));
+  function confirmSendPo(cc: string[]) {
+    const po = confirming;
+    if (!po) return;
+    setConfirming(null);
+    setSendState((prev) => ({ ...prev, [po.id]: { status: 'sending', message: '' } }));
     startTransition(async () => {
-      const result = await sendShopOrderPoAction(poId);
+      const result = await sendShopOrderPoAction(po.id, cc);
       setSendState((prev) => ({
         ...prev,
-        [poId]: { status: result.ok ? 'sent' : 'error', message: result.message },
+        [po.id]: { status: result.ok ? 'sent' : 'error', message: result.message },
       }));
     });
   }
@@ -1498,6 +1537,17 @@ function ResultScreen({
 
   return (
     <div className="mx-auto max-w-2xl">
+      <SendPoDialog
+        open={confirming !== null}
+        // The results screen knows the vendor by name only; the addresses on
+        // file are resolved server-side at send time, which is also what the
+        // status line under each PO reports.
+        recipients={confirming ? [{ vendorName: confirming.vendor, emails: null }] : []}
+        defaultCc={poCcRecipients}
+        sending={false}
+        onCancel={() => setConfirming(null)}
+        onConfirm={confirmSendPo}
+      />
       <div className="text-center">
         <div
           className={`mx-auto grid h-14 w-14 place-items-center rounded-2xl text-2xl text-white shadow-[var(--shadow-bv-card)] ${anyFailed ? 'bg-amber-500' : 'bg-emerald-500'}`}
@@ -1580,7 +1630,7 @@ function ResultScreen({
                           ? 'Configure SMTP first (Settings → Email test).'
                           : undefined
                     }
-                    onClick={() => sendPo(po.id)}
+                    onClick={() => setConfirming(po)}
                   >
                     {s.status === 'sending'
                       ? 'Sending…'

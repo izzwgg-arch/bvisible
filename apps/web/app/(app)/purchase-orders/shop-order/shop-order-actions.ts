@@ -37,7 +37,8 @@ import {
   appendEmailOpenPixel,
   generateEmailOpenToken,
 } from '@/lib/email-open/email-open';
-import { OUTBOUND_DOCUMENT_CC } from '@/lib/emails/outbound-cc';
+import { resolvePoCcRecipients } from '@/lib/emails/po-cc';
+import { sendPurchaseOrderSchema } from '@/lib/validators';
 import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
 import {
   defaultOfficeReminderEmail,
@@ -339,7 +340,8 @@ export async function createShopOrderAction(
             detail: sent.message,
             ...(sent.openToken ? { openToken: sent.openToken } : {}),
             ...(sent.vendorName ? { vendorName: sent.vendorName } : {}),
-            ccEmails: [...OUTBOUND_DOCUMENT_CC],
+            ccEmails: sent.ccEmails,
+            ccOverridden: sent.ccOverridden,
           },
         });
       }
@@ -399,16 +401,25 @@ async function markShopOrderPoSent(
 
 /// Emails a shop-order PO to its vendor and moves it to SENT. The PO is
 /// preserved on failure — the operator retries just the email.
+///
+/// `ccOverride` is a one-off list for this email; undefined uses the company's
+/// saved default from the admin area. Either way this is a purchase-order
+/// email, so it reads the PO list — never the estimate one.
 async function emailPoToVendor(
   tenantId: string,
   actorId: string,
-  poId: string
+  poId: string,
+  ccOverride?: ReadonlyArray<string> | null
 ): Promise<{
   status: 'SENT' | 'NO_VENDOR_EMAIL' | 'SEND_FAILED';
   message: string;
   openToken?: string;
   vendorName?: string;
+  /// Exactly what was copied, for the caller's audit row.
+  ccEmails: string[];
+  ccOverridden: boolean;
 }> {
+  const cc = await resolvePoCcRecipients(tenantId, ccOverride);
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: poId, tenantId, deletedAt: null },
     select: {
@@ -424,7 +435,14 @@ async function emailPoToVendor(
       },
     },
   });
-  if (!po) return { status: 'SEND_FAILED', message: 'Purchase order not found.' };
+  if (!po) {
+    return {
+      status: 'SEND_FAILED',
+      message: 'Purchase order not found.',
+      ccEmails: cc.emails,
+      ccOverridden: cc.overridden,
+    };
+  }
 
   // Send to EVERY email on file for the vendor, not just the first.
   const to = po.vendor ? vendorRecipientLine(po.vendor) || null : null;
@@ -433,6 +451,8 @@ async function emailPoToVendor(
       status: 'NO_VENDOR_EMAIL',
       message:
         'No vendor email on file — add one in the Sheet Vendor Directory or on the vendor record.',
+      ccEmails: cc.emails,
+      ccOverridden: cc.overridden,
     };
   }
 
@@ -479,7 +499,7 @@ async function emailPoToVendor(
 
   const sent = await sendMail({
     to,
-    cc: OUTBOUND_DOCUMENT_CC,
+    cc: cc.emails,
     subject: `Purchase order ${po.number} — B Visible Signs & Printing`,
     html: appendEmailOpenPixel(html, pixelUrl),
     text,
@@ -500,6 +520,8 @@ async function emailPoToVendor(
     return {
       status: 'SEND_FAILED',
       message: `Email to ${to} failed — check SMTP settings and retry.`,
+      ccEmails: cc.emails,
+      ccOverridden: cc.overridden,
     };
   }
 
@@ -537,6 +559,8 @@ async function emailPoToVendor(
     message: `Sent to ${to}`,
     openToken,
     vendorName: po.vendor?.name,
+    ccEmails: cc.emails,
+    ccOverridden: cc.overridden,
   };
 }
 
@@ -544,10 +568,16 @@ async function emailPoToVendor(
 /// initial send failed). Emails the vendor, records POEvents + audit, and
 /// moves the PO to SENT.
 export async function sendShopOrderPoAction(
-  poId: string
+  poId: string,
+  ccOverride?: ReadonlyArray<string> | null
 ): Promise<{ ok: boolean; message: string }> {
   const me = await requireTenantId();
   const ctx = await readRequestContext();
+
+  const parsedInput = sendPurchaseOrderSchema.safeParse({ purchaseOrderId: poId, ccOverride });
+  if (!parsedInput.success) {
+    return { ok: false, message: parsedInput.error.issues[0]?.message ?? 'Invalid request.' };
+  }
 
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: poId, tenantId: me.tenantId, deletedAt: null },
@@ -555,7 +585,7 @@ export async function sendShopOrderPoAction(
   });
   if (!po) return { ok: false, message: 'Purchase order not found.' };
 
-  const sent = await emailPoToVendor(me.tenantId, me.id, poId);
+  const sent = await emailPoToVendor(me.tenantId, me.id, poId, parsedInput.data.ccOverride);
 
   await writeAuditLog({
     action: sent.status === 'SENT' ? 'po_sent' : 'po_send_failed',
@@ -571,7 +601,8 @@ export async function sendShopOrderPoAction(
       detail: sent.message,
       ...(sent.openToken ? { openToken: sent.openToken } : {}),
       ...(sent.vendorName ? { vendorName: sent.vendorName } : {}),
-      ccEmails: [...OUTBOUND_DOCUMENT_CC],
+      ccEmails: sent.ccEmails,
+      ccOverridden: sent.ccOverridden,
     },
   });
 

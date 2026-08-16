@@ -9,6 +9,7 @@ import { loadEstimateQuoteStaffUi } from '@/lib/estimate/load-estimate-quote-sta
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
 import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
+import { loadPoCcRecipients } from '@/lib/emails/po-cc';
 import { PoRedesignEditor, type PoRedesignBootstrap } from './po-redesign-editor';
 
 export const metadata = { title: 'Purchase order' };
@@ -125,9 +126,12 @@ export default async function PurchaseOrderDetailPage({
     notFound();
   }
 
-  const [receiptWorkflowSummary, lifecycleSnapshot] = await Promise.all([
+  const [receiptWorkflowSummary, lifecycleSnapshot, poCcRecipients] = await Promise.all([
     getPoReceiptWorkflowSummary(me.tenantId, id),
     getPoLifecycleSnapshot(me.tenantId, id),
+    // Shown in the Send PO confirm panel so the CC list is visible before
+    // anything is emailed.
+    loadPoCcRecipients(me.tenantId),
   ]);
 
   const estimateOriginQuoteUi =
@@ -212,6 +216,7 @@ export default async function PurchaseOrderDetailPage({
     // Server-read: Amazon's add-to-cart endpoint requires this tag, and
     // without it a cart link silently redirects to a product page.
     amazonAssociateTag: amazonAssociateTag(),
+    poCcRecipients,
     sheetCatalog: sheetCatalog?.entries ?? [],
     sheetAliases: sheetCatalog?.aliases ?? [],
     receiptSummary: receiptWorkflowSummary

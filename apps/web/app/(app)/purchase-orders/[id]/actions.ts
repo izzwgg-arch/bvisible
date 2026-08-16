@@ -13,6 +13,7 @@ import {
   addPoNoteSchema,
   deleteAttachmentSchema,
   savePurchaseOrderSchema,
+  sendPurchaseOrderSchema,
   setPoQboNumberSchema,
   setPoVendorSchema,
   updatePoStatusSchema,
@@ -43,7 +44,7 @@ import {
   appendEmailOpenPixel,
   generateEmailOpenToken,
 } from '@/lib/email-open/email-open';
-import { OUTBOUND_DOCUMENT_CC } from '@/lib/emails/outbound-cc';
+import { resolvePoCcRecipients } from '@/lib/emails/po-cc';
 import { sendMail } from '@/lib/mailer';
 import { vendorRecipientLine } from '@/lib/po/vendor-recipients';
 import { isRetailVendor } from '@/lib/po/retail-cart';
@@ -594,11 +595,28 @@ export async function deletePoAttachmentAction(
   return { error: null };
 }
 
+/// Emails the PO to each vendor on it.
+///
+/// This runs ONLY from an explicit Send PO click — nothing in the app calls it
+/// on approve, on save, or from a timer.
+///
+/// `ccOverride` is the list the operator confirmed in the Send PO panel. Leave
+/// it undefined to use the company's saved default; pass a list (an empty one
+/// included) to use that instead for this email only. It never changes the
+/// saved default — that is edited in the admin area.
 export async function sendPurchaseOrderAction(
-  purchaseOrderId: string
+  purchaseOrderId: string,
+  ccOverride?: ReadonlyArray<string> | null
 ): Promise<{ error: string | null; sentCount?: number; failedCount?: number }> {
   const me = await requireTenantId();
   const ctx = await readRequestContext();
+
+  const parsedInput = sendPurchaseOrderSchema.safeParse({ purchaseOrderId, ccOverride });
+  if (!parsedInput.success) {
+    return { error: parsedInput.error.issues[0]?.message ?? 'Invalid request.' };
+  }
+
+  const cc = await resolvePoCcRecipients(me.tenantId, parsedInput.data.ccOverride);
 
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: purchaseOrderId, tenantId: me.tenantId, deletedAt: null },
@@ -710,7 +728,7 @@ export async function sendPurchaseOrderAction(
 
     const sent = await sendMail({
       to: recipient,
-      cc: OUTBOUND_DOCUMENT_CC,
+      cc: cc.emails,
       subject: email.subject,
       html: appendEmailOpenPixel(email.html, pixelUrl),
       text: email.text,
@@ -787,7 +805,10 @@ export async function sendPurchaseOrderAction(
       number: po.number,
       sentCount,
       failedCount,
-      ccEmails: [...OUTBOUND_DOCUMENT_CC],
+      // What was actually copied on this email, plus whether it came from the
+      // saved default or was edited for this send.
+      ccEmails: cc.emails,
+      ccOverridden: cc.overridden,
       openTokens,
       openTokenVendors,
     },

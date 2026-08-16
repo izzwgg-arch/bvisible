@@ -95,6 +95,7 @@ export type AuditAction =
   | 'mobile_upload_presign'
   | 'mobile_upload_complete'
   | 'smtp_config_saved'
+  | 'po_cc_recipients_saved'
   | 'client_csv_imported'
   | 'shop_material_csv_imported'
   | 'vendor_csv_imported'

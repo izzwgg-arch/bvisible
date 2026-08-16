@@ -696,6 +696,32 @@ export const testSmtpConfigSchema = z.object({
 });
 
 // ---------------------------------------------------------------------
+// Purchase-order CC recipients (/admin/po-email-cc)
+// ---------------------------------------------------------------------
+
+/// Raw entries as typed/pasted. Individual addresses are validated and
+/// de-duplicated by normalizeCcList (lib/emails/po-cc-list.ts) rather than by
+/// Zod, so the form can report exactly WHICH entry is bad. The bounds here
+/// only stop absurd payloads before that runs.
+const ccEmailEntriesSchema = z.array(z.string().max(2000)).max(200);
+
+export const savePoCcRecipientsSchema = z.object({
+  // An empty array is valid and meaningful: "copy nobody, vendor only".
+  emails: ccEmailEntriesSchema,
+});
+
+export const sendPurchaseOrderSchema = z.object({
+  purchaseOrderId: z.string().min(1).max(60),
+  // Omitted/null  -> use the company's saved default CC list.
+  // Present ([] included) -> a one-off list for this email only. The
+  // difference matters: [] must be able to mean "no CC this time".
+  ccOverride: ccEmailEntriesSchema.nullish(),
+});
+
+export type SavePoCcRecipientsInput = z.infer<typeof savePoCcRecipientsSchema>;
+export type SendPurchaseOrderInput = z.infer<typeof sendPurchaseOrderSchema>;
+
+// ---------------------------------------------------------------------
 // Mobile API v1 (/api/v1/*)
 // ---------------------------------------------------------------------
 

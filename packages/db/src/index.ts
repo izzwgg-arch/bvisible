@@ -31,6 +31,7 @@ export {
   VehiclePhotoType,
   VehicleTemplateFileType,
   SheetOverrideItemType,
+  OutboundDocumentType,
 } from '@prisma/client';
 export type {
   PrismaClient,

@@ -24,6 +24,7 @@ const ADMIN_NAV: ReadonlyArray<NavItem> = [
   { href: '/pricing-backend', label: 'Pricing backend' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/email-ingestion', label: 'Email ingestion' },
+  { href: '/admin/po-email-cc', label: 'PO email CC' },
   { href: '/admin/ocr-review', label: 'Receipt OCR' },
   { href: '/admin/reconciliation', label: 'PO reconciliation' },
 ];
