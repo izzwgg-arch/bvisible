@@ -41,10 +41,17 @@ export interface BrandedEmail {
   reason?: string;
 }
 
+/// A table cell is either plain text, or text carrying a link.
+///
+/// The link form exists because a bare URL escaped into a `<td>` is NOT
+/// clickable in most mail clients — Gmail sometimes auto-linkifies, Outlook
+/// does not. Product links shipped that way reach the office as dead text.
+export type BrandedEmailCell = string | { text: string; href: string };
+
 export interface BrandedEmailTable {
   title?: string;
   columns: ReadonlyArray<{ label: string; align?: 'left' | 'right' }>;
-  rows: ReadonlyArray<ReadonlyArray<string>>;
+  rows: ReadonlyArray<ReadonlyArray<BrandedEmailCell>>;
   summary?: { label: string; value: string };
 }
 
@@ -206,7 +213,7 @@ function renderText(input: BrandedEmail, footer: string): string {
     lines.push('');
     if (input.table.title) lines.push(input.table.title);
     for (const row of input.table.rows) {
-      lines.push(`- ${row.join(' | ')}`);
+      lines.push(`- ${row.map(cellText).join(' | ')}`);
     }
     if (input.table.summary) {
       lines.push(`${input.table.summary.label}: ${input.table.summary.value}`);
@@ -257,7 +264,7 @@ function renderTable(table: BrandedEmailTable): string {
           ${row
             .map((cell, index) => {
               const align = table.columns[index]?.align ?? 'left';
-              return `<td align="${align}" style="padding:11px 12px;border-bottom:1px solid ${BORDER};font-family:${FONT_STACK};font-size:13px;line-height:1.45;color:${TEXT};vertical-align:top;">${escapeText(cell)}</td>`;
+              return `<td align="${align}" style="padding:11px 12px;border-bottom:1px solid ${BORDER};font-family:${FONT_STACK};font-size:13px;line-height:1.45;color:${TEXT};vertical-align:top;">${renderCell(cell)}</td>`;
             })
             .join('')}
         </tr>`,
@@ -287,6 +294,29 @@ function renderTable(table: BrandedEmailTable): string {
         </tbody>
       </table>
     </div>`;
+}
+
+/// One table cell as HTML. A link cell becomes a real anchor; anything whose
+/// href is not http(s) degrades to plain text rather than emitting the
+/// attacker-controlled scheme (`javascript:`, `data:`) into the message.
+function renderCell(cell: BrandedEmailCell): string {
+  if (typeof cell === 'string') return escapeText(cell);
+  const href = safeHref(cell.href);
+  if (!href) return escapeText(cell.text);
+  return `<a href="${escapeAttr(href)}" style="color:${TEXT};font-weight:700;text-decoration:underline;word-break:break-all;">${escapeText(cell.text)}</a>`;
+}
+
+/// Plaintext form of a cell. Link cells emit the URL itself — the text-only
+/// part of the message is where a reader copies the address from.
+function cellText(cell: BrandedEmailCell): string {
+  if (typeof cell === 'string') return cell;
+  const href = safeHref(cell.href);
+  return href ? `${cell.text}: ${href}` : cell.text;
+}
+
+function safeHref(raw: string): string {
+  const t = (raw ?? '').trim();
+  return /^https?:\/\//i.test(t) ? t : '';
 }
 
 export function escapeText(s: string): string {

@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { formatMoney } from '@bvisible/pricing';
 import { PageHeader } from '@/components/app-shell';
 import { fuzzySearch } from '@/lib/sheet-sync/fuzzy';
@@ -519,6 +520,7 @@ function QtyStepper({
 /* ------------------------------ main flow ------------------------------ */
 
 export function ShopOrderFlow(props: FlowProps) {
+  const router = useRouter();
   const [step, setStep] = useState<'build' | 'review'>('build');
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<OrderLine[]>([]);
@@ -739,6 +741,36 @@ export function ShopOrderFlow(props: FlowProps) {
   }
 
   /* ---------- results screen (order finished or drafts saved) ---------- */
+
+  // A finished retail order ends on its own "Order ready" page — the last
+  // step of the creation sequence, so the employee sees the real reminder
+  // result instead of an interstitial they have to click through.
+  //
+  // Only when the submission produced exactly ONE purchase order and it is a
+  // retail one. A multi-vendor submission has no single "the" order to open,
+  // so it keeps the results screen and its per-PO links.
+  const soleRetailPoId =
+    state.mode === 'send' && state.created?.length === 1 && state.created[0]?.retail
+      ? state.created[0].id
+      : null;
+
+  useEffect(() => {
+    // replace(), not push(): the composed order is already submitted, so
+    // Back must not return to a review screen that would resubmit it.
+    if (soleRetailPoId) router.replace(`/purchase-orders/${soleRetailPoId}/order-ready`);
+  }, [soleRetailPoId, router]);
+
+  if (soleRetailPoId) {
+    // Placeholder for the moment between the action resolving and the route
+    // committing — showing the results screen here would flash a panel the
+    // employee is not meant to act on.
+    return (
+      <p className="mx-auto max-w-2xl py-16 text-center text-[13px] text-[var(--color-bv-muted)]">
+        Opening your order…
+      </p>
+    );
+  }
+
   if (state.created && state.created.length > 0) {
     return (
       <ResultScreen

@@ -135,14 +135,51 @@ describe('buildOfficeReminderEmail', () => {
     expect(html).not.toMatch(/imageUrl|productImage|placeholder\.(png|jpg)/i);
   });
 
-  it('says so plainly when a line has no product link', async () => {
+  // The bug the office actually hit: the URL was escaped into a table cell as
+  // plain text. Gmail sometimes auto-linkifies it, Outlook does not, so the
+  // reminder arrived with nothing to click.
+  it('ships the product link as a real anchor, not bare text', async () => {
+    const { buildOfficeReminderEmail } = await import('./office-reminder');
+    const { html } = buildOfficeReminderEmail(base);
+    expect(html).toMatch(/<a[^>]+href="https:\/\/www\.amazon\.com\/dp\/B0ABCDEFGH"/i);
+  });
+
+  it('still carries the raw URL in the plaintext part', async () => {
+    const { buildOfficeReminderEmail } = await import('./office-reminder');
+    const { text } = buildOfficeReminderEmail(base);
+    expect(text).toContain('https://www.amazon.com/dp/B0ABCDEFGH');
+  });
+
+  it('derives a link from the SKU when no product URL was captured', async () => {
+    const { buildOfficeReminderEmail } = await import('./office-reminder');
+    // vendorSku is an ASIN, so the office still gets a one-click path to the
+    // item rather than a dead "No link on file" row.
+    const { html, text } = buildOfficeReminderEmail({
+      ...base,
+      lines: [{ ...base.lines[0]!, productUrl: null }],
+    });
+    expect(html).toMatch(/<a[^>]+href="https:\/\/www\.amazon\.com\/dp\/B0ABCDEFGH"/i);
+    expect(text).toContain("Blue Painter's Tape — Roll");
+  });
+
+  it('says so plainly only when nothing can identify the item', async () => {
     const { buildOfficeReminderEmail } = await import('./office-reminder');
     const { text } = buildOfficeReminderEmail({
       ...base,
-      lines: [{ ...base.lines[0]!, productUrl: null }],
+      vendorName: 'Some Local Shop',
+      lines: [{ ...base.lines[0]!, productUrl: null, vendorSku: null }],
     });
     expect(text).toContain('No link on file');
     // The item still ships in the email even without a link.
     expect(text).toContain("Blue Painter's Tape — Roll");
+  });
+
+  it('never emits a non-http scheme as a link', async () => {
+    const { buildOfficeReminderEmail } = await import('./office-reminder');
+    const { html } = buildOfficeReminderEmail({
+      ...base,
+      lines: [{ ...base.lines[0]!, productUrl: 'javascript:alert(1)', vendorSku: null }],
+    });
+    expect(html).not.toMatch(/href="javascript:/i);
   });
 });

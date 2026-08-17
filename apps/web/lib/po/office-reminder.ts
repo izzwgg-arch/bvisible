@@ -24,7 +24,7 @@ import { formatMoney, formatQty } from '@/lib/estimate/format';
 import { wrapBranded } from '@/lib/emails/render';
 import { MailerConfigError, sendMail } from '@/lib/mailer';
 import { resolveAppOrigin } from '@/lib/po/admin-notify';
-import { normalizeExternalUrl } from '@/lib/po/retail-cart';
+import { buildRetailItemLink, normalizeExternalUrl } from '@/lib/po/retail-cart';
 
 /// Last-resort recipient. The deployment sets AMAZON_OFFICE_REMINDER_EMAIL;
 /// this constant exists so a missing env var degrades to the correct office
@@ -106,9 +106,36 @@ interface ReminderLine {
   notes: string | null;
 }
 
+/// The clickable product link for one line.
+///
+/// The office's whole job from this email is opening each item, so a line must
+/// never arrive without a way to get there. Preference order:
+///   1. the product URL captured at order time — the exact item;
+///   2. a link derived from the SKU (an Amazon ASIN becomes a /dp/ page,
+///      other stores get their search prefilled) — labelled as a search so
+///      the office is not told a guess is the exact product;
+///   3. only when the store is unknown AND nothing identifies the item, the
+///      row says so plainly rather than carrying a fabricated link.
+///
+/// Returned as a link CELL, not a bare URL string: a URL escaped into a table
+/// cell is not clickable in most mail clients, which is exactly how the office
+/// ended up with an email it could not click through.
+function productLinkCell(
+  vendorName: string,
+  line: ReminderLine
+): { text: string; href: string } | string {
+  const direct = normalizeExternalUrl(line.productUrl);
+  if (direct) return { text: `View on ${vendorName}`, href: direct };
+
+  const derived = buildRetailItemLink(vendorName, line.vendorSku, line.description, line.productUrl);
+  if (derived) return { text: `Find on ${vendorName}`, href: derived };
+
+  return 'No link on file';
+}
+
 /// The reminder email. No product images anywhere — every row is text plus a
-/// product URL, which mail clients linkify on their own. `wrapBranded` escapes
-/// all cell content, so a hostile URL cannot inject markup.
+/// real product link. `wrapBranded` escapes all cell text and only emits
+/// http(s) hrefs, so a hostile URL cannot inject markup or a script scheme.
 export function buildOfficeReminderEmail(input: {
   poNumber: string;
   vendorName: string;
@@ -151,7 +178,7 @@ export function buildOfficeReminderEmail(input: {
         `${formatQty(line.qtyMilli)} ${line.unit.toLowerCase().replace(/_/g, ' ')}`,
         formatMoney(line.unitCostCents),
         formatMoney(line.computedCostCents),
-        normalizeExternalUrl(line.productUrl) || 'No link on file',
+        productLinkCell(input.vendorName, line),
       ]),
       summary: { label: 'Order total', value: formatMoney(input.subtotalCents) },
     },

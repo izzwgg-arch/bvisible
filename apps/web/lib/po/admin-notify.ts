@@ -25,6 +25,7 @@ import {
   buildAmazonCartUrl,
   buildRetailItemLink,
   isRetailVendor,
+  normalizeExternalUrl,
 } from '@/lib/po/retail-cart';
 
 /// Public origin for links in emails. APP_BASE_URL (documented in
@@ -94,6 +95,20 @@ export function buildRetailOrderingBlock(
   return { vendorName: name, cartUrl, itemLinks };
 }
 
+/// Clickable store link for one PO line: the exact product page captured at
+/// order time when there is one, otherwise a link derived from the SKU. Kept
+/// as a link cell so `wrapBranded` emits a real anchor — a bare URL in a table
+/// cell is not clickable in most mail clients.
+function retailLinkCell(
+  vendorName: string,
+  line: { description: string; vendorSku: string | null; productUrl: string | null }
+): { text: string; href: string } | string {
+  const direct = normalizeExternalUrl(line.productUrl);
+  if (direct) return { text: `View on ${vendorName}`, href: direct };
+  const derived = buildRetailItemLink(vendorName, line.vendorSku, line.description, line.productUrl);
+  return derived ? { text: `Find on ${vendorName}`, href: derived } : '';
+}
+
 /// Email one or more admins that a PO is in DRAFT and must be placed.
 /// Never throws. Returns what happened so callers/ticks can report it.
 export async function notifyAdminsOfDraftPo(input: {
@@ -124,6 +139,10 @@ export async function notifyAdminsOfDraftPo(input: {
           select: {
             description: true,
             vendorSku: true,
+            // The exact product page captured at order time. Without it the
+            // links below fall back to a SKU guess even when the precise URL
+            // is sitting on the row.
+            productUrl: true,
             qtyMilli: true,
             unit: true,
             unitCostCents: true,
@@ -151,12 +170,12 @@ export async function notifyAdminsOfDraftPo(input: {
           `open ${retail.cartUrl} , review quantities, and check out. Nothing has been ordered automatically.`
       );
     } else if (retail && retail.itemLinks.length > 0) {
+      // The links themselves now live in the table's "Link" column as real
+      // anchors. Listing them here as bare text produced a wall of URLs that
+      // most mail clients rendered unclickable.
       paragraphs.push(
-        `${retail.vendorName} order — open each item on the store site and add it to the cart:`
+        `${retail.vendorName} order — open each item from the Link column below and add it to the cart.`
       );
-      for (const link of retail.itemLinks.slice(0, 25)) {
-        paragraphs.push(`• ${link.label}: ${link.href}`);
-      }
     }
 
     const heading =
@@ -193,6 +212,9 @@ export async function notifyAdminsOfDraftPo(input: {
                 { label: 'Qty', align: 'right' as const },
                 { label: 'Unit cost', align: 'right' as const },
                 { label: 'Total', align: 'right' as const },
+                // Retail orders only: a regular vendor PO is emailed to the
+                // vendor, so there is no store page to open.
+                ...(retail ? [{ label: 'Link' }] : []),
               ],
               rows: po.lines.map((l) => [
                 l.description,
@@ -200,6 +222,7 @@ export async function notifyAdminsOfDraftPo(input: {
                 formatQty(l.qtyMilli),
                 formatMoney(l.unitCostCents),
                 formatMoney(l.computedCostCents),
+                ...(retail ? [retailLinkCell(vendorName, l)] : []),
               ]),
               summary: { label: 'Subtotal', value: formatMoney(po.subtotalCents) },
             },

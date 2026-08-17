@@ -12,6 +12,10 @@ import Link from 'next/link';
 import { useActionState, useEffect, useState } from 'react';
 import { POReminderStatus } from '@bvisible/db';
 import { formatMoney, formatQty } from '@/lib/estimate/format';
+import {
+  reminderCardState,
+  type ReminderStatusLike,
+} from '@/lib/po/reminder-card-state';
 import { resendOfficeReminderAction, type ResendReminderState } from './actions';
 
 export interface OrderReadyLine {
@@ -57,6 +61,18 @@ function CheckIcon() {
     <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
         <path d="m20 6-11 11-5-5" />
+      </svg>
+    </span>
+  );
+}
+
+/// Neutral state: no reminder has been attempted for this order yet.
+function PendingIcon() {
+  return (
+    <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
       </svg>
     </span>
   );
@@ -264,7 +280,15 @@ function OfficeReminderCard({
   const recipient = state.recipient ?? reminder?.recipient ?? defaultRecipient;
   const sentAtIso = state.ok ? (state.sentAt ?? null) : (reminder?.sentAt ?? null);
   const sentLabel = useRelativeTime(sentAtIso);
-  const failed = !state.ok && (reminder?.status === POReminderStatus.FAILED || !!state.error);
+  // Three distinct states, decided by one tested helper: an order with no
+  // attempt on file must never render as a success.
+  const cardState = reminderCardState({
+    latestStatus: (reminder?.status as ReminderStatusLike | undefined) ?? null,
+    resendOk: state.ok,
+    resendError: state.error,
+  });
+  const failed = cardState === 'failed';
+  const neverAttempted = cardState === 'never_attempted';
 
   useEffect(() => {
     if (state.ok) setEditing(false);
@@ -278,12 +302,16 @@ function OfficeReminderCard({
 
       <div className="px-5 py-5">
         <div className="flex flex-col items-center text-center">
-          {failed ? <WarningIcon /> : <CheckIcon />}
+          {neverAttempted ? <PendingIcon /> : failed ? <WarningIcon /> : <CheckIcon />}
           <p className="mt-3 text-[15px] font-bold text-slate-900">
-            {failed ? 'Reminder not sent' : 'Reminder sent'}
+            {neverAttempted ? 'No reminder sent yet' : failed ? 'Reminder not sent' : 'Reminder sent'}
           </p>
           <p className="mt-1 break-all text-[13px] font-semibold text-slate-700">{recipient}</p>
-          {failed ? (
+          {neverAttempted ? (
+            <p className="mt-1 text-[12px] text-slate-500">
+              This order has no office reminder on file.
+            </p>
+          ) : failed ? (
             <p className="mt-1 text-[12px] text-slate-500">
               {state.error ?? reminder?.failureMessage ?? 'The email could not be delivered.'}
             </p>
@@ -329,7 +357,7 @@ function OfficeReminderCard({
           </form>
         ) : (
           <div className="mt-4 space-y-2">
-            {failed ? (
+            {failed || neverAttempted ? (
               <form action={formAction}>
                 <input type="hidden" name="purchaseOrderId" value={purchaseOrderId} />
                 <input type="hidden" name="recipient" value={recipient} />
@@ -339,7 +367,7 @@ function OfficeReminderCard({
                   className="w-full rounded-[10px] px-3 py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50"
                   style={{ background: '#C2410C' }}
                 >
-                  {pending ? 'Sending…' : 'Try again'}
+                  {pending ? 'Sending…' : neverAttempted ? 'Send reminder' : 'Try again'}
                 </button>
               </form>
             ) : null}
@@ -348,7 +376,7 @@ function OfficeReminderCard({
               onClick={() => setEditing(true)}
               className="w-full rounded-[10px] border border-[#E7E2DA] bg-white px-3 py-2.5 text-[12.5px] font-bold text-slate-700 hover:bg-[#FBF8F4]"
             >
-              {failed ? 'Change recipient' : 'Change recipient & resend'}
+              {failed || neverAttempted ? 'Change recipient' : 'Change recipient & resend'}
             </button>
           </div>
         )}
