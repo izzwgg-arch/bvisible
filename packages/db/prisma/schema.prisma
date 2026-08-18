@@ -211,6 +211,28 @@ enum POEventKind {
   /// corrections, reversals, mark-all-arrived, and undo. Details live in
   /// metadata (lineId, action, delta, totals, unit, description snapshot).
   RECEIVING
+  /// A PunchOut cart came back from Amazon Business and became this PO's
+  /// lines. Nothing has been purchased at this point.
+  AMAZON_PUNCHOUT_RETURNED
+  /// A cXML OrderRequest was accepted by Amazon — the order is really placed.
+  AMAZON_ORDER_PLACED
+  AMAZON_ORDER_FAILED
+}
+
+/// Lifecycle of one PunchOut shopping session.
+enum AmazonPunchoutStatus {
+  /// PunchOutSetupRequest accepted; the employee is shopping on Amazon.
+  STARTED
+  /// Amazon posted the cart back and it became a purchase order.
+  RETURNED
+  /// Abandoned — the employee never submitted a cart.
+  EXPIRED
+}
+
+enum AmazonOrderStatus {
+  /// Amazon accepted the OrderRequest.
+  PLACED
+  FAILED
 }
 
 // Deterministic email/snippet/filename price extraction (Phase 10).
@@ -375,6 +397,8 @@ model Tenant {
   purchaseOrders           PurchaseOrder[]
   purchaseOrderVendors     PurchaseOrderVendor[]
   poOfficeReminders        PoOfficeReminder[]
+  amazonPunchoutSessions   AmazonPunchoutSession[]
+  amazonOrderSubmissions   AmazonOrderSubmission[]
   poLineItems              POLineItem[]
   poAttachments            POAttachment[]
   poEvents                 POEvent[]
@@ -556,6 +580,75 @@ model PoOfficeReminder {
   @@map("po_office_reminders")
 }
 
+/// One cXML PunchOut shopping session against Amazon Business.
+///
+/// `buyerCookie` is a SECRET, not merely a correlation id. Amazon returns the
+/// finished cart as a cross-site browser POST that carries no session cookie,
+/// so this value is the only thing proving the cart belongs to this tenant and
+/// this user. It is single-use: once a cart is accepted the row moves to
+/// RETURNED and the cookie is never honoured again, which stops a captured
+/// POST from being replayed to inject lines into a second order.
+model AmazonPunchoutSession {
+  id              String               @id @default(cuid())
+  tenantId        String
+  buyerCookie     String               @unique
+  status          AmazonPunchoutStatus @default(STARTED)
+  /// Amazon's hosted shopping URL for this session.
+  startPageUrl    String?
+  /// The PO created from the returned cart, once one exists.
+  purchaseOrderId String?
+  returnedAt      DateTime?
+  /// Item count of the returned cart, for the timeline.
+  itemCount       Int                  @default(0)
+  createdById     String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  createdBy     User           @relation("AmazonPunchoutCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, purchaseOrderId])
+  @@map("amazon_punchout_sessions")
+}
+
+/// One attempt to place a purchase order on Amazon Business via cXML
+/// OrderRequest. One row per attempt, so the history is the table itself.
+///
+/// A PO with an existing PLACED row must never be submitted again — Amazon
+/// would ship the order twice. `payloadId` is the correlation key echoed back
+/// by Amazon and is unique per attempt.
+///
+/// `failureCategory` is a short safe label ('rejected', 'send_failed', …),
+/// never a provider message or credential, because it is rendered to a user.
+model AmazonOrderSubmission {
+  id              String            @id @default(cuid())
+  tenantId        String
+  purchaseOrderId String
+  payloadId       String            @unique
+  status          AmazonOrderStatus
+  /// 1 = the first submission; 2+ = retries after a failure.
+  attempt         Int               @default(1)
+  /// Amazon's protocol status line, kept for admin diagnosis. Contains no
+  /// credential — the shared secret is stripped before anything is stored.
+  responseCode    Int?
+  responseText    String?           @db.VarChar(500)
+  failureCategory String?           @db.VarChar(60)
+  totalCents      Int               @default(0)
+  placedAt        DateTime?
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  createdBy     User?         @relation("AmazonOrderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, purchaseOrderId, createdAt])
+  @@map("amazon_order_submissions")
+}
+
 model ShopOrderSubmission {
   id          String   @id @default(cuid())
   tenantId    String
@@ -602,6 +695,8 @@ model User {
   ocrDocumentsRejected            OcrDocument[]          @relation("OcrDocumentRejectedBy")
   purchaseOrdersMarkedReconciled  PurchaseOrder[]        @relation("PoMarkedReconciledBy")
   poOfficeRemindersCreated        PoOfficeReminder[]     @relation("PoOfficeReminderCreator")
+  amazonPunchoutSessionsCreated   AmazonPunchoutSession[] @relation("AmazonPunchoutCreator")
+  amazonOrderSubmissionsCreated   AmazonOrderSubmission[] @relation("AmazonOrderCreator")
   poReconciliationsResolved       POReconciliation[]     @relation("POReconciliationResolvedBy")
   poReconciliationLinesResolved   POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
   spendAlertsDismissed            SpendAlert[]           @relation("SpendAlertDismissedBy")
@@ -1340,6 +1435,8 @@ model PurchaseOrder {
   mobilePendingUploads       MobilePendingUpload[]
   reconciliations            POReconciliation[]
   officeReminders            PoOfficeReminder[]
+  amazonPunchoutSessions     AmazonPunchoutSession[]
+  amazonOrderSubmissions     AmazonOrderSubmission[]
   spendAlerts                SpendAlert[]
   operatorMarkedReconciledBy User?                 @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
 

@@ -3,6 +3,7 @@ import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
 import { loadSmtpConfigFromDb, MailerConfigError } from '@/lib/mailer';
 import { defaultOfficeReminderEmail } from '@/lib/po/office-reminder';
 import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
+import { amazonCxmlConfig } from '@/lib/amazon/config';
 import { loadPoCcRecipients } from '@/lib/emails/po-cc';
 import { ShopOrderFlow } from './shop-order-flow';
 
@@ -34,6 +35,9 @@ export default async function ShopOrderPage() {
       // Not a secret — it travels in every affiliate URL — but read on the
       // server so the client never depends on deployment configuration.
       amazonAssociateTag={amazonAssociateTag()}
+      // Only whether the connection exists — never the identity or secret,
+      // which stay server-side.
+      amazonPunchoutEnabled={amazonCxmlConfig() !== null}
       // Shown before the order is placed so the CC list on the vendor POs is
       // never a surprise. The server re-reads it on every send — this copy is
       // for display and for the per-PO send panel.

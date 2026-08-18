@@ -31,6 +31,7 @@ import {
 } from './shop-order-actions';
 import { buildRetailCartUrl, isRetailVendor } from '@/lib/po/retail-cart';
 import { SendPoDialog } from '@/components/po/send-po-dialog';
+import { AmazonShopButton } from './amazon-shop-button';
 
 export interface CatalogEntry {
   id: string;
@@ -64,6 +65,10 @@ export interface FlowProps {
   /// Shown before the order is placed and used to prefill the per-PO send
   /// panel. Empty means the vendor is the only recipient.
   poCcRecipients: ReadonlyArray<string>;
+  /// True when the Amazon Business cXML PunchOut connection is configured.
+  /// Hides the shopping entry point entirely rather than offering a button
+  /// that can only fail.
+  amazonPunchoutEnabled?: boolean;
   /// Non-null when the pricing Sheet could not be loaded.
   sheetWarning?: string | null;
 }
@@ -822,7 +827,12 @@ export function ShopOrderFlow(props: FlowProps) {
           <PageHeader
             title="Order materials"
             subtitle="Search, add quantities, and review your order."
-            actions={<PastOrdersButton />}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                {props.amazonPunchoutEnabled ? <AmazonShopButton /> : null}
+                <PastOrdersButton />
+              </div>
+            }
           />
 
           {props.sheetWarning ? (

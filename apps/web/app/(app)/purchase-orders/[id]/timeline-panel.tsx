@@ -14,6 +14,9 @@ interface TimelineEvent {
 }
 
 const KIND_ICON: Record<POEventKind, string> = {
+  AMAZON_PUNCHOUT_RETURNED: '🛒',
+  AMAZON_ORDER_PLACED: '✓',
+  AMAZON_ORDER_FAILED: '!',
   CREATED: '＋',
   CREATED_FROM_ESTIMATE: '⇆',
   LINES_SAVED: '✎',

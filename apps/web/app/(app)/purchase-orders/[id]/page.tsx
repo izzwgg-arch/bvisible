@@ -10,7 +10,9 @@ import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-cata
 import { buildOrderableCatalog } from '@/lib/po/orderable-catalog';
 import { amazonAssociateTag } from '@/lib/po/amazon-associate-tag';
 import { loadPoCcRecipients } from '@/lib/emails/po-cc';
+import { amazonPanelForPo } from '@/lib/amazon/order-panel';
 import { PoRedesignEditor, type PoRedesignBootstrap } from './po-redesign-editor';
+import { AmazonOrderPanel } from './amazon-order-panel';
 
 export const metadata = { title: 'Purchase order' };
 export const dynamic = 'force-dynamic';
@@ -164,6 +166,9 @@ export default async function PurchaseOrderDetailPage({
     if (name && !emailOpensByVendor.has(name)) emailOpensByVendor.set(name, row.createdAt);
   }
 
+  // Null unless this is an Amazon PO — the panel does not appear elsewhere.
+  const amazonPanel = await amazonPanelForPo(me.tenantId, po.id);
+
   const bootstrap: PoRedesignBootstrap = {
     po: {
       id: po.id,
@@ -258,6 +263,8 @@ export default async function PurchaseOrderDetailPage({
     <>
       <div className="mx-auto max-w-[1440px] px-4 py-4 lg:px-6">
         <PoRedesignEditor bootstrap={bootstrap} />
+        {/* Only present on Amazon POs; null everywhere else. */}
+        {amazonPanel ? <AmazonOrderPanel data={amazonPanel} /> : null}
         {estimateOriginQuoteUi != null && po.estimate != null ? (
           <PoEstimateOriginSection
             estimateId={po.estimate.id}

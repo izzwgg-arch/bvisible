@@ -51,6 +51,12 @@ const PUBLIC_PATHS = new Set<string>([
   // Instant Sheet→DB sync, called by the pricing Sheet's Apps Script
   // onEdit trigger. Shared-secret header is the auth boundary.
   '/api/internal/sheet-webhook',
+  // Where Amazon Business posts a finished PunchOut cart. This is a
+  // cross-site browser form POST from Amazon, so it carries no session
+  // cookie and redirecting it to /login would silently lose the cart. The
+  // BuyerCookie inside the cXML is the credential: 256 CSPRNG bits,
+  // single-use, and time-boxed (apps/web/lib/amazon/punchout-service.ts).
+  '/api/amazon/punchout/return',
 ]);
 
 // /api/email-open/* is the outbound-email open-tracking pixel — fetched

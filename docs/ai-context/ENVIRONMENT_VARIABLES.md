@@ -237,3 +237,59 @@ echoes the password back. To regenerate (e.g. credential rotation):
 remove the four lines from `.env` and re-run the bootstrap script. Then
 update Postgres to accept the new password (`ALTER USER bvisible WITH
 PASSWORD '...'`) inside the running container.
+
+## Amazon Business — cXML PunchOut + ordering
+
+SERVER-SIDE ONLY. `AMAZON_PUNCHOUT_SHARED_SECRET` is a bearer credential that
+can place real purchase orders against the company's Amazon Business account.
+It must never be imported from a client component, returned from a server
+action, or logged — `apps/web/lib/amazon/config.ts` exposes `redactCxml()`
+because the secret travels inside the cXML body itself.
+
+Values come from Amazon Business → the Ordering-API punchout connection page.
+When `AMAZON_PUNCHOUT_IDENTITY` or the secret is unset the whole feature is
+off: the "Shop on Amazon Business" button is not rendered at all, rather than
+shown and failing.
+
+```bash
+# "From Identity" in cXML.
+AMAZON_PUNCHOUT_IDENTITY=
+AMAZON_PUNCHOUT_SHARED_SECRET=
+
+# 'test' (default) targets Amazon's punchout test endpoint. Anything other
+# than 'production' stays on test, so a half-finished setup cannot place a
+# real order by accident.
+AMAZON_PUNCHOUT_MODE=test
+AMAZON_PUNCHOUT_URL=https://abintegrations.amazon.com/punchout
+AMAZON_PUNCHOUT_TEST_URL=https://abintegrations.amazon.com/punchout/test
+
+# "Purchase order request URL" — the cXML OrderRequest endpoint. Leave unset
+# to allow shopping (carts return into B Visible) while keeping order
+# placement disabled.
+AMAZON_ORDER_REQUEST_URL=
+
+# Credential domain / To identity used in the cXML Header. Amazon's own
+# integration guide is the authority; these are configurable because a
+# mismatch here is the most common cause of a rejected PunchOutSetupRequest.
+AMAZON_PUNCHOUT_CREDENTIAL_DOMAIN=NetworkId
+AMAZON_PUNCHOUT_TO_IDENTITY=Amazon
+
+# Ship-to for OrderRequest. cXML needs discrete address parts and the Tenant
+# row only carries one free-text address field. All four of street/city/state/
+# postal code are required: a partial address would be rejected by Amazon only
+# after the order was already recorded on our side, so ordering is blocked
+# with a clear message until these are set.
+AMAZON_SHIP_TO_NAME=B Visible Signs & Printing
+AMAZON_SHIP_TO_STREET=
+AMAZON_SHIP_TO_CITY=
+AMAZON_SHIP_TO_STATE=
+AMAZON_SHIP_TO_POSTAL_CODE=
+AMAZON_SHIP_TO_COUNTRY=US
+AMAZON_SHIP_TO_EMAIL=sales@bvisible.us
+```
+
+The PunchOut return endpoint (`/api/amazon/punchout/return`) is in the
+middleware allow-list because Amazon posts the finished cart cross-site, with
+no session cookie. Its credential is the `buyerCookie`: 256 CSPRNG bits,
+single-use (accepting a cart flips the session to RETURNED), and time-boxed to
+12 hours. See `apps/web/lib/amazon/punchout-service.ts`.

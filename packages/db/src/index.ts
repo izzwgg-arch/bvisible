@@ -14,6 +14,8 @@ export {
   POAttachmentKind,
   POEventKind,
   POReminderStatus,
+  AmazonPunchoutStatus,
+  AmazonOrderStatus,
   EmailIngestStatus,
   EmailMatchReason,
   VendorPriceConfidence,
