@@ -478,12 +478,18 @@ function OtherVendorForm({
 function QtyStepper({
   qty,
   onChange,
+  onRemove,
   small,
 }: {
   qty: number;
   onChange: (next: number) => void;
+  /// When given, the minus button turns into a remove at quantity 1 instead
+  /// of dead-ending. Wherever an item can be added it can also be taken back
+  /// out, without hunting for a different control.
+  onRemove?: () => void;
   small?: boolean;
 }) {
+  const removing = qty <= 1 && onRemove != null;
   const btn = `grid place-items-center rounded-[8px] text-[16px] font-bold text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)] disabled:opacity-40 ${small ? 'h-7 w-7' : 'h-9 w-9'}`;
   return (
     <div
@@ -491,22 +497,31 @@ function QtyStepper({
     >
       <button
         type="button"
-        aria-label="Decrease quantity"
-        className={btn}
-        disabled={qty <= 1}
-        onClick={() => onChange(Math.max(1, Math.ceil(qty) - 1))}
+        aria-label={removing ? 'Remove from order' : 'Decrease quantity'}
+        title={removing ? 'Remove from order' : undefined}
+        className={`${btn} ${removing ? 'text-rose-500 hover:bg-rose-50 hover:text-rose-600' : ''}`}
+        disabled={qty <= 1 && onRemove == null}
+        onClick={() => (removing ? onRemove() : onChange(Math.max(1, Math.ceil(qty) - 1)))}
       >
-        −
+        {removing ? <TrashIcon /> : '−'}
       </button>
       <input
         className={`w-11 border-0 bg-transparent text-center text-[14px] font-bold text-[var(--color-bv-text)] outline-none ${small ? 'py-0.5' : 'py-1.5'}`}
         type="number"
-        min={1}
+        min={onRemove ? 0 : 1}
         step="any"
         value={qty}
         aria-label="Quantity"
         onChange={(e) => {
-          const v = Number(e.target.value);
+          const raw = e.target.value;
+          // Typed 0 means "take it off the order". Matched on the raw string,
+          // not the number: clearing the box to retype a quantity also reads
+          // as 0 and must not delete the line out from under the typist.
+          if (onRemove && raw.trim() === '0') {
+            onRemove();
+            return;
+          }
+          const v = Number(raw);
           if (Number.isFinite(v) && v >= 1) onChange(v);
         }}
       />
@@ -1015,7 +1030,8 @@ function ResultRow({
         {line ? (
           <QtyStepper
             qty={line.qty}
-            onChange={(q) => (q < 1 ? removeLine(line.uid) : updateLine(line.uid, { qty: q }))}
+            onChange={(q) => updateLine(line.uid, { qty: q })}
+            onRemove={() => removeLine(line.uid)}
           />
         ) : (
           <button type="button" className={btnNavy} onClick={() => onAdd()}>
@@ -1086,7 +1102,8 @@ function CurrentOrderPanel({
                 <button
                   type="button"
                   aria-label={`Remove ${l.name}`}
-                  className="text-slate-300 hover:text-red-500"
+                  title={`Remove ${l.name}`}
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-[6px] text-[13px] text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                   onClick={() => removeLine(l.uid)}
                 >
                   ✕
