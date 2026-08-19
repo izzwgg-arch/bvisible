@@ -117,6 +117,18 @@ export default async function NewEstimatePage({
         }
       />
 
+      <Link
+        href="/estimates/new/bid"
+        className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-bv)] border border-orange-200 bg-[linear-gradient(90deg,#fff2e8,#fffdfa)] px-5 py-4 shadow-[var(--shadow-bv-card)] transition hover:border-orange-300"
+      >
+        <div>
+          <div className="text-[10.5px] font-black uppercase tracking-[0.12em] text-[var(--color-bv-accent)]">Bidding a signage takeoff?</div>
+          <div className="mt-1 text-[15px] font-bold text-[var(--color-bv-text)]">Use the Bid Estimator — seven guided steps from Excel takeoff to customer-ready estimate and QBME</div>
+          <div className="mt-0.5 text-[12px] text-[var(--color-bv-muted)]">Upload the takeoff and plans, review automatic pricing from the standard-sign rules, resolve office questions, add design and installation, and finish with the estimate + QuickBooks block. Autosaves; resume any time.</div>
+        </div>
+        <span className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13px] font-bold text-white">Start bid estimate →</span>
+      </Link>
+
       <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-4 py-1.5 text-[12px] text-[var(--color-bv-muted)] shadow-[var(--shadow-bv-card)]">
         <span className={`h-2 w-2 rounded-full ${sheetOk ? 'bg-emerald-500' : 'bg-amber-500'}`} />
         {sheetOk ? (

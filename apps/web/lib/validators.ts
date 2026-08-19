@@ -180,7 +180,7 @@ export type UpdateClientInput = z.infer<typeof updateClientSchema>;
 export const createEstimateSchema = z.object({
   clientId: z.string().min(1, 'Pick a client.').max(60),
   title: shortText(160),
-  estimateType: z.enum(['CUSTOM', 'STOCK_ITEM', 'SQUARE_FOOTAGE']).default('CUSTOM'),
+  estimateType: z.enum(['CUSTOM', 'STOCK_ITEM', 'SQUARE_FOOTAGE', 'BID']).default('CUSTOM'),
 });
 
 const optionalNumberFromForm = z
@@ -351,7 +351,7 @@ export const saveEstimateSchema = z.object({
   estimateId: z.string().min(1).max(60),
   title: shortText(160),
   notes: longText(4000),
-  estimateType: z.enum(['CUSTOM', 'STOCK_ITEM', 'SQUARE_FOOTAGE']).default('CUSTOM'),
+  estimateType: z.enum(['CUSTOM', 'STOCK_ITEM', 'SQUARE_FOOTAGE', 'BID']).default('CUSTOM'),
   multiplierMilli: z
     .number()
     .int()

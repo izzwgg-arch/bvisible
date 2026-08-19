@@ -13,6 +13,12 @@ describe('isEstimateEditorReadOnly', () => {
     expect(isEstimateEditorReadOnly(EstimateStatus.APPROVED)).toBe(false);
     expect(isEstimateEditorReadOnly(EstimateStatus.REJECTED)).toBe(false);
   });
+
+  it('is true for Bid Estimator estimates regardless of status (lines are managed by the workflow)', () => {
+    expect(isEstimateEditorReadOnly(EstimateStatus.DRAFT, 'BID')).toBe(true);
+    expect(isEstimateEditorReadOnly(EstimateStatus.APPROVED, 'BID')).toBe(true);
+    expect(isEstimateEditorReadOnly(EstimateStatus.DRAFT, 'CUSTOM')).toBe(false);
+  });
 });
 
 describe('FINALIZED_READ_ONLY_CHIP_LABEL', () => {

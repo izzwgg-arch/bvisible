@@ -15,6 +15,7 @@ import { Prisma, prisma } from '@bvisible/db';
 import { normalizeVendorItemName } from '@/lib/vendor-pricing/normalize';
 import { pricingSheetId } from './gviz';
 import { fetchAndParseSheet } from './parse';
+import { syncStandardSignsFromSheet } from '@/lib/bid/standard-sign-sync';
 import type { SheetData, SheetSyncSnapshot } from './types';
 
 export interface SheetSyncResult {
@@ -23,6 +24,15 @@ export interface SheetSyncResult {
   materialCount?: number;
   machineCount?: number;
   vendorCount?: number;
+  /// Bid Estimator standard-sign catalog ("Standard Signs" tab, optional).
+  standardSigns?: {
+    tabStatus: 'OK' | 'MISSING' | 'UNRECOGNIZED';
+    count: number;
+    created: number;
+    updated: number;
+    deactivated: number;
+    skippedDuplicates: string[];
+  };
 }
 
 export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
@@ -237,11 +247,29 @@ export async function runSheetSync(tenantId: string): Promise<SheetSyncResult> {
     );
   }
 
+  // --- Standard signs (Bid Estimator). Optional tab; upsert by signKey,
+  // duplicates skipped, vanished rows deactivated. Isolated so a bad row
+  // never breaks the material / machine / vendor sync above.
+  let standardSigns: SheetSyncResult['standardSigns'];
+  try {
+    const signSync = await syncStandardSignsFromSheet(
+      prisma,
+      tenantId,
+      data.standardSigns ?? [],
+      data.standardSignsTabStatus ?? 'MISSING',
+      now
+    );
+    standardSigns = { ...signSync, count: (data.standardSigns ?? []).length };
+  } catch (err) {
+    console.warn('standard_sign_sync_failed', err instanceof Error ? err.message : err);
+  }
+
   return {
     ok: true,
     materialCount: data.materials.length,
     machineCount: data.machines.length,
     vendorCount: data.vendorDirectory.length,
+    standardSigns,
   };
 }
 

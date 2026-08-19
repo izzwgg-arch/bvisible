@@ -29,6 +29,8 @@
     "smoke:po-lifecycle": "playwright test smoke/po-lifecycle.spec.ts --config=playwright.config.ts",
     "smoke:excel-import": "playwright test smoke/estimate-excel-import.spec.ts --config=playwright.config.ts",
     "verify:estimate-import": "vitest run lib/estimate-import",
+    "verify:bid-estimator": "vitest run lib/bid lib/estimate/qbme.test.ts lib/estimate/customer-estimate-presentation.test.ts lib/estimate/estimate-read-only-ui.test.ts lib/sheet-sync",
+    "smoke:bid-estimator": "playwright test smoke/bid-estimator.spec.ts --config=playwright.config.ts",
     "smoke:all": "playwright test smoke/ --config=playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap:super-admin": "tsx scripts/bootstrap-super-admin.ts",

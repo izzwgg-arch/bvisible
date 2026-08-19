@@ -39,6 +39,50 @@ it.
   refuses edits while FINALIZED. Unfinalize: `unfinalizeEstimateAction` (ADMIN+).
   `EstimateStatus` enum: `DRAFT / SENT / APPROVED / REJECTED / FINALIZED`.
 
+- **R-EST-05** Lines whose price is already a final selling price (Sheet sq-ft
+  rates, vehicle wraps, Bid Estimator standard-sign rates) are `markupExempt`
+  and are NEVER multiplied by the estimate multiplier. Preserved as structured
+  data — never inferred from a description. See `ESTIMATE_ENGINE.md`.
+- **R-BID-01** A `BID` estimate's lines belong to the seven-step Bid Estimator.
+  The classic grid opens them read-only and `saveEstimateAction` refuses them,
+  because its replace-all save would destroy source links, match evidence and
+  pricing snapshots.
+- **R-BID-02** Headings, repeated header rows, blank rows, subtotals, tax rows,
+  grand totals, notes and legends from a takeoff are never product lines. Every
+  parsed row is still stored (`bid_source_rows`) with its sheet name and row
+  number so each line can point back at its evidence.
+- **R-BID-03** The source quantity is never overwritten by the billable
+  quantity. A per-character sign keeps "1 set" as the takeoff quantity and
+  bills the character count, with the conversion shown in the explanation.
+- **R-BID-04** Ordinary pricing is deterministic. AI may only rank candidate
+  standard signs with structured confidence + evidence for lines the
+  deterministic ladder could not settle; it never sets a quantity, size,
+  material, rate, or price, and its failure never blocks the import.
+- **R-BID-05** When pricing cannot be decided safely, the line gets an office
+  question instead of a guess — and stays explicitly unpriced (never a silent
+  $0). Answers recalculate the line and are audited. A project answer never
+  changes company pricing; promoting one to a company standard requires
+  ADMIN/SUPER_ADMIN and can never create a duplicate standard sign or alias.
+- **R-BID-06** Approving a custom or project-specific rate requires
+  ADMIN/SUPER_ADMIN plus a reason (audited as `bid_custom_rate_approved`).
+- **R-BID-07** A saved bid line keeps the rate it was priced with. Sheet changes
+  never reprice an estimate; repricing is an explicit, admin-only, audited
+  action on DRAFT estimates that shows old vs new before applying and leaves
+  human decisions untouched.
+- **R-BID-08** Sales tax on customer estimates comes from
+  `tenant_operating_rates.salesTaxPercentMilli`. 0 means the estimate is shown
+  pre-tax and says so. Never hardcode a tax rate.
+- **R-BID-09** QBME is line-by-line: one `Line=` per customer estimate line, in
+  the same order, allowed ITEM names only, numeric QTY, per-unit RATE, empty
+  AMOUNT, trailing pipe, no tax line and no customer information. Σ(QTY × RATE)
+  must equal the estimate's pre-tax subtotal; drift is reported, never hidden by
+  silently changing a line.
+- **R-BID-10** Standard signs added or edited in the Google Sheet
+  `Standard Signs` tab become available without a deployment. Sync upserts by
+  `signKey`, skips duplicates, deactivates (never deletes) rows that disappeared,
+  never overwrites app-promoted signs, and does nothing at all when the tab is
+  missing or unrecognized.
+
 ## Purchase Orders
 
 - **R-PO-01** The PO is the master file for a job. Estimates, vendor docs,

@@ -98,6 +98,108 @@ variants + Apply-only checks; requires `BVISIBLE_*` env).
 
 **Managed Items picker** — **Catalog items** (`catalog-item-picker.tsx`) lists active shop catalog rows. MATERIAL rows show **unit cost** that **Apply** writes (preferred vendor’s latest linked observation when set, else cheapest latest among linked vendors, else internal catalog cost). **Cheapest** and **preferred** vendor snapshots render as **read-only sub-lines** so estimators can compare without auto-switching vendors. **Cheapest among latest** in the picker bootstrap uses the same deterministic tie-breaks as `pricing-aggregate.cheapestAmongLatest` (preferred among price ties, then recency, then name). **Sell hint** uses markup % or catalog sell override as **guidance only**; the estimate grid total still uses **`computeEstimate`** (lines + estimate multiplier). Focus any grid row, filter/search, click **Apply** to fill **description**, **line kind**, **qty**, **unit cost**, and **machine** when applicable. No hooks while typing.
 
+
+## Bid Estimator (seven-step signage bid workflow)
+
+`EstimateType.BID` estimates are built in **`/estimates/[id]/bid`** (start at
+**`/estimates/new/bid`**): project details → upload takeoff + plans → review
+pricing → office questions → design → installation → customer estimate + QBME.
+They are ordinary `Estimate` + `EstimateLineItem` rows — quotes, send, approval,
+PO creation and finalize behave exactly as before — but their lines carry source
+links, match evidence and pricing snapshots, so the **classic grid opens them
+read-only** (`isEstimateEditorReadOnly(status, estimateType)`) and
+`saveEstimateAction` refuses them.
+
+| Module (`apps/web/lib/bid/`) | Responsibility |
+|---|---|
+| `parse-bid-takeoff.ts` | Spreadsheet → classified rows + product candidates. Section/building/floor/pod headings, repeated headers, blanks, subtotals, tax rows, grand totals, notes and legends are **never** products; every row is retained with its sheet name + row number. The same sign type is combined across floors/pods, keeping each contributing row. |
+| `read-workbook.ts` | Server-side SheetJS read (bounded: 12 tabs × 2000 rows × 40 cols). |
+| `match-standard-sign.ts` | Deterministic ladder: sign key → exact normalized name → approved alias (sign aliases + the Sheet `ALIASES` tab) → strong fuzzy; then size / braille / tactile / illumination / material checks → `EXACT` (auto-price) · `PROBABLE` (priced, needs a check) · `AMBIGUOUS` (office question, never guesses) · `NONE`. |
+| `price-line.ts` | Billable quantity per method (`PER_SIGN PER_SET PER_SQFT PER_CHARACTER PER_LINEAR_FT PER_HOUR PER_DAY`), minimum charge, waste factor, rate ladder (literal rate → `Sq Ft Pricing` final price → `Meterial price` cost × company markup → the sign's stored rate), ordered explanation steps, and the persisted `BidPricingSnapshot`. Source quantity is stored separately from the billable quantity. |
+| `design-calc.ts` / `install-calc.ts` | Recommendations from real setup work / site conditions, priced at the live operating rates. Design is never derived from total sign quantity; installation never from sign count alone. |
+| `questions.ts` | Office-question persistence, answering (recalculates the line), and admin promotion of a decision into a standard sign or alias (duplicate-safe). |
+| `standard-sign-sync.ts` | Sheet `Standard Signs` tab → `standard_signs` (see below). |
+| `ai-suggest.ts` | Optional ranking of candidate signs for lines the deterministic ladder could not settle. Structured confidence + evidence, stored as a suggestion. **Never** sets a quantity, size, material, rate or price; failure or no API key leaves the deterministic import untouched. |
+| `checklist.ts` | Step 7 completion checklist. Blocking items stop send/finalize; the estimate can always be saved as a draft. |
+
+### Standard signs (Sheet contract — no deploy needed)
+
+Optional tab named **`Standard Signs`**, matched by HEADER NAME (columns may be
+reordered or extended). Recognition requires `Sign Key` plus `Sign Name` or
+`Pricing Method`; anything else is treated as "tab not set up" and simply means
+nothing matches automatically. Recommended headers:
+
+```
+Sign Key | Active | Category | Sign Name | QB Item | Customer Description |
+Width | Height | Unit | Material | Thickness | Construction | Mounting |
+Tactile | Braille | Illumination | Pricing Method | Pricing Unit | Rate Key |
+Minimum Charge | Waste Percent | Default Machine | Shop Hours | Design Units |
+Install Hours | Aliases | Formula Version | Notes
+```
+
+* `Rate Key` is either a literal amount (`60`, `$60.00`) or a Sheet item name
+  (`Sq Ft Pricing` id/name, or a `Meterial price` item — cost × company markup).
+* `Aliases` is a `;`/`,`-separated list; it drives future automatic matching.
+* Sync runs inside `runSheetSync` (webhook + 5-minute fallback + manual refresh):
+  upsert by `signKey`, duplicate names/aliases skipped, rows that disappeared are
+  **deactivated, never deleted**, `source = APP` promotions are never overwritten,
+  and a missing/unrecognized tab is a no-op. Read-only view: Pricing backend →
+  **Standard signs**.
+* **Do not create, rename, or modify a live Sheet tab without the owner's
+  approval.** The app only reads it.
+
+### Pricing snapshots and repricing
+
+Every priced bid line stores a `BidPricingSnapshot` in
+`pricingInputsSnapshotJson` (sheet key/tab, sync timestamp, formula version,
+method/unit, rate + source, minimum/waste, source vs billable quantity,
+dimensions/characters, project-specific decision + approver + reason). A later
+Sheet change therefore **never** alters a saved estimate. Admins may run
+**Check for updated pricing** on a DRAFT bid estimate: it shows old vs new
+source, rate, total and difference per line; applying is explicit, writes new
+snapshots, audits `bid_draft_repriced`, and leaves human decisions
+(`OFFICE_DECISION` / `CUSTOM_RATE`) untouched. Sent, approved and finalized
+estimates keep their saved pricing.
+
+### Customer estimate, tax and terms
+
+`loadEstimatePdfData` is the single source for the on-screen estimate, the PDF,
+the public quote and the QBME block. Sales tax comes from
+`tenant_operating_rates.salesTaxPercentMilli` (0 → the estimate shows a pre-tax
+total and says tax is not included); terms come from
+`lib/estimate/estimate-terms.ts` plus the project's installation assumptions;
+the company identity is guarded by `lib/company/business-info.ts` so a stale
+Florida address or 407 phone can never print.
+
+### QBME — line by line
+
+`buildQbmeExport` emits **one QBME line per customer estimate line, in the same
+order**: `Line=ITEM|DESCRIPTION|QTY|RATE|` with AMOUNT empty and a trailing
+pipe. Allowed items: `Wrapping · Sales · 3D Lettering · Design · Shipping ·
+Installation · Channel Letters · Canopy`, taken from the stored
+`EstimateLineItem.qbItem` (legacy lines fall back to `inferQbItem`). Pipes in
+descriptions are sanitized; no tax line, no customer information, no dates.
+`reconcileQbme` checks that Σ(QTY × RATE) equals the pre-tax subtotal and
+surfaces any cent-level drift instead of hiding it in a large line.
+
+### Permissions (bid)
+
+* Estimator (any authenticated user): create bids, upload sources, review lines,
+  confirm yellow matches, supply missing size/wording, choose a standard sign,
+  enter design/installation assumptions, exclude a row, generate previews.
+* ADMIN / SUPER_ADMIN additionally: approve custom or project-specific rates,
+  promote a decision to a company standard (alias / standard sign), edit
+  operating rates + sales tax, reprice a draft, unfinalize.
+* FINALIZED bid estimates are read-only everywhere (server-enforced).
+
+### Verification
+
+`pnpm --filter @bvisible/web run verify:bid-estimator` ·
+`pnpm --filter @bvisible/web run smoke:bid-estimator` (complete seven-step run,
+resume, QBME reconciliation; needs the local dev server + seeded standard signs
+via `tsx smoke/fixtures/seed-bid-standard-signs.ts`) ·
+`smoke/estimate-classic-regression.spec.ts` for the classic lifecycle.
+
 ## Cost components
 
 How **`packages/pricing`** implements raw cost today:

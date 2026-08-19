@@ -36,6 +36,7 @@ conflict, 422 business-rule violation, 500 server error.
 | `/api/health` | `GET` | Returns `{"status":"ok","service":"bvisible-web"}`. Marked `dynamic = 'force-dynamic'` and `runtime = 'nodejs'`. No auth, no DB. Used by deploy healthchecks and uptime monitors. |
 | `/api/po/[id]/attachments/[attachmentId]` | `GET` | Tenant-gated PO attachment download. Resolves the row under `(tenantId, purchaseOrderId)`, validates the on-disk path stays inside the per-PO directory (`apps/web/lib/po/uploads.ts:resolveAttachmentPath`), reads the first bytes off disk to **re-detect** the MIME via magic-byte sniff (the recorded `mimeType` is a hint only), then streams the file with `Content-Type: <re-detected>`, `Content-Disposition: attachment; filename="..."` (RFC 5987-encoded for non-ASCII names), and `X-Content-Type-Options: nosniff`. Returns 404 for cross-tenant, soft-deleted, missing-on-disk, or unrecognized-magic-byte requests. |
 | `/api/email-ingest/[id]/attachments/[attachmentId]` | `GET` | Tenant-gated download of an `IngestedEmailAttachment`. Same magic-byte re-detection + path-traversal guard as the PO download route, but resolves under the per-tenant email storage root (`apps/web/lib/email-ingest/storage.ts:resolveEmailAttachmentPath`). Used by the operator review UI for unmatched messages. |
+| `/api/estimates/[id]/bid-sources/[fileId]` | `GET` | Tenant-gated Bid Estimator source-file download (takeoff / plans / specs / photos). Resolves the row under `(tenantId, estimateId)`, keeps the path inside the per-estimate directory (`lib/bid/uploads.ts:resolveBidSourcePath`), **re-detects** the MIME from the bytes on disk against the bid allowlist, and streams with `Content-Disposition: attachment`, `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`. 404 for cross-tenant, deleted-estimate, missing-on-disk, or unrecognized bytes. |
 | `/api/internal/email-ingest/tick` | `POST` | Internal-only tick endpoint hit by the systemd timer. Auth is a constant-time compare against `INGEST_TICK_SECRET` in the `x-bvisible-ingest-secret` header (NOT a session). Iterates every enabled `TenantEmailInbox`, claims a soft lease via `lastPolledAt`, polls IMAP via `imapflow`, parses with `mailparser`, and runs the matching pipeline. Returns `{ ok, runs: [{ tenantId, scanned, ingested, matched, errors, durationMs }] }`. Never returns email bodies or credentials. |
 | `/api/internal/ocr/tick` | `POST` | Internal-only OCR worker tick. Auth is constant-time compare against `OCR_TICK_SECRET` (header `x-bvisible-ocr-secret`), falling back to `INGEST_TICK_SECRET` only when `OCR_TICK_SECRET` is unset. Processes up to **3** pending `OcrDocument` jobs (`apps/web/lib/ocr/worker.ts`): claim → local text extraction / OCR → `REVIEW_REQUIRED`. Never exposes attachment URLs publicly or logs raw OCR blobs. |
 | `/api/internal/email-ingest/test` | `POST` | Internal-only IMAP test endpoint. Same shared-secret auth posture as `/tick` (`INGEST_TICK_SECRET` constant-time compare; 503 if unset, 401 on mismatch). Body: `{ tenantId?, host, port, secure, mailbox, username, password? }`. If `password` is omitted and `tenantId` is supplied, the route decrypts the stored sealed cipher for that tenant and uses it. Opens IMAP, lists folders, checks the configured mailbox exists, returns `{ ok: true|false, kind?, message?, mailboxCount?, mailboxExists?, durationMs }`. **Never** mutates the DB, marks messages `\Seen`, returns the password, or logs it. The middleware whitelists this path so loopback POSTs work without a session cookie. |
@@ -176,3 +177,27 @@ client (it always comes from the session).
 - Zod schemas: `apps/web/lib/validators.ts` (mobile: `mobile*` schemas)
 - PO reconciliation server actions + forms: `apps/web/lib/reconciliation/actions.ts`
   (paired with `match.ts`, `run.ts`, `aggregate.ts`, `thresholds.ts`).
+
+### Bid Estimator server actions
+
+All in `apps/web/app/(app)/estimates/[id]/bid/actions.ts` unless noted; each one
+calls `requireTenantId()`, validates with a schema from `lib/bid/validators.ts`,
+re-loads the BID estimate scoped by `tenantId`, refuses `FINALIZED`, and audits
+meaningful decisions (never per-keystroke autosaves).
+
+| Action | Purpose |
+|---|---|
+| `startBidEstimateAction` (`estimates/new/bid/actions.ts`) | Create the customer (or reuse by name), the `BID` estimate and its workflow row; redirects to Step 1. Audits `bid_estimate_created`. |
+| `saveBidWorkflowAction` | Debounced autosave of project details + step position with **optimistic concurrency** (`expectedVersion`); a stale version returns `conflict` instead of overwriting. Audits only the Step 1 completion. |
+| `uploadBidSourceAction` | Multipart upload (25 MB, magic-byte sniff, sanitized filename, per-estimate directory), optional revision of an existing file, then processing/import. Audits `bid_source_uploaded` / `bid_source_revision_uploaded`, `bid_source_processed` or `bid_source_processing_failed`, and `bid_takeoff_imported`. |
+| `reprocessBidSourceAction` / `setCurrentTakeoffAction` | Re-read a file (optionally a different tab) or switch which spreadsheet drives pricing. Re-import reconciles: human decisions are kept, quantities refresh, missing items become `EXCLUDED` (never deleted). |
+| `confirmBidLineAction` | Confirm a yellow line (`bid_match_confirmed`). |
+| `setBidLineOverrideAction` | Edit a line's customer description / QuickBooks item / billable quantity; changing the **rate** requires ADMIN + a reason (`bid_custom_rate_approved`). |
+| `addManualBidLineAction` / `excludeBidLineAction` | Add a hand-entered line (a non-zero rate is admin-only) / exclude a row that is not a sign line. |
+| `answerBidQuestionAction` | Apply an office answer: recalculates the line, records scope/reason/answerer, optionally promotes a company standard (ADMIN). Audits `bid_question_answered` (+ `bid_custom_rate_approved` / `bid_standard_sign_promoted`). |
+| `saveDesignAction` / `saveInstallAction` | Save the design / installation decision and create-or-update the real `Design` / `Installation` line at live rates; excluding requires explicit confirmation. Audits `bid_design_saved` / `bid_installation_saved`. |
+| `checkBidRepricingAction` / `applyBidRepricingAction` | ADMIN-only, DRAFT-only controlled repricing with a before/after comparison; applying audits `bid_draft_repriced`. |
+
+Step 7 reuses the existing `sendEstimateEmailAction`, `updateEstimateStatusAction`,
+`finalizeEstimateAction` and `createPoFromEstimateAction` — the Bid Estimator adds
+no parallel send/approval/PO path.

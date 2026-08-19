@@ -103,6 +103,42 @@ The look, feel, and behavior of the web app.
   - **Public quote page** (`app/quote/[token]/`) — customer **`QuoteDocument`** plus **`print:hidden`** Accept /
     Decline panel (optional name + note); finalized estimates with no prior customer response show a responses-closed
     message instead of buttons.
+- **Bid Estimator** — **`/estimates/new/bid`** (start: customer + project + rep) and
+  **`/estimates/[id]/bid`** (seven-step workspace, rebuilt from the owner-approved
+  `B-Visible-Bid-Estimator-Demo.html`). The route scopes the shell to a focused
+  workspace: the app sidebar and top bar are hidden (`body:has(#bid-workspace-root)`),
+  and a navy **step rail** (1 Project details · 2 Upload files · 3 Review pricing ·
+  4 Ask the office · 5 Design · 6 Installation · 7 Final review) with step numbers,
+  active highlight, completed ✓ and an amber "needs attention" dot takes its place.
+  Styling is a single scoped stylesheet (`bid-styles.ts`, everything under `.bidw`)
+  matching the reference: white cards on a light-gray canvas, B Visible blue/orange,
+  guide cards ("What this step does"), summary/stat cards, review tables, office-
+  question cards, calculators, the customer-ready estimate sheet, the QBME panel and
+  the completion checklist. Mobile: the rail becomes a horizontal scroller below 820px;
+  `@media print` leaves only the customer estimate.
+  - **Status colors** are consistent everywhere: green = matched / approved / ready,
+    yellow = calculated but confirm, blue = office question or decision, red = blocked,
+    gray = pending / excluded (`reviewStatusTone` in `lib/bid/types.ts`).
+  - **Autosave** (`use-bid-autosave.ts`): debounced (900 ms), one request in flight,
+    optimistic-concurrency `version`, visible status pill (`Saved` / `Unsaved changes` /
+    `Saving…` / `Save failed — Retry` / `Changed elsewhere — Reload`), two backoff
+    retries, `beforeunload` warning while unsaved, and nothing is lost on a failed save.
+    A step change flushes immediately. The user's own server-side saves (design,
+    installation, office answers) adopt the new version instead of raising a false
+    conflict; another user's save still conflicts.
+  - **Step 3** and **Step 4** use a full-width layout (the review table and decision
+    history are data-dense); every other step keeps the reference's content + guide
+    two-column layout.
+  - **Estimates list**: **New bid estimate** is the primary action (quick builder stays
+    as **Quick estimate**); bid rows show `BID`, the project name, `Bid · step N of 7`,
+    open pricing questions, "Customer estimate ready", the last save time + rep, and
+    resume straight into the saved step.
+  - **Classic editor**: a BID estimate shows an orange banner + a `Bid Estimator — edit
+    in the workflow` chip and opens read-only (`BidReadOnlyChip`); quote link, timeline,
+    POs and status controls stay available there.
+  - **Pricing backend**: Operating rates gains design $/hr, install crew $/hr and $/day,
+    hours per install day and sales tax %; a read-only **Standard signs** tab lists the
+    synced catalog (or explains the Sheet contract when the tab is missing).
 - **Reusable grid keyboard helper** at
   `apps/web/lib/keyboard/grid-nav.ts` (`makeGridKeyHandler`). Any grid
   attaches a single `onKeyDown` to its root and tags cells with

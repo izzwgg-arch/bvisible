@@ -42,6 +42,12 @@ const ratesSchema = z.object({
   designFlat: z.coerce.number().min(0).max(1000000),
   installRate: z.coerce.number().min(0).max(100000),
   defaultMarkup: z.coerce.number().min(0).max(10000),
+  // Bid Estimator rates + sales tax (all live; nothing hardcoded in the steps).
+  designHourly: z.coerce.number().min(0).max(100000),
+  installCrewHourly: z.coerce.number().min(0).max(100000),
+  installCrewDaily: z.coerce.number().min(0).max(1000000),
+  installDayHours: z.coerce.number().int().min(1).max(24),
+  salesTaxPercent: z.coerce.number().min(0).max(100),
 });
 
 export async function saveOperatingRatesAction(formData: FormData): Promise<void> {
@@ -52,6 +58,11 @@ export async function saveOperatingRatesAction(formData: FormData): Promise<void
     designFlat: formData.get('designFlat'),
     installRate: formData.get('installRate'),
     defaultMarkup: formData.get('defaultMarkup'),
+    designHourly: formData.get('designHourly'),
+    installCrewHourly: formData.get('installCrewHourly'),
+    installCrewDaily: formData.get('installCrewDaily'),
+    installDayHours: formData.get('installDayHours'),
+    salesTaxPercent: formData.get('salesTaxPercent'),
   });
   if (!parsed.success) return;
   const data = {
@@ -59,6 +70,12 @@ export async function saveOperatingRatesAction(formData: FormData): Promise<void
     designFlatCents: Math.round(parsed.data.designFlat * 100),
     installPerPersonHourCents: Math.round(parsed.data.installRate * 100),
     defaultMarkupPercentMilli: Math.round(parsed.data.defaultMarkup * 1000),
+    designHourlyCents: Math.round(parsed.data.designHourly * 100),
+    installCrewHourlyCents: Math.round(parsed.data.installCrewHourly * 100),
+    installCrewDailyCents: Math.round(parsed.data.installCrewDaily * 100),
+    installDayHours: parsed.data.installDayHours,
+    // Percent × 1000: 8.125 % → 8125.
+    salesTaxPercentMilli: Math.round(parsed.data.salesTaxPercent * 1000),
   };
   await prisma.tenantOperatingRates.upsert({
     where: { tenantId: me.tenantId },

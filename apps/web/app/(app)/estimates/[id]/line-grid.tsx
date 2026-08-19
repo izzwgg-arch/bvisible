@@ -12,7 +12,7 @@ import {
   type EstimateCatalogPickerRow,
 } from '@/lib/shop-material/apply-catalog-to-estimate-line';
 import { NumericCell } from '@/components/grid/cell-input';
-import { FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
+import { BidReadOnlyChip, FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/estimate/format';
 import { buildLineLayout, type BundleRun } from '@/lib/estimate/line-groups';
@@ -44,6 +44,8 @@ interface LineGridProps {
   lineCosts: Record<string, number>;
   multiplierMilli: number;
   readOnly?: boolean;
+  /** Set for Bid Estimator estimates: read-only here, edited in the workflow. */
+  bidEstimateId?: string | null;
   embedded?: boolean;
   customer?: { companyName: string; contactName: string | null };
   onAnyLineFocus?: (lineId: string) => void;
@@ -98,6 +100,7 @@ export function LineGrid({
   lineCosts,
   multiplierMilli,
   readOnly = false,
+  bidEstimateId = null,
   embedded = false,
   customer,
   onAnyLineFocus,
@@ -441,7 +444,7 @@ export function LineGrid({
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-[15px] font-black tracking-[-0.01em] text-[#1C4972]">Line Items</h2>
-            {readOnly ? <FinalizedReadOnlyChip /> : null}
+            {readOnly ? (bidEstimateId ? <BidReadOnlyChip estimateId={bidEstimateId} /> : <FinalizedReadOnlyChip />) : null}
           </div>
           <p className="mt-1 text-[11px] text-[#6d7480]">
             Type to search catalog items or vehicles. Press Enter to add and move to the next line.

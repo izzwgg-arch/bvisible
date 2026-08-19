@@ -31,7 +31,7 @@ import { SectionCard, SectionHeading, IconDoc } from '@/components/estimate/esti
 import { SelectControl } from '@/components/app/select-control';
 import { registerLineApplier, setAssistantContext } from '@/lib/assistant/context-store';
 
-type EstimateTypeValue = 'CUSTOM' | 'STOCK_ITEM' | 'SQUARE_FOOTAGE';
+type EstimateTypeValue = 'CUSTOM' | 'STOCK_ITEM' | 'SQUARE_FOOTAGE' | 'BID';
 
 // ---------------------------------------------------------------------
 // Types passed in from the server component.
@@ -465,7 +465,7 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
     lineGroupId: l.lineGroupId,
     lineGroupLabel: l.lineGroupLabel,
   }));
-  const editable = !isEstimateEditorReadOnly(b.estimate.status);
+  const editable = !isEstimateEditorReadOnly(b.estimate.status, b.estimate.estimateType);
   const withBlank = editable ? withTrailingBlank(lines) : lines;
   const base: EditorState = {
     title: b.estimate.title,
@@ -487,7 +487,7 @@ export function EstimateEditor({
   bootstrap: EditorBootstrap;
   supportTabs?: ReactNode;
 }) {
-  const readOnly = isEstimateEditorReadOnly(bootstrap.estimate.status);
+  const readOnly = isEstimateEditorReadOnly(bootstrap.estimate.status, bootstrap.estimate.estimateType);
   void supportTabs;
   const [state, dispatch] = useReducer(reducer, bootstrap, initialFromBootstrap);
   const [catalogLineId, setCatalogLineId] = useState<string | null>(
@@ -844,6 +844,7 @@ export function EstimateEditor({
             lineCosts={computed.lineCosts}
             multiplierMilli={state.multiplierMilli}
             readOnly={readOnly}
+            bidEstimateId={bootstrap.estimate.estimateType === 'BID' ? bootstrap.estimate.id : null}
             customer={bootstrap.estimate.client}
             onAnyLineFocus={setCatalogLineId}
             dispatch={guardedDispatch}

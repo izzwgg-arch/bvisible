@@ -152,6 +152,50 @@ export interface SheetAlias {
   canonical: string;
 }
 
+/// "Standard Signs" tab (optional — see docs/ai-context/ESTIMATE_ENGINE.md
+/// § Bid Estimator). One row per reusable sign; columns are matched by
+/// HEADER NAME, not position. Money is dollars in the Sheet, cents here.
+export interface SheetStandardSign {
+  signKey: string;
+  active: boolean;
+  category: string;
+  name: string;
+  qbItem: string;
+  customerDescription: string;
+  widthIn: number | null;
+  heightIn: number | null;
+  unit: string;
+  material: string;
+  thickness: string;
+  construction: string;
+  mounting: string;
+  tactile: boolean | null;
+  braille: boolean | null;
+  illumination: string;
+  /// PER_SIGN | PER_SET | PER_SQFT | PER_CHARACTER | PER_LINEAR_FT | PER_HOUR | PER_DAY
+  pricingMethod: string;
+  pricingUnit: string;
+  /// Sheet item name (Meterial price / Sq Ft Pricing) or a literal "$60".
+  rateKey: string;
+  /// Cents when rateKey is a literal amount, else null.
+  rateCents: number | null;
+  minimumChargeCents: number | null;
+  wastePercent: number | null;
+  defaultMachine: string;
+  shopHours: number | null;
+  designUnits: number | null;
+  installHours: number | null;
+  aliases: string[];
+  formulaVersion: string;
+  notes: string;
+  /// 1-based Sheet row (for "source row" display); null when unknown.
+  sheetRow: number | null;
+}
+
+export type StandardSignsTabStatus = 'OK' | 'MISSING' | 'UNRECOGNIZED';
+
+export const STANDARD_SIGNS_TAB = 'Standard Signs';
+
 export interface SheetData {
   materials: SheetMaterial[];
   machines: SheetMachine[];
@@ -166,6 +210,10 @@ export interface SheetData {
   internalMaterials?: SheetInternalMaterial[];
   vendorDirectory: SheetVendorDirectoryEntry[];
   aliases: SheetAlias[];
+  /// "Standard Signs" tab. Absent in older snapshots and when the tab
+  /// does not exist yet — always read with `?? []`.
+  standardSigns?: SheetStandardSign[];
+  standardSignsTabStatus?: StandardSignsTabStatus;
   fetchedAt: string;
 }
 

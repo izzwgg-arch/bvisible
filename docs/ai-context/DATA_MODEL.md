@@ -688,6 +688,29 @@ Tenant ──< User
 - `PurchaseOrder.operatorMarkedReconciledAt` / `operatorMarkedReconciledById` —
   human-only reconciliation stamp (does not mutate line economics).
 
+
+### Bid Estimator (2026-08-19)
+
+Migration `20260819120000_bid_estimator` — additive only.
+
+| Table / column | What |
+|---|---|
+| `EstimateType.BID` | Marks an estimate as owned by the seven-step Bid Estimator. Its lines are managed by that workflow; the classic grid opens it read-only and `saveEstimateAction` refuses it. |
+| `PricingEngine.STANDARD_SIGN` / `BID_RATE` | Per-line engine tag for bid lines (matched standard-sign rule vs. an office/operating rate). |
+| `estimate_line_items.qbItem` (`QbItem`, nullable) | Structured QuickBooks item (`WRAPPING SALES THREE_D_LETTERING DESIGN SHIPPING INSTALLATION CHANNEL_LETTERS CANOPY`). The customer estimate and QBME share it. Null on legacy lines → inferred at export. |
+| `tenant_operating_rates.designHourlyCents` / `installCrewHourlyCents` / `installCrewDailyCents` / `installDayHours` | Live Bid Estimator rates (Pricing backend → Operating rates). Nothing in the workflow hardcodes a rate. |
+| `tenant_operating_rates.salesTaxPercentMilli` | Sales tax as percent × 1000 (8125 = 8.125 %), seeded with the value the estimate PDF used to hardcode. **0 = no tax line**; the estimate says it is pre-tax. |
+| `bid_estimate_workflows` | 1:1 with `Estimate`. `currentStep`, `completedSteps`, optimistic-concurrency `version`, project details (name/address/contact/PO/reference/source/dates/notes), `importSummaryJson`, design + installation decisions and inputs, `designLineId` / `installLineId`, `lastSavedAt` / `lastSavedById`. |
+| `bid_source_files` | Uploaded takeoffs / plans / specs / photos. Bytes live under `UPLOAD_DIR/<tenantId>/estimate/<estimateId>/<storageKey>` (`lib/bid/uploads.ts`). Revisions point at the file they supersede (`supersedesId`, `supersededAt`) — the earlier file and its bytes are kept. `isCurrentTakeoff` marks the one spreadsheet that drives pricing. |
+| `bid_source_rows` | EVERY parsed spreadsheet row with its sheet name and 1-based row number, classified (`PRODUCT HEADING HEADER BLANK SUBTOTAL TAX TOTAL NOTE LEGEND IGNORED`), plus the raw item/description/qty/unit/cost/price/extended and the section heading. `lineId` links the rows that feed one estimate line. |
+| `bid_line_details` | 1:1 with `EstimateLineItem`: source file/sheet/row-ref/item/description, **source quantity (never overwritten by the billable quantity)**, matched standard sign + level + confidence, review status, pricing unit + source, the reviewable `explanationJson`, human `overridesJson`, and `aiSuggestionJson` (suggestion only). |
+| `bid_questions` | Office questions with the source evidence, what the system found, why it could not decide, the choices (rate/total effect), the answer + scope (`PROJECT` / `PERMANENT`), who answered, and any promoted standard sign. |
+| `standard_signs` | Reusable standard signs, unique `(tenantId, signKey)`. `source = SHEET` rows are owned by the Google Sheet "Standard Signs" tab (the Sheet wins each sync; vanished rows deactivate, never delete); `source = APP` rows are admin promotions. Carries identity, attributes, pricing method/unit, rate key or cents, minimum charge, waste, aliases, formula version. |
+
+Money stays integer cents and quantities `qtyMilli` throughout; bid lines are
+`markupExempt` (their rates are already selling prices — never marked up twice,
+R-EST-05). Every table is tenant-scoped with `(tenantId, ...)` indexes.
+
 ## Soft delete
 
 Tables that support soft delete use `deletedAt` (nullable timestamp).

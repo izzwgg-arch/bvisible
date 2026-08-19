@@ -1,8 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { EstimateStatus, prisma, type EstimateLineKind } from '@bvisible/db';
+import { EstimateStatus, prisma, type EstimateLineKind, type QbItem } from '@bvisible/db';
 import { getTenantInvoiceProfile } from '@/lib/company/tenant-invoice-profile';
+import { guardStaleBusinessInfo } from '@/lib/company/business-info';
 import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
+import { buildEstimateTerms } from '@/lib/estimate/estimate-terms';
+import { qbItemLabel, type QbmeSourceLine } from '@/lib/estimate/qbme';
+import { computeSalesTax } from '@/lib/estimate/sales-tax';
+import { loadBidOperatingRates } from '@/lib/bid/rates';
+import { labelEstimateStatus } from '@/lib/ui/status-labels';
 
 const BRAND_LOGO_PATH =
   [
@@ -11,25 +17,16 @@ const BRAND_LOGO_PATH =
   ].find((candidate) => fs.existsSync(candidate)) ??
   path.join(process.cwd(), 'public/brand/b-visible-logo.png');
 
-const TERMS = [
-  'All products include a one (1) year limited warranty.',
-  'Electrical connections must be completed by a licensed electrician.',
-  'Estimate valid for 30 days from date of issue.',
-];
-const DEFAULT_COMPANY_PROFILE = {
-  name: 'B Visible',
-  phone: '845-238-0478',
-  email: 'Sales@bvisible.us',
-  address: '97 New York 17M, Suite B\nHarriman, NY 10926',
-  slogan: 'Signs & Printing',
-};
-const DEFAULT_SALES_TAX_RATE = 0.08125;
-
 export interface EstimatePdfLine {
   id: string;
+  /** "Item" column — QuickBooks item label when the line stores one, else the line kind. */
   kindLabel: string;
+  qbItem: QbItem | null;
+  kind: EstimateLineKind | null;
+  sourceKind: string | null;
   description: string;
   qtyLabel: string;
+  qtyMilli: number;
   rateCents: number;
   totalCents: number;
   taxable: boolean;
@@ -59,9 +56,22 @@ export interface EstimatePdfData {
   lines: EstimatePdfLine[];
   subtotalCents: number;
   taxCents: number;
+  /// Sales tax setting used (percent × 1000). 0 = no tax line; the estimate
+  /// is presented pre-tax and says so.
+  taxPercentMilli: number;
+  taxLabel: string;
   totalCents: number;
   notes: string | null;
+  terms: string[];
   logoDataUrl: string;
+  /// Bid Estimator project details when the estimate is a BID (else null).
+  project: {
+    name: string | null;
+    address: string | null;
+    poNumber: string | null;
+    contactName: string | null;
+  } | null;
+  statusLabel: string;
   /// Sales representative assigned to the estimate — always the live
   /// `salesRep` relation (never the customer, never a stale hardcoded
   /// value). Null when unassigned; the Rep box renders blank.
@@ -86,6 +96,15 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
       updatedAt: true,
       tenant: { select: { id: true, name: true } },
       salesRep: { select: { name: true, email: true } },
+      bidWorkflow: {
+        select: {
+          projectName: true,
+          projectAddress: true,
+          poNumber: true,
+          projectContactName: true,
+          installInputsJson: true,
+        },
+      },
       client: {
         select: {
           companyName: true,
@@ -105,6 +124,10 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
           qtyMilli: true,
           kind: true,
           computedCostCents: true,
+          unitCostCents: true,
+          markupExempt: true,
+          qbItem: true,
+          sourceKind: true,
           lineGroupId: true,
           lineGroupLabel: true,
         },
@@ -114,7 +137,10 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
 
   if (!estimate) return null;
 
-  const companyProfile = await getTenantInvoiceProfile(prisma, estimate.tenant);
+  const [companyProfile, rates] = await Promise.all([
+    getTenantInvoiceProfile(prisma, estimate.tenant),
+    loadBidOperatingRates(estimate.tenant.id),
+  ]);
   const visibleLines = estimate.lines.filter((line) => !line.hiddenFromCustomer);
   const quoteLines = buildCustomerQuoteLines(
     visibleLines,
@@ -127,12 +153,23 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
     const source = lineById.get(line.id);
     const qtyMilli = Math.max(0, source?.qtyMilli ?? 0);
     const qty = qtyMilli > 0 ? qtyMilli / 1000 : 1;
+    // Markup-exempt lines (Sheet selling rates, Bid Estimator lines) carry
+    // the customer unit rate directly; cost-plus lines back-derive the
+    // rate from the allocated sell.
+    const exactRate =
+      source && source.markupExempt && line.lineSellCents === source.computedCostCents
+        ? source.unitCostCents
+        : null;
     return {
       id: line.id,
-      kindLabel: shortKindLabel(source?.kind, line.kindLabel),
+      kindLabel: source?.qbItem ? qbItemLabel(source.qbItem) : shortKindLabel(source?.kind, line.kindLabel),
+      qbItem: source?.qbItem ?? null,
+      kind: source?.kind ?? null,
+      sourceKind: source?.sourceKind ?? null,
       description: line.description,
       qtyLabel: line.qtyLabel,
-      rateCents: Math.round(line.lineSellCents / Math.max(qty, 1)),
+      qtyMilli: qtyMilli > 0 ? qtyMilli : 1000,
+      rateCents: exactRate ?? Math.round(line.lineSellCents / Math.max(qty, 1)),
       totalCents: line.lineSellCents,
       taxable: true,
     };
@@ -140,8 +177,13 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
 
   const subtotalCents = lines.reduce((sum, line) => sum + line.totalCents, 0);
   const taxableSubtotalCents = lines.reduce((sum, line) => sum + (line.taxable ? line.totalCents : 0), 0);
-  const taxCents = Math.round(taxableSubtotalCents * DEFAULT_SALES_TAX_RATE);
-  const company = normalizeCompanyProfile(companyProfile);
+  const tax = computeSalesTax(taxableSubtotalCents, rates.salesTaxPercentMilli);
+  const company = guardStaleBusinessInfo(companyProfile);
+  const bid = estimate.bidWorkflow;
+  const installInputs = (bid?.installInputsJson ?? null) as { customerAssumptions?: unknown } | null;
+  const installAssumptions = Array.isArray(installInputs?.customerAssumptions)
+    ? (installInputs!.customerAssumptions as unknown[]).filter((x): x is string => typeof x === 'string')
+    : [];
 
   return {
     id: estimate.id,
@@ -154,10 +196,22 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
     billTo: estimate.client,
     lines,
     subtotalCents,
-    taxCents,
-    totalCents: subtotalCents + taxCents,
+    taxCents: tax.taxCents,
+    taxPercentMilli: tax.percentMilli,
+    taxLabel: tax.label,
+    totalCents: tax.totalCents,
     notes: estimate.notes,
+    terms: buildEstimateTerms({ additional: installAssumptions }),
     logoDataUrl: companyProfile.logoDataUrl?.trim() || readBrandLogoDataUrl(),
+    project: bid
+      ? {
+          name: bid.projectName?.trim() || null,
+          address: bid.projectAddress?.trim() || null,
+          poNumber: bid.poNumber?.trim() || null,
+          contactName: bid.projectContactName?.trim() || null,
+        }
+      : null,
+    statusLabel: labelEstimateStatus(estimate.status),
     salesRepName: estimate.salesRep?.name?.trim() || estimate.salesRep?.email?.trim() || null,
   };
 }
@@ -210,6 +264,7 @@ export function renderEstimatePdfBody(data: EstimatePdfData): string {
         <div class="estimate-label">Estimate</div>
         <div class="estimate-number">${escapeHtml(data.number)}</div>
         <div class="meta-row"><span>Date</span><strong>${escapeHtml(data.dateLabel)}</strong></div>
+        <div class="meta-row status-row"><span>Status</span><strong>${escapeHtml(data.statusLabel)}</strong></div>
       </div>
     </header>
 
@@ -221,9 +276,15 @@ export function renderEstimatePdfBody(data: EstimatePdfData): string {
         ${data.billTo.phone ? `<p>${escapeHtml(data.billTo.phone)}</p>` : ''}
         ${data.billTo.contactName ? `<p>${escapeHtml(data.billTo.contactName)}</p>` : ''}
         ${data.billTo.email ? `<p>${escapeHtml(data.billTo.email)}</p>` : ''}
+        ${data.project && (data.project.name || data.project.address)
+          ? `<h2 class="project-heading">Project</h2>
+        ${data.project.name ? `<p class="client-name">${escapeHtml(data.project.name)}</p>` : ''}
+        ${addressLines(data.project.address).map((line) => `<p>${escapeHtml(line)}</p>`).join('')}
+        ${data.project.contactName ? `<p>${escapeHtml(data.project.contactName)}</p>` : ''}`
+          : ''}
       </div>
       <div class="po-meta">
-        <div><span>P.O. No.</span><strong>&nbsp;</strong></div>
+        <div><span>P.O. No.</span><strong>${data.project?.poNumber ? escapeHtml(data.project.poNumber) : '&nbsp;'}</strong></div>
         <div><span>Rep</span><strong>${data.salesRepName ? escapeHtml(data.salesRepName) : '&nbsp;'}</strong></div>
       </div>
     </section>
@@ -250,13 +311,15 @@ export function renderEstimatePdfBody(data: EstimatePdfData): string {
     <section class="bottom">
       <div class="terms">
         <h3>Terms and conditions</h3>
-        ${TERMS.map((term) => `<p>${escapeHtml(term)}</p>`).join('')}
+        ${data.terms.map((term) => `<p>${escapeHtml(term)}</p>`).join('')}
         ${data.notes?.trim() ? `<p class="notes">${escapeHtml(data.notes.trim())}</p>` : ''}
       </div>
       <div class="totals">
         <div><span>Subtotal</span><strong>${formatMoney(data.subtotalCents)}</strong></div>
-        <div><span>Sales Tax (${formatPercent(DEFAULT_SALES_TAX_RATE)})</span><strong>${formatMoney(data.taxCents)}</strong></div>
-        <div class="total"><span>Total investment</span><strong>${formatMoney(data.totalCents)}</strong></div>
+        ${data.taxPercentMilli > 0
+          ? `<div><span>Sales Tax (${escapeHtml(data.taxLabel)})</span><strong>${formatMoney(data.taxCents)}</strong></div>`
+          : `<div><span>Sales tax</span><strong>Not included</strong></div>`}
+        <div class="total"><span>${data.taxPercentMilli > 0 ? 'Total investment' : 'Estimated total (pre-tax)'}</span><strong>${formatMoney(data.totalCents)}</strong></div>
       </div>
     </section>
   </section>
@@ -298,6 +361,10 @@ export function estimatePdfCss(): string {
     .po-meta strong { display: block; margin-top: 7px; font-size: 10.5px; }
     .items { padding: 0 34px 10px; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; }
+    thead { display: table-header-group; }
+    tbody tr { page-break-inside: avoid; break-inside: avoid; }
+    .status-row { margin-top: 6px; }
+    .project-heading { margin-top: 10px; }
     thead th { padding: 8px 6px 6px; border-bottom: 1px solid #1C4972; color: #1C4972; text-align: left; text-transform: uppercase; letter-spacing: .08em; font-size: 8px; }
     tbody td { padding: 7px 6px; border-bottom: 0; vertical-align: top; color: #1C4972; }
     th.kind, td.kind { width: 72px; color: #F28744; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -323,35 +390,39 @@ export function estimatePdfCss(): string {
   `;
 }
 
-function normalizeCompanyProfile(profile: {
-  name: string;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  slogan: string | null;
-}) {
-  return {
-    name: cleanOr(profile.name, DEFAULT_COMPANY_PROFILE.name),
-    phone: cleanOrNull(profile.phone) ?? DEFAULT_COMPANY_PROFILE.phone,
-    email: cleanOrNull(profile.email) ?? DEFAULT_COMPANY_PROFILE.email,
-    address: cleanOrNull(profile.address) ?? DEFAULT_COMPANY_PROFILE.address,
-    slogan: cleanOrNull(profile.slogan) ?? DEFAULT_COMPANY_PROFILE.slogan,
-  };
-}
-
-function cleanOr(value: string | null | undefined, fallback: string): string {
-  return value?.trim() || fallback;
-}
-
-function cleanOrNull(value: string | null | undefined): string | null {
-  return value?.trim() || null;
+/**
+ * The QBME block is built from these exact lines so the customer estimate
+ * and QuickBooks output agree line by line (same order, description, qty,
+ * unit rate).
+ */
+export function qbmeSourceLinesFromPdfData(data: Pick<EstimatePdfData, 'lines'>): QbmeSourceLine[] {
+  return data.lines.map((line) => ({
+    qbItem: line.qbItem,
+    kind: line.kind ?? 'MATERIAL',
+    sourceKind: line.sourceKind,
+    description: line.description,
+    qtyMilli: line.qtyMilli,
+    rateCents: line.rateCents,
+    totalCents: line.totalCents,
+  }));
 }
 
 function addressLines(value: string | null | undefined): string[] {
-  return (value ?? '')
+  const parts = (value ?? '')
     .split(/\r?\n|,\s*(?=\S)/)
     .map((line) => line.trim())
     .filter(Boolean);
+  // Keep "City, ST 12345" together instead of printing the state + ZIP on
+  // their own line.
+  const out: string[] = [];
+  for (const part of parts) {
+    if (out.length > 0 && /^[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?$/.test(part)) {
+      out[out.length - 1] = `${out[out.length - 1]}, ${part}`;
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
 }
 
 function readBrandLogoDataUrl(): string {
@@ -370,10 +441,6 @@ function formatMoney(cents: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(cents / 100);
-}
-
-function formatPercent(rate: number): string {
-  return `${(rate * 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}%`;
 }
 
 function shortKindLabel(kind: EstimateLineKind | undefined, fallback: string): string {

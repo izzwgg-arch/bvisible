@@ -93,11 +93,17 @@ export default async function EstimatesPage({
         status: true,
         finalPriceCents: true,
         updatedAt: true,
+        estimateType: true,
         client: { select: { id: true, companyName: true } },
+        salesRep: { select: { name: true, email: true } },
+        // Bid Estimator resume info: current step, last save, open questions.
+        bidWorkflow: { select: { currentStep: true, lastSavedAt: true, projectName: true, designIncluded: true, installIncluded: true } },
         _count: {
           select: {
             lines: true,
             purchaseOrders: { where: { deletedAt: null } },
+            bidQuestions: { where: { status: 'OPEN' } },
+            bidLineDetails: { where: { pricingSource: 'UNPRICED', reviewStatus: { not: 'EXCLUDED' } } },
           },
         },
       },
@@ -129,12 +135,21 @@ export default async function EstimatesPage({
         subtitle={`Quotes and jobs for ${me.tenant.name}. ${filteredEstimates.length} showing.`}
         actions={
           hasClients > 0 ? (
-            <Link
-              href="/estimates/new"
-              className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90"
-            >
-              New estimate
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/estimates/new/bid"
+                className="inline-flex items-center justify-center rounded-[8px] bg-[var(--color-bv-accent)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-accent-foreground)] shadow-sm transition-colors hover:opacity-90"
+              >
+                New bid estimate
+              </Link>
+              <Link
+                href="/estimates/new"
+                className="inline-flex items-center justify-center rounded-[8px] border border-[var(--color-bv-border)] bg-[var(--color-bv-surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--color-bv-text)] hover:bg-[var(--color-bv-bg)]"
+                title="Quick builder: materials, bundles, wraps, square footage, custom build"
+              >
+                Quick estimate
+              </Link>
+            </div>
           ) : (
             <Link
               href="/clients/new"
@@ -253,16 +268,31 @@ export default async function EstimatesPage({
               </div>
               {pagedEstimates.map((e) => {
                 const hasPo = e._count.purchaseOrders > 0;
-                const next = getEstimateListNextAction({
-                  id: e.id,
-                  status: e.status,
-                  lineCount: e._count.lines,
-                  hasLinkedPo: hasPo,
-                });
-                const chips = getEstimateListWorkflowChips({
-                  status: e.status,
-                  hasLinkedPo: hasPo,
-                });
+                const isBid = e.estimateType === 'BID' && !!e.bidWorkflow;
+                const bidReady = isBid && e._count.bidQuestions === 0 && e._count.bidLineDetails === 0 && e.bidWorkflow!.designIncluded !== null && e.bidWorkflow!.installIncluded !== null && e._count.lines > 0;
+                const next = isBid
+                  ? {
+                      label: bidReady ? 'Open final review' : `Resume step ${e.bidWorkflow!.currentStep}`,
+                      href: `/estimates/${e.id}/bid?step=${bidReady ? 7 : e.bidWorkflow!.currentStep}`,
+                      tone: 'primary' as const,
+                    }
+                  : getEstimateListNextAction({
+                      id: e.id,
+                      status: e.status,
+                      lineCount: e._count.lines,
+                      hasLinkedPo: hasPo,
+                    });
+                const chips = isBid
+                  ? [
+                      { label: `Bid · step ${e.bidWorkflow!.currentStep} of 7`, tone: 'neutral' as const },
+                      ...(e._count.bidQuestions > 0 ? [{ label: `${e._count.bidQuestions} pricing question${e._count.bidQuestions === 1 ? '' : 's'}`, tone: 'action' as const }] : []),
+                      ...(bidReady ? [{ label: 'Customer estimate ready', tone: 'ready' as const }] : []),
+                      ...getEstimateListWorkflowChips({ status: e.status, hasLinkedPo: hasPo }),
+                    ]
+                  : getEstimateListWorkflowChips({
+                      status: e.status,
+                      hasLinkedPo: hasPo,
+                    });
                 return (
                   <div
                     key={e.id}
@@ -273,11 +303,12 @@ export default async function EstimatesPage({
                         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-blue-50 text-[13px] font-semibold text-blue-700 ring-1 ring-blue-100 transition group-hover:bg-blue-100">
                           {initials(e.title || e.number)}
                         </div>
-                        <Link href={`/estimates/${e.id}` as never} className="min-w-0 hover:text-blue-600">
-                          <span className="font-mono text-[11px] font-bold text-slate-400">{e.number}</span>
-                          <span className="mt-1 block truncate text-[14px] font-black leading-tight text-slate-950 group-hover:text-blue-600">{e.title}</span>
+                        <Link href={(isBid ? `/estimates/${e.id}/bid` : `/estimates/${e.id}`) as never} className="min-w-0 hover:text-blue-600">
+                          <span className="font-mono text-[11px] font-bold text-slate-400">{e.number}{isBid ? ' · BID' : ''}</span>
+                          <span className="mt-1 block truncate text-[14px] font-black leading-tight text-slate-950 group-hover:text-blue-600">{isBid ? e.bidWorkflow!.projectName ?? e.title : e.title}</span>
                           <span className="mt-1 block text-[11.5px] font-medium text-slate-400">
-                            Updated {formatDate(e.updatedAt)}
+                            {isBid && e.bidWorkflow!.lastSavedAt ? `Saved ${formatDate(e.bidWorkflow!.lastSavedAt)}` : `Updated ${formatDate(e.updatedAt)}`}
+                            {e.salesRep ? ` · ${e.salesRep.name ?? e.salesRep.email}` : ''}
                           </span>
                         </Link>
                       </div>

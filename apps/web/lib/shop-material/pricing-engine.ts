@@ -14,6 +14,8 @@ export const PRICING_ENGINES = [
   'COST_PLUS',
   'CHANNEL_LETTERS',
   'BUNDLE',
+  'STANDARD_SIGN',
+  'BID_RATE',
 ] as const;
 
 export type PricingEngine = (typeof PRICING_ENGINES)[number];
@@ -55,6 +57,8 @@ const LEGACY_METHOD_TO_ENGINE: Record<string, PricingEngine> = {
   COST_PLUS: 'COST_PLUS',
   CHANNEL_LETTERS: 'CHANNEL_LETTERS',
   BUNDLE: 'BUNDLE',
+  STANDARD_SIGN: 'STANDARD_SIGN',
+  BID_RATE: 'BID_RATE',
   MANUAL: 'MANUAL',
 };
 
@@ -92,6 +96,10 @@ export function pricingEngineLabel(engine: string | null | undefined): string {
       return 'Channel Letters';
     case 'BUNDLE':
       return 'Bundle';
+    case 'STANDARD_SIGN':
+      return 'Standard sign';
+    case 'BID_RATE':
+      return 'Bid rate';
     case 'MANUAL':
       return 'Manual';
   }

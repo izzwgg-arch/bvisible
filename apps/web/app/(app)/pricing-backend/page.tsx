@@ -23,6 +23,7 @@ const TABS = [
   { key: 'sqft', label: 'Sq-ft rates' },
   { key: 'wraps', label: 'Vehicle wraps' },
   { key: 'bundles', label: 'Bundles' },
+  { key: 'signs', label: 'Standard signs' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -118,15 +119,17 @@ export default async function PricingBackendPage({
   }
   const tenantId = me.tenantId;
 
-  const [snapshot, overrides, rates, legacyCount] = await Promise.all([
+  const [snapshot, overrides, rates, legacyCount, standardSigns] = await Promise.all([
     getSheetSnapshot(tenantId),
     loadOverrides(tenantId),
     prisma.tenantOperatingRates.findUnique({ where: { tenantId } }),
     prisma.shopMaterialItem.count({
       where: { tenantId, sheetKey: null, itemType: 'SINGLE', kind: 'MATERIAL', isActive: true },
     }),
+    prisma.standardSign.findMany({ where: { tenantId }, orderBy: [{ active: 'desc' }, { name: 'asc' }] }),
   ]);
   const data = snapshot.data;
+  const standardSignsTabStatus = data.standardSignsTabStatus ?? 'MISSING';
   const overrideCount = overrides.materials.size + overrides.machines.size;
 
   const matchesQ = (hay: string) => !q || hay.toLowerCase().includes(q);
@@ -141,6 +144,7 @@ export default async function PricingBackendPage({
   const sqftRates = data.sqftRates.filter((r) => matchesQ(`${r.name} ${r.category}`));
   const wraps = data.vehicleWraps.filter((w) => matchesQ(`${w.name} ${w.coverage}`)).slice(0, 200);
   const bundles = data.bundles.filter((b) => matchesQ(`${b.name} ${b.signType}`));
+  const signs = standardSigns.filter((s) => matchesQ(`${s.name} ${s.signKey} ${s.category ?? ''} ${s.aliases.join(' ')}`));
 
   const syncedLabel = snapshot.syncedAt
     ? snapshot.syncedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -214,7 +218,7 @@ export default async function PricingBackendPage({
         </div>
         <form
           action={saveOperatingRatesAction}
-          className="mt-3 grid items-end gap-3 md:grid-cols-[repeat(4,1fr)_auto]"
+          className="mt-3 grid items-end gap-3 md:grid-cols-3 xl:grid-cols-5"
         >
           {(
             [
@@ -232,6 +236,11 @@ export default async function PricingBackendPage({
                 '% (200 = ×3.00)',
                 (rates?.defaultMarkupPercentMilli ?? 200000) / 1000,
               ],
+              ['designHourly', 'Design (bid)', '$ / hour', (rates?.designHourlyCents ?? 15000) / 100],
+              ['installCrewHourly', 'Install crew (bid)', '$ / crew hour', (rates?.installCrewHourlyCents ?? 35000) / 100],
+              ['installCrewDaily', 'Install crew (bid)', '$ / crew day', (rates?.installCrewDailyCents ?? 280000) / 100],
+              ['installDayHours', 'Install day', 'hours per day', rates?.installDayHours ?? 8],
+              ['salesTaxPercent', 'Sales tax', '% on customer estimates (0 = pre-tax)', (rates?.salesTaxPercentMilli ?? 8125) / 1000],
             ] as const
           ).map(([name, label, hint, value]) => (
             <label key={name} className="block">
@@ -243,7 +252,7 @@ export default async function PricingBackendPage({
                 name={name}
                 type="number"
                 min={0}
-                step="0.01"
+                step={name === 'installDayHours' ? '1' : name === 'salesTaxPercent' ? '0.001' : '0.01'}
                 defaultValue={value}
               />
             </label>
@@ -252,6 +261,9 @@ export default async function PricingBackendPage({
             Save rates
           </button>
         </form>
+        <p className="mt-2 text-[11px] text-[var(--color-bv-muted)]">
+          The Bid Estimator reads the design $/hour, install crew $/hour and $/day, hours per install day, and sales tax from here on every estimate — no rates are hardcoded in the workflow. Sales tax applies to customer estimates and PDFs; set 0 to show pre-tax totals.
+        </p>
       </div>
 
       {/* legacy cleanup */}
@@ -283,7 +295,9 @@ export default async function PricingBackendPage({
                     ? data.sqftRates.length
                     : t.key === 'wraps'
                       ? data.vehicleWraps.length
-                      : data.bundles.length;
+                      : t.key === 'bundles'
+                        ? data.bundles.length
+                        : standardSigns.length;
             return (
               <Link
                 key={t.key}
@@ -444,6 +458,54 @@ export default async function PricingBackendPage({
             </>
           ) : null}
 
+          {tab === 'signs' ? (
+            <>
+              <thead>
+                <tr className="border-b border-[var(--color-bv-border)]">
+                  <th className={thCls}>Sign</th>
+                  <th className={thCls}>Key</th>
+                  <th className={thCls}>Category</th>
+                  <th className={thCls}>QB item</th>
+                  <th className={thCls}>Size</th>
+                  <th className={thCls}>Method</th>
+                  <th className={thCls}>Rate</th>
+                  <th className={thCls}>Aliases</th>
+                  <th className={thCls}>Source</th>
+                  <th className={thCls}>Synced</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signs.length === 0 ? (
+                  <tr>
+                    <td className={`${tdCls} text-[var(--color-bv-muted)]`} colSpan={10}>
+                      {standardSignsTabStatus === 'MISSING'
+                        ? 'No "Standard Signs" tab was found in the Google Sheet. Add the tab (headers: Sign Key, Active, Category, Sign Name, QB Item, Customer Description, Width, Height, Unit, Material, Thickness, Construction, Mounting, Tactile, Braille, Illumination, Pricing Method, Pricing Unit, Rate Key, Minimum Charge, Waste Percent, Default Machine, Shop Hours, Design Units, Install Hours, Aliases, Formula Version, Notes) and refresh — signs then sync automatically without a deploy.'
+                        : standardSignsTabStatus === 'UNRECOGNIZED'
+                          ? 'A "Standard Signs" tab exists but its header row was not recognized. It needs at least "Sign Key" plus "Sign Name" or "Pricing Method" as column headers.'
+                          : 'The Standard Signs tab is empty.'}
+                    </td>
+                  </tr>
+                ) : null}
+                {signs.map((sgn) => (
+                  <tr key={sgn.id} className={`border-b border-[var(--color-bv-border)]/50 ${sgn.active ? '' : 'opacity-50'}`}>
+                    <td className={`${tdCls} font-semibold`}>
+                      {sgn.name}
+                      {!sgn.active ? <span className="ml-1 text-[10px] font-bold text-[var(--color-bv-muted)]">inactive</span> : null}
+                    </td>
+                    <td className={`${tdCls} font-mono text-[11px]`}>{sgn.signKey}</td>
+                    <td className={tdCls}>{sgn.category ?? '—'}</td>
+                    <td className={tdCls}>{sgn.qbItem}</td>
+                    <td className={tdCls}>{sgn.widthMilli && sgn.heightMilli ? `${sgn.widthMilli / 1000} × ${sgn.heightMilli / 1000} ${sgn.unit ?? 'in'}` : '—'}</td>
+                    <td className={tdCls}>{sgn.pricingMethod.replace('PER_', 'per ').replace('_', ' ').toLowerCase()}</td>
+                    <td className={tdCls}>{sgn.rateCents !== null ? `$${(sgn.rateCents / 100).toFixed(2)}` : sgn.rateKey ? `Sheet: ${sgn.rateKey}` : '—'}{sgn.minimumChargeCents ? ` (min $${(sgn.minimumChargeCents / 100).toFixed(0)})` : ''}</td>
+                    <td className={`${tdCls} text-[11px] text-[var(--color-bv-muted)]`}>{sgn.aliases.length > 0 ? sgn.aliases.join(', ') : '—'}</td>
+                    <td className={tdCls}>{sgn.source === 'SHEET' ? 'Sheet' : 'App'}</td>
+                    <td className={`${tdCls} text-[11px] text-[var(--color-bv-muted)]`}>{sgn.syncedAt ? sgn.syncedAt.toLocaleDateString('en-US') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </>
+          ) : null}
           {tab === 'bundles' ? (
             <>
               <thead>
@@ -480,7 +542,9 @@ export default async function PricingBackendPage({
           <span>
             {tab === 'materials'
               ? `Showing ${materials.length} of ${data.materials.length} live items`
-              : ''}
+              : tab === 'signs'
+                ? `Standard Signs tab: ${standardSignsTabStatus === 'OK' ? `recognized · ${standardSigns.filter((s) => s.active).length} active` : standardSignsTabStatus.toLowerCase()} · used by the Bid Estimator for automatic matching`
+                : ''}
           </span>
           <span>
             Auto-refresh: every 5 minutes wherever Sheet pricing is used · sq-ft and wrap prices

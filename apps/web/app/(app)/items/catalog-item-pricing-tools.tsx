@@ -72,6 +72,9 @@ const METHOD_LABELS: Record<PricingMethod, string> = {
   COST_PLUS: 'Cost Plus',
   CHANNEL_LETTERS: 'Channel Letters',
   BUNDLE: 'Bundle',
+  // Bid Estimator engines — labels only; not offered as catalog tabs.
+  STANDARD_SIGN: 'Standard sign',
+  BID_RATE: 'Bid rate',
   CUSTOM: 'Custom',
 };
 

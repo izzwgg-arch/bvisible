@@ -28,7 +28,11 @@ import {
   type SheetVehicleWrap,
   type SheetVendorCatalogItem,
   type SheetVendorDirectoryEntry,
+  type SheetStandardSign,
+  type StandardSignsTabStatus,
+  STANDARD_SIGNS_TAB,
 } from './types';
+import { parseStandardSignsTable } from './parse-standard-signs';
 
 type Row = { c?: Array<{ v?: string | number | boolean | null } | null> };
 
@@ -325,6 +329,21 @@ function parseAliases(table: GvizTable): SheetAlias[] {
     .filter((a) => a.alias && a.canonical && a.alias !== 'ai name');
 }
 
+/// "Standard Signs" is OPTIONAL: a missing tab must not fail the whole
+/// sync (every other tab is required). gviz may answer an unknown sheet
+/// name with an error OR with an unrelated tab, so the parser also checks
+/// the header before trusting the rows.
+async function fetchStandardSigns(): Promise<{ signs: SheetStandardSign[]; status: StandardSignsTabStatus }> {
+  let table: GvizTable;
+  try {
+    table = await fetchSheetTab(STANDARD_SIGNS_TAB);
+  } catch {
+    return { signs: [], status: 'MISSING' };
+  }
+  const parsed = parseStandardSignsTable(table);
+  return { signs: parsed.signs, status: parsed.status };
+}
+
 export async function fetchAndParseSheet(): Promise<SheetData> {
   const [
     materials,
@@ -338,6 +357,7 @@ export async function fetchAndParseSheet(): Promise<SheetData> {
     internalMaterials,
     vendorDirectory,
     aliases,
+    standardSigns,
   ] = await Promise.all([
     fetchSheetTab('Meterial price'),
     fetchSheetTab('Machinary Price'),
@@ -350,6 +370,7 @@ export async function fetchAndParseSheet(): Promise<SheetData> {
     fetchSheetTab('Internal Materials'),
     fetchSheetTab('Vendor Directory'),
     fetchSheetTab('ALIASES'),
+    fetchStandardSigns(),
   ]);
 
   return {
@@ -364,6 +385,8 @@ export async function fetchAndParseSheet(): Promise<SheetData> {
     internalMaterials: parseInternalMaterials(internalMaterials),
     vendorDirectory: parseVendorDirectory(vendorDirectory),
     aliases: parseAliases(aliases),
+    standardSigns: standardSigns.signs,
+    standardSignsTabStatus: standardSigns.status,
     fetchedAt: new Date().toISOString(),
   };
 }

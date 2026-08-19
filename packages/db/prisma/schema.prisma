@@ -52,6 +52,11 @@ enum EstimateType {
   CUSTOM
   STOCK_ITEM
   SQUARE_FOOTAGE
+  /// Guided seven-step Bid Estimator (takeoff import → review → office
+  /// questions → design → installation → customer estimate + QBME).
+  /// Lines are managed by the bid workflow; the classic grid editor
+  /// opens these estimates read-only. See docs/ai-context/ESTIMATE_ENGINE.md.
+  BID
 }
 
 // One row per editable line in the spreadsheet-style estimate editor.
@@ -111,6 +116,13 @@ enum PricingEngine {
   COST_PLUS
   CHANNEL_LETTERS
   BUNDLE
+  /// Bid Estimator: priced from a matched standard sign rule (Sheet
+  /// "Standard Signs" tab or app-promoted). Rate is a FINAL selling
+  /// rate — the line is markupExempt.
+  STANDARD_SIGN
+  /// Bid Estimator: per-unit selling rate decided by the office, a
+  /// project-specific rate, or an operating rate (design / installation).
+  BID_RATE
 }
 
 enum VendorCostSourceMode {
@@ -439,6 +451,12 @@ model Tenant {
   operatingRates           TenantOperatingRates?
   sheetSyncState           SheetSyncState?
   outboundCcSettings       OutboundCcSetting[]
+  bidWorkflows             BidEstimateWorkflow[]
+  bidSourceFiles           BidSourceFile[]
+  bidSourceRows            BidSourceRow[]
+  bidLineDetails           BidLineDetail[]
+  bidQuestions             BidQuestion[]
+  standardSigns            StandardSign[]
 
   @@map("tenants")
 }
@@ -479,6 +497,22 @@ model TenantOperatingRates {
   designFlatCents           Int      @default(15000)
   installPerPersonHourCents Int      @default(15000)
   defaultMarkupPercentMilli Int      @default(200000)
+  /// Bid Estimator design rate — billed per hour of layout / variable-data /
+  /// proofing / production-file work (Step 5). Editable on Pricing backend.
+  designHourlyCents         Int      @default(15000)
+  /// Bid Estimator installation crew rate per hour (Step 6, "Price by hour").
+  installCrewHourlyCents    Int      @default(35000)
+  /// Bid Estimator installation crew rate per day (Step 6, "Price by day").
+  installCrewDailyCents     Int      @default(280000)
+  /// Hours in one installation "day" — used to show the hour equivalent
+  /// and to convert when the estimator switches hourly ⇄ daily.
+  installDayHours           Int      @default(8)
+  /// Sales tax applied on customer estimates, as percent × 1000
+  /// (8125 = 8.125 %, same scale as defaultMarkupPercentMilli). 0 = no tax
+  /// line — the estimate is shown pre-tax. Seeded from the rate the
+  /// estimate PDF used to hardcode so existing estimates render unchanged;
+  /// change it here, never in code.
+  salesTaxPercentMilli      Int      @default(8125)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -497,8 +531,8 @@ model AssistantSetting {
   /// Text Processing APIs), sealed like apiKeyCipher.
   ylApiKeyCipher String?  @db.VarChar(2000)
   model          String   @default("gpt-5.6-sol") @db.VarChar(80)
-  updatedAt    DateTime @updatedAt
-  createdAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -680,32 +714,36 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant                          Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                          Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sessions                        Session[]
   resetTokens                     PasswordResetToken[]
-  invitesIssued                   UserInvite[]           @relation("UserInviteInviter")
-  estimatesCreated                Estimate[]             @relation("EstimateCreator")
-  estimatesAsSalesRep             Estimate[]             @relation("EstimateSalesRep")
-  purchaseOrdersCreated           PurchaseOrder[]        @relation("POCreator")
-  poAttachmentsUploaded           POAttachment[]         @relation("POAttachmentUploader")
-  poEventsAuthored                POEvent[]              @relation("POEventActor")
+  invitesIssued                   UserInvite[]            @relation("UserInviteInviter")
+  estimatesCreated                Estimate[]              @relation("EstimateCreator")
+  estimatesAsSalesRep             Estimate[]              @relation("EstimateSalesRep")
+  purchaseOrdersCreated           PurchaseOrder[]         @relation("POCreator")
+  poAttachmentsUploaded           POAttachment[]          @relation("POAttachmentUploader")
+  poEventsAuthored                POEvent[]               @relation("POEventActor")
   mobileSessions                  MobileSession[]
   mobilePendingUploads            MobilePendingUpload[]
-  ocrDocumentsConfirmed           OcrDocument[]          @relation("OcrDocumentConfirmedBy")
-  ocrDocumentsRejected            OcrDocument[]          @relation("OcrDocumentRejectedBy")
-  purchaseOrdersMarkedReconciled  PurchaseOrder[]        @relation("PoMarkedReconciledBy")
-  poOfficeRemindersCreated        PoOfficeReminder[]     @relation("PoOfficeReminderCreator")
+  ocrDocumentsConfirmed           OcrDocument[]           @relation("OcrDocumentConfirmedBy")
+  ocrDocumentsRejected            OcrDocument[]           @relation("OcrDocumentRejectedBy")
+  purchaseOrdersMarkedReconciled  PurchaseOrder[]         @relation("PoMarkedReconciledBy")
+  poOfficeRemindersCreated        PoOfficeReminder[]      @relation("PoOfficeReminderCreator")
   amazonPunchoutSessionsCreated   AmazonPunchoutSession[] @relation("AmazonPunchoutCreator")
   amazonOrderSubmissionsCreated   AmazonOrderSubmission[] @relation("AmazonOrderCreator")
-  poReconciliationsResolved       POReconciliation[]     @relation("POReconciliationResolvedBy")
-  poReconciliationLinesResolved   POReconciliationLine[] @relation("POReconciliationLineResolvedBy")
-  spendAlertsDismissed            SpendAlert[]           @relation("SpendAlertDismissedBy")
-  spendAlertsResolvedSpend        SpendAlert[]           @relation("SpendAlertResolvedBy")
-  estimateQuoteLinksCreated       EstimateQuoteLink[]    @relation("QuoteLinkCreator")
-  invoicesCreated                 Invoice[]              @relation("InvoiceCreator")
-  repricingRequestsCreated        RepricingRequest[]     @relation("RepricingRequestCreatedBy")
-  repricingRequestsCompleted      RepricingRequest[]     @relation("RepricingRequestCompletedBy")
-  shopMaterialPricingCalculations ShopMaterialItem[]     @relation("ShopMaterialPricingCalculatedBy")
+  poReconciliationsResolved       POReconciliation[]      @relation("POReconciliationResolvedBy")
+  poReconciliationLinesResolved   POReconciliationLine[]  @relation("POReconciliationLineResolvedBy")
+  spendAlertsDismissed            SpendAlert[]            @relation("SpendAlertDismissedBy")
+  spendAlertsResolvedSpend        SpendAlert[]            @relation("SpendAlertResolvedBy")
+  estimateQuoteLinksCreated       EstimateQuoteLink[]     @relation("QuoteLinkCreator")
+  invoicesCreated                 Invoice[]               @relation("InvoiceCreator")
+  repricingRequestsCreated        RepricingRequest[]      @relation("RepricingRequestCreatedBy")
+  repricingRequestsCompleted      RepricingRequest[]      @relation("RepricingRequestCompletedBy")
+  shopMaterialPricingCalculations ShopMaterialItem[]      @relation("ShopMaterialPricingCalculatedBy")
+  bidSourceFilesUploaded          BidSourceFile[]         @relation("BidSourceUploader")
+  bidQuestionsAnswered            BidQuestion[]           @relation("BidQuestionAnsweredBy")
+  bidWorkflowsSaved               BidEstimateWorkflow[]   @relation("BidWorkflowLastSavedBy")
+  standardSignsCreated            StandardSign[]          @relation("StandardSignCreatedBy")
 
   // SUPER_ADMIN users have tenantId = null. The migration adds a partial
   // unique index `users_email_super_admin_key` ON users(email) WHERE
@@ -930,6 +968,11 @@ model Estimate {
   timelineEvents EstimateTimelineEvent[]
   invoices       Invoice[]
   vehicle        EstimateVehicle?
+  bidWorkflow    BidEstimateWorkflow?
+  bidSourceFiles BidSourceFile[]
+  bidSourceRows  BidSourceRow[]
+  bidLineDetails BidLineDetail[]
+  bidQuestions   BidQuestion[]
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -1045,6 +1088,10 @@ model EstimateLineItem {
   /// Display name of the bundle, denormalized onto every member so the
   /// group survives the editor's replace-all save.
   lineGroupLabel            String?
+  /// QuickBooks item this line maps to on the customer estimate and in the
+  /// QBME block (one QBME line per customer line). Null = infer from kind /
+  /// description at export time (legacy estimates).
+  qbItem                    QbItem?
   createdAt                 DateTime              @default(now())
   updatedAt                 DateTime              @updatedAt
 
@@ -1054,6 +1101,9 @@ model EstimateLineItem {
   catalogItem    ShopMaterialItem? @relation("EstimateLineCatalogItem", fields: [catalogItemId], references: [id], onDelete: SetNull)
   selectedVendor Vendor?           @relation("EstimateLineSelectedVendor", fields: [selectedVendorId], references: [id], onDelete: SetNull)
   poLines        POLineItem[]      @relation("PoLineEstimateLine")
+  bidDetail      BidLineDetail?
+  bidSourceRows  BidSourceRow[]
+  bidQuestions   BidQuestion[]
 
   @@index([tenantId, estimateId, sortOrder])
   @@index([estimateId, sortOrder])
@@ -1423,22 +1473,22 @@ model PurchaseOrder {
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
 
-  tenant                     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  estimate                   Estimate?             @relation(fields: [estimateId], references: [id], onDelete: SetNull)
-  vendor                     Vendor?               @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  createdBy                  User                  @relation("POCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate                   Estimate?               @relation(fields: [estimateId], references: [id], onDelete: SetNull)
+  vendor                     Vendor?                 @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdBy                  User                    @relation("POCreator", fields: [createdById], references: [id], onDelete: Restrict)
   lines                      POLineItem[]
   vendorSections             PurchaseOrderVendor[]
   attachments                POAttachment[]
   events                     POEvent[]
-  matchedEmails              IngestedEmail[]       @relation("MatchedPO")
+  matchedEmails              IngestedEmail[]         @relation("MatchedPO")
   mobilePendingUploads       MobilePendingUpload[]
   reconciliations            POReconciliation[]
   officeReminders            PoOfficeReminder[]
   amazonPunchoutSessions     AmazonPunchoutSession[]
   amazonOrderSubmissions     AmazonOrderSubmission[]
   spendAlerts                SpendAlert[]
-  operatorMarkedReconciledBy User?                 @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
+  operatorMarkedReconciledBy User?                   @relation("PoMarkedReconciledBy", fields: [operatorMarkedReconciledById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, number])
   @@index([tenantId, status, updatedAt])
@@ -2230,4 +2280,396 @@ model EmailIngestRun {
 
   @@index([tenantId, startedAt])
   @@map("email_ingest_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Bid Estimator (guided seven-step estimate workflow)
+// ---------------------------------------------------------------------------
+
+/// QuickBooks item names allowed on customer estimates / QBME. The label
+/// text ("3D Lettering", "Channel Letters", ...) lives in
+/// apps/web/lib/estimate/qbme.ts — this enum keeps the mapping structured
+/// instead of description-sniffing.
+enum QbItem {
+  WRAPPING
+  SALES
+  THREE_D_LETTERING
+  DESIGN
+  SHIPPING
+  INSTALLATION
+  CHANNEL_LETTERS
+  CANOPY
+}
+
+enum BidSourceRole {
+  TAKEOFF
+  PLAN
+  SPECIFICATION
+  DRAWING
+  PHOTO
+  DOCUMENT
+  OTHER
+}
+
+enum BidSourceStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  NEEDS_REVIEW
+  UNSUPPORTED
+  FAILED
+}
+
+/// What a parsed spreadsheet row turned out to be. Only PRODUCT rows can
+/// become estimate lines; everything else is retained for evidence and
+/// the import summary ("19 headings ignored").
+enum BidSourceRowKind {
+  PRODUCT
+  HEADING
+  HEADER
+  BLANK
+  SUBTOTAL
+  TAX
+  TOTAL
+  NOTE
+  LEGEND
+  IGNORED
+}
+
+/// Review status of a bid line (drives the status colors):
+/// AUTO_PRICED / CONFIRMED = green, NEEDS_REVIEW = yellow,
+/// OFFICE_QUESTION = blue, BLOCKED = red, PENDING / EXCLUDED = gray.
+enum BidLineReviewStatus {
+  PENDING
+  AUTO_PRICED
+  NEEDS_REVIEW
+  OFFICE_QUESTION
+  BLOCKED
+  CONFIRMED
+  EXCLUDED
+}
+
+enum BidMatchLevel {
+  EXACT
+  PROBABLE
+  AMBIGUOUS
+  NONE
+}
+
+enum BidQuestionKind {
+  STANDARD_SIGN
+  MATERIAL
+  SIZE
+  PRICING_UNIT
+  RATE
+  ILLUMINATION
+  INSTALLATION_INCLUDED
+  ELECTRICAL
+  PROJECT_PRICE
+  MISSING_SPEC
+  OTHER
+}
+
+enum BidQuestionStatus {
+  OPEN
+  ANSWERED
+  DISMISSED
+}
+
+enum BidDecisionScope {
+  PROJECT
+  PERMANENT
+}
+
+enum BidInstallMode {
+  HOURS
+  DAYS
+}
+
+enum StandardSignSource {
+  SHEET
+  APP
+}
+
+/// One row per BID estimate: workflow position, project details that have
+/// no home on Estimate/Client, and the design + installation calculator
+/// inputs. `version` is the optimistic-concurrency counter for autosave —
+/// a save carrying a stale version is rejected instead of overwriting
+/// newer state.
+model BidEstimateWorkflow {
+  id                  String          @id @default(cuid())
+  tenantId            String
+  estimateId          String          @unique
+  currentStep         Int             @default(1)
+  completedSteps      Int[]           @default([])
+  version             Int             @default(1)
+  projectName         String?
+  projectAddress      String?
+  projectContactName  String?
+  projectContactEmail String?
+  projectContactPhone String?
+  poNumber            String?         @db.VarChar(80)
+  customerReference   String?         @db.VarChar(120)
+  bidSource           String?         @db.VarChar(80)
+  dueDate             DateTime?
+  bidDeadline         DateTime?
+  internalNotes       String?
+  /// Latest import summary (files, rows read, product lines, headings
+  /// ignored, matched / review / question counts).
+  importSummaryJson   Json?
+  /// null = not decided yet; false = intentionally excluded (confirmed).
+  designIncluded      Boolean?
+  designHoursMilli    Int?
+  designRateCents     Int?
+  designInputsJson    Json?
+  designLineId        String?
+  installIncluded     Boolean?
+  installMode         BidInstallMode?
+  installQtyMilli     Int?
+  installRateCents    Int?
+  installInputsJson   Json?
+  installLineId       String?
+  lastSavedAt         DateTime?
+  lastSavedById       String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  lastSavedBy User?    @relation("BidWorkflowLastSavedBy", fields: [lastSavedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, currentStep])
+  @@index([tenantId, updatedAt])
+  @@map("bid_estimate_workflows")
+}
+
+/// Uploaded bid source (Excel takeoff, plans, specs, photos). Bytes live on
+/// disk under UPLOAD_DIR/<tenantId>/estimate/<estimateId>/<storageKey>
+/// (same posture as po_attachments). Revisions never delete the prior
+/// file: the new row points at the one it supersedes.
+model BidSourceFile {
+  id               String          @id @default(cuid())
+  tenantId         String
+  estimateId       String
+  role             BidSourceRole   @default(OTHER)
+  status           BidSourceStatus @default(UPLOADED)
+  originalFilename String
+  storageKey       String
+  mimeType         String
+  sizeBytes        Int
+  uploadedById     String
+  version          Int             @default(1)
+  supersedesId     String?
+  supersededAt     DateTime?
+  /// The one takeoff whose product rows currently drive the estimate lines.
+  isCurrentTakeoff Boolean         @default(false)
+  isEvidence       Boolean         @default(true)
+  note             String?
+  processingError  String?         @db.VarChar(1000)
+  processedAt      DateTime?
+  /// Per-file processing result (tabs, rows read, product rows, headings,
+  /// pages) — display + audit only, never re-priced from.
+  resultJson       Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate   Estimate        @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  uploadedBy User            @relation("BidSourceUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  supersedes BidSourceFile?  @relation("BidSourceRevision", fields: [supersedesId], references: [id], onDelete: SetNull)
+  revisions  BidSourceFile[] @relation("BidSourceRevision")
+  rows       BidSourceRow[]
+
+  @@index([tenantId, estimateId, createdAt])
+  @@index([tenantId, estimateId, isCurrentTakeoff])
+  @@map("bid_source_files")
+}
+
+/// One parsed spreadsheet row (every row, not just products) so each
+/// estimate line can point back at "Summary row 8" and the import summary
+/// can say what was ignored and why.
+model BidSourceRow {
+  id               String           @id @default(cuid())
+  tenantId         String
+  estimateId       String
+  sourceFileId     String
+  sheetName        String           @db.VarChar(200)
+  rowNumber        Int
+  page             Int?
+  rowKind          BidSourceRowKind
+  rawItem          String?
+  rawDescription   String?
+  rawQtyText       String?          @db.VarChar(60)
+  rawQtyMilli      Int?
+  rawUnit          String?          @db.VarChar(40)
+  rawCostCents     Int?
+  rawPriceCents    Int?
+  rawExtendedCents Int?
+  sectionHeading   String?
+  /// Estimate line this row feeds (many rows → one line when the same
+  /// sign type repeats across floors / pods).
+  lineId           String?
+  createdAt        DateTime         @default(now())
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate   Estimate          @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  sourceFile BidSourceFile     @relation(fields: [sourceFileId], references: [id], onDelete: Cascade)
+  line       EstimateLineItem? @relation(fields: [lineId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, estimateId, sourceFileId, rowNumber])
+  @@index([tenantId, lineId])
+  @@map("bid_source_rows")
+}
+
+/// Bid-specific detail for one estimate line: where it came from, what it
+/// matched, how confident, and the human-readable calculation explanation.
+/// The money itself stays on EstimateLineItem (qtyMilli = billable qty,
+/// unitCostCents = customer unit rate, markupExempt = true, pricing
+/// snapshot columns hold the Sheet/rule snapshot).
+model BidLineDetail {
+  id                    String              @id @default(cuid())
+  tenantId              String
+  estimateId            String
+  lineId                String              @unique
+  sourceFileId          String?
+  sourceSheetName       String?             @db.VarChar(200)
+  /// "rows 8, 21, 40" — display summary of the linked bid_source_rows.
+  sourceRowRef          String?             @db.VarChar(200)
+  sourceItem            String?
+  sourceDescription     String?
+  /// Takeoff quantity as found in the source (NOT the billable quantity).
+  sourceQtyMilli        Int                 @default(0)
+  sourceUnit            String?             @db.VarChar(40)
+  sectionHeading        String?
+  normalizedDescription String?
+  standardSignId        String?
+  standardSignKey       String?             @db.VarChar(120)
+  matchLevel            BidMatchLevel       @default(NONE)
+  matchConfidenceMilli  Int                 @default(0)
+  reviewStatus          BidLineReviewStatus @default(PENDING)
+  /// SIGN | SET | SQ_FT | CHARACTER | HOUR | DAY | LINEAR_FT | EACH
+  pricingUnit           String?             @db.VarChar(30)
+  /// STANDARD_SIGN | SHEET_SQFT | OFFICE_DECISION | CUSTOM_RATE |
+  /// OPERATING_RATE | SOURCE_PRICE | UNPRICED
+  pricingSource         String?             @db.VarChar(40)
+  /// Ordered calculation steps shown in the "explanation" panel.
+  explanationJson       Json?
+  /// Human overrides (rate / qty / description) with who + when + reason.
+  overridesJson         Json?
+  /// AI ranking of candidate standard signs (evidence + confidence) — a
+  /// suggestion for review, never applied automatically.
+  aiSuggestionJson      Json?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate     Estimate         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  line         EstimateLineItem @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  standardSign StandardSign?    @relation(fields: [standardSignId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, estimateId, reviewStatus])
+  @@index([tenantId, standardSignId])
+  @@map("bid_line_details")
+}
+
+/// Office question raised when pricing cannot be decided safely (which sign,
+/// which rate, which unit, missing size...). Answering recalculates the
+/// affected line; a PROJECT-scoped answer never touches company pricing.
+model BidQuestion {
+  id                     String            @id @default(cuid())
+  tenantId               String
+  estimateId             String
+  lineId                 String?
+  kind                   BidQuestionKind
+  status                 BidQuestionStatus @default(OPEN)
+  title                  String
+  sourceRef              String?           @db.VarChar(300)
+  sourceText             String?
+  systemFound            String?
+  whyUnsafe              String?
+  whyMatters             String?
+  /// [{ key, label, detail, rateCents?, totalCents?, standardSignKey?,
+  ///    pricingUnit?, custom?: true }]
+  choicesJson            Json
+  answerKey              String?           @db.VarChar(80)
+  answerValueJson        Json?
+  answerNote             String?
+  answerScope            BidDecisionScope?
+  answeredById           String?
+  answeredAt             DateTime?
+  promotedStandardSignId String?
+  sortOrder              Int               @default(0)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  estimate   Estimate          @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  line       EstimateLineItem? @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  answeredBy User?             @relation("BidQuestionAnsweredBy", fields: [answeredById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, estimateId, status, sortOrder])
+  @@index([tenantId, lineId])
+  @@map("bid_questions")
+}
+
+/// Reusable standard ("basic") sign. Rows come from the Google Sheet
+/// "Standard Signs" tab (source = SHEET; the Sheet wins on every sync) or
+/// are promoted in-app by an admin from a project-specific decision
+/// (source = APP). Matching is deterministic first (signKey, normalized
+/// name, aliases), then attribute checks. Prices on saved estimates are
+/// snapshotted — editing a standard sign never reprices an estimate.
+model StandardSign {
+  id                  String             @id @default(cuid())
+  tenantId            String
+  signKey             String             @db.VarChar(120)
+  source              StandardSignSource @default(SHEET)
+  active              Boolean            @default(true)
+  category            String?            @db.VarChar(120)
+  name                String
+  nameNormalized      String             @db.VarChar(400)
+  qbItem              QbItem             @default(SALES)
+  customerDescription String?
+  widthMilli          Int?
+  heightMilli         Int?
+  unit                String?            @db.VarChar(20)
+  material            String?            @db.VarChar(200)
+  thickness           String?            @db.VarChar(80)
+  construction        String?            @db.VarChar(200)
+  mounting            String?            @db.VarChar(200)
+  tactile             Boolean?
+  braille             Boolean?
+  illumination        String?            @db.VarChar(80)
+  /// PER_SIGN | PER_SET | PER_SQFT | PER_CHARACTER | PER_LINEAR_FT | PER_HOUR | PER_DAY
+  pricingMethod       String             @default("PER_SIGN") @db.VarChar(30)
+  pricingUnit         String             @default("SIGN") @db.VarChar(30)
+  /// Sheet item key ("Meterial price" / "Sq Ft Pricing" name) or a
+  /// literal dollar amount ("60" / "$60.00"). Resolved at pricing time
+  /// through the active-price ladder (override ?? Sheet).
+  rateKey             String?            @db.VarChar(400)
+  /// Resolved selling rate in cents when rateKey is a literal or when the
+  /// admin promoted a rate in-app.
+  rateCents           Int?
+  minimumChargeCents  Int?
+  wastePercentMilli   Int?
+  defaultMachine      String?            @db.VarChar(120)
+  shopHoursMilli      Int?
+  designUnitsMilli    Int?
+  installHoursMilli   Int?
+  aliases             String[]           @default([])
+  formulaVersion      String?            @db.VarChar(40)
+  notes               String?
+  sheetRow            Int?
+  syncedAt            DateTime?
+  createdById         String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?           @relation("StandardSignCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lineDetails BidLineDetail[]
+
+  @@unique([tenantId, signKey])
+  @@index([tenantId, active])
+  @@index([tenantId, nameNormalized])
+  @@map("standard_signs")
 }

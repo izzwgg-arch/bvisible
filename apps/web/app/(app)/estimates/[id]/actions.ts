@@ -53,6 +53,7 @@ export async function saveEstimateAction(
     select: {
       id: true,
       status: true,
+      estimateType: true,
       multiplierMilli: true,
       designFlatCents: true,
       number: true,
@@ -66,6 +67,12 @@ export async function saveEstimateAction(
     return {
       error: 'Estimate is finalized. Unfinalize before editing lines or totals.',
     };
+  }
+  // Bid Estimator lines carry source links, match evidence and pricing
+  // snapshots that this replace-all save would destroy. Bid estimates are
+  // edited only in the seven-step workflow (/estimates/[id]/bid).
+  if (existing.estimateType === 'BID') {
+    return { error: 'This estimate is managed by the Bid Estimator. Open it there to change lines or pricing.' };
   }
 
   // Markup (multiplier) and design fee changes are reserved for admins.

@@ -346,3 +346,24 @@
 - Suspected unauthorized access → revoke sessions for the tenant, force
   password reset, review `IngestedEmail` and `POEvent` timelines.
 - See `DEBUGGING.md` for the operational commands.
+
+### Bid Estimator source files
+
+- Uploads go through `apps/web/lib/bid/uploads.ts`: 25 MB cap (shared with PO
+  attachments), **magic-byte MIME detection** — the browser's `Content-Type` and
+  the file extension are never trusted on their own (a ZIP signature plus the
+  extension decides xlsx vs docx; a renamed executable is refused), server-generated
+  storage keys, sanitized display filenames, and a per-tenant/per-estimate directory
+  (`UPLOAD_DIR/<tenantId>/estimate/<estimateId>/`) with a path-traversal backstop.
+- Downloads go through `/api/estimates/[id]/bid-sources/[fileId]`: `requireTenantId()`,
+  row scoped by `(tenantId, estimateId)`, MIME **re-detected from the bytes on disk**,
+  always `Content-Disposition: attachment`, `Cache-Control: private, no-store`,
+  `X-Content-Type-Options: nosniff`. Private storage paths are never exposed.
+- Bid uploads accept a wider allowlist than PO attachments (spreadsheets, CSV, PDF,
+  images, docx, txt); every added type has its own byte signature.
+- Parsing happens **server-side** and is bounded (12 tabs × 2000 rows × 40 columns).
+- Customer-facing text (descriptions, QBME lines) is sanitized: pipes and newlines are
+  replaced in QBME fields so the format cannot be broken by source data, and internal
+  cost, vendor, confidence, notes and row numbers never reach the customer estimate.
+- AI assistance receives only the sign names/descriptions and the standard-sign
+  catalog — never customer identity, and it can never apply a price.

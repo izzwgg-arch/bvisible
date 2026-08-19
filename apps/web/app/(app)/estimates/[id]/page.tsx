@@ -449,6 +449,16 @@ export default async function EstimateDetailPage({
         status={estimate.status}
         emailInfo={emailInfo}
       />
+      {estimate.estimateType === 'BID' ? (
+        <div className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-orange-200 bg-[#fff2e8] px-4 py-3 text-[12.5px] text-[#7e4a22]">
+          <span>
+            <strong>Bid Estimator estimate.</strong> Lines, source files, office questions, design and installation are managed in the seven-step workflow; this view is read-only. Quote link, timeline, POs and status controls remain available here.
+          </span>
+          <Link href={`/estimates/${estimate.id}/bid`} className="inline-flex items-center justify-center rounded-[8px] bg-[#f57c1f] px-3.5 py-2 text-[12.5px] font-bold text-white hover:opacity-95">
+            Open Bid Estimator →
+          </Link>
+        </div>
+      ) : null}
       <EstimateEditor bootstrap={bootstrap} supportTabs={supportTabs} />
     </div>
   );
