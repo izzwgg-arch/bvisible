@@ -309,6 +309,27 @@ export function AssistantDock() {
       // Detect that state and walk them through unblocking instead of a
       // dead-end error. In the "not decided yet" state, the getUserMedia
       // call below triggers the native permission popup.
+      // A Permissions-Policy header that leaves this origin out of the
+      // microphone allowlist disables the mic for the whole document. Chrome
+      // then reports the permission as denied however the operator has set
+      // site permissions, so this has to be checked BEFORE the denied branch
+      // below — otherwise the message sends them to fix a browser setting
+      // that was never the problem.
+      try {
+        const doc = document as unknown as {
+          permissionsPolicy?: { allowsFeature(name: string): boolean };
+          featurePolicy?: { allowsFeature(name: string): boolean };
+        };
+        const policy = doc.permissionsPolicy ?? doc.featurePolicy;
+        if (policy && !policy.allowsFeature('microphone')) {
+          setMicError(
+            'The mic is switched off for this site by a server setting, not by your browser — changing Chrome permissions will not help. Send a screenshot of this to the office.'
+          );
+          return;
+        }
+      } catch {
+        /* Permissions Policy API unavailable — fall through to the checks below */
+      }
       try {
         const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
         if (status.state === 'denied') {

@@ -52,7 +52,11 @@ full-operator AI assistant.
    nginx logs: `/var/log/nginx/bvisible.{access,error}.log`. `deploy` has passwordless sudo.
 6. nginx site: `/etc/nginx/sites-available/bvisible`. `proxy_read_timeout` 300s.
    **Permissions-Policy is `microphone=(self)`** (was `microphone=()`, which blocked the
-   assistant's voice notes at the protocol level — do not regress this).
+   assistant's voice notes at the protocol level — do not regress this). This fix used to
+   live only as a hand-edit on the old host, so the 2026-08-14 bare-metal rebuild re-applied
+   `server-scripts/nginx/bvisible.conf` and silently regressed it; voice notes were dead from
+   then until 2026-08-19. The allowlist now lives in that template, so a rebuild carries it.
+   Deploys do NOT re-apply the nginx site — only a rebuild does.
 
 ## 3. Executing work from the local machine (Cowork/Claude session specifics)
 
