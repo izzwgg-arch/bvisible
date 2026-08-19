@@ -478,11 +478,9 @@ export default async function PricingBackendPage({
                 {signs.length === 0 ? (
                   <tr>
                     <td className={`${tdCls} text-[var(--color-bv-muted)]`} colSpan={10}>
-                      {standardSignsTabStatus === 'MISSING'
-                        ? 'No "Standard Signs" tab was found in the Google Sheet. Add the tab (headers: Sign Key, Active, Category, Sign Name, QB Item, Customer Description, Width, Height, Unit, Material, Thickness, Construction, Mounting, Tactile, Braille, Illumination, Pricing Method, Pricing Unit, Rate Key, Minimum Charge, Waste Percent, Default Machine, Shop Hours, Design Units, Install Hours, Aliases, Formula Version, Notes) and refresh — signs then sync automatically without a deploy.'
-                        : standardSignsTabStatus === 'UNRECOGNIZED'
-                          ? 'A "Standard Signs" tab exists but its header row was not recognized. It needs at least "Sign Key" plus "Sign Name" or "Pricing Method" as column headers.'
-                          : 'The Standard Signs tab is empty.'}
+                      {standardSignsTabStatus === 'OK'
+                        ? 'The "Standard Signs" tab was read but has no rows yet.'
+                        : 'No readable "Standard Signs" tab yet — either it has not been added to the Google Sheet, or its header row was not recognized (Google returns the first sheet for an unknown tab name, so both look the same from here). Add a tab named exactly "Standard Signs" with a header row containing at least "Sign Key" plus "Sign Name" or "Pricing Method"; the full set is: Sign Key, Active, Category, Sign Name, QB Item, Customer Description, Width, Height, Unit, Material, Thickness, Construction, Mounting, Tactile, Braille, Illumination, Pricing Method, Pricing Unit, Rate Key, Minimum Charge, Waste Percent, Default Machine, Shop Hours, Design Units, Install Hours, Aliases, Formula Version, Notes. Columns are matched by name, so order does not matter. Press Refresh Sheet afterwards — no deployment is needed.'}
                     </td>
                   </tr>
                 ) : null}
@@ -543,7 +541,7 @@ export default async function PricingBackendPage({
             {tab === 'materials'
               ? `Showing ${materials.length} of ${data.materials.length} live items`
               : tab === 'signs'
-                ? `Standard Signs tab: ${standardSignsTabStatus === 'OK' ? `recognized · ${standardSigns.filter((s) => s.active).length} active` : standardSignsTabStatus.toLowerCase()} · used by the Bid Estimator for automatic matching`
+                ? `Standard Signs tab: ${standardSignsTabStatus === 'OK' ? `recognized · ${standardSigns.filter((s) => s.active).length} active` : 'not readable yet'} · used by the Bid Estimator for automatic matching`
                 : ''}
           </span>
           <span>

@@ -107,7 +107,7 @@ export function StepPricing() {
       {data.sheet.standardSignCount === 0 ? (
         <Banner tone="info">
           <span>
-            <strong>No standard signs are available yet.</strong> The Sheet&apos;s <em>Standard Signs</em> tab is {data.sheet.tabStatus === 'MISSING' ? 'not set up' : data.sheet.tabStatus === 'UNRECOGNIZED' ? 'present but its headers were not recognized' : 'empty'}, so nothing can match automatically — lines are priced from the takeoff&apos;s own prices or go to the office. Admins: see Pricing backend → Standard signs.
+            <strong>No standard signs are available yet.</strong> The Google Sheet has no readable <em>Standard Signs</em> tab{data.sheet.tabStatus === 'OK' ? ' with any active rows' : ' (either the tab does not exist yet, or its header row was not recognized)'}, so nothing can match automatically — lines are priced from the takeoff&apos;s own prices or go to the office. Admins: see Pricing backend → Standard signs for the exact columns.
           </span>
         </Banner>
       ) : null}
