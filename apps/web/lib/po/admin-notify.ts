@@ -7,11 +7,15 @@
 // prefilled cart link (Amazon) or per-item product/search links so the
 // order can be placed on the store site in one hop.
 //
-// Also used by the daily reminder tick (/api/internal/po-draft-reminder)
-// which re-notifies admins every morning about POs still sitting in DRAFT.
+// The daily reminder tick (/api/internal/po-draft-reminder) sends ONE digest
+// listing every PO still sitting in DRAFT — see sendDraftPoDigest below. It
+// used to call notifyAdminsOfDraftPo once per draft, which meant each admin
+// got one email per draft every morning: 25 drafts became 25 emails, and it
+// grew every day as drafts accumulated. A reminder nobody can read is a
+// reminder nobody acts on, which is what let the drafts pile up.
 //
 // All entry points are fire-and-forget safe: they never throw, and a
-// mailer failure never breaks PO creation (the daily reminder is the
+// mailer failure never breaks PO creation (the daily digest is the
 // safety net for a missed creation email).
 
 import { POEventKind, Role, prisma } from '@bvisible/db';
@@ -114,8 +118,6 @@ function retailLinkCell(
 export async function notifyAdminsOfDraftPo(input: {
   tenantId: string;
   purchaseOrderId: string;
-  /// 'created' → the just-created email; 'reminder' → morning digest entry.
-  reason: 'created' | 'reminder';
   actorId?: string;
 }): Promise<
   | { ok: true; to: string[]; messageId: string }
@@ -178,16 +180,10 @@ export async function notifyAdminsOfDraftPo(input: {
       );
     }
 
-    const heading =
-      input.reason === 'created'
-        ? `Draft PO ${po.number} needs to be placed`
-        : `Reminder: PO ${po.number} is still a draft`;
+    const heading = `Draft PO ${po.number} needs to be placed`;
     const intro =
-      input.reason === 'created'
-        ? `${createdBy} created purchase order ${po.number} (${vendorName}). It is saved as a DRAFT — ` +
-          'please review it and place the order.'
-        : `Purchase order ${po.number} (${vendorName}) has not been sent out yet. ` +
-          'Please review it and place the order, or delete it if it is no longer needed.';
+      `${createdBy} created purchase order ${po.number} (${vendorName}). It is saved as a DRAFT — ` +
+      'please review it and place the order.';
 
     const { html, text } = wrapBranded({
       preheader: `${po.number} · ${vendorName} · ${formatMoney(po.subtotalCents)} — draft awaiting placement`,
@@ -237,10 +233,9 @@ export async function notifyAdminsOfDraftPo(input: {
         'You received this email because your B Visible account has the admin role and a purchase order is waiting in DRAFT.',
     });
 
-    const subjectPrefix = input.reason === 'created' ? 'Action needed' : 'Reminder';
     const sent = await sendMail({
       to: to.join(', '),
-      subject: `${subjectPrefix}: draft PO ${po.number} — ${vendorName} (${formatMoney(po.subtotalCents)})`,
+      subject: `Action needed: draft PO ${po.number} — ${vendorName} (${formatMoney(po.subtotalCents)})`,
       html,
       text,
     });
@@ -251,10 +246,7 @@ export async function notifyAdminsOfDraftPo(input: {
         tenantId: input.tenantId,
         purchaseOrderId: po.id,
         kind: POEventKind.NOTE_ADDED,
-        message:
-          input.reason === 'created'
-            ? `Admins notified by email (${to.join(', ')}) — draft awaiting placement`
-            : `Morning draft reminder emailed to admins (${to.join(', ')})`,
+        message: `Admins notified by email (${to.join(', ')}) — draft awaiting placement`,
         ...(input.actorId ? { actorId: input.actorId } : {}),
       },
     });
@@ -266,7 +258,7 @@ export async function notifyAdminsOfDraftPo(input: {
       targetId: po.id,
       metadata: {
         number: po.number,
-        reason: input.reason,
+        reason: 'created',
         recipientCount: to.length,
         messageId: sent.result.messageId,
       },
@@ -275,6 +267,128 @@ export async function notifyAdminsOfDraftPo(input: {
     return { ok: true, to, messageId: sent.result.messageId };
   } catch (err) {
     console.error('[po-admin-notify] failed:', err instanceof Error ? err.message : err);
+    return { ok: false, skipped: 'error' };
+  }
+}
+
+/// How long a draft has been waiting, for the digest's "Waiting" column.
+function ageLabel(createdAt: Date, now: number): string {
+  const days = Math.floor((now - createdAt.getTime()) / 86_400_000);
+  if (days <= 0) return 'today';
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
+/// The morning reminder: ONE email listing every PO still in DRAFT for this
+/// tenant, oldest first. One email a day however many drafts there are —
+/// the previous per-PO loop is what turned a reminder into a mailstorm.
+///
+/// Never throws. Returns what happened so the tick can report it.
+export async function sendDraftPoDigest(input: { tenantId: string }): Promise<
+  | { ok: true; to: string[]; messageId: string; numbers: string[] }
+  | { ok: false; skipped: string }
+> {
+  try {
+    const drafts = await prisma.purchaseOrder.findMany({
+      where: { tenantId: input.tenantId, status: 'DRAFT', deletedAt: null },
+      // Oldest first: the drafts that have been ignored longest are the ones
+      // that need an admin's attention, so they lead the table.
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        number: true,
+        subtotalCents: true,
+        createdAt: true,
+        vendor: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } },
+      },
+    });
+    if (drafts.length === 0) return { ok: false, skipped: 'no_drafts' };
+
+    const to = await listAdminRecipients(input.tenantId);
+    if (to.length === 0) return { ok: false, skipped: 'no_admin_recipients' };
+
+    const origin = await resolveAppOrigin();
+    const now = Date.now();
+    const totalCents = drafts.reduce((sum, d) => sum + d.subtotalCents, 0);
+    const count = drafts.length;
+
+    const { html, text } = wrapBranded({
+      preheader: `${count} draft purchase order${count === 1 ? '' : 's'} · ${formatMoney(totalCents)} waiting to be placed`,
+      heading:
+        count === 1
+          ? 'One purchase order is still a draft'
+          : `${count} purchase orders are still drafts`,
+      intro:
+        'These have not been sent to a vendor yet. Open each one to place the order, or delete it ' +
+        'if it is no longer needed. This list is emailed once each morning.',
+      button: { label: 'Open purchase orders', href: `${origin}/purchase-orders` },
+      table: {
+        title: 'Drafts waiting',
+        columns: [
+          { label: 'PO' },
+          { label: 'Vendor' },
+          { label: 'Created by' },
+          { label: 'Waiting', align: 'right' as const },
+          { label: 'Value', align: 'right' as const },
+          { label: 'Link' },
+        ],
+        rows: drafts.map((d) => [
+          d.number,
+          d.vendor?.name ?? 'No vendor set',
+          d.createdBy?.name || d.createdBy?.email || 'unknown',
+          ageLabel(d.createdAt, now),
+          formatMoney(d.subtotalCents),
+          { text: 'Open', href: `${origin}/purchase-orders/${d.id}` },
+        ]),
+        summary: { label: 'Total value', value: formatMoney(totalCents) },
+      },
+      note:
+        'One email a day covers every draft, however many there are. Nothing on this list has ' +
+        'been ordered.',
+      reason:
+        'You received this email because your B Visible account has the admin role and purchase orders are waiting in DRAFT.',
+    });
+
+    const sent = await sendMail({
+      to: to.join(', '),
+      subject: `Reminder: ${count} draft PO${count === 1 ? '' : 's'} waiting — ${formatMoney(totalCents)}`,
+      html,
+      text,
+    });
+    if (!sent.ok) return { ok: false, skipped: `mailer_${sent.error.kind}` };
+
+    const numbers = drafts.map((d) => d.number);
+
+    // One timeline entry per PO — these are database rows, not emails, and
+    // the per-PO history of "this was chased on the Nth" is worth keeping.
+    await prisma.pOEvent.createMany({
+      data: drafts.map((d) => ({
+        tenantId: input.tenantId,
+        purchaseOrderId: d.id,
+        kind: POEventKind.NOTE_ADDED,
+        message: `Included in the morning draft digest emailed to admins (${to.join(', ')})`,
+      })),
+    });
+    await writeAuditLog({
+      action: 'po_draft_admin_notified',
+      tenantId: input.tenantId,
+      userId: null,
+      targetType: 'purchase_order',
+      // A digest covers many POs, so there is no single target row; the
+      // numbers live in the metadata instead.
+      targetId: null,
+      metadata: {
+        reason: 'digest',
+        poNumbers: numbers,
+        draftCount: count,
+        recipientCount: to.length,
+        messageId: sent.result.messageId,
+      },
+    });
+
+    return { ok: true, to, messageId: sent.result.messageId, numbers };
+  } catch (err) {
+    console.error('[po-draft-digest] failed:', err instanceof Error ? err.message : err);
     return { ok: false, skipped: 'error' };
   }
 }

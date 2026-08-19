@@ -589,7 +589,6 @@ export async function createPurchaseOrder(
   void notifyAdminsOfDraftPo({
     tenantId: me.tenantId,
     purchaseOrderId: po.id,
-    reason: 'created',
     actorId: me.id,
   });
 

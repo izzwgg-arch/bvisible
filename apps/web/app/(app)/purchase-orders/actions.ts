@@ -93,7 +93,6 @@ export async function createBlankPoAction(
   void notifyAdminsOfDraftPo({
     tenantId: me.tenantId,
     purchaseOrderId: po.id,
-    reason: 'created',
     actorId: me.id,
   });
 
@@ -172,7 +171,6 @@ export async function createPoFromEstimateAction(
   void notifyAdminsOfDraftPo({
     tenantId: me.tenantId,
     purchaseOrderId: poResult.purchaseOrderId,
-    reason: 'created',
     actorId: me.id,
   });
 

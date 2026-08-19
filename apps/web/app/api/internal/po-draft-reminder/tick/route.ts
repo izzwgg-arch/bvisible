@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { POStatus, prisma } from '@bvisible/db';
 import { safeCompareSecret } from '@/lib/email-ingest/crypto';
-import { notifyAdminsOfDraftPo } from '@/lib/po/admin-notify';
+import { sendDraftPoDigest } from '@/lib/po/admin-notify';
 import { writeAuditLog } from '@/lib/auth/audit';
 
-// Internal tick: every morning, remind admin accounts about POs still
-// sitting in DRAFT. Hit by a systemd timer on the host (see
+// Internal tick: every morning, send admin accounts ONE digest listing the
+// POs still sitting in DRAFT. Hit by a systemd timer on the host (see
 // server-scripts/cron/bvisible-po-draft-reminder.timer). Same exposure
 // model as the email-ingest tick: loopback-bound app, /api/internal/*
 // not proxied by nginx, shared-secret header as the auth boundary.
@@ -90,17 +90,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const notified: string[] = [];
-    const skipped: Array<{ number: string; reason: string }> = [];
-    for (const po of pos) {
-      const r = await notifyAdminsOfDraftPo({
-        tenantId,
-        purchaseOrderId: po.id,
-        reason: 'reminder',
-      });
-      if (r.ok) notified.push(po.number);
-      else skipped.push({ number: po.number, reason: r.skipped });
-    }
+    // ONE digest per tenant, however many drafts it has. This used to send an
+    // email per draft, so a tenant sitting on 25 drafts mailed every admin 25
+    // times each morning — and the count climbed as drafts accumulated.
+    const digest = await sendDraftPoDigest({ tenantId });
+    const notified: string[] = digest.ok ? digest.numbers : [];
+    const skipped: Array<{ number: string; reason: string }> = digest.ok
+      ? []
+      : [{ number: `${pos.length} draft(s)`, reason: digest.skipped }];
 
     if (notified.length > 0) {
       await writeAuditLog({
