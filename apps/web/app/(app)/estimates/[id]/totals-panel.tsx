@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useState, useTransition, type ReactNode } from 'react';
 import { EstimateStatus } from '@bvisible/db';
-import { updateEstimateSalesRepAction } from './actions';
+import { updateEstimateSalesRepAction, updateEstimateTaxExemptAction } from './actions';
+import { computeSalesTax, formatTaxPercent } from '@/lib/estimate/sales-tax';
 import type { BreakdownByKind } from '@bvisible/pricing';
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney } from '@/lib/estimate/format';
@@ -80,6 +81,14 @@ export function TotalsPanel(props: TotalsPanelProps) {
     variant,
   } = props;
   const [vendorChoice, setVendorChoice] = useState<string>('');
+  // Mirror of the customer document: an exempt estimate ignores the company
+  // rate. Computed with the same helper the PDF uses so the number the
+  // estimator sees here is the number the customer receives.
+  const taxExempt = bootstrap.estimate.taxExempt;
+  const salesTax = computeSalesTax(
+    finalPriceCents,
+    taxExempt ? 0 : bootstrap.salesTaxPercentMilli,
+  );
 
   const isFinalized = readOnly || bootstrap.estimate.status === EstimateStatus.FINALIZED;
   // Markup / multiplier / design fee edits are for authorized (admin)
@@ -190,9 +199,13 @@ export function TotalsPanel(props: TotalsPanelProps) {
               )}
             </div>
             <SideRow label="Discount" value="$0.00 ✎" muted />
-            <SideRow label="Tax" value="$0.00" muted />
+            <SideRow
+              label={taxExempt ? 'Tax (exempt)' : salesTax.applied ? `Tax (${salesTax.label})` : 'Tax'}
+              value={formatMoney(salesTax.taxCents)}
+              muted={salesTax.taxCents === 0}
+            />
             <div className="my-3 border-t border-[#eadfd3]" />
-            <SideRow label="Total" value={formatMoney(finalPriceCents)} strong />
+            <SideRow label="Total" value={formatMoney(salesTax.totalCents)} strong />
           </dl>
 
           <div className="mt-5 rounded-[9px] border border-[#1C4972]/15 bg-[#eef5f9] px-3 py-3">
@@ -235,6 +248,14 @@ export function TotalsPanel(props: TotalsPanelProps) {
             estimateId={bootstrap.estimate.id}
             salesRepId={bootstrap.estimate.salesRepId}
             salesReps={bootstrap.salesReps}
+            disabled={isFinalized}
+          />
+
+          <TaxExemptControl
+            estimateId={bootstrap.estimate.id}
+            taxExempt={taxExempt}
+            taxExemptReason={bootstrap.estimate.taxExemptReason}
+            ratePercentMilli={bootstrap.salesTaxPercentMilli}
             disabled={isFinalized}
           />
 
@@ -612,6 +633,88 @@ function PercentEditorRow({
         <span className={`text-[11px] font-bold ${valueClass}`}>%</span>
       </dd>
     </div>
+  );
+}
+
+/// Sales tax exemption for THIS estimate. Persists immediately, like the
+/// sales rep picker — there is no draft state to save, so the totals panel
+/// and the customer document can never disagree about tax.
+function TaxExemptControl({
+  estimateId,
+  taxExempt,
+  taxExemptReason,
+  ratePercentMilli,
+  disabled,
+}: {
+  estimateId: string;
+  taxExempt: boolean;
+  taxExemptReason: string | null;
+  ratePercentMilli: number;
+  disabled: boolean;
+}) {
+  const [exempt, setExempt] = useState(taxExempt);
+  const [cert, setCert] = useState(taxExemptReason ?? '');
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const save = (nextExempt: boolean, nextCert: string) => {
+    startTransition(async () => {
+      const result = await updateEstimateTaxExemptAction({
+        estimateId,
+        taxExempt: nextExempt,
+        taxExemptReason: nextCert,
+      });
+      setError(result.error);
+      // Server refused (finalized estimate) — put the switch back so the UI
+      // never shows an exemption that was not actually stored.
+      if (result.error) setExempt(taxExempt);
+    });
+  };
+
+  return (
+    <section className="mt-5">
+      <h3 className="text-[13px] font-black text-[#1C4972]">Sales tax</h3>
+      <label className="mt-2 flex cursor-pointer items-start gap-2">
+        <input
+          type="checkbox"
+          checked={exempt}
+          disabled={disabled || pending}
+          onChange={(event) => {
+            const next = event.currentTarget.checked;
+            setExempt(next);
+            if (!next) setCert('');
+            save(next, next ? cert : '');
+          }}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-[#eadfd3] text-[#F28744] focus:ring-[#F28744]"
+        />
+        <span className="text-[12px] font-semibold leading-snug text-[#1C4972]">
+          Tax exempt
+          <span className="block text-[11px] font-medium text-[#1C4972]/60">
+            {exempt
+              ? 'No sales tax on this estimate. Other estimates are unaffected.'
+              : ratePercentMilli > 0
+                ? `Charging the company rate of ${formatTaxPercent(ratePercentMilli)}.`
+                : 'Company rate is 0% — all estimates are already quoted pre-tax.'}
+          </span>
+        </span>
+      </label>
+      {exempt ? (
+        <input
+          type="text"
+          value={cert}
+          disabled={disabled || pending}
+          maxLength={120}
+          placeholder="Exemption certificate # (optional)"
+          onChange={(event) => setCert(event.currentTarget.value)}
+          onBlur={() => {
+            if ((taxExemptReason ?? '') !== cert.trim()) save(true, cert);
+          }}
+          aria-label="Exemption certificate number"
+          className="mt-2 h-8 w-full rounded-[5px] border border-[#eadfd3] bg-white px-2 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#F28744] focus:ring-2 focus:ring-[#F28744]/15"
+        />
+      ) : null}
+      {error ? <p className="mt-1 text-[11px] font-medium text-rose-600">{error}</p> : null}
+    </section>
   );
 }
 

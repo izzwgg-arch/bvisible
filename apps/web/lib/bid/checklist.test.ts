@@ -81,3 +81,20 @@ describe('buildBidChecklist', () => {
     expect(c.warnings.map((w) => w.key)).toContain('review');
   });
 });
+
+describe('sales tax checklist row', () => {
+  it('reads as exempt, not as a missing setting, when the estimate is exempt', () => {
+    const c = buildBidChecklist(input({ taxConfigured: true, taxExempt: true }));
+    const tax = c.items.find((i) => i.key === 'tax');
+    expect(tax?.state).toBe('ok');
+    expect(tax?.label).toBe('Sales tax exempt');
+    expect(tax?.detail).toContain('Exempt on this estimate');
+  });
+
+  it('still warns when tax is simply not configured', () => {
+    const c = buildBidChecklist(input({ taxConfigured: false }));
+    const tax = c.items.find((i) => i.key === 'tax');
+    expect(tax?.state).toBe('warning');
+    expect(tax?.label).toBe('Sales tax configured');
+  });
+});

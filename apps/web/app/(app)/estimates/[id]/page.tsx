@@ -24,6 +24,7 @@ import { EstimateSupportTabs } from './estimate-support-tabs';
 import { loadEstimateCatalogPickerRows } from '@/lib/shop-material/estimate-catalog-bootstrap';
 import { EstimateHeaderActions } from './estimate-header-actions';
 import { EstimateSaveButton, EstimateSaveStatus } from './estimate-save-button';
+import { loadBidOperatingRates } from '@/lib/bid/rates';
 
 export const metadata = { title: 'Estimate' };
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,9 @@ export default async function EstimateDetailPage({
     orderBy: [{ name: 'asc' }],
     select: { id: true, name: true, email: true },
   });
+  // Same source the customer PDF uses, so the summary total and the document
+  // total cannot drift apart.
+  const operatingRates = await loadBidOperatingRates(me.tenantId);
 
   const [
     estimate,
@@ -67,6 +71,8 @@ export default async function EstimateDetailPage({
         subtotalCostCents: true,
         finalPriceCents: true,
         salesRepId: true,
+        taxExempt: true,
+        taxExemptReason: true,
         client: { select: { id: true, companyName: true, contactName: true, email: true, phone: true } },
         vehicle: {
           select: {
@@ -297,7 +303,10 @@ export default async function EstimateDetailPage({
       client: estimate.client,
       quoteSent: quoteSentAudit != null || estimate.status !== EstimateStatus.DRAFT,
       salesRepId: estimate.salesRepId,
+      taxExempt: estimate.taxExempt,
+      taxExemptReason: estimate.taxExemptReason,
     },
+    salesTaxPercentMilli: operatingRates.salesTaxPercentMilli,
     salesReps: tenantUsers.map((u) => ({ id: u.id, name: u.name ?? u.email })),
     // Markup / multiplier / design fee edits are reserved for admins;
     // regular users see the values read-only (server enforces too).

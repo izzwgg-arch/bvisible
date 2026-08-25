@@ -954,6 +954,13 @@ model Estimate {
   /// Sales representative for this estimate (defaults to the creator in
   /// the guided flow; changeable on the estimate).
   salesRepId        String?
+  /// Customer is exempt from sales tax on THIS estimate. Overrides the
+  /// company-wide rate (tenant_operating_rates.salesTaxPercentMilli) —
+  /// the estimate is quoted with no tax line and says why.
+  taxExempt         Boolean        @default(false)
+  /// Exemption certificate number, printed on the customer document so the
+  /// zero-tax total is defensible. Optional — exemption applies without it.
+  taxExemptReason   String?
   deletedAt         DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt

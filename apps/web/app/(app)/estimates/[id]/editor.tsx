@@ -58,7 +58,14 @@ export interface EditorBootstrap {
     };
     quoteSent: boolean;
     salesRepId: string | null;
+    /// Exempt from sales tax on this estimate only — overrides the
+    /// company-wide rate below.
+    taxExempt: boolean;
+    taxExemptReason: string | null;
   };
+  /// Company-wide sales tax rate (percent × 1000), from Pricing backend.
+  /// The summary panel needs it to show the same total the PDF prints.
+  salesTaxPercentMilli: number;
   /// Active tenant users selectable as the sales representative.
   salesReps: ReadonlyArray<{ id: string; name: string }>;
   /// True when the signed-in user may change markup / multiplier and the

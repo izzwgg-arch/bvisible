@@ -60,6 +60,11 @@ export interface EstimatePdfData {
   /// is presented pre-tax and says so.
   taxPercentMilli: number;
   taxLabel: string;
+  /// True when this estimate is exempt. Distinct from taxPercentMilli = 0
+  /// (company charges no tax at all): an exempt total is final, not pre-tax.
+  taxExempt: boolean;
+  /// Exemption certificate number when one was recorded, else null.
+  taxExemptReason: string | null;
   totalCents: number;
   notes: string | null;
   terms: string[];
@@ -93,6 +98,8 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
       notes: true,
       subtotalCostCents: true,
       finalPriceCents: true,
+      taxExempt: true,
+      taxExemptReason: true,
       updatedAt: true,
       tenant: { select: { id: true, name: true } },
       salesRep: { select: { name: true, email: true } },
@@ -171,13 +178,22 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
       qtyMilli: qtyMilli > 0 ? qtyMilli : 1000,
       rateCents: exactRate ?? Math.round(line.lineSellCents / Math.max(qty, 1)),
       totalCents: line.lineSellCents,
-      taxable: true,
+      // Drives the "T" marker beside the line total. Exemption is currently
+      // all-or-nothing per estimate, so no line is marked taxable when the
+      // estimate is exempt.
+      taxable: !estimate.taxExempt,
     };
   });
 
   const subtotalCents = lines.reduce((sum, line) => sum + line.totalCents, 0);
   const taxableSubtotalCents = lines.reduce((sum, line) => sum + (line.taxable ? line.totalCents : 0), 0);
-  const tax = computeSalesTax(taxableSubtotalCents, rates.salesTaxPercentMilli);
+  // A tax-exempt estimate ignores the company rate entirely — passing 0 makes
+  // computeSalesTax return a zero tax line, and the document says exempt
+  // rather than "pre-tax" so the total reads as final.
+  const tax = computeSalesTax(
+    taxableSubtotalCents,
+    estimate.taxExempt ? 0 : rates.salesTaxPercentMilli,
+  );
   const company = guardStaleBusinessInfo(companyProfile);
   const bid = estimate.bidWorkflow;
   const installInputs = (bid?.installInputsJson ?? null) as { customerAssumptions?: unknown } | null;
@@ -199,7 +215,12 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
     taxCents: tax.taxCents,
     taxPercentMilli: tax.percentMilli,
     taxLabel: tax.label,
-    totalCents: tax.totalCents,
+    taxExempt: estimate.taxExempt,
+    taxExemptReason: estimate.taxExemptReason?.trim() || null,
+    // Built from the FULL subtotal, not tax.totalCents — that one only adds up
+    // the taxable lines, so an exempt (or partly non-taxable) estimate would
+    // otherwise bill the customer nothing.
+    totalCents: subtotalCents + tax.taxCents,
     notes: estimate.notes,
     terms: buildEstimateTerms({ additional: installAssumptions }),
     logoDataUrl: companyProfile.logoDataUrl?.trim() || readBrandLogoDataUrl(),
@@ -316,10 +337,20 @@ export function renderEstimatePdfBody(data: EstimatePdfData): string {
       </div>
       <div class="totals">
         <div><span>Subtotal</span><strong>${formatMoney(data.subtotalCents)}</strong></div>
-        ${data.taxPercentMilli > 0
-          ? `<div><span>Sales Tax (${escapeHtml(data.taxLabel)})</span><strong>${formatMoney(data.taxCents)}</strong></div>`
-          : `<div><span>Sales tax</span><strong>Not included</strong></div>`}
-        <div class="total"><span>${data.taxPercentMilli > 0 ? 'Total investment' : 'Estimated total (pre-tax)'}</span><strong>${formatMoney(data.totalCents)}</strong></div>
+        ${data.taxExempt
+          ? `<div><span>Sales tax</span><strong>Exempt</strong></div>${
+              data.taxExemptReason
+                ? `<div class="exempt-cert"><span>Exemption certificate</span><strong>${escapeHtml(data.taxExemptReason)}</strong></div>`
+                : ''
+            }`
+          : data.taxPercentMilli > 0
+            ? `<div><span>Sales Tax (${escapeHtml(data.taxLabel)})</span><strong>${formatMoney(data.taxCents)}</strong></div>`
+            : `<div><span>Sales tax</span><strong>Not included</strong></div>`}
+        <div class="total"><span>${
+          data.taxExempt || data.taxPercentMilli > 0
+            ? 'Total investment'
+            : 'Estimated total (pre-tax)'
+        }</span><strong>${formatMoney(data.totalCents)}</strong></div>
       </div>
     </section>
   </section>
@@ -371,6 +402,7 @@ export function estimatePdfCss(): string {
     th.num, td.num { width: 72px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     td.desc { line-height: 1.28; color: #1f2f3d; }
     .taxable { margin-left: 2px; color: #F28744; font-weight: 800; }
+    .exempt-cert span, .exempt-cert strong { font-size: 9px; color: #1C4972; opacity: .75; }
     .empty { padding: 28px 8px; text-align: center; color: #6d7480; }
     .bottom { display: grid; grid-template-columns: 1fr 222px; gap: 24px; padding: 12px 34px 30px; align-items: start; }
     .terms { padding-top: 8px; }

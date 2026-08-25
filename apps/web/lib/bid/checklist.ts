@@ -26,6 +26,10 @@ export interface ChecklistInput {
   qbmeReconciled: boolean;
   termsPresent: boolean;
   taxConfigured: boolean;
+  /// Estimate carries a per-estimate exemption. Changes only the wording of
+  /// the tax row — an exempt estimate is correctly configured, not missing a
+  /// setting. Optional so existing callers keep working.
+  taxExempt?: boolean;
 }
 
 export type ChecklistState = 'ok' | 'blocking' | 'warning' | 'pending';
@@ -129,7 +133,16 @@ export function buildBidChecklist(input: ChecklistInput): BidChecklist {
   items.push({ key: 'qbme', label: 'QBME ready', state: estimateReady ? 'ok' : 'pending', detail: estimateReady ? `${visible.length} lines, one per estimate line` : 'Waiting on the items above.' });
   items.push({ key: 'reconciled', label: 'QBME subtotal reconciled', state: !estimateReady ? 'pending' : input.qbmeReconciled ? 'ok' : 'warning', detail: input.qbmeReconciled ? 'Σ QTY × RATE equals the pre-tax subtotal.' : 'Rounding difference — see the QBME panel.' });
   items.push({ key: 'terms', label: 'Required terms present', state: input.termsPresent ? 'ok' : 'blocking', detail: input.termsPresent ? 'Company terms attached.' : 'No terms configured.' });
-  items.push({ key: 'tax', label: 'Sales tax configured', state: input.taxConfigured ? 'ok' : 'warning', detail: input.taxConfigured ? 'From company setting.' : 'Not configured — estimate shows pre-tax totals.' });
+  items.push({
+    key: 'tax',
+    label: input.taxExempt ? 'Sales tax exempt' : 'Sales tax configured',
+    state: input.taxConfigured ? 'ok' : 'warning',
+    detail: input.taxExempt
+      ? 'Exempt on this estimate — no tax charged.'
+      : input.taxConfigured
+        ? 'From company setting.'
+        : 'Not configured — estimate shows pre-tax totals.',
+  });
 
   const blocking = items.filter((i) => i.state === 'blocking');
   const warnings = items.filter((i) => i.state === 'warning');

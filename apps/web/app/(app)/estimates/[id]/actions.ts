@@ -633,6 +633,66 @@ export async function updateEstimateSalesRepAction(payload: {
   return { error: null };
 }
 
+/// Mark one estimate exempt from sales tax (or put it back on tax).
+///
+/// Scoped to a single estimate on purpose: the company-wide rate on Pricing
+/// backend stays where it is, so exempting one customer cannot silently
+/// untax everybody else's quotes.
+export async function updateEstimateTaxExemptAction(payload: {
+  estimateId: string;
+  taxExempt: boolean;
+  taxExemptReason?: string;
+}): Promise<{ error: string | null }> {
+  const me = await requireTenantId();
+  const ctx = await readRequestContext();
+  const estimateId = payload.estimateId?.trim();
+  if (!estimateId) return { error: 'Estimate is required.' };
+
+  const estimate = await prisma.estimate.findFirst({
+    where: { id: estimateId, tenantId: me.tenantId, deletedAt: null },
+    select: { id: true, number: true, status: true },
+  });
+  if (!estimate) return { error: 'Estimate not found.' };
+  // A finalized estimate is the sent, signed-off document — changing what the
+  // customer owes after the fact would rewrite history under them.
+  if (estimate.status === EstimateStatus.FINALIZED) {
+    return { error: 'This estimate is finalized. Tax exemption can no longer be changed.' };
+  }
+
+  const taxExempt = payload.taxExempt === true;
+  const reason = payload.taxExemptReason?.trim() ?? '';
+  if (reason.length > 120) {
+    return { error: 'Exemption certificate number is too long (120 characters max).' };
+  }
+
+  await prisma.estimate.update({
+    where: { id: estimate.id, tenantId: me.tenantId },
+    // Clearing exemption clears the certificate with it — a stale number on a
+    // taxed estimate would be worse than none.
+    data: { taxExempt, taxExemptReason: taxExempt ? reason || null : null },
+  });
+  await writeAuditLog({
+    action: 'estimate_saved',
+    userId: me.id,
+    tenantId: me.tenantId,
+    targetType: 'estimate',
+    targetId: estimate.id,
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+    metadata: {
+      number: estimate.number,
+      field: 'taxExempt',
+      taxExempt,
+      taxExemptReason: taxExempt ? reason || null : null,
+    },
+  });
+  // The totals panel, the customer preview and the PDF all read this.
+  revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath(`/estimates/${estimate.id}/preview`);
+  revalidatePath('/estimates');
+  return { error: null };
+}
+
 export async function createClientAndAttachEstimateAction(payload: {
   estimateId: string;
   companyName: string;

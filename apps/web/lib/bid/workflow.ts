@@ -411,7 +411,12 @@ export async function loadBidWorkspace(args: { tenantId: string; estimateId: str
   const designCents = visible.filter((l) => l.serviceKind === 'DESIGN').reduce((s, l) => s + l.computedCostCents, 0);
   const installCents = visible.filter((l) => l.serviceKind === 'INSTALL').reduce((s, l) => s + l.computedCostCents, 0);
   const subtotalCents = visible.reduce((s, l) => s + l.computedCostCents, 0);
-  const tax = computeSalesTax(subtotalCents, rates.salesTaxPercentMilli);
+  // An exempt estimate ignores the company rate — same rule the customer PDF
+  // applies, so Step 7 totals match the document that gets sent.
+  const tax = computeSalesTax(
+    subtotalCents,
+    estimate.taxExempt ? 0 : rates.salesTaxPercentMilli,
+  );
 
   const designInputs = parseDesignInputs(wf.designInputsJson);
   const installInputs = parseInstallInputs(wf.installInputsJson);
@@ -455,7 +460,10 @@ export async function loadBidWorkspace(args: { tenantId: string; estimateId: str
     installIncluded: wf.installIncluded,
     qbmeReconciled: true, // bid lines are integer qty × cent rate; recomputed on Step 7 from the same data
     termsPresent: terms.length > 0,
-    taxConfigured: rates.salesTaxPercentMilli > 0,
+    // Exempt is a deliberate choice, not a missing setting — it should not
+    // raise the "sales tax not configured" warning on the checklist.
+    taxConfigured: estimate.taxExempt || rates.salesTaxPercentMilli > 0,
+    taxExempt: estimate.taxExempt,
   });
 
   return {
