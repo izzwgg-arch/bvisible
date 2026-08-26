@@ -445,29 +445,36 @@ export async function finalizeEstimateAction(
     };
   }
 
-  const finalized = await prisma.$transaction(async (tx) => {
+  // An estimate with nothing to buy (all Design / Install / Labor / Misc
+  // lines) still has to be closeable — the PO is a by-product of finalize,
+  // not a precondition for it. Only a genuine failure blocks the status
+  // change; "nothing to purchase" finalizes without a linked PO.
+  const outcome = await prisma.$transaction(async (tx) => {
     const poResult = await createPoFromInternalMaterials(tx, {
       tenantId: me.tenantId,
       estimateId: estimate.id,
       actorId: me.id,
     });
-    if (!poResult.ok) return poResult;
+    if (!poResult.ok && poResult.reason !== 'nothing_to_purchase') {
+      return { finalized: false as const, error: poResult.error };
+    }
 
     await tx.estimate.update({
       where: { id: estimate.id, tenantId: me.tenantId },
       data: { status: EstimateStatus.FINALIZED },
     });
 
-    return poResult;
+    return { finalized: true as const, po: poResult.ok ? poResult : null };
   });
 
-  if (!finalized.ok) {
+  if (!outcome.finalized) {
     return {
       ok: false,
       error: { kind: 'no_linked_po' },
-      message: finalized.error,
+      message: outcome.error,
     };
   }
+  const { po } = outcome;
 
   await writeAuditLog({
     action: 'estimate_finalized',
@@ -480,21 +487,30 @@ export async function finalizeEstimateAction(
     metadata: {
       number: estimate.number,
       from: estimate.status,
-      purchaseOrderId: finalized.purchaseOrderId,
-      purchaseOrderNumber: finalized.purchaseOrderNumber,
-      purchaseOrderCreated: finalized.created,
-      linkedPoCount: 1,
-      lineCount: finalized.lineCount,
-      vendorCount: finalized.vendorCount,
-      subtotalCents: finalized.subtotalCents,
+      purchaseOrderId: po?.purchaseOrderId ?? null,
+      purchaseOrderNumber: po?.purchaseOrderNumber ?? null,
+      purchaseOrderCreated: po?.created ?? false,
+      linkedPoCount: po ? 1 : 0,
+      lineCount: po?.lineCount ?? 0,
+      vendorCount: po?.vendorCount ?? 0,
+      subtotalCents: po?.subtotalCents ?? 0,
     },
   });
 
   revalidatePath(`/estimates/${estimate.id}`);
   revalidatePath('/estimates');
-  revalidatePath(`/purchase-orders/${finalized.purchaseOrderId}`);
-  revalidatePath('/purchase-orders');
-  return { ok: true, error: null, message: null, purchaseOrderId: finalized.purchaseOrderId };
+  if (po) {
+    revalidatePath(`/purchase-orders/${po.purchaseOrderId}`);
+    revalidatePath('/purchase-orders');
+  }
+  return {
+    ok: true,
+    error: null,
+    message: po
+      ? null
+      : 'Finalized. No purchase order was created — this estimate has no Material lines to order.',
+    purchaseOrderId: po?.purchaseOrderId,
+  };
 }
 
 // Unfinalize is ADMIN+ only — once we've committed against the

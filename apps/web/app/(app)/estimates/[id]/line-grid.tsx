@@ -1692,6 +1692,11 @@ function buildMaterialVendorSummary({
   const sources: MaterialVendorSource[] = [];
 
   lines.forEach((line, index) => {
+    // The grid always keeps a trailing blank MATERIAL row so the user can
+    // keep typing. It is never saved, so counting it here would advertise
+    // a material the PO builder can't see. Index is kept so "Line N" still
+    // matches the row number on screen.
+    if (isBlankLine(line)) return;
     const lineMeta = parseLineInternalMeta(line.internalNotes);
     const catalogRow = line.catalogItemId ? catalogById.get(line.catalogItemId) ?? null : null;
     const unit = lineMeta?.unitLabelOverride ?? unitLabel(catalogRow, line.kind);

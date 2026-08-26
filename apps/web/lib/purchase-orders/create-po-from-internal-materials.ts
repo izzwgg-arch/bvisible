@@ -11,9 +11,14 @@ import { expandBundleEstimateRequirements } from '@/lib/purchase-orders/expand-b
 
 type Db = Prisma.TransactionClient;
 
+/** Why no PO came out. `nothing_to_purchase` is a normal outcome for an
+ *  all-labor / all-misc estimate, not a failure — finalize treats it as
+ *  "finalize anyway, just without a PO". */
+export type CreateInternalMaterialsPoFailure = 'estimate_not_found' | 'nothing_to_purchase';
+
 export type CreateInternalMaterialsPoResult =
   | { ok: true; purchaseOrderId: string; purchaseOrderNumber: string; created: boolean; lineCount: number; vendorCount: number; subtotalCents: number }
-  | { ok: false; error: string };
+  | { ok: false; reason: CreateInternalMaterialsPoFailure; error: string };
 
 type PoSeedLine = {
   kind: POLineKind;
@@ -99,7 +104,7 @@ export async function createPoFromInternalMaterials(
     },
   });
 
-  if (!estimate) return { ok: false, error: 'Estimate not found.' };
+  if (!estimate) return { ok: false, reason: 'estimate_not_found', error: 'Estimate not found.' };
 
   const bundleRequirements = await expandBundleEstimateRequirements(tx, {
     tenantId: args.tenantId,
@@ -195,7 +200,13 @@ export async function createPoFromInternalMaterials(
   }
 
   if (lines.length === 0) {
-    return { ok: false, error: 'No internal material or bundle component lines were found for this estimate.' };
+    return {
+      ok: false,
+      reason: 'nothing_to_purchase',
+      error:
+        'Nothing to purchase on this estimate — only Material lines and bundle components become PO lines. ' +
+        'Design, Install, Labor, Machine and Misc lines are not ordered from a vendor.',
+    };
   }
 
   const subtotalCents = lines.reduce((sum, line) => sum + line.computedCostCents, 0);

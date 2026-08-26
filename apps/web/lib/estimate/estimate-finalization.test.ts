@@ -133,6 +133,34 @@ describe('finalizeEstimateAction safety (static)', () => {
     expect(finalizeBlock).toMatch(/status: EstimateStatus\.FINALIZED/);
   });
 
+  it('finalizes an estimate with nothing to purchase instead of dead-ending', async () => {
+    const src = await import('node:fs/promises').then((fs) =>
+      fs.readFile(
+        new URL('../../app/(app)/estimates/[id]/actions.ts', import.meta.url),
+        'utf8',
+      ),
+    );
+    const finalizeBlock = src.slice(
+      src.indexOf('export async function finalizeEstimateAction'),
+      src.indexOf('export async function unfinalizeEstimateAction'),
+    );
+    // Only a genuine seeding failure may block the status change; an
+    // all-labor / all-misc estimate has no PO to create and must still close.
+    expect(finalizeBlock).toMatch(/reason !== 'nothing_to_purchase'/);
+    expect(finalizeBlock).toMatch(/purchaseOrderId: po\?\.purchaseOrderId/);
+  });
+
+  it('the PO seeder distinguishes "nothing to purchase" from a hard failure', async () => {
+    const src = await import('node:fs/promises').then((fs) =>
+      fs.readFile(
+        new URL('../purchase-orders/create-po-from-internal-materials.ts', import.meta.url),
+        'utf8',
+      ),
+    );
+    expect(src).toMatch(/reason: 'nothing_to_purchase'/);
+    expect(src).toMatch(/reason: 'estimate_not_found'/);
+  });
+
   it('saveEstimateAction refuses finalized estimates', async () => {
     const src = await import('node:fs/promises').then((fs) =>
       fs.readFile(

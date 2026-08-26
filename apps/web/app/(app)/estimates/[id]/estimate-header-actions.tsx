@@ -43,6 +43,9 @@ export function EstimateHeaderActions({
   const [approveError, setApproveError] = useState<string | null>(null);
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  // Finalized, but with something worth saying — e.g. no PO was created
+  // because the estimate has nothing to order. Not an error.
+  const [finalizeNote, setFinalizeNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (sendState.ok) router.refresh();
@@ -66,6 +69,7 @@ export function EstimateHeaderActions({
   async function finalize() {
     setFinalizeBusy(true);
     setFinalizeError(null);
+    setFinalizeNote(null);
     const result = await finalizeEstimateAction({ estimateId });
     setFinalizeBusy(false);
     if (!result.ok) {
@@ -75,6 +79,7 @@ export function EstimateHeaderActions({
     if (result.purchaseOrderId) {
       router.push(`/purchase-orders/${result.purchaseOrderId}` as never);
     } else {
+      setFinalizeNote(result.message);
       router.refresh();
     }
   }
@@ -149,6 +154,10 @@ export function EstimateHeaderActions({
       ) : finalizeError ? (
         <span className="basis-full text-right text-[11.5px] font-medium text-rose-600">
           {finalizeError}
+        </span>
+      ) : finalizeNote ? (
+        <span className="basis-full text-right text-[11.5px] font-medium text-amber-700">
+          {finalizeNote}
         </span>
       ) : null}
     </div>
