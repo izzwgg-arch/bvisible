@@ -335,6 +335,9 @@ export const estimateLineSchema = z.object({
   selectedVendorMode: z.nativeEnum(VendorCostSourceMode).nullish().transform((v) => v ?? null),
   internalNotes: optionalShort(10000),
   hiddenFromCustomer: z.boolean().optional().default(false),
+  // Per-line sales tax opt-out. Absent means taxable — same default as the
+  // column, so a stale client can never quietly untax a line.
+  taxable: z.boolean().optional().default(true),
   customerDescription: optionalShort(240),
   // Bundle grouping — lines sharing a lineGroupId are components of one
   // bundle. Round-trips through the editor so the group survives the

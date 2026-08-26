@@ -207,6 +207,9 @@ export async function saveEstimateAction(
           selectedVendorMode: l.selectedVendorMode ?? null,
           internalNotes: l.internalNotes ?? null,
           hiddenFromCustomer: l.hiddenFromCustomer ?? false,
+          // Edited in the grid, so unlike the R-EST-05 flags below it comes
+          // straight from the payload rather than the old row.
+          taxable: l.taxable ?? true,
           customerDescription: l.customerDescription ?? null,
           // R-EST-05 flags survive the replace-all save via the old row id.
           markupExempt: l.id ? exemptIds.has(l.id) : false,

@@ -29,6 +29,8 @@ interface TotalsPanelProps {
   breakdown: BreakdownByKind;
   subtotalCostCents: number;
   finalPriceCents: number;
+  /** Part of finalPriceCents sitting on lines flagged taxable. <= finalPriceCents. */
+  taxableSellCents: number;
   multiplierMilli: number;
   designFlatCents: number;
   lineCount: number;
@@ -63,6 +65,7 @@ export function TotalsPanel(props: TotalsPanelProps) {
     breakdown,
     subtotalCostCents,
     finalPriceCents,
+    taxableSellCents,
     multiplierMilli,
     designFlatCents,
     lineCount,
@@ -86,9 +89,12 @@ export function TotalsPanel(props: TotalsPanelProps) {
   // estimator sees here is the number the customer receives.
   const taxExempt = bootstrap.estimate.taxExempt;
   const salesTax = computeSalesTax(
-    finalPriceCents,
+    taxableSellCents,
     taxExempt ? 0 : bootstrap.salesTaxPercentMilli,
   );
+  // Lines can opt out of tax one at a time, so the rate may be sitting on
+  // less than the whole estimate. Say so rather than let the number look wrong.
+  const partiallyTaxed = !taxExempt && salesTax.applied && taxableSellCents < finalPriceCents;
 
   const isFinalized = readOnly || bootstrap.estimate.status === EstimateStatus.FINALIZED;
   // Markup / multiplier / design fee edits are for authorized (admin)
@@ -200,12 +206,21 @@ export function TotalsPanel(props: TotalsPanelProps) {
             </div>
             <SideRow label="Discount" value="$0.00 ✎" muted />
             <SideRow
-              label={taxExempt ? 'Tax (exempt)' : salesTax.applied ? `Tax (${salesTax.label})` : 'Tax'}
+              label={
+                taxExempt
+                  ? 'Tax (exempt)'
+                  : salesTax.applied
+                    ? `Tax (${salesTax.label}${partiallyTaxed ? ' · taxable lines' : ''})`
+                    : 'Tax'
+              }
               value={formatMoney(salesTax.taxCents)}
               muted={salesTax.taxCents === 0}
             />
             <div className="my-3 border-t border-[#eadfd3]" />
-            <SideRow label="Total" value={formatMoney(salesTax.totalCents)} strong />
+            {/* Full selling price plus the tax charged, NOT salesTax.totalCents —
+                that one only adds up the taxable lines, so an exempt (or partly
+                non-taxable) estimate would bill the customer short. */}
+            <SideRow label="Total" value={formatMoney(finalPriceCents + salesTax.taxCents)} strong />
           </dl>
 
           <div className="mt-5 rounded-[9px] border border-[#1C4972]/15 bg-[#eef5f9] px-3 py-3">

@@ -1078,6 +1078,10 @@ model EstimateLineItem {
   selectedVendorMode        VendorCostSourceMode?
   internalNotes             String?
   hiddenFromCustomer        Boolean               @default(false)
+  /// Charge sales tax on this line. Off for the lines a customer is not
+  /// taxed on (service work in some jurisdictions, resale material).
+  /// Estimate.taxExempt outranks it: an exempt estimate taxes nothing.
+  taxable                   Boolean               @default(true)
   customerDescription       String?
   /// R-EST-05: line price already includes markup (Sheet sq-ft rates,
   /// vehicle wraps). Excluded from the estimate multiplier — never

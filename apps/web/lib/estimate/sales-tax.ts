@@ -18,6 +18,15 @@ export function formatTaxPercent(percentMilli: number): string {
   return `${pct.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}%`;
 }
 
+/**
+ * The slice of a subtotal that actually gets taxed. Lines opt out one at a
+ * time (EstimateLineItem.taxable), so this is <= the subtotal — feed it to
+ * computeSalesTax, never to the customer as the amount billed.
+ */
+export function sumTaxableCents(lines: ReadonlyArray<{ totalCents: number; taxable: boolean }>): number {
+  return lines.reduce((sum, line) => sum + (line.taxable ? line.totalCents : 0), 0);
+}
+
 export function computeSalesTax(taxableSubtotalCents: number, percentMilli: number): SalesTaxResult {
   const safe = Math.max(0, Math.trunc(percentMilli));
   const sub = Math.max(0, Math.trunc(taxableSubtotalCents));

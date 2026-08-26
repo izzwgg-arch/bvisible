@@ -15,6 +15,7 @@ import { NumericCell } from '@/components/grid/cell-input';
 import { BidReadOnlyChip, FinalizedReadOnlyChip } from '@/components/estimate/finalized-read-only-chip';
 import { SelectControl } from '@/components/app/select-control';
 import { formatMoney, formatQty, parseMoney, parseQty, kindLabel } from '@/lib/estimate/format';
+import { formatTaxPercent } from '@/lib/estimate/sales-tax';
 import { buildLineLayout, type BundleRun } from '@/lib/estimate/line-groups';
 import { SectionCard } from '@/components/estimate/estimate-surface';
 import { VEHICLE_PLACEHOLDER_SVG } from '@/lib/vehicles/display';
@@ -43,6 +44,10 @@ interface LineGridProps {
   vehicleWrapCatalog: EditorBootstrap['vehicleWrapCatalog'];
   lineCosts: Record<string, number>;
   multiplierMilli: number;
+  /** Company rate (percent × 1000) from tenant_operating_rates. Never a literal. */
+  salesTaxPercentMilli: number;
+  /** Whole-estimate exemption — outranks every line's own taxable flag. */
+  taxExempt: boolean;
   readOnly?: boolean;
   /** Set for Bid Estimator estimates: read-only here, edited in the workflow. */
   bidEstimateId?: string | null;
@@ -77,7 +82,6 @@ type LineInternalMeta = {
   bundleComponents?: EditableBundleComponent[];
   customBundle?: boolean;
   measurement?: string;
-  taxEnabled?: boolean;
   unitLabelOverride?: string;
   materialVendorOverrides?: Record<string, string>;
   legacyInternalNotes?: string;
@@ -99,6 +103,8 @@ export function LineGrid({
   vehicleWrapCatalog,
   lineCosts,
   multiplierMilli,
+  salesTaxPercentMilli,
+  taxExempt,
   readOnly = false,
   bidEstimateId = null,
   embedded = false,
@@ -111,6 +117,9 @@ export function LineGrid({
     [machines],
   );
   const catalogById = useMemo(() => new Map(catalog.map((row) => [row.id, row])), [catalog]);
+  // The rate the customer is actually charged. 0 means the shop quotes
+  // pre-tax — never substitute a literal here.
+  const taxRateLabel = salesTaxPercentMilli > 0 ? formatTaxPercent(salesTaxPercentMilli) : 'Pre-tax';
   const vehicleRows = useMemo(() => buildVehicleRows(vehicleLibrary), [vehicleLibrary]);
   const [openLineId, setOpenLineId] = useState<string | null>(null);
   const [tab, setTab] = useState<PickerTab>('catalog');
@@ -488,7 +497,9 @@ export function LineGrid({
               const isBundle = catalogRow?.itemType === 'BUNDLE' || Boolean(lineMeta?.customBundle);
               const unit = lineMeta?.unitLabelOverride ?? unitLabel(catalogRow, line.kind);
               const isSquareFootLine = unit.toLowerCase().replace(/\s+/g, '_') === 'sq_ft';
-              const taxEnabled = lineMeta?.taxEnabled ?? true;
+              // What the customer document will do with this row: the line's
+              // own flag, unless the whole estimate is exempt.
+              const taxCellLabel = taxExempt ? 'Exempt' : line.taxable ? taxRateLabel : '-';
               const reportFocus = () => onAnyLineFocus?.(line.id);
               const updateLineMeta = (patch: Partial<Omit<LineInternalMeta, '__estimateLineMetaV1'>>) => {
                 dispatch({
@@ -724,19 +735,23 @@ export function LineGrid({
                       {markup == null ? '-' : `${markup.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}
                     </td>
                     <td className="px-2 py-2 text-center text-[11px] font-semibold text-slate-500">
-                      {readOnly ? (
-                        <span>{taxEnabled ? '8.25%' : '-'}</span>
+                      {readOnly || taxExempt ? (
+                        <span title={taxExempt ? 'This estimate is tax exempt — change it under Sales tax.' : undefined}>
+                          {taxCellLabel}
+                        </span>
                       ) : (
                         <label className="inline-flex cursor-pointer items-center gap-1">
                           <input
                             type="checkbox"
-                            checked={taxEnabled}
+                            checked={line.taxable}
                             onFocus={reportFocus}
-                            onChange={(event) => updateLineMeta({ taxEnabled: event.currentTarget.checked })}
+                            onChange={(event) =>
+                              dispatch({ type: 'set-line', id: line.id, patch: { taxable: event.currentTarget.checked } })
+                            }
                             aria-label={`Row ${idx + 1} taxable`}
                             className="h-3.5 w-3.5 rounded border-[#eadfd3] text-[#F28744] focus:ring-[#F28744]"
                           />
-                          <span>{taxEnabled ? '8.25%' : '-'}</span>
+                          <span>{taxCellLabel}</span>
                         </label>
                       )}
                     </td>
@@ -1954,7 +1969,6 @@ function parseLineInternalMeta(value: string | null): LineInternalMeta | null {
           : undefined,
         customBundle: typeof parsed.customBundle === 'boolean' ? parsed.customBundle : undefined,
         measurement: typeof parsed.measurement === 'string' ? parsed.measurement : undefined,
-        taxEnabled: typeof parsed.taxEnabled === 'boolean' ? parsed.taxEnabled : undefined,
         unitLabelOverride: typeof parsed.unitLabelOverride === 'string' ? parsed.unitLabelOverride : undefined,
         materialVendorOverrides: isStringRecord(parsed.materialVendorOverrides)
           ? parsed.materialVendorOverrides

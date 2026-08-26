@@ -156,6 +156,7 @@ export interface EditorBootstrap {
     selectedVendorMode: VendorCostSourceMode | null;
     internalNotes: string | null;
     hiddenFromCustomer: boolean;
+    taxable: boolean;
     customerDescription: string | null;
     markupExempt: boolean;
     lineGroupId: string | null;
@@ -214,6 +215,9 @@ export interface DraftLine {
   selectedVendorMode: VendorCostSourceMode | null;
   internalNotes: string | null;
   hiddenFromCustomer: boolean;
+  // Charge sales tax on this line. The estimate-level exemption outranks it:
+  // an exempt estimate taxes nothing no matter what the lines say.
+  taxable: boolean;
   customerDescription: string | null;
   // R-EST-05: price already includes markup (Sheet sq-ft / vehicle wrap
   // lines from the guided flow) — excluded from the estimate multiplier.
@@ -299,6 +303,7 @@ function makeDraftLine(kind: EstimateLineKind): DraftLine {
     selectedVendorMode: null,
     internalNotes: null,
     hiddenFromCustomer: false,
+    taxable: true,
     customerDescription: null,
     markupExempt: false,
     lineGroupId: null,
@@ -354,6 +359,7 @@ function snapshot(s: EditorState): string {
       l.selectedVendorMode,
       l.internalNotes,
       l.hiddenFromCustomer,
+      l.taxable,
       l.customerDescription,
       l.markupExempt,
       l.lineGroupId,
@@ -467,6 +473,7 @@ function initialFromBootstrap(b: EditorBootstrap): EditorState {
     selectedVendorMode: l.selectedVendorMode,
     internalNotes: l.internalNotes,
     hiddenFromCustomer: l.hiddenFromCustomer,
+    taxable: l.taxable,
     customerDescription: l.customerDescription,
     markupExempt: l.markupExempt,
     lineGroupId: l.lineGroupId,
@@ -528,6 +535,18 @@ export function EstimateEditor({
       lines,
     });
   }, [state.lines, state.multiplierMilli, state.designFlatCents]);
+
+  // The sidebar taxes exactly the rows the grid shows ticked. Per-line sells
+  // are re-derived with the grid's own formula, then subtracted off the final
+  // price so the taxable base and the visible rows can never disagree.
+  const taxableSellCents = useMemo(() => {
+    const untaxed = state.lines.reduce((sum, l) => {
+      if (l.taxable) return sum;
+      const cost = computed.lineCosts[l.id] ?? 0;
+      return sum + (l.markupExempt ? cost : Math.round((cost * state.multiplierMilli) / 1000));
+    }, 0);
+    return Math.max(0, computed.finalPriceCents - untaxed);
+  }, [state.lines, state.multiplierMilli, computed]);
 
   // Publish live screen context for the floating assistant dock.
   useEffect(() => {
@@ -646,6 +665,7 @@ export function EstimateEditor({
         selectedVendorMode: l.selectedVendorMode,
         internalNotes: l.internalNotes ?? null,
         hiddenFromCustomer: l.hiddenFromCustomer,
+        taxable: l.taxable,
         customerDescription: l.customerDescription ?? null,
         lineGroupId: l.lineGroupId ?? null,
         lineGroupLabel: l.lineGroupLabel ?? null,
@@ -803,6 +823,7 @@ export function EstimateEditor({
     breakdown: computed.breakdown,
     subtotalCostCents: computed.subtotalCostCents,
     finalPriceCents: computed.finalPriceCents,
+    taxableSellCents,
     multiplierMilli: state.multiplierMilli,
     designFlatCents: state.designFlatCents,
     lineCount: state.lines.length,
@@ -850,6 +871,8 @@ export function EstimateEditor({
             vehicleWrapCatalog={bootstrap.vehicleWrapCatalog}
             lineCosts={computed.lineCosts}
             multiplierMilli={state.multiplierMilli}
+            salesTaxPercentMilli={bootstrap.salesTaxPercentMilli}
+            taxExempt={bootstrap.estimate.taxExempt}
             readOnly={readOnly}
             bidEstimateId={bootstrap.estimate.estimateType === 'BID' ? bootstrap.estimate.id : null}
             customer={bootstrap.estimate.client}

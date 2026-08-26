@@ -6,7 +6,7 @@ import { guardStaleBusinessInfo } from '@/lib/company/business-info';
 import { buildCustomerQuoteLines } from '@/lib/estimate/customer-quote-view';
 import { buildEstimateTerms } from '@/lib/estimate/estimate-terms';
 import { qbItemLabel, type QbmeSourceLine } from '@/lib/estimate/qbme';
-import { computeSalesTax } from '@/lib/estimate/sales-tax';
+import { computeSalesTax, sumTaxableCents } from '@/lib/estimate/sales-tax';
 import { loadBidOperatingRates } from '@/lib/bid/rates';
 import { labelEstimateStatus } from '@/lib/ui/status-labels';
 
@@ -133,6 +133,7 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
           computedCostCents: true,
           unitCostCents: true,
           markupExempt: true,
+          taxable: true,
           qbItem: true,
           sourceKind: true,
           lineGroupId: true,
@@ -178,15 +179,15 @@ export async function loadEstimatePdfData(tenantId: string, estimateId: string):
       qtyMilli: qtyMilli > 0 ? qtyMilli : 1000,
       rateCents: exactRate ?? Math.round(line.lineSellCents / Math.max(qty, 1)),
       totalCents: line.lineSellCents,
-      // Drives the "T" marker beside the line total. Exemption is currently
-      // all-or-nothing per estimate, so no line is marked taxable when the
-      // estimate is exempt.
-      taxable: !estimate.taxExempt,
+      // Feeds the taxable subtotal below. Two gates, both of which have to
+      // pass: the line's own flag (grid "Tax" checkbox) and the estimate-wide
+      // exemption, which untaxes every line at once.
+      taxable: !estimate.taxExempt && (source?.taxable ?? true),
     };
   });
 
   const subtotalCents = lines.reduce((sum, line) => sum + line.totalCents, 0);
-  const taxableSubtotalCents = lines.reduce((sum, line) => sum + (line.taxable ? line.totalCents : 0), 0);
+  const taxableSubtotalCents = sumTaxableCents(lines);
   // A tax-exempt estimate ignores the company rate entirely — passing 0 makes
   // computeSalesTax return a zero tax line, and the document says exempt
   // rather than "pre-tax" so the total reads as final.

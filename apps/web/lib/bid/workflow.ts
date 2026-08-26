@@ -100,6 +100,7 @@ export interface BidWorkspaceLine {
   computedCostCents: number;
   qbItem: string | null;
   hiddenFromCustomer: boolean;
+  taxable: boolean;
   isService: boolean;
   serviceKind: 'DESIGN' | 'INSTALL' | null;
   detail: {
@@ -333,6 +334,7 @@ export async function loadBidWorkspace(args: { tenantId: string; estimateId: str
       computedCostCents: l.computedCostCents,
       qbItem: l.qbItem,
       hiddenFromCustomer: l.hiddenFromCustomer,
+      taxable: l.taxable,
       isService,
       serviceKind: l.sourceKind === BID_SOURCE_KIND.DESIGN ? 'DESIGN' : l.sourceKind === BID_SOURCE_KIND.INSTALL ? 'INSTALL' : null,
       detail: d
@@ -411,10 +413,12 @@ export async function loadBidWorkspace(args: { tenantId: string; estimateId: str
   const designCents = visible.filter((l) => l.serviceKind === 'DESIGN').reduce((s, l) => s + l.computedCostCents, 0);
   const installCents = visible.filter((l) => l.serviceKind === 'INSTALL').reduce((s, l) => s + l.computedCostCents, 0);
   const subtotalCents = visible.reduce((s, l) => s + l.computedCostCents, 0);
-  // An exempt estimate ignores the company rate — same rule the customer PDF
-  // applies, so Step 7 totals match the document that gets sent.
+  // Same two gates the customer PDF applies, so Step 7 totals match the
+  // document that gets sent: each line's own taxable flag, and the exemption
+  // that ignores the company rate for the whole estimate.
+  const taxableSubtotalCents = visible.reduce((s, l) => s + (l.taxable ? l.computedCostCents : 0), 0);
   const tax = computeSalesTax(
-    subtotalCents,
+    taxableSubtotalCents,
     estimate.taxExempt ? 0 : rates.salesTaxPercentMilli,
   );
 
@@ -547,7 +551,9 @@ export async function loadBidWorkspace(args: { tenantId: string; estimateId: str
       taxPercentMilli: tax.percentMilli,
       taxLabel: tax.label,
       taxCents: tax.taxCents,
-      totalCents: tax.totalCents,
+      // Full subtotal plus the tax charged, NOT tax.totalCents — that one only
+      // adds up the taxable lines and would bill the customer short.
+      totalCents: subtotalCents + tax.taxCents,
     },
     installScope,
     designRecommendationHours: designRec.recommendedHours,
